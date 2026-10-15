@@ -59,17 +59,17 @@ def test_publish_outside_transaction_dispatches_immediately(received):
 
 def test_wildcard_and_exact_subscriptions():
     names: list[str] = []
-    events.subscribe("production_order.*")(lambda e: names.append(f"wild:{e.name}"))
-    events.subscribe("production_order.approved")(lambda e: names.append(f"exact:{e.name}"))
+    events.subscribe("sample_order.*")(lambda e: names.append(f"wild:{e.name}"))
+    events.subscribe("sample_order.approved")(lambda e: names.append(f"exact:{e.name}"))
 
-    events.publish("production_order.approved", {})
-    events.publish("production_order.cancelled", {})
+    events.publish("sample_order.approved", {})
+    events.publish("sample_order.cancelled", {})
     events.publish("batch.approved", {})
 
     assert names == [
-        "wild:production_order.approved",
-        "exact:production_order.approved",
-        "wild:production_order.cancelled",
+        "wild:sample_order.approved",
+        "exact:sample_order.approved",
+        "wild:sample_order.cancelled",
     ]
 
 

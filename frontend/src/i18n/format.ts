@@ -64,3 +64,23 @@ export function formatDateTime(value: Date | string | null | undefined): string 
   }).format(date);
   return `${formatDate(date)} ${time}`;
 }
+
+/** Geçen süre, kısa: "az önce", "45 dk", "3 sa 20 dk", "2 gün 4 sa". */
+export function formatElapsed(
+  from: Date | string | null | undefined,
+  now: Date = new Date(),
+): string {
+  const start = toDate(from);
+  if (!start) return "";
+  const minutes = Math.max(0, Math.floor((now.getTime() - start.getTime()) / 60000));
+  if (minutes < 1) return "az önce";
+  if (minutes < 60) return `${minutes} dk`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    const rest = minutes % 60;
+    return rest ? `${hours} sa ${rest} dk` : `${hours} sa`;
+  }
+  const days = Math.floor(hours / 24);
+  const restHours = hours % 24;
+  return restHours ? `${days} gün ${restHours} sa` : `${days} gün`;
+}

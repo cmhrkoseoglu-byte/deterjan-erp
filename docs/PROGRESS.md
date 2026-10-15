@@ -83,3 +83,25 @@ Demo kullanıcı adları rol kodlarıdır: `admin`, `yonetim`, `planlama`, `depo
 | Yetkisiz rol 403 | ✓ | `test_users_list_forbidden_for_other_roles` vb., duman testinde `depo` → `/api/v1/users/` 403 |
 | CI yeşil; `ruff check`, `ruff format --check`, `mypy` temiz | ✓ | GitHub Actions `CI` iş akışı |
 | `docs/PROGRESS.md` güncel | ✓ | Bu dosya |
+
+## Faz 1 — Ana veriler, reçete, stok/lot, üretim ve iş akışı
+
+| Adım | Durum | Not |
+|---|---|---|
+| 1.5 `workflow` (+ 1.6 API, 1.7 ekranlar) | Tamamlandı (2026-10-15), onay bekliyor | Görev, bildirim, yorum; 11 satırlık kural tablosu; WebSocket + 30 sn yoklama; 07:00 zamanlaması; Görevlerim, bildirim zili, Bildirimler sayfası, kayıt yorum paneli |
+
+### Adım 1.5 doğrulaması
+
+- Backend: `pytest` 225 test geçti (workflow: 83); `ruff check`, `ruff format --check`, `mypy` temiz;
+  OpenAPI şeması uyarısız. Frontend: 46 Vitest testi, lint, biçim, tip denetimi ve derleme temiz.
+- Kural tablosunun her satırı için açılış ve kapanış testi (`apps/workflow/tests/test_rules.py`); olaylar
+  doğrudan yayınlanıyor, lot/emir yerine test modeli kullanılıyor. Stok ve Üretim adımları olayları
+  DECISIONS.md'deki sözleşmeyle yayınlayacak.
+- Görev durum makinesi: izinli tüm geçişler ve kapalı görevde yasak geçiş testli. API testleri giriş
+  yapılmamışsa 401, başka rolün görevinde 404/403 durumlarını içeriyor.
+- WebSocket: `test_websocket_receives_new_notification` (gerçek ASGI uygulaması, oturum çereziyle).
+  Tarayıcıda (Playwright, 768 px) uvicorn + Vite ile denendi: `depo` girişinden sonra yayınlanan
+  `production_order.approved` olayının görevi ve bildirimi sayfa yenilemeden düştü; üstlenme çalıştı;
+  `production_order.material_ready` ile görev kendiliğinden kapanıp listeden kalktı.
+- 07:00 kontrolü zamanlandı (`CELERY_BEAT_SCHEDULE`); SKT ve minimum stok sorguları Adım 1.3'te
+  `system.daily_check` olayına bağlanacak.

@@ -25,3 +25,10 @@ class ResizeObserverStub {
   disconnect() {}
 }
 window.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
+
+// Testlerde gerçek WebSocket bağlantısı açılmaz (bkz. fakeWebSocket.ts).
+import { FakeWebSocket } from "./fakeWebSocket";
+window.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+afterEach(() => {
+  FakeWebSocket.instances = [];
+});
