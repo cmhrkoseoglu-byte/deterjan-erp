@@ -20,7 +20,16 @@ def staff(make_user):
     """Her rolden bir kullanıcı."""
     return {
         role: make_user(role, username=role)
-        for role in ("depo", "uretim", "laboratuvar", "planlama", "yonetim", "satin_alma")
+        for role in (
+            "depo",
+            "uretim",
+            "laboratuvar",
+            "planlama",
+            "yonetim",
+            "satin_alma",
+            "dolum",
+            "sevkiyat",
+        )
     }
 
 
@@ -417,11 +426,149 @@ def test_empty_daily_check_lists_send_nothing(fire, staff):
     assert Notification.objects.count() == 0
 
 
+# --- Faz 2 dolum: emir, parti, bulk farkı, mamul lotu -------------------------------------------
+
+
+def filling_ref(order, **extra):
+    return ref(order, number=f"DO-2026-{order.pk:05d}", **extra)
+
+
+def test_filling_order_approved_opens_packaging_prep_closed_on_material_ready(fire, staff):
+    order = WidgetFactory()
+
+    fire(ev.FILLING_ORDER_APPROVED, filling_ref(order, product_code="BL-750"), staff["planlama"])
+
+    task = Task.objects.get(rule_code="packaging_prep")
+    assert task.title == f"Ambalaj malzemesi hazırla: DO-2026-{order.pk:05d}"
+    assert "BL-750" in task.description
+    assert task.assigned_role.name == "depo"
+    assert task.related_object == order
+
+    fire(ev.FILLING_ORDER_MATERIAL_READY, filling_ref(order), staff["depo"])
+
+    task.refresh_from_db()
+    assert task.status == Task.Status.DONE
+    start = Task.objects.get(rule_code="start_filling")
+    assert start.title == f"Dolumu başlat: DO-2026-{order.pk:05d}"
+    assert start.assigned_role.name == "dolum"
+
+    run = WidgetFactory()
+    fire(ev.FILLING_RUN_STARTED, ref(run, lot_no="D-261015-001", order=filling_ref(order)))
+
+    start.refresh_from_db()
+    assert start.status == Task.Status.DONE
+
+
+def test_filling_run_completed_opens_finished_qc_closed_by_sample_decision(fire, staff):
+    order, run, lot, sample = WidgetFactory(), WidgetFactory(), WidgetFactory(), WidgetFactory()
+    lot_payload = ref(lot, lot_no="D-261015-001", material_code="BL-750", material_name="Bulaşık")
+
+    fire(
+        ev.FILLING_RUN_COMPLETED,
+        ref(
+            run,
+            lot_no="D-261015-001",
+            order=filling_ref(order),
+            order_number=f"DO-2026-{order.pk:05d}",
+            output_lot={**lot_payload, "material_type": "FINISHED"},
+            sample_number="NM-2026-00007",
+        ),
+        staff["dolum"],
+    )
+
+    task = Task.objects.get(rule_code="finished_qc")
+    assert task.title == "Mamul kontrolü: D-261015-001"
+    assert task.assigned_role.name == "laboratuvar"
+    assert task.related_object == lot
+    assert "NM-2026-00007" in task.description
+
+    fire(
+        ev.SAMPLE_DECIDED,
+        ref(sample, number="NM-2026-00007", stage="FINAL", lot=lot_payload, decision="RELEASE"),
+    )
+
+    task.refresh_from_db()
+    assert task.status == Task.Status.DONE
+
+
+def test_finished_final_sample_opens_no_batch_analysis_task(fire, staff):
+    lot, sample = WidgetFactory(), WidgetFactory()
+
+    fire(
+        ev.SAMPLE_CREATED,
+        sample_ref(sample, lot, stage="FINAL", material_type="FINISHED"),
+    )
+
+    assert not Task.objects.filter(rule_code="batch_sample_analysis").exists()
+
+
+def test_bulk_variance_warns_planning_and_management(fire, staff):
+    order = WidgetFactory()
+
+    fire(
+        ev.FILLING_BULK_VARIANCE,
+        filling_ref(
+            order,
+            lot_no="D-261015-001",
+            product_code="BL-750",
+            good_units=1000,
+            theoretical_quantity="780.0000 KG",
+            actual_quantity="800.0000 KG",
+            variance_pct="2.56",
+            threshold_pct="1.5",
+        ),
+        staff["dolum"],
+    )
+
+    expected = [f"Dolum bulk farkı: DO-2026-{order.pk:05d}"]
+    assert titles_for(staff["planlama"]) == expected
+    assert titles_for(staff["yonetim"]) == expected
+    notification = Notification.objects.get(recipient=staff["planlama"])
+    assert notification.level == "WARNING"
+    assert "teorik 780.0000 KG, gerçek 800.0000 KG (%2.56, eşik %1.5)" in notification.body
+    assert titles_for(staff["dolum"]) == []
+
+
+def test_finished_lot_released_tells_shipping_ready(fire, staff):
+    lot = WidgetFactory()
+
+    fire(ev.LOT_RELEASED, lot_ref(lot, material_type="FINISHED"), staff["laboratuvar"])
+
+    title = f"Sevke hazır: H-261015-{lot.pk:03d}"
+    assert titles_for(staff["sevkiyat"]) == [title]
+    assert titles_for(staff["planlama"]) == [title]
+    assert titles_for(staff["uretim"]) == []
+
+
+def test_finished_lot_rejected_warns_planning_and_filling(fire, staff):
+    lot = WidgetFactory()
+
+    fire(ev.LOT_REJECTED, lot_ref(lot, material_type="FINISHED", note="Sızıntı"))
+
+    title = f"Mamul lot reddedildi: H-261015-{lot.pk:03d}"
+    assert title in titles_for(staff["planlama"])
+    assert title in titles_for(staff["dolum"])
+
+
+def test_filling_order_cancelled_cancels_its_tasks(fire, staff):
+    order = WidgetFactory()
+    fire(ev.FILLING_ORDER_APPROVED, filling_ref(order))
+    Notification.objects.all().delete()
+
+    fire(ev.FILLING_ORDER_CANCELLED, filling_ref(order, from_status="APPROVED"), staff["yonetim"])
+
+    task = Task.objects.get(rule_code="packaging_prep")
+    assert task.status == Task.Status.CANCELLED
+    expected = [f"Dolum emri iptal edildi: DO-2026-{order.pk:05d}"]
+    assert titles_for(staff["depo"]) == expected
+    assert titles_for(staff["planlama"]) == expected
+
+
 # --- Genel davranış -----------------------------------------------------------------------------
 
 
 def test_every_rule_row_is_covered():
-    """Faz 1'in 9 satırı + bulk lot reddi + 2 günlük kontrol + Faz 2 kalite kuralları tabloda."""
+    """Faz 1'in 9 satırı + bulk lot reddi + 2 günlük kontrol + Faz 2 kalite ve dolum kuralları."""
     assert [rule.code for rule in rules.RULES] == [
         "incoming_qc",
         "lot_rejected",
@@ -436,6 +583,13 @@ def test_every_rule_row_is_covered():
         "bulk_lot_rejected",
         "production_low_yield",
         "production_order_cancelled",
+        "packaging_prep",
+        "start_filling",
+        "finished_qc",
+        "filling_bulk_variance",
+        "finished_lot_released",
+        "finished_lot_rejected",
+        "filling_order_cancelled",
         "lots_expiring",
         "below_min_stock",
     ]

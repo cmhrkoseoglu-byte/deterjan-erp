@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "apps.inventory",
     "apps.production",
     "apps.quality",
+    "apps.filling",
     "apps.workflow",
 ]
 
@@ -160,6 +161,10 @@ SPECTACULAR_SETTINGS = {
         "StockDocumentStatusEnum": "apps.inventory.models.GoodsReceipt.Status",
         "ProductionBatchStatusEnum": "apps.production.models.ProductionBatch.Status",
         "SampleStageEnum": "apps.quality.models.SampleStage",
+        "FillingOrderStatusEnum": "apps.filling.models.FillingOrder.Status",
+        "PackagingSpecStatusEnum": "apps.filling.models.PackagingSpec.Status",
+        "ConsumptionKindEnum": "apps.filling.models.ConsumptionKind",
+        "ScrapKindEnum": "apps.filling.models.ScrapRecord.Kind",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
@@ -177,6 +182,10 @@ DEMO_USER_PASSWORD = env("DEMO_USER_PASSWORD", default="")
 
 # Üretim: verim (çıktı / şarj miktarı) bu yüzdenin altındaysa `production.low_yield` olayı.
 PRODUCTION_LOW_YIELD_THRESHOLD_PCT = env("PRODUCTION_LOW_YIELD_THRESHOLD_PCT", default="97")
+
+# Dolum: gerçek bulk tüketimi teorikten (sağlam adet × dolum miktarı) bu yüzdeden fazla saparsa
+# `filling.bulk_variance` olayı (planlama ve yönetime uyarı).
+FILL_VARIANCE_THRESHOLD_PCT = env("FILL_VARIANCE_THRESHOLD_PCT", default="1.5")
 
 LOGGING = {
     "version": 1,

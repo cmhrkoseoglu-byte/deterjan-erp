@@ -8,7 +8,7 @@ from django.db import models
 from django.db.models import Q
 
 from apps.core.models import BaseModel, DocumentModel, User
-from apps.inventory.models import Lot, LotLink, StockMovement
+from apps.inventory.models import Lot, LotLink, PickRecord, StockMovement
 from apps.masterdata.models import Equipment, Location, Material, UnitOfMeasure
 from apps.recipes.models import RecipeLine, RecipeVersion
 
@@ -211,8 +211,9 @@ class ReworkAddition(BaseModel):
         return f"{self.order_id} #{self.sequence} {self.material_id}"
 
 
-class MaterialPick(BaseModel):
-    """Depo hazırlığı: ihtiyaç için okutulan lot, depodan üretim lokasyonuna transfer edilir."""
+class MaterialPick(PickRecord):
+    """Depo hazırlığı: ihtiyaç için okutulan lot, depodan üretim lokasyonuna transfer edilir
+    (ortak hazırlama deseni, `inventory.picking`)."""
 
     order = models.ForeignKey(
         ProductionOrder, verbose_name="üretim emri", on_delete=models.PROTECT, related_name="picks"
@@ -223,21 +224,6 @@ class MaterialPick(BaseModel):
         on_delete=models.PROTECT,
         related_name="picks",
     )
-    lot = models.ForeignKey(Lot, verbose_name="lot", on_delete=models.PROTECT, related_name="+")
-    quantity = models.DecimalField("miktar (temel birim)", max_digits=18, decimal_places=4)
-    from_location = models.ForeignKey(
-        Location, verbose_name="kaynak lokasyon", on_delete=models.PROTECT, related_name="+"
-    )
-    to_location = models.ForeignKey(
-        Location, verbose_name="hedef lokasyon", on_delete=models.PROTECT, related_name="+"
-    )
-    picked_by = models.ForeignKey(
-        User, verbose_name="hazırlayan", on_delete=models.PROTECT, null=True, related_name="+"
-    )
-    picked_at = models.DateTimeField("hazırlama zamanı")
-    transfer_group = models.UUIDField("transfer grubu", editable=False)
-    # Emir hazırlıkta iptal edilince malzeme kaynağa geri transfer edilir.
-    returned_at = models.DateTimeField("iade zamanı", null=True, blank=True, editable=False)
 
     class Meta:
         verbose_name = "malzeme hazırlama"

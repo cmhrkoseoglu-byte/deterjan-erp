@@ -27,7 +27,7 @@ def test_seed_demo_is_repeatable_and_usable(roles):
     assert approved.count() == 2
     for version in approved:
         assert version.lines.filter(is_water=True).count() == 1
-    assert StockBalance.objects.filter(quantity__gt=0).count() == 15
+    assert StockBalance.objects.filter(quantity__gt=0, material__material_type="RAW").count() == 15
     assert_stock_invariants()
 
 
