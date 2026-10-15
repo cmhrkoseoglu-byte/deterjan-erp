@@ -9,3 +9,7 @@ modül yayınlayan modülü import etmeden adı bilir.
 USER_LOGGED_IN = "user.logged_in"
 USER_LOGGED_OUT = "user.logged_out"
 USER_LOGIN_FAILED = "user.login_failed"
+
+# recipes
+RECIPE_VERSION_APPROVED = "recipe_version.approved"
+RECIPE_VERSION_OBSOLETE = "recipe_version.obsolete"
