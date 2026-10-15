@@ -12,6 +12,7 @@ import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ModulePlaceholderPage } from "./pages/ModulePlaceholderPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 
 function menuRoles(key: string) {
   return MENU.find((item) => item.key === key)!.roles;
@@ -58,6 +59,7 @@ export const routes: RouteObject[] = [
         element: <AppLayout />,
         children: [
           { index: true, element: <HomePage /> },
+          { path: "bildirimler", element: <NotificationsPage /> },
           ...pageRoutes,
           ...moduleRoutes,
           { path: "*", element: <NotFoundPage /> },

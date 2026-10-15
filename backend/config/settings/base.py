@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # backend/
 REPO_DIR = BASE_DIR.parent
@@ -32,6 +33,7 @@ INSTALLED_APPS = [
     "apps.core",
     "apps.masterdata",
     "apps.recipes",
+    "apps.workflow",
 ]
 
 MIDDLEWARE = [
@@ -103,6 +105,13 @@ CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=REDIS_URL)
 CELERY_RESULT_BACKEND = None
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_ALWAYS_EAGER = False
+# Zamanlanmış işler (Celery Beat, CELERY_TIMEZONE saatine göre)
+CELERY_BEAT_SCHEDULE = {
+    "daily-check-0700": {
+        "task": "core.publish_daily_check",
+        "schedule": crontab(hour=7, minute=0),
+    },
+}
 
 # Django REST Framework
 REST_FRAMEWORK = {
@@ -141,6 +150,8 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,
     "ENUM_NAME_OVERRIDES": {
         "HealthStateEnum": "apps.core.api.serializers.HEALTH_STATES",
+        "AuditActionEnum": "apps.core.models.AuditLog.Action",
+        "ImportRowActionEnum": "apps.masterdata.api.serializers.IMPORT_ROW_ACTIONS",
         "RecipeVersionStatusEnum": "apps.recipes.models.RecipeVersion.Status",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).

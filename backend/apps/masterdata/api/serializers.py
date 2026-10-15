@@ -204,10 +204,13 @@ class ImportRowErrorSerializer(serializers.Serializer):
     message = serializers.CharField()
 
 
+IMPORT_ROW_ACTIONS = ["create", "update"]
+
+
 class ImportRowSerializer(serializers.Serializer):
     row = serializers.IntegerField()
     code = serializers.CharField()
-    action = serializers.ChoiceField(choices=["create", "update"])
+    action = serializers.ChoiceField(choices=IMPORT_ROW_ACTIONS)
     errors = ImportRowErrorSerializer(many=True)  # type: ignore[assignment]
 
 

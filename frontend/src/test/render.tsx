@@ -21,3 +21,17 @@ export function renderApp(path: string) {
   );
   return { router, queryClient };
 }
+
+/** Tek bir bileşeni sağlayıcılarla (Mantine, React Query, yönlendirici) çizer. */
+export function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([{ path: "*", element: ui }], { initialEntries: ["/"] });
+  render(
+    <MantineProvider theme={theme}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </MantineProvider>,
+  );
+  return { router, queryClient };
+}

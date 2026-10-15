@@ -176,3 +176,70 @@ diğer satırlar gibi yer alır. CUMHUR önerilen seçeneğin ("yalnızca reçet
   yoktur" dediği için bu yorum CUMHUR'a ayrıca soruldu.
 - Ölçekleme (`scale_requirements`) ihtiyaçları malzemenin temel biriminde, 4 ondalığa (yarım yukarı)
   yuvarlayarak döner; hedef birim ürünün birimine çevrilir (KG reçeteden LT hedefe ürünün yoğunluğuyla).
+
+## 2026-10-15 — İş akışı (Adım 1.5): olay sözleşmesi
+
+Kural tablosu `backend/apps/workflow/rules.py` içindedir; olay adları `core/event_names.py`'de sabittir.
+Olay yayınlayan modüller (inventory, production) payload'ı aşağıdaki biçimde gönderir. Bir kaydı anlatan
+her sözlük en az `{"model": "app_label.model", "id": <pk>}` içerir; görünen ad için `number`, `lot_no`
+ya da `repr` alanlarından biri bulunur. Görev bu kayda bağlanır ve kapanış olayı **aynı kayıt** için
+gelince kendiliğinden `DONE` olur. Eksik alan şablonda boş kalır, hata vermez.
+
+| Olay | Payload |
+|---|---|
+| `goods_receipt.posted` | `model, id, number, lots: [{model, id, lot_no, material_code, material_name, requires_qc}]` |
+| `lot.released`, `lot.rejected` | `model, id, lot_no, material_code, material_name, material_type` (`RAW`/`BULK`/...), `note` |
+| `production_order.<durum>` | `transition_status` / `cancel_document` payload'ı (`model, id, number, from_status, to_status`); onayda isteğe bağlı `priority` (1–4) |
+| `production_batch.started` | `model, id, batch_no, order: {model, id, number}` |
+| `production_batch.completed` | `model, id, batch_no, order: {model, id, number}, output_lot: {model, id, lot_no, material_code, material_name}` |
+| `production.deviation` | `model, id` (şarj), `batch_no, order_number, material_code, lot_no, planned_quantity, actual_quantity, deviation_pct, note` |
+| `production.low_yield` | `model, id` (şarj), `batch_no, order_number, yield_pct, threshold_pct` |
+| `inventory.lots_expiring` | `days, lots: [{lot_no, material_code, material_name, expiry_date}]` |
+| `inventory.below_min_stock` | `materials: [{code, name, quantity, min_stock, unit}]` |
+
+Bir olay iki kez gelirse aynı kayıt ve kural için ikinci açık görev açılmaz. Her kural kendi
+savepoint'inde çalışır; biri hata verirse loglanır, diğerleri etkilenmez.
+
+## 2026-10-15 — İş akışı: 07:00 kontrolleri
+
+Celery Beat her sabah 07:00'de (`Europe/Istanbul`) `core.publish_daily_check` işini çalıştırır; bu iş
+`system.daily_check` olayını yayınlar. SKT ve minimum stok sorguları inventory modülünde olacağı için
+workflow inventory'yi çağırmaz: inventory bu olayı dinleyip `expiring_lots(30)` ve `below_min_stock()`
+sonuçlarını `inventory.lots_expiring` ve `inventory.below_min_stock` olaylarıyla yayınlar; workflow da
+bunlardan `depo` ve `planlama`'ya birer WARNING bildirimi üretir. Liste boşsa bildirim gitmez.
+
+## 2026-10-15 — İş akışı: görev, bildirim ve yorum kuralları
+
+Plan onayı için CUMHUR'a sunulan varsayılanlar (thread "Görevler ve bildirimler"):
+
+- Olayı tetikleyen kişiye kendi işleminin bildirimi gitmez; görevler yine de açılır.
+- Rol görevini o roldeki herkes görür. Biri "üstlen"ince görev `IN_PROGRESS` olur, `claimed_by` dolar;
+  ikinci kişi üstlenemez (`task_already_claimed`), diğerleri görevi görmeye devam eder.
+- Görev kural olayıyla kendiliğinden kapanır; görevin rolündeki/atanan/üstlenen kullanıcı ya da admin
+  elle de tamamlayabilir (not isteğe bağlı, denetim günlüğüne yazılır). Başkası 403 alır.
+- Üretim emri iptalinde emre bağlı açık görevler `CANCELLED` olur; bildirim, iptal edilen görevlerin
+  rollerine (ve üstlenen/atanan kişilere) ve `planlama`'ya gider.
+- `yonetim` ve admin tüm görevleri görür (ama başka rolün görevini kapatamaz, admin hariç); diğer roller
+  yalnızca kendine, rollerine atanmış ya da üstlendiği görevleri görür.
+- Yeni görev açılınca atanan role/kişiye "Yeni görev: …" bildirimi de düşer.
+- Role giden bildirim rolün gerçek, aktif üyelerine gider; admin/superuser yalnızca bu yüzden alıcı olmaz.
+- Yorum herhangi bir proje kaydına (`apps.*` modelleri; kullanıcı, denetim günlüğü, bildirim hariç)
+  bağlanabilir. `@kullanıcıadı` (büyük/küçük harfe duyarsız) bahsedilene bildirim gönderir; yazar kendi
+  bahsinden bildirim almaz. Yorum silinmez, yalnızca yazarı düzenler; eski metin denetim günlüğüne yazılır,
+  düzenlemede yalnızca yeni eklenen bahsedilenlere bildirim gider.
+- Yorum panelindeki "Geçmiş" (`record-history`) o kaydın denetim kayıtlarını giriş yapmış herkese
+  gösterir; IP adresi gösterilmez.
+
+## 2026-10-15 — İş akışı: anlık iletim
+
+- WebSocket `/ws/notifications/`, oturum çereziyle; giriş yoksa 4401 ile kapanır. Kullanıcı başına grup
+  `user_<id>`. Mesajlar commit sonrası gönderilir: `notification.created` (`id, title, body, level,
+  task_id`), `notification.read`, `task.changed` (`id, status`). Redis'e ulaşılamazsa hata loglanır,
+  işlem etkilenmez.
+- Frontend bağlantı koparsa üstel bekleme ile (en çok 30 sn) yeniden bağlanır; bağlı değilken
+  okunmamış sayısı ve açık görevler 30 sn'de bir yoklanır.
+- Görev/bildirimden kayda gitmek için her modül kendi detay sayfasını
+  `frontend/src/workflow/recordLinks.ts` içindeki `RECORD_ROUTES`'a ekler. Yorum paneli:
+  `<RecordPanel contentType="inventory.lot" objectId={lot.id} />`.
+- `channels.testing` daphne'yi içe aktardığı için `daphne` geliştirme bağımlılıklarına eklendi
+  (yalnızca WebSocket testleri; sunucu uvicorn olarak kalır).

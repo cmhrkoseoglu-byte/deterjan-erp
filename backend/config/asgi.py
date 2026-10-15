@@ -12,8 +12,7 @@ from channels.auth import AuthMiddlewareStack  # noqa: E402
 from channels.routing import ProtocolTypeRouter, URLRouter  # noqa: E402
 from channels.security.websocket import AllowedHostsOriginValidator  # noqa: E402
 
-# WebSocket rotaları (bildirimler) workflow modülüyle eklenecek.
-websocket_urlpatterns: list = []
+from apps.workflow.routing import websocket_urlpatterns  # noqa: E402
 
 application = ProtocolTypeRouter(
     {
