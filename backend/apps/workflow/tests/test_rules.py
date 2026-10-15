@@ -232,6 +232,24 @@ def test_raw_lot_released_sends_no_notification(fire, staff):
     assert Notification.objects.count() == 0
 
 
+# --- lot.rejected (BULK) → bildirim (planlama, uretim) ------------------------------------------
+
+
+def test_bulk_lot_rejected_notifies_planning_and_production(fire, staff):
+    lot = WidgetFactory()
+
+    fire(
+        ev.LOT_REJECTED,
+        ref(lot, lot_no="B-261015-001", material_type="BULK", note="Viskozite düşük"),
+        staff["laboratuvar"],
+    )
+
+    for role in ("planlama", "uretim"):
+        assert titles_for(staff[role]) == ["Bulk lot reddedildi: B-261015-001"]
+    # Genel red bildirimi depo ve satın almaya ayrıca gider.
+    assert titles_for(staff["depo"]) == ["Lot reddedildi: B-261015-001"]
+
+
 # --- production.low_yield → bildirim (planlama, yonetim) ----------------------------------------
 
 
@@ -342,7 +360,7 @@ def test_empty_daily_check_lists_send_nothing(fire, staff):
 
 
 def test_every_rule_row_is_covered():
-    """Spesifikasyondaki 9 satır + 2 günlük kontrol tabloda."""
+    """Spesifikasyondaki 9 satır + bulk lot reddi (üretim planı) + 2 günlük kontrol tabloda."""
     assert [rule.code for rule in rules.RULES] == [
         "incoming_qc",
         "lot_rejected",
@@ -351,6 +369,7 @@ def test_every_rule_row_is_covered():
         "production_deviation",
         "batch_sample_analysis",
         "bulk_lot_released",
+        "bulk_lot_rejected",
         "production_low_yield",
         "production_order_cancelled",
         "lots_expiring",

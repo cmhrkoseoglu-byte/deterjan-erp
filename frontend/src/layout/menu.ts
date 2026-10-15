@@ -62,7 +62,7 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.production,
     path: "/uretim",
     icon: IconBuildingFactory2,
-    roles: ["uretim", "planlama", "yonetim"],
+    roles: ["uretim", "planlama", "depo", "yonetim"],
     phase: 1,
   },
   {

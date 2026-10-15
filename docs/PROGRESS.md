@@ -91,11 +91,11 @@ Demo kullanıcı adları rol kodlarıdır: `admin`, `yonetim`, `planlama`, `depo
 | 1.1 `masterdata` | Tamamlandı (2026-10-15) | Birim, kategori, malzeme, malzemeye özel dönüşüm, depo, lokasyon, ekipman, tedarikçi, müşteri; `convert_quantity`; Excel/CSV içe aktarma (önizleme + onay) ve şablonlar; API ve ekranlar |
 | 1.2 `recipes` | Tamamlandı (2026-10-15) | Sürümlü reçete, satır, proses adımı; onay (tek onaylı sürüm, eskisi geçersiz), kopyalama, ölçekleme; API ve ekranlar (sürüm karşılaştırma dahil) |
 | 1.3 `inventory` | Tamamlandı (2026-10-15) | Lot, değişmez hareket defteri, bakiye, lot soy ağacı (geri/ileri), mal kabul (karantina → lot onay), transfer, ters kayıt, sayım düzeltme, açılış stoku içe aktarma, lot etiketi (PDF), SKT ve minimum stok kontrolleri; API ve ekranlar |
-| 1.4 `production` | Başlamadı | |
+| 1.4 `production` | Tamamlandı (2026-10-15) | Üretim emri (taslak → onay → malzeme hazırlama → hazır → üretim → analiz bekliyor → tamam), reçete ölçekleme, lot okutarak malzeme hazırlama (FEFO önerisi), şarja bölme (D-4), tartım ve tolerans/sapma, şarj bitişi ve verim, çıktı lotu serbest kalınca emrin kapanması; API ve ekranlar |
 | 1.5 `workflow` (+ 1.6 API, 1.7 ekranlar) | Tamamlandı (2026-10-15) | Görev, bildirim, yorum; 11 satırlık kural tablosu; WebSocket + 30 sn yoklama; 07:00 zamanlaması; Görevlerim, bildirim zili, Bildirimler sayfası, kayıt yorum paneli |
-| 1.6 API | 1.1, 1.2, 1.3 ve 1.5 kısmı tamam | `/api/v1/masterdata/…`, `/api/v1/recipes/…`, `/api/v1/inventory/…`, `/api/v1/workflow/…` |
-| 1.7 Ekranlar | 1.1, 1.2, 1.3 ve 1.5 kısmı tamam | Ana veriler (sekme başına liste + form + içe aktarma), Reçeteler, Depo (stok sorgu, lotlar, mal kabul, lot onay, sayım; lot detayı ve soy ağacı), Görevlerim, Bildirimler |
-| 1.8 Demo verisi ve uçtan uca test | Başlamadı | |
+| 1.6 API | Tamamlandı (2026-10-15) | `/api/v1/masterdata/…`, `/api/v1/recipes/…`, `/api/v1/inventory/…`, `/api/v1/production/…`, `/api/v1/workflow/…` |
+| 1.7 Ekranlar | Tamamlandı (2026-10-15) | Ana veriler (sekme başına liste + form + içe aktarma), Reçeteler, Depo (stok sorgu, lotlar, mal kabul, lot onay, sayım; lot detayı ve soy ağacı), Üretim (emirler, malzeme hazırlama tableti, şarj/tartım tableti), Görevlerim, Bildirimler |
+| 1.8 Demo verisi ve uçtan uca test | Tamamlandı (2026-10-15) | `seed_demo` (15 hammadde, 2 bulk ürün, onaylı 2 reçete, 2 tank, lokasyonlar, 3 tedarikçi, açılış stoku); `apps/production/tests/test_e2e_production.py` |
 
 ### Adım 1.1 ve 1.2 doğrulaması
 
@@ -148,3 +148,35 @@ Demo kullanıcı adları rol kodlarıdır: `admin`, `yonetim`, `planlama`, `depo
   `production_order.material_ready` ile görev kendiliğinden kapanıp listeden kalktı.
 - 07:00 kontrolü zamanlandı (`CELERY_BEAT_SCHEDULE`); SKT ve minimum stok sorguları Adım 1.3'te
   `system.daily_check` olayına bağlandı.
+
+### Adım 1.4 ve 1.8 doğrulaması
+
+- Backend: `pytest` 528 test geçti (production: 76); `ruff check`, `ruff format --check`, `mypy` temiz;
+  OpenAPI şeması uyarısız. Stoka dokunan her üretim testi `assert_stock_invariants()` ile biter.
+- Uçtan uca: `test_goods_receipt_to_completed_order` mal kabul → lot onay → emir → onay → hazırlama →
+  malzeme hazır → şarj → tartım → bitiş → çıktı lotu onayı → emir tamam zincirini; her adımda açılan ve
+  kapanan görevleri, bildirimleri ve geri/ileri izlemeyi doğrular. `test_split_order_two_batches_low_yield_and_completion`
+  (D-4, düşük verim bildirimi), `test_cancelled_order_cancels_open_tasks`, `test_events_follow_contract`.
+- Durum makineleri (emir, şarj): izinli tüm geçişler ve yasak geçişler testli. API testleri her yazma
+  ucunda yetkisiz rolün 403 aldığını doğrular (emir planlama, hazırlama depo, şarj üretim).
+- Frontend: `npm test` 89 test (üretim: 11), `lint`, `format:check`, `typecheck`, `build` temiz.
+- Tarayıcıda (Playwright, 768 px, uvicorn + Vite, `seed_demo` verisi) tam akış denendi: planlama 3.000 kg
+  emir açıp onayladı; depo yanlış lot okutunca hata gördü, 9 satırı öneriden hazırlayıp "Malzeme hazır"
+  dedi; üretim 2.000 kg'lık ilk şarjı başlattı (emirde 1.000 kg kaldı), suyu %5 fazla tartınca sapma notu
+  istendi, tüm satırları tartıp şarjı bitirdi. Bu denemede hesaplanan miktarların JSON'da sayı döndüğü
+  bir hata bulundu ve düzeltildi (artık metin, test eklendi).
+
+## Faz 1 kabul kriterleri
+
+| Kriter | Durum | Kanıt |
+|---|---|---|
+| Uçtan uca test yeşil; stok testlerinden sonra `assert_stock_invariants()` geçiyor | ✓ | `test_e2e_production.py` (4 test); stok testleri değişmez denetimiyle biter |
+| Negatif stoka düşürecek tartım reddediliyor | ✓ | `test_consumption_cannot_go_negative` |
+| Karantinadaki lot hazırlamada seçilemiyor (test + arayüz) | ✓ | `test_quarantine_lot_cannot_be_picked`, `test_quarantine_lot_scan_is_rejected` (API); öneri listesi yalnızca serbest stok gösterir; okutma hatası ekranda (Vitest "karantinadaki lot okutulunca hatayı gösterir") |
+| Onaylı reçete sürümü değiştirilemiyor; yeni sürüm onaylanınca eski OBSOLETE | ✓ | Adım 1.2 testleri (yukarıda) |
+| Bulk lotun geri izlemesi hammadde lotlarını miktarlarıyla, hammadde lotunun ileri izlemesi şarjları gösteriyor | ✓ | `test_goods_receipt_to_completed_order` (iki yönde `lot_trace`); ekran: lot detayındaki soy ağacı (Adım 1.3) |
+| Görevler kural tablosuna göre açılıp kapanıyor | ✓ | `apps/workflow/tests/test_rules.py` (her satır) ve uçtan uca test |
+| Yeni görev WebSocket ile sayfa yenilemeden düşüyor | ✓ | `test_websocket_receives_new_notification`; tarayıcı denemesi (Adım 1.5) |
+| Malzeme ve açılış stoku Excel'den önizlemeli içe aktarılıyor | ✓ | Adım 1.1 ve 1.3 testleri |
+| Tablet ekranları (hazırlama, tartım) 768 px'te rahat kullanılıyor | ✓ | Playwright denemesi (yukarıda); büyük dokunma alanları, okutma kutusunda Enter ile kayıt |
+| `docs/PROGRESS.md` ve `docs/DECISIONS.md` güncel | ✓ | Bu dosya ve DECISIONS.md "Üretim (Adım 1.4)" |
