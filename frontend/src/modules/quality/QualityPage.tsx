@@ -136,7 +136,7 @@ const sampleColumns: Column<Sample>[] = [
   { header: qt.material, render: (r) => `${r.material_code} - ${r.material_name}` },
   { header: qt.stageLabel, render: (r) => qt.stage[r.stage] },
   { header: qt.spec, render: (r) => r.specification_label ?? "—" },
-  { header: qt.takenAt, render: (r) => formatDateTime(r.taken_at) },
+  { header: qt.openedAt, render: (r) => formatDateTime(r.created_at) },
   { header: qt.status, render: (r) => <SampleStatusBadge status={r.status} /> },
 ];
 

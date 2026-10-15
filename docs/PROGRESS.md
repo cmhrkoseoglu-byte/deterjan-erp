@@ -180,3 +180,47 @@ Demo kullanıcı adları rol kodlarıdır: `admin`, `yonetim`, `planlama`, `depo
 | Malzeme ve açılış stoku Excel'den önizlemeli içe aktarılıyor | ✓ | Adım 1.1 ve 1.3 testleri |
 | Tablet ekranları (hazırlama, tartım) 768 px'te rahat kullanılıyor | ✓ | Playwright denemesi (yukarıda); büyük dokunma alanları, okutma kutusunda Enter ile kayıt |
 | `docs/PROGRESS.md` ve `docs/DECISIONS.md` güncel | ✓ | Bu dosya ve DECISIONS.md "Üretim (Adım 1.4)" |
+
+## Faz 2 — Kalite, dolum, etiket ve ekler
+
+Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrıntıları `docs/DECISIONS.md`
+"Kalite kontrol (Faz 2, Adım 2.1)".
+
+### Adım 2.1 doğrulaması (kalite kontrol)
+
+- Backend: `pytest` 596 test geçti (quality: 59, yeniden işleme: 4); `ruff check`, `ruff format --check`,
+  `mypy` temiz; OpenAPI şeması uyarısız; `makemigrations --check` temiz. Kalite testlerinin hepsi
+  `assert_stock_invariants()` ile biter (autouse fixture).
+- Kurallar: `test_decision_requires_all_mandatory_tests`, `test_out_of_spec_result_blocks_release`,
+  şartlı kabul onay/ret, REWORK'ün lotu bloke edip planlamaya görev açması, IN_PROCESS numunenin lotu
+  değiştirmemesi, sonuç düzeltme geçmişi, spesifikasyon sürümleri ve kilidi; numune ve spesifikasyon durum
+  makinelerinin izinli tüm geçişleri ve yasak geçiş.
+- Lot kararı yalnızca kalite kararıyla: `test_release_and_reject_only_through_quality_decision`,
+  `test_admin_manual_release_requires_reason_and_is_audited` (D-5), `test_manual_release_is_admin_only`,
+  `test_reject_endpoint_removed`.
+- Otomatik numune ve görev: mal kabulde giriş numunesi + "Giriş kontrolü" görevi (inventory testleri),
+  şarj bitişinde son numune + "Numune analizi" görevi (`test_e2e_production.py`, lot artık kalite
+  kararıyla serbest bırakılıyor).
+- Yeniden işleme (`apps/production/tests/test_rework.py`): düzeltme listesiyle ve reçeteyle harmanlama,
+  sabit lotun hazırlanamaması, bloke olmayan lotun reddi, soy ağacında eski lot, yeniden işleme emri
+  bitince asıl emrin tamamlanması.
+- CoA: `test_coa.py` (içerik satırları, şartlı kabul gerekçesi ve onaylayan), API'de `coa.pdf` PDF döner;
+  karar verilmemiş numunede 400.
+- API: her yazma ucunda yetkisiz rol 403 (laboratuvar dışı), şartlı kabul onayı yalnızca yönetim.
+- D-7: `seed_quality_demo` 16 onaylı örnek spesifikasyon yazar (`test_seed.py`).
+- Frontend: `npm test` 102 test (kalite: 10, yeniden işleme formu: 2), `lint`, `format:check`,
+  `typecheck`, `build` temiz.
+- Tarayıcıda (Playwright, 1024 ve 768 px, uvicorn + Vite, `seed_demo` verisi): SLES mal kabulünde açılan
+  numune kuyrukta göründü; aktif madde 66,5 girilirken kırmızıya döndü, kaydedilince "Spesifikasyon dışı"
+  işaretlendi; "Serbest bırak" kapalıydı, şartlı kabul gerekçeyle verildi; yönetim onaylayınca lot
+  serbest oldu ve CoA PDF'i indi; lot detayında numune listelendi, laboratuvara yalnızca "Bloke et"
+  göründü. Bu denemede otomatik numunede "numuneyi alan" boş kalıyordu; artık ilk sonucu girenle doluyor.
+
+### Faz 2 kabul kriterleri (Adım 2.1'e düşenler)
+
+| Kriter | Durum | Kanıt |
+|---|---|---|
+| Spec dışı sonuçla `RELEASE` verilemiyor; zorunlu test eksikken karar verilemiyor | ✓ | `test_out_of_spec_result_blocks_release`, `test_decision_requires_all_mandatory_tests`, API `test_decision_errors_return_codes` |
+| Mal kabul ve şarj bitişinde numune otomatik açılıyor, laboratuvara görev düşüyor | ✓ | inventory mal kabul testi, `test_goods_receipt_to_completed_order`, `test_rules.py` numune kuralları |
+| CoA PDF'i doğru bilgilerle üretiliyor | ✓ | `test_coa.py`, `test_sample_flow_via_api` |
+| Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | quality ve rework testleri `assert_stock_invariants()` ile biter |

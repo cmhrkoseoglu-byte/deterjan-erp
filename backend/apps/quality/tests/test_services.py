@@ -266,6 +266,7 @@ def test_results_evaluate_against_spec(lab, commit, published):
     sample.refresh_from_db()
     assert sample.status == Sample.Status.IN_TEST
     assert ev.SAMPLE_IN_TEST in [e.name for e in published]
+    assert sample.taken_by == lab and sample.taken_at is not None
     look = services.record_result(lab, sample, line(sample, "GORUNUS"), text_value="  BERRAK")
     assert look.is_within_spec is True and look.text_value == "BERRAK"
     color = services.record_result(lab, sample, line(sample, "RENK"), passed=False)
@@ -520,3 +521,15 @@ def test_decision_permission(lab, make_user):
     for role in ("depo", "uretim", "yonetim", "planlama"):
         with pytest.raises(PermissionDenied):
             services.decide(make_user(role), sample, Decision.RELEASE)
+
+
+def test_auto_sample_gets_taker_from_first_result(lab):
+    lot, _q = quarantined_raw_lot()
+    approved_spec(lab, lot.material)
+    sample = services.open_sample(
+        None, lot, SampleStage.INCOMING, origin=Sample.Origin.GOODS_RECEIPT
+    )
+    assert sample.taken_by is None and sample.taken_at is None
+    services.record_result(lab, sample, line(sample, "PH"), numeric_value=D("7"))
+    sample.refresh_from_db()
+    assert sample.taken_by == lab and sample.taken_at is not None

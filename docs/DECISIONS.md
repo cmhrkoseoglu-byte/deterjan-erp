@@ -302,6 +302,7 @@ Diğer ayrıntılar:
 - Menü: "Depo ve stok" artık herkese görünür (önceki eşleme: depo, planlama, yönetim). Sekmeler rolle
   daralır: Stok sorgu ve Lotlar herkes; Mal kabul depo, planlama, yönetim, satın alma, laboratuvar;
   Lot onay laboratuvar; Sayım düzeltme depo ve yönetim. Laboratuvar sekmesiz adreste Lot onay'a düşer.
+  (Faz 2'de Lot onay sekmesi kalktı; bkz. "Kalite kontrol (Faz 2, Adım 2.1)".)
 
 ## 2026-10-15 — Üretim (Adım 1.4)
 
@@ -340,3 +341,85 @@ Diğer ayrıntılar:
   `production_batch.started` / `production_batch.completed` olay sözleşmesindeki alanlarla yayınlanır.
 - Hesaplanan miktarlar (kalan, önerilen şarj miktarı) API'de diğer miktarlar gibi metin döner.
 
+
+## 2026-10-15 — Kalite kontrol (Faz 2, Adım 2.1)
+
+CUMHUR'un 2026-10-15'te onayladığı plan varsayılanları ve kararları:
+
+1. **Lot serbest bırakma ve ret yalnızca kalite kararıyla** (`quality.services.decide`). Depo ekranındaki
+   "Lot onay" sekmesi ve `POST /inventory/lots/{id}/reject/` kaldırıldı. `inventory.release_lot` /
+   `reject_lot` yalnızca `quality_decision=True` ile çağrıldığında çalışır.
+2. **Karar D-5 "Admin, gerekçeli"**: `POST /inventory/lots/{id}/release/` yalnızca `admin` rolüne açık,
+   not zorunlu (`note_required`); not "Elle serbest bırakma (D-5): …" önekiyle lota ve denetim
+   günlüğüne yazılır. Laboratuvarın "Bloke et" işlemi kalır; bloke lot yeni numuneyle yeniden karara gider.
+3. **Karar D-7 "Örnek listeyle başla"**: 11 standart test migration ile gelir (PH, VISK, YOGUNLUK,
+   AKTIF_MADDE, KATI_MADDE, RENK, KOKU, GORUNUS ve dolum için DOLUM_MIKTARI, SIZDIRMAZLIK, ETIKET).
+   `seed_quality_demo` (seed_demo sonunda çağrılır) giriş kontrollü her hammaddeye giriş, her bulk ürüne
+   son kontrol spesifikasyonu yazıp onaylar. Laboratuvar değerleri yeni sürümle düzenler.
+4. **Yeniden işleme "İkisi de olsun"**: REWORK kararı (yalnızca bulk lot) lotu bloke eder ve planlamaya
+   "Yeniden işleme emri aç: {lot}" görevi açar. Yeniden işleme emri `rework_lot` alanı dolu bir üretim
+   emridir; reçete isteğe bağlıdır:
+   - Reçeteyle: lotun tüm stoku + reçete "planlanan miktar − lot miktarı" kadar ölçeklenir (harmanlama;
+     planlanan miktar lot miktarından büyük olmalı, `rework_quantity_too_small`).
+   - Reçetesiz: lotun tüm stoku + planlamacının girdiği düzeltme listesi (`ReworkAddition`: malzeme,
+     miktar, birim, tolerans, su mu, talimat).
+   - İkisinde de düzeltme satırları eklenebilir. Lot satırı sabit lottur (`ProductionRequirement.lot`),
+     toleransı 0, depoda hazırlanmaz (`rework_lot_not_picked`); bulunduğu yerden (tank) tüketilir.
+   - **CLAUDE.md kural 4'ün tek istisnası:** bloke lot yalnızca kendi yeniden işleme emrinde tüketilebilir
+     (`post_movement(..., rework=True)`, lot bloke değilse `rework_lot_not_blocked`). Lot başına tek açık
+     yeniden işleme emri olur (`rework_order_exists`).
+   - Yeni B- lotu eski lota `LotLink` ile bağlanır (soy ağacı korunur). Yeniden işleme emri tamamlanınca
+     eski lotu üreten emir, diğer çıktıları serbestse kendiliğinden tamamlanır.
+5. **Şartlı kabul**: spec dışı sonuçla laboratuvar `CONDITIONAL_RELEASE` önerir; numune "Onay bekliyor"a
+   geçer, yönetime görev düşer. Yönetim onaylarsa lot serbest bırakılır; reddederse (not zorunlu) numune
+   "Testte"ye döner ve laboratuvar yeniden karar verir.
+6. Onaylı spesifikasyonu olmayan malzemeye de numune açılır; laboratuvar karar vermeden önce onaylı bir
+   sürüm atar (`sample_has_no_specification`). Numune açılışta o anki onaylı sürümü sabitler.
+7. Ret kararında Faz 1 kuralı geçerli: üretim emri "Analiz bekliyor"da kalır, planlama bildirim alır.
+
+Diğer ayrıntılar:
+
+- **Spesifikasyon**: malzeme + aşama başına sürümlü (Taslak → Onaylı → Eski sürüm). Aynı malzeme ve
+  aşamada tek onaylı sürüm olur (veritabanı kısıtı); yenisi onaylanınca eskisi `OBSOLETE` olur. Satırı
+  olmayan sürüm onaylanmaz. Taslakta satır kaldırılabilir (reçetelerdeki gibi, denetim günlüğüne yazılır).
+  Sayısal satırda en az bir sınır olmalı ve beklenen metin girilmez; diğer türlerde sınır girilmez.
+  Ambalaj malzemesine de spesifikasyon yazılabilir (dolum aşaması için).
+- **Uygunluk**: sayısal sonuç sınırlar dahil `min ≤ değer ≤ max`; uygun/uygun değil sonuç `passed`;
+  metin sonuç, `passed` verilmezse beklenen metinle büyük/küçük harf ve kenar boşlukları yok sayılarak
+  karşılaştırılır. Sonucu kullanılan testin sonuç türü değiştirilemez (`test_in_use`).
+- **Sonuç düzeltme**: satırın geçerli sonucu varken yeni sonuç düzeltmedir ve not ister
+  (`correction_reason_required`); eski kayıt `superseded_by` ile yenisine bağlanır, silinmez. Bir satırda
+  tek geçerli sonuç olur (kısmi benzersizlik kısıtı). İlk sonuç numuneyi "Testte"ye geçirir.
+- **Numune durumları**: Bekliyor → Testte → (Onay bekliyor) → Karar verildi; açık numune gerekçeyle
+  iptal edilebilir. Otomatik açılan numunede alan kişi ve zaman boştur; ilk sonucu giren kişi ve ölçüm
+  zamanıyla dolar. Aynı lot ve aşamada tek açık numune olur (`sample_already_open`); numune yalnızca
+  karantina ya da bloke lota açılır (`lot_not_sampleable`). `quality.services.open_sample` rol denetimi
+  yapmaz, diğer modüllerin (dolum, Adım 2.2) çağırması içindir.
+- **Şarj sırası (IN_PROCESS) numunesi** lotun durumunu değiştirmez; yalnızca Serbest (uygun) ya da Ret
+  (uygun değil) kararı alır. Ret olursa `uretim` ve `planlama`'ya bildirim gider.
+- **Serbest bırakma lokasyonu**: varsayılan, lotun mal kabulündeki depolama lokasyonu; karar ekranında
+  değiştirilebilir. Karantinada stok varsa lokasyon zorunludur (Faz 1 kuralı).
+- **CoA**: yalnızca o numunenin kararıyla serbest bırakılmış lot için (`coa_not_available`); A4,
+  reportlab, Türkçe sayı biçimi. Şartlı kabulde gerekçe ve yönetim onayı da yazılır.
+- **Yetki**: test tanımı, spesifikasyon, numune, sonuç ve karar yazma `laboratuvar`; şartlı kabul onayı
+  `yonetim`; okuma her giriş yapmış kullanıcıya açık. Menüde "Kalite kontrol" laboratuvar ve yönetime
+  görünür; laboratuvar "Numune kuyruğu"na, yönetim "Şartlı kabul onayı"na düşer.
+- **Lot detayı**: "Kalite kontrol" bölümü lotun numunelerini listeler; laboratuvar açık numunesi yoksa
+  numune açar, planlama bloke bulk lottan yeniden işleme emri açar (`/uretim/emirler/yeni?yeniden-isleme=<lot>`).
+- `core.services.create_document` isteğe bağlı `event_payload` alır (`<belge>.created` olayına eklenir).
+
+### Kalite olay sözleşmesi (iş akışı tablosuna ek)
+
+| Olay | Payload |
+|---|---|
+| `sample.created`, `sample.in_test`, `sample.awaiting_approval`, `sample.cancelled` | `model, id, number, stage, lot_no, material_code, material_name, material_type, lot: {model, id, lot_no}` |
+| `sample.decided` | yukarıdakiler + `decision` (`RELEASE`/`REJECT`/`REWORK`/`CONDITIONAL_RELEASE`), `reason` |
+| `specification.approved`, `specification.obsolete` | `transition_status` payload'ı |
+| `production_order.completed` | `transition_status` payload'ı (yeniden işleme sonrası asıl emri kapatmak için) |
+| `production_order.approved` | yeniden işleme emrinde ek olarak `rework_lot: {model, id, lot_no}` |
+
+İş akışı kuralları: `incoming_qc` (giriş numunesi → laboratuvar, "Giriş kontrolü: {lot}") ve
+`batch_sample_analysis` (şarj sırası / son numune → laboratuvar, "Numune analizi: {lot}") artık numuneye
+bağlanır ve numune karar verilince ya da iptal edilince kapanır; `conditional_release_approval`
+(yönetim), `rework_order` (planlama; yeniden işleme emri onaylanınca kapanır), `in_process_out_of_spec`
+(bildirim). Görev başlığı lot numarasını, açıklaması numune numarasını taşır.

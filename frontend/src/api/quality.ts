@@ -96,7 +96,8 @@ export interface Sample {
   specification_label: string | null;
   taken_by: number | null;
   taken_by_name: string | null;
-  taken_at: string;
+  /** Otomatik numunede ilk sonuç girilene kadar boş. */
+  taken_at: string | null;
   retain_location: number | null;
   retain_location_code: string | null;
   note: string;

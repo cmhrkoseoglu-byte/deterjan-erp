@@ -415,7 +415,7 @@ function ResultRow({
         <Table.Td>{limitText(line)}</Table.Td>
         <Table.Td>
           {current ? (
-            <Group gap="xs" wrap="nowrap">
+            <Group gap="xs" wrap="wrap">
               <Text
                 size="sm"
                 fw={600}
@@ -425,7 +425,7 @@ function ResultRow({
                 {resultText(line, current)}
               </Text>
               {!current.is_within_spec && (
-                <Badge color="red" size="xs">
+                <Badge color="red" size="xs" style={{ flexShrink: 0, overflow: "visible" }}>
                   {qt.outOfSpec}
                 </Badge>
               )}

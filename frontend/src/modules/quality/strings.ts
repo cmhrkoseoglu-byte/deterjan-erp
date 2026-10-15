@@ -48,6 +48,7 @@ export const qt = {
   spec: "Spesifikasyon",
   takenBy: "Numuneyi alan",
   takenAt: "Alınma zamanı",
+  openedAt: "Açılış",
   waiting: "Bekleme",
   decidedAt: "Karar zamanı",
   note: "Not",

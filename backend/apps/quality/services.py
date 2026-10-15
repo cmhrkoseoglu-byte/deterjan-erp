@@ -601,7 +601,7 @@ def record_result(
 
     Satırın geçerli sonucu varsa bu bir **düzeltmedir**: not (düzeltme nedeni) zorunludur, yeni
     kayıt yazılır ve eski kayıt `superseded_by` ile ona bağlanır (silinmez). İlk sonuç numuneyi
-    "Testte" durumuna geçirir.
+    "Testte" durumuna geçirir; numune alma bilgisi boşsa sonucu giren ve ölçüm zamanıyla doldurulur.
     """
     _require_role(actor, LAB_ROLES, "Test sonucunu yalnızca laboratuvar girer.")
     actor = _actor(actor)
@@ -646,6 +646,11 @@ def record_result(
         _supersede(actor, previous, result)
     else:
         save_with_audit(result, actor)
+    if sample.taken_at is None:
+        # Otomatik açılan numune: ilk sonucu giren numuneyi almış sayılır.
+        Sample.objects.filter(pk=sample.pk).update(
+            taken_by=sample.taken_by or actor, taken_at=result.measured_at
+        )
     if sample.status == Sample.Status.PENDING:
         transition_status(
             sample,
