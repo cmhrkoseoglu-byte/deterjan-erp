@@ -20,6 +20,8 @@ dependencies = [
     "redis>=5.0",
     "uvicorn[standard]>=0.30",
     "openpyxl>=3.1",
+    # Lot etiketi PDF (Code128 + QR).
+    "reportlab>=4.2",
 ]
 
 [project.optional-dependencies]

@@ -159,17 +159,25 @@ def transition_status[D: DocumentModel](
     *,
     machine: StateMachine,
     note: str = "",
+    event_payload: dict[str, Any] | None = None,
 ) -> D:
     """Belgeyi durum makinesine göre yeni duruma geçirir.
 
     İzinsiz geçişte `BusinessRuleError("invalid_transition")`. Başarılı geçişte denetim kaydı
     (`status_change`) yazılır ve commit sonrası `<makine_adı>.<yeni_durum>` olayı yayınlanır.
+    `event_payload` olayın standart alanlarına eklenir (ör. mal kabulde oluşan lotlar).
     İptal için `cancel_document` kullanılır.
     """
     if to_status == CANCELLED:
         raise ValueError("İptal için cancel_document kullanın.")
     return _apply_transition(
-        instance, to_status, actor, machine=machine, note=note, action=AuditLog.Action.STATUS_CHANGE
+        instance,
+        to_status,
+        actor,
+        machine=machine,
+        note=note,
+        action=AuditLog.Action.STATUS_CHANGE,
+        event_payload=event_payload,
     )
 
 
@@ -204,6 +212,7 @@ def _apply_transition[D: DocumentModel](
     note: str,
     action: str,
     extra: dict[str, Any] | None = None,
+    event_payload: dict[str, Any] | None = None,
 ) -> D:
     actor = _real_actor(actor)
     extra = extra or {}
@@ -230,6 +239,7 @@ def _apply_transition[D: DocumentModel](
                 "number": instance.number,
                 "from_status": from_status,
                 "to_status": to_status,
+                **(event_payload or {}),
             },
             actor,
         )

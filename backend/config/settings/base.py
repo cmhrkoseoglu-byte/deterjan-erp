@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "apps.core",
     "apps.masterdata",
     "apps.recipes",
+    "apps.inventory",
     "apps.workflow",
 ]
 
@@ -153,6 +154,8 @@ SPECTACULAR_SETTINGS = {
         "AuditActionEnum": "apps.core.models.AuditLog.Action",
         "ImportRowActionEnum": "apps.masterdata.api.serializers.IMPORT_ROW_ACTIONS",
         "RecipeVersionStatusEnum": "apps.recipes.models.RecipeVersion.Status",
+        "LotStatusEnum": "apps.inventory.models.Lot.Status",
+        "StockDocumentStatusEnum": "apps.inventory.models.GoodsReceipt.Status",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
