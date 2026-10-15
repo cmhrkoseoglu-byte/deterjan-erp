@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     "apps.masterdata",
     "apps.recipes",
     "apps.inventory",
+    "apps.production",
     "apps.workflow",
 ]
 
@@ -156,6 +157,7 @@ SPECTACULAR_SETTINGS = {
         "RecipeVersionStatusEnum": "apps.recipes.models.RecipeVersion.Status",
         "LotStatusEnum": "apps.inventory.models.Lot.Status",
         "StockDocumentStatusEnum": "apps.inventory.models.GoodsReceipt.Status",
+        "ProductionBatchStatusEnum": "apps.production.models.ProductionBatch.Status",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
@@ -170,6 +172,9 @@ CSRF_COOKIE_HTTPONLY = False
 
 # Demo kullanıcı şifresi (yalnızca create_demo_users komutu, yalnızca DEBUG ortamında)
 DEMO_USER_PASSWORD = env("DEMO_USER_PASSWORD", default="")
+
+# Üretim: verim (çıktı / şarj miktarı) bu yüzdenin altındaysa `production.low_yield` olayı.
+PRODUCTION_LOW_YIELD_THRESHOLD_PCT = env("PRODUCTION_LOW_YIELD_THRESHOLD_PCT", default="97")
 
 LOGGING = {
     "version": 1,

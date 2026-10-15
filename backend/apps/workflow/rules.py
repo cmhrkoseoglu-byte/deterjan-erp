@@ -176,6 +176,15 @@ RULES: tuple[Rule, ...] = (
         when=lambda payload: payload.get("material_type") == "BULK",
     ),
     NotifyRule(
+        code="bulk_lot_rejected",
+        event=ev.LOT_REJECTED,
+        roles=(PLANLAMA, URETIM),
+        level="WARNING",
+        title="Bulk lot reddedildi: {lot_no}",
+        body="{material_code} {material_name}. Üretim emri analiz bekliyor. {note}",
+        when=lambda payload: payload.get("material_type") == "BULK",
+    ),
+    NotifyRule(
         code="production_low_yield",
         event=ev.PRODUCTION_LOW_YIELD,
         roles=(PLANLAMA, YONETIM),
