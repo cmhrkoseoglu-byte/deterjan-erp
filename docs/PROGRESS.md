@@ -188,7 +188,7 @@ Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrınt
 
 ### Adım 2.1 doğrulaması (kalite kontrol)
 
-- Backend: `pytest` 596 test geçti (quality: 59, yeniden işleme: 4); `ruff check`, `ruff format --check`,
+- Backend: `pytest` 596 test geçti (quality: 55, yeniden işleme: 4); `ruff check`, `ruff format --check`,
   `mypy` temiz; OpenAPI şeması uyarısız; `makemigrations --check` temiz. Kalite testlerinin hepsi
   `assert_stock_invariants()` ile biter (autouse fixture).
 - Kurallar: `test_decision_requires_all_mandatory_tests`, `test_out_of_spec_result_blocks_release`,
