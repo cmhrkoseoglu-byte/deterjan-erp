@@ -90,11 +90,11 @@ Demo kullanıcı adları rol kodlarıdır: `admin`, `yonetim`, `planlama`, `depo
 |---|---|---|
 | 1.1 `masterdata` | Tamamlandı (2026-10-15) | Birim, kategori, malzeme, malzemeye özel dönüşüm, depo, lokasyon, ekipman, tedarikçi, müşteri; `convert_quantity`; Excel/CSV içe aktarma (önizleme + onay) ve şablonlar; API ve ekranlar |
 | 1.2 `recipes` | Tamamlandı (2026-10-15) | Sürümlü reçete, satır, proses adımı; onay (tek onaylı sürüm, eskisi geçersiz), kopyalama, ölçekleme; API ve ekranlar (sürüm karşılaştırma dahil) |
-| 1.3 `inventory` | Başlamadı | |
+| 1.3 `inventory` | Tamamlandı (2026-10-15) | Lot, değişmez hareket defteri, bakiye, lot soy ağacı (geri/ileri), mal kabul (karantina → lot onay), transfer, ters kayıt, sayım düzeltme, açılış stoku içe aktarma, lot etiketi (PDF), SKT ve minimum stok kontrolleri; API ve ekranlar |
 | 1.4 `production` | Başlamadı | |
 | 1.5 `workflow` (+ 1.6 API, 1.7 ekranlar) | Tamamlandı (2026-10-15) | Görev, bildirim, yorum; 11 satırlık kural tablosu; WebSocket + 30 sn yoklama; 07:00 zamanlaması; Görevlerim, bildirim zili, Bildirimler sayfası, kayıt yorum paneli |
-| 1.6 API | 1.1, 1.2 ve 1.5 kısmı tamam | `/api/v1/masterdata/…`, `/api/v1/recipes/…`, `/api/v1/workflow/…` |
-| 1.7 Ekranlar | 1.1, 1.2 ve 1.5 kısmı tamam | Ana veriler (sekme başına liste + form + içe aktarma), Reçeteler, Görevlerim, Bildirimler |
+| 1.6 API | 1.1, 1.2, 1.3 ve 1.5 kısmı tamam | `/api/v1/masterdata/…`, `/api/v1/recipes/…`, `/api/v1/inventory/…`, `/api/v1/workflow/…` |
+| 1.7 Ekranlar | 1.1, 1.2, 1.3 ve 1.5 kısmı tamam | Ana veriler (sekme başına liste + form + içe aktarma), Reçeteler, Depo (stok sorgu, lotlar, mal kabul, lot onay, sayım; lot detayı ve soy ağacı), Görevlerim, Bildirimler |
 | 1.8 Demo verisi ve uçtan uca test | Başlamadı | |
 
 ### Adım 1.1 ve 1.2 doğrulaması
@@ -106,7 +106,7 @@ Demo kullanıcı adları rol kodlarıdır: `admin`, `yonetim`, `planlama`, `depo
   `test_approve_copy_and_obsolete_flow` (API).
 - Kabul kriteri "malzeme Excel'den önizlemeli içe aktarılabiliyor": `test_preview_reports_row_errors_and_writes_nothing`,
   `test_run_import_with_errors_writes_nothing`, `test_import_preview_then_confirm` (API),
-  `test_template_round_trip_is_valid` (indirilen şablon hatasız geçer). Açılış stoku içe aktarma Adım 1.3'te.
+  `test_template_round_trip_is_valid` (indirilen şablon hatasız geçer). Açılış stoku içe aktarma Adım 1.3'te eklendi.
 - Karar D-1: `test_water_is_an_ordinary_stocked_ingredient`.
 - Durum makinesi: izinli tüm geçişler ve yasak geçişler (`test_state_machine_*`). Yetkisiz rol 403
   (`test_other_roles_cannot_write`, `test_write_endpoints_forbidden_for_other_roles`,
@@ -116,6 +116,22 @@ Demo kullanıcı adları rol kodlarıdır: `admin`, `yonetim`, `planlama`, `depo
   hataları ve kapalı "aktar" düğmesi, düzeltilmiş dosyayla 7 malzemenin aktarımı, depo → tank lokasyonu →
   tank (lokasyonsuz tank kuralı formda görünüyor), reçete → sürüm → satırlar (su işaretli) → ölçekleme →
   onay → kopyala → değiştir → v1 ile karşılaştır → v2 onayı → v1 "Geçersiz". 768 px genişlikte kontrol edildi.
+
+### Adım 1.3 doğrulaması
+
+- Backend: `pytest` 451 test geçti (inventory: 83); `ruff check`, `ruff format --check`, `mypy` temiz;
+  OpenAPI şeması uyarısız.
+- Stok değişmezleri: stoka dokunan her inventory testi `assert_stock_invariants()` ile biter
+  (bakiye = hareket toplamı, negatif bakiye yok, tüketen her hareketin lot bağı var).
+- Değişmez defter: `StockMovement`/`LotLink` güncelleme ve silme hem ORM'de hem ham SQL'de reddediliyor
+  (tetikleyici testleri). Negatif stok, serbest olmayan lot, SKT'si geçmiş lot kural ihlali testleri var.
+- Durum makineleri (lot, mal kabul, sayım): izinli tüm geçişler ve yasak geçişler testli. API testleri
+  yetkisiz rolün 403 aldığını doğruluyor (depo dışı stok yazımı, laboratuvar dışı lot kararı).
+- Soy ağacı: çok seviyeli geri ve ileri izleme testleri (`lot_trace`).
+- Açılış stoku: hatalı satırda hiçbir şey yazılmıyor; önizleme + onay ve şablon sütunları testli.
+- İş akışı: `goods_receipt.posted` ile laboratuvara giriş kontrolü görevi açılıyor, lot kararıyla
+  kapanıyor; `system.daily_check` SKT ve minimum stok olaylarını yayınlıyor.
+- Frontend: `npm test` 78 test (depo: 9), `lint`, `format:check`, `typecheck`, `build` temiz.
 
 ### Adım 1.5 doğrulaması
 
@@ -131,4 +147,4 @@ Demo kullanıcı adları rol kodlarıdır: `admin`, `yonetim`, `planlama`, `depo
   `production_order.approved` olayının görevi ve bildirimi sayfa yenilemeden düştü; üstlenme çalıştı;
   `production_order.material_ready` ile görev kendiliğinden kapanıp listeden kalktı.
 - 07:00 kontrolü zamanlandı (`CELERY_BEAT_SCHEDULE`); SKT ve minimum stok sorguları Adım 1.3'te
-  `system.daily_check` olayına bağlanacak.
+  `system.daily_check` olayına bağlandı.

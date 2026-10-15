@@ -53,7 +53,8 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.inventory,
     path: "/depo",
     icon: IconPackages,
-    roles: ["depo", "planlama", "yonetim"],
+    // Stok sorgu ve lot detayı herkese açık; sekmeler rolle daralır (InventoryPage).
+    roles: [],
     phase: 1,
   },
   {

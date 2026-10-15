@@ -4,6 +4,10 @@ import { RequireAuth } from "./auth/RequireAuth";
 import { RequireRole } from "./auth/RequireRole";
 import { AppLayout } from "./layout/AppLayout";
 import { MENU } from "./layout/menu";
+import { AdjustmentPage } from "./modules/inventory/AdjustmentPage";
+import { GoodsReceiptPage } from "./modules/inventory/GoodsReceiptPage";
+import { InventoryPage } from "./modules/inventory/InventoryPage";
+import { LotPage } from "./modules/inventory/LotPage";
 import { MasterDataPage } from "./modules/masterdata/MasterDataPage";
 import { RecipeListPage } from "./modules/recipes/RecipeListPage";
 import { RecipePage } from "./modules/recipes/RecipePage";
@@ -35,8 +39,13 @@ const pageRoutes: RouteObject[] = [
   { path: "receteler", element: recipesPage(<RecipeListPage />) },
   { path: "receteler/:recipeId", element: recipesPage(<RecipePage />) },
   { path: "receteler/:recipeId/surumler/:versionId", element: recipesPage(<VersionPage />) },
+  // Depo: menü herkese açık; sekmeler ve düğmeler rolle daralır.
+  { path: "depo/lotlar/:lotId", element: <LotPage /> },
+  { path: "depo/mal-kabul/:receiptId", element: <GoodsReceiptPage /> },
+  { path: "depo/sayim/:adjustmentId", element: <AdjustmentPage /> },
+  { path: "depo/:tab?", element: <InventoryPage /> },
 ];
-const IMPLEMENTED = new Set(["masterdata", "recipes"]);
+const IMPLEMENTED = new Set(["masterdata", "recipes", "inventory"]);
 
 // Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar rol korumalı bir yer tutucuya gider.
 const moduleRoutes: RouteObject[] = MENU.filter(

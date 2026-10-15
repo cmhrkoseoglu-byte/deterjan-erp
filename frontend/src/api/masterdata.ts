@@ -163,7 +163,7 @@ export interface ImportRow {
 }
 
 export interface ImportReport {
-  kind: ImportKind;
+  kind: ImportKind | "opening";
   total: number;
   valid: number;
   invalid: number;
