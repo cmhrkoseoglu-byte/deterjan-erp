@@ -468,7 +468,7 @@ function ReceiptForm({ doc }: { doc: GoodsReceiptDetail | null }) {
                     <IconTrash size={16} />
                   </ActionIcon>
                 </Group>
-                <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
+                <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
                   <Select
                     label={it.material}
                     withAsterisk

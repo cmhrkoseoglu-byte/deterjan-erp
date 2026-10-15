@@ -127,7 +127,7 @@ export function LotPage() {
               )}
               {canDecide && allowed.has("BLOCKED") && (
                 <Button
-                  color="gray"
+                  color="orange"
                   variant="light"
                   leftSection={<IconLock size={16} />}
                   onClick={() => setDecision("block")}
