@@ -258,6 +258,12 @@ def _zpl_safe(text: str) -> str:
     return text.replace("^", " ").replace("~", " ")
 
 
+def _barcode_modules(element: Barcode) -> float:
+    """Code128 barkodun (sessiz bölgesiz) modül sayısı; ZPL'de genişlik hesabı için."""
+    data = gs1_pdf_data(element.gs1) if element.gs1 is not None else element.data
+    return float(code128.Code128(data, barWidth=1, quiet=False).width)
+
+
 def render_zpl(labels: Iterable[Label], *, dpi: int = DEFAULT_DPI) -> str:
     """Etiketleri ZPL II olarak üretir (her etiket ^XA … ^XZ). UTF-8 (^CI28)."""
     dots = dpi / 25.4
@@ -280,6 +286,10 @@ def render_zpl(labels: Iterable[Label], *, dpi: int = DEFAULT_DPI) -> str:
                 )
             elif isinstance(element, Barcode):
                 module = max(1, d(element.module))
+                if element.center_width is not None:
+                    # Yazıcı nokta tam sayıdır: yuvarlanan çubuk genişliği alanı taşırmasın.
+                    fit = int(element.center_width * dots // _barcode_modules(element))
+                    module = max(1, min(module, fit))
                 readable = "Y" if element.human_readable else "N"
                 if element.gs1 is not None:
                     data = gs1_text(element.gs1)

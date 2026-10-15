@@ -7,6 +7,7 @@ from apps.core.labels import (
     Label,
     QRCode,
     Text,
+    _barcode_modules,
     gs1_check_digit,
     gs1_pdf_data,
     gs1_text,
@@ -79,3 +80,12 @@ def test_render_pdf_label_and_a4() -> None:
     a4 = render_pdf([_label()] * 3, a4=True)
     assert _pages(a4) == 2
     assert render_pdf([]).startswith(b"%PDF")
+
+
+def test_render_zpl_barcode_fits_its_width() -> None:
+    """Nokta yuvarlaması (0,369 mm → 3 nokta) barkodu alanından taşırmaz."""
+    element = Barcode(5, 100, 18, data="LOT:ACILIS-KORUYUCU", module=0.369, center_width=90)
+    zpl = render_zpl([Label(100, 150, [element])])
+    module = int(re.search(r"\^BY(\d+),", zpl).group(1))  # type: ignore[union-attr]
+    assert module * _barcode_modules(element) <= 90 * 203 / 25.4
+    assert module == 2

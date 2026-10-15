@@ -1,9 +1,13 @@
 // Kayıt yorum paneli: her belge/lot detay sayfasının sağ panelinde kullanılır.
 //   <RecordPanel contentType="inventory.lot" objectId={lot.id} />
 import {
+  ActionIcon,
+  Anchor,
   Avatar,
   Button,
+  CloseButton,
   Group,
+  Image,
   Loader,
   Paper,
   ScrollArea,
@@ -15,7 +19,7 @@ import {
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { IconHistory, IconMessage } from "@tabler/icons-react";
+import { IconCamera, IconFile, IconHistory, IconMessage, IconPaperclip } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Fragment,
@@ -25,7 +29,9 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { uploadAttachment, type Attachment } from "../api/attachments";
 import { getErrorMessage } from "../api/client";
+import { ACCEPT, MAX_ATTACHMENT_MB, prepareImage } from "../components/attachments/files";
 import {
   addComment,
   editComment,
@@ -198,6 +204,35 @@ function MentionTextarea({
   );
 }
 
+function CommentAttachments({ items }: { items: Attachment[] }) {
+  if (!items.length) return null;
+  return (
+    <Group gap="xs" mt={4}>
+      {items.map((item) =>
+        item.mime_type.startsWith("image/") && item.mime_type !== "image/heic" ? (
+          <Anchor key={item.id} href={item.download_url} target="_blank">
+            <Image
+              src={item.download_url}
+              w={72}
+              h={72}
+              radius="sm"
+              fit="cover"
+              alt={item.original_name}
+            />
+          </Anchor>
+        ) : (
+          <Anchor key={item.id} href={item.download_url} target="_blank" size="xs">
+            <Group gap={4} wrap="nowrap">
+              <IconFile size={14} />
+              {item.original_name}
+            </Group>
+          </Anchor>
+        ),
+      )}
+    </Group>
+  );
+}
+
 function CommentItem({ comment, record }: { comment: Comment; record: RecordRef }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -262,6 +297,7 @@ function CommentItem({ comment, record }: { comment: Comment; record: RecordRef 
             <Text size="sm" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
               {renderBody(comment.body, comment.mentions)}
             </Text>
+            <CommentAttachments items={comment.attachments ?? []} />
             {comment.can_edit && (
               <Button
                 variant="subtle"
@@ -312,6 +348,9 @@ export function RecordPanel({ contentType, objectId }: Props) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<string | null>("comments");
   const [body, setBody] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const comments = useQuery({
     queryKey: workflowKeys.comments(record),
     queryFn: () => fetchComments(record),
@@ -322,14 +361,48 @@ export function RecordPanel({ contentType, objectId }: Props) {
     enabled: tab === "history",
   });
   const send = useMutation({
-    mutationFn: () => addComment(record, body),
-    onSuccess: () => {
+    mutationFn: async () => {
+      const comment = await addComment(record, body);
+      // Ekler yorum kaydedildikten sonra yoruma bağlanır; biri yüklenemezse yorum yine durur.
+      const failed: string[] = [];
+      for (const file of files) {
+        try {
+          const prepared = await prepareImage(file);
+          await uploadAttachment("workflow.comment", comment.id, prepared, {
+            kind: prepared.type.startsWith("image/") ? "PHOTO" : "DOCUMENT",
+          });
+        } catch (error) {
+          failed.push(`${file.name}: ${getErrorMessage(error)}`);
+        }
+      }
+      return failed;
+    },
+    onSuccess: (failed) => {
       setBody("");
+      setFiles([]);
+      if (failed.length) {
+        notifications.show({
+          color: "red",
+          title: tr.record.uploadFailed,
+          message: failed.join("\n"),
+        });
+      }
       void queryClient.invalidateQueries({ queryKey: workflowKeys.comments(record) });
       void queryClient.invalidateQueries({ queryKey: workflowKeys.history(record) });
     },
     onError: (error) => notifications.show({ message: getErrorMessage(error), color: "red" }),
   });
+  const addFiles = (list: FileList | null) => {
+    const picked = Array.from(list ?? []);
+    const tooBig = picked.find(
+      (f) => f.size > MAX_ATTACHMENT_MB * 1024 * 1024 && !f.type.startsWith("image/"),
+    );
+    if (tooBig) {
+      notifications.show({ color: "red", message: tr.attachments.tooLarge(MAX_ATTACHMENT_MB) });
+      return;
+    }
+    setFiles((current) => [...current, ...picked]);
+  };
   const submit = () => {
     if (body.trim() && !send.isPending) send.mutate();
   };
@@ -368,14 +441,72 @@ export function RecordPanel({ contentType, objectId }: Props) {
               onSubmit={submit}
               placeholder={tr.record.placeholder}
             />
-            <Button
-              onClick={submit}
-              loading={send.isPending}
-              disabled={!body.trim()}
-              w="fit-content"
-            >
-              {tr.record.send}
-            </Button>
+            {files.length > 0 && (
+              <Stack gap={2}>
+                {files.map((file, index) => (
+                  <Group key={`${file.name}-${index}`} gap={4} wrap="nowrap">
+                    <IconPaperclip size={14} />
+                    <Text size="xs" style={{ flex: 1, wordBreak: "break-all" }}>
+                      {file.name}
+                    </Text>
+                    <CloseButton
+                      size="sm"
+                      aria-label={tr.record.removeFile(file.name)}
+                      onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}
+                    />
+                  </Group>
+                ))}
+              </Stack>
+            )}
+            <Group gap="xs">
+              <Button
+                onClick={submit}
+                loading={send.isPending}
+                disabled={!body.trim()}
+                w="fit-content"
+              >
+                {tr.record.send}
+              </Button>
+              <ActionIcon
+                variant="default"
+                size="lg"
+                aria-label={tr.record.attachFile}
+                onClick={() => fileRef.current?.click()}
+              >
+                <IconPaperclip size={18} />
+              </ActionIcon>
+              <ActionIcon
+                variant="default"
+                size="lg"
+                aria-label={tr.record.takePhoto}
+                onClick={() => cameraRef.current?.click()}
+              >
+                <IconCamera size={18} />
+              </ActionIcon>
+            </Group>
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              accept={ACCEPT}
+              hidden
+              data-testid="comment-file"
+              onChange={(event) => {
+                addFiles(event.currentTarget.files);
+                event.currentTarget.value = "";
+              }}
+            />
+            <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={(event) => {
+                addFiles(event.currentTarget.files);
+                event.currentTarget.value = "";
+              }}
+            />
           </Stack>
         </Tabs.Panel>
 

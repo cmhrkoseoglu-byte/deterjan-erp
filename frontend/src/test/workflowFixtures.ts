@@ -54,6 +54,7 @@ export function makeComment(overrides: Partial<Comment> = {}): Comment {
     created_at: new Date().toISOString(),
     edited_at: null,
     can_edit: true,
+    attachments: [],
     ...overrides,
   };
 }

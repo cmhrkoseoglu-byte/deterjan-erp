@@ -1,10 +1,13 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as attachmentsApi from "../../api/attachments";
 import * as authApi from "../../api/auth";
 import * as inventoryApi from "../../api/inventory";
+import * as labelsApi from "../../api/labels";
 import * as mdApi from "../../api/masterdata";
 import * as productionApi from "../../api/production";
+import * as scanApi from "../../api/scan";
 import type {
   BatchLine,
   ProductionBatchDetail,
@@ -18,6 +21,15 @@ import { recordPath } from "../../workflow/recordLinks";
 import { deviationPct, gaugeValue, lineState, remaining } from "./calc";
 
 vi.mock("../../api/auth");
+vi.mock("../../api/attachments", async (importOriginal) => ({
+  ...(await importOriginal<typeof attachmentsApi>()),
+  listAttachments: vi.fn(),
+}));
+vi.mock("../../api/labels", async (importOriginal) => ({
+  ...(await importOriginal<typeof labelsApi>()),
+  listPrinters: vi.fn(),
+  getLabelSettings: vi.fn(),
+}));
 vi.mock("../../api/production", async (importOriginal) => ({
   ...(await importOriginal<typeof productionApi>()),
   listOrders: vi.fn(),
@@ -39,6 +51,33 @@ vi.mock("../../api/masterdata", async (importOriginal) => ({
   listRecords: vi.fn(),
 }));
 vi.mock("../../api/workflow");
+vi.mock("../../api/scan");
+
+function scannedLot(id: number, lotNo: string, material = 50, materialCode = "LAS") {
+  return {
+    kind: "lot" as const,
+    code: lotNo,
+    lots: [
+      {
+        id,
+        lot_no: lotNo,
+        material,
+        material_code: materialCode,
+        material_name: materialCode,
+        material_type: "RAW" as const,
+        unit: "KG",
+        status: "QUARANTINE" as const,
+        status_display: "Karantina",
+        expiry_date: null,
+        is_expired: false,
+      },
+    ],
+    material: null,
+    location: null,
+    pallet: null,
+    gs1: {},
+  };
+}
 
 function requirement(overrides: Partial<RequirementRow> = {}): RequirementRow {
   return {
@@ -191,6 +230,18 @@ function batch(overrides: Partial<ProductionBatchDetail> = {}): ProductionBatchD
 }
 
 beforeEach(() => {
+  vi.mocked(attachmentsApi.listAttachments).mockResolvedValue([]);
+  vi.mocked(labelsApi.listPrinters).mockResolvedValue([]);
+  vi.mocked(labelsApi.getLabelSettings).mockResolvedValue({
+    company_name: "",
+    gs1_company_prefix: "",
+    sscc_extension_digit: 0,
+    next_sscc_serial: 1,
+    default_printer: null,
+    default_printer_code: null,
+    sscc_enabled: false,
+    updated_at: "2026-10-15T09:00:00+03:00",
+  });
   vi.resetAllMocks();
   vi.mocked(authApi.fetchCsrf).mockResolvedValue();
   vi.mocked(workflowApi.fetchTasks).mockResolvedValue(page([]));
@@ -278,6 +329,7 @@ describe("yeniden işleme emri", () => {
     id: 90,
     lot_no: "B-261015-001",
     material: 80,
+    material_gtin: "",
     material_code: "BULASIK-LIMON",
     material_name: "Bulaşık deterjanı",
     material_type: "BULK",
@@ -395,18 +447,34 @@ describe("malzeme hazırlama", () => {
         detail: "Lot H-261015-009 karantinada; kullanılamaz.",
       }),
     );
+    vi.mocked(scanApi.scanCode).mockResolvedValue(scannedLot(9, "H-261015-009"));
     renderApp("/uretim/emirler/3/hazirlama");
     const scan = await screen.findByLabelText("Lot barkodu");
     await userEvent.type(scan, "h-261015-009{Enter}");
+    // Okutulan lot seçilir, odak miktara geçer; Enter ile kaydedilir.
+    const qty = screen.getByLabelText("Miktar (KG)");
+    await waitFor(() => expect(qty).toHaveFocus());
+    expect(screen.getByText("H-261015-009")).toBeInTheDocument();
+    await userEvent.type(qty, "{Enter}");
     expect(await screen.findByTestId("pick-error")).toHaveTextContent("karantinada");
     expect(productionApi.pickMaterial).toHaveBeenCalledWith(3, {
       requirement: 11,
-      lot_no: "h-261015-009",
+      lot: 9,
       quantity: "600",
     });
     // Su satırı hazırlama kartlarında yok; tüm satırlar hazır olmadan "Malzeme hazır" kapalı.
     expect(screen.getByTestId("prep-lines")).not.toHaveTextContent("SU");
     expect(screen.getByRole("button", { name: "Malzeme hazır" })).toBeDisabled();
+  });
+
+  it("başka malzemenin lotu okutulunca kırmızı uyarı verir, kaydetmez", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));
+    vi.mocked(scanApi.scanCode).mockResolvedValue(scannedLot(12, "H-261015-012", 51, "NACL"));
+    renderApp("/uretim/emirler/3/hazirlama");
+    await userEvent.type(await screen.findByLabelText("Lot barkodu"), "H-261015-012{Enter}");
+    const alert = await screen.findByTestId("scan-error");
+    expect(alert).toHaveTextContent("Yanlış malzeme! Beklenen LAS, okutulan NACL.");
+    expect(productionApi.pickMaterial).not.toHaveBeenCalled();
   });
 
   it("tüm satırlar hazırsa malzeme hazır bildirilir", async () => {
@@ -435,7 +503,7 @@ describe("şarj tartımı", () => {
     const form = await screen.findByTestId("weigh-form");
     expect(within(form).getByText("Yavaşça ekle."));
     // Tek kullanılabilir lot önceden seçilir; kalan miktar önerilir.
-    expect(within(form).getByLabelText("Lot barkodu")).toHaveValue("H-261015-001");
+    expect(within(form).getByText("H-261015-001", { selector: "span" })).toBeInTheDocument();
     const qty = within(form).getByLabelText("Tartılan miktar (KG)");
     expect(qty).toHaveValue("600");
     await userEvent.clear(qty);

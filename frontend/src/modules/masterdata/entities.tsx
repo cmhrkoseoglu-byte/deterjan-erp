@@ -1,4 +1,5 @@
 import { Badge, Select } from "@mantine/core";
+import type { Printer } from "../../api/labels";
 import type {
   Category,
   Conversion,
@@ -13,6 +14,7 @@ import type { Role } from "../../api/types";
 import { formatNumber } from "../../i18n/format";
 import type { EntityConfig } from "../common/CrudPage";
 import type { FieldDef } from "../common/forms";
+import { LocationLabelAction, PrinterTestAction } from "./LabelTools";
 
 // Ana verileri planlama yazar (admin her yere erişir); birimleri yalnızca admin.
 // Backend'deki izinlerle aynı tutulur: apps/masterdata/api/views.py.
@@ -122,6 +124,12 @@ export const materialConfig: EntityConfig<Material> = {
     },
     { name: "shelf_life_days", label: "Raf ömrü (gün)", type: "integer" },
     { name: "min_stock", label: "Minimum stok", type: "decimal", description: "Temel birimde" },
+    {
+      name: "gtin",
+      label: "GTIN (barkod no)",
+      type: "text",
+      description: "Mamulde doluysa koli etiketi GS1-128 basılır (8, 12, 13 ya da 14 hane)",
+    },
     { name: "requires_incoming_qc", label: "Giriş kontrolü gerekli", type: "checkbox" },
     { name: "is_hazardous", label: "Tehlikeli madde", type: "checkbox" },
     { name: "storage_notes", label: "Depolama notu", type: "textarea" },
@@ -249,6 +257,7 @@ export const locationConfig: EntityConfig<Location> = {
     },
   ],
   defaults: { location_type: "STORAGE" },
+  rowActions: (row) => <LocationLabelAction row={row} />,
   filters: selectFilter("Tür", "location_type", LOCATION_TYPES),
 };
 
@@ -335,4 +344,45 @@ export const customerConfig: EntityConfig<Partner> = {
   importKind: "customers",
   columns: partnerColumns,
   fields: partnerFields,
+};
+
+export const printerConfig: EntityConfig<Printer> = {
+  endpoint: "printers",
+  title: "Yazıcılar",
+  singular: "Yazıcı",
+  writeRoles: ADMIN_ONLY,
+  columns: [
+    codeColumn,
+    nameColumn,
+    { key: "host", label: "Adres", render: (row) => `${row.host}:${row.port}` },
+    { key: "dpi", label: "Çözünürlük", render: (row) => `${row.dpi} dpi` },
+    { key: "location", label: "Lokasyon", render: (row) => row.location_code ?? "" },
+  ],
+  fields: [
+    code,
+    name,
+    {
+      name: "host",
+      label: "IP adresi",
+      type: "text",
+      required: true,
+      description: "Zebra yazıcının ağ adresi (ör. 192.168.1.50)",
+    },
+    { name: "port", label: "Port", type: "integer", required: true },
+    {
+      name: "dpi",
+      label: "Çözünürlük (dpi)",
+      type: "select",
+      required: true,
+      options: [
+        { value: "203", label: "203 dpi" },
+        { value: "300", label: "300 dpi" },
+        { value: "600", label: "600 dpi" },
+      ],
+    },
+    { name: "location", label: "Lokasyon", type: "relation", relation: { endpoint: "locations" } },
+    { name: "note", label: "Not", type: "textarea" },
+  ],
+  defaults: { port: "9100", dpi: "203" },
+  rowActions: (row) => <PrinterTestAction row={row} />,
 };

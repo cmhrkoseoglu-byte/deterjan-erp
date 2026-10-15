@@ -51,6 +51,8 @@ export interface EntityConfig<T> {
   defaults?: FormValues;
   writeRoles: Role[];
   importKind?: ImportKind;
+  /** Satırdaki ek işlemler (ör. etiket yazdır); yazma yetkisinden bağımsız gösterilir. */
+  rowActions?: (row: T) => ReactNode;
   /** Liste için ek filtre seçicileri. */
   filters?: (
     values: Record<string, string>,
@@ -188,7 +190,7 @@ export function CrudPage<T extends Row>({ config }: { config: EntityConfig<T> })
                 <Table.Th key={column.key}>{column.label}</Table.Th>
               ))}
               <Table.Th>{ct.statusFilter}</Table.Th>
-              <Table.Th w={60} aria-label={ct.actions} />
+              <Table.Th w={config.rowActions ? 110 : 60} aria-label={ct.actions} />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -205,27 +207,30 @@ export function CrudPage<T extends Row>({ config }: { config: EntityConfig<T> })
                   <ActiveBadge active={row.is_active} />
                 </Table.Td>
                 <Table.Td onClick={(event) => event.stopPropagation()}>
-                  {canWrite && (
-                    <Menu position="bottom-end" withinPortal>
-                      <Menu.Target>
-                        <ActionIcon
-                          variant="subtle"
-                          aria-label={`${ct.actions}: ${recordName(row)}`}
-                        >
-                          <IconDots size={16} />
-                        </ActionIcon>
-                      </Menu.Target>
-                      <Menu.Dropdown>
-                        <Menu.Item onClick={() => openForm(row)}>{ct.edit}</Menu.Item>
-                        <Menu.Item
-                          color={row.is_active ? "red" : undefined}
-                          onClick={() => confirmToggle(row)}
-                        >
-                          {row.is_active ? ct.deactivate : ct.activate}
-                        </Menu.Item>
-                      </Menu.Dropdown>
-                    </Menu>
-                  )}
+                  <Group gap={4} wrap="nowrap" justify="flex-end">
+                    {config.rowActions?.(row)}
+                    {canWrite && (
+                      <Menu position="bottom-end" withinPortal>
+                        <Menu.Target>
+                          <ActionIcon
+                            variant="subtle"
+                            aria-label={`${ct.actions}: ${recordName(row)}`}
+                          >
+                            <IconDots size={16} />
+                          </ActionIcon>
+                        </Menu.Target>
+                        <Menu.Dropdown>
+                          <Menu.Item onClick={() => openForm(row)}>{ct.edit}</Menu.Item>
+                          <Menu.Item
+                            color={row.is_active ? "red" : undefined}
+                            onClick={() => confirmToggle(row)}
+                          >
+                            {row.is_active ? ct.deactivate : ct.activate}
+                          </Menu.Item>
+                        </Menu.Dropdown>
+                      </Menu>
+                    )}
+                  </Group>
                 </Table.Td>
               </Table.Tr>
             ))}

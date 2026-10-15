@@ -23,7 +23,6 @@ import {
   IconArrowsTransferDown,
   IconCheck,
   IconLock,
-  IconPrinter,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -33,13 +32,13 @@ import {
   getLot,
   getLotTrace,
   listMovements,
-  lotLabelUrl,
   reverseMovement,
   type StockMovement,
   type TraceDirection,
 } from "../../api/inventory";
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
+import { AttachmentPanel } from "../../components/attachments/AttachmentPanel";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ct } from "../common/strings";
@@ -52,6 +51,7 @@ import {
   STOCK_WRITE_ROLES,
 } from "./config";
 import { LotDecisionModal, type LotDecision } from "./LotDecisionModal";
+import { LotLabelButton, PalletSection } from "./LotLabels";
 import { ExpiryText, Info, LotStatusBadge, Qty } from "./shared";
 import { it } from "./strings";
 import { TraceTree } from "./TraceTree";
@@ -142,15 +142,7 @@ export function LotPage() {
                   {it.transfer}
                 </Button>
               )}
-              <Button
-                component="a"
-                href={lotLabelUrl(data.id)}
-                target="_blank"
-                variant="default"
-                leftSection={<IconPrinter size={16} />}
-              >
-                {it.label}
-              </Button>
+              <LotLabelButton lot={data} />
             </Group>
           </Group>
 
@@ -195,6 +187,7 @@ export function LotPage() {
           </Paper>
 
           <LotQualitySection lot={data} />
+          <PalletSection lot={data} />
 
           <Title order={4}>{it.balances}</Title>
           {data.balances.length === 0 ? (
@@ -303,7 +296,14 @@ export function LotPage() {
         </Stack>
       </Grid.Col>
       <Grid.Col span={{ base: 12, lg: 4 }}>
-        <RecordPanel contentType="inventory.lot" objectId={data.id} />
+        <Stack>
+          <AttachmentPanel
+            contentType="inventory.lot"
+            objectId={data.id}
+            defaultKind={data.source === "PURCHASE" ? "SUPPLIER_COA" : "OTHER"}
+          />
+          <RecordPanel contentType="inventory.lot" objectId={data.id} />
+        </Stack>
       </Grid.Col>
 
       <LotDecisionModal

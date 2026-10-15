@@ -1,7 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as attachmentsApi from "../../api/attachments";
 import * as authApi from "../../api/auth";
+import * as labelsApi from "../../api/labels";
 import * as mdApi from "../../api/masterdata";
 import * as qualityApi from "../../api/quality";
 import type {
@@ -17,6 +19,15 @@ import { renderApp } from "../../test/render";
 import { recordPath } from "../../workflow/recordLinks";
 
 vi.mock("../../api/auth");
+vi.mock("../../api/attachments", async (importOriginal) => ({
+  ...(await importOriginal<typeof attachmentsApi>()),
+  listAttachments: vi.fn(),
+}));
+vi.mock("../../api/labels", async (importOriginal) => ({
+  ...(await importOriginal<typeof labelsApi>()),
+  listPrinters: vi.fn(),
+  getLabelSettings: vi.fn(),
+}));
 vi.mock("../../api/quality", async (importOriginal) => ({
   ...(await importOriginal<typeof qualityApi>()),
   sampleQueue: vi.fn(),
@@ -194,6 +205,18 @@ const locations = [
 ];
 
 beforeEach(() => {
+  vi.mocked(attachmentsApi.listAttachments).mockResolvedValue([]);
+  vi.mocked(labelsApi.listPrinters).mockResolvedValue([]);
+  vi.mocked(labelsApi.getLabelSettings).mockResolvedValue({
+    company_name: "",
+    gs1_company_prefix: "",
+    sscc_extension_digit: 0,
+    next_sscc_serial: 1,
+    default_printer: null,
+    default_printer_code: null,
+    sscc_enabled: false,
+    updated_at: "2026-10-15T09:00:00+03:00",
+  });
   vi.resetAllMocks();
   vi.mocked(authApi.fetchCsrf).mockResolvedValue();
   vi.mocked(workflowApi.fetchTasks).mockResolvedValue(page([]));

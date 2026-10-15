@@ -49,6 +49,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
 import { formatDateTime } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
+import { AttachmentPanel } from "../../components/attachments/AttachmentPanel";
 import { ct } from "../common/strings";
 import { normalizeDecimal } from "../common/forms";
 import { lotPath } from "../inventory/config";
@@ -90,7 +91,14 @@ export function SamplePage() {
         <SampleDetailView sample={query.data} />
       </Grid.Col>
       <Grid.Col span={{ base: 12, lg: 4 }}>
-        <RecordPanel contentType="quality.sample" objectId={query.data.id} />
+        <Stack>
+          <AttachmentPanel
+            contentType="quality.sample"
+            objectId={query.data.id}
+            defaultKind="PHOTO"
+          />
+          <RecordPanel contentType="quality.sample" objectId={query.data.id} />
+        </Stack>
       </Grid.Col>
     </Grid>
   );

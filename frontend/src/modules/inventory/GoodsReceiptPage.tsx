@@ -34,7 +34,6 @@ import {
   cancelGoodsReceipt,
   getGoodsReceipt,
   postGoodsReceipt,
-  receiptLabelsUrl,
   saveGoodsReceipt,
   type GoodsReceiptDetail,
   type GoodsReceiptPayload,
@@ -42,7 +41,11 @@ import {
 import { listRecords, type Material } from "../../api/masterdata";
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
+import { labelPaths, printPaths } from "../../api/labels";
+import { AttachmentPanel } from "../../components/attachments/AttachmentPanel";
+import { LabelPrintModal } from "../../components/labels/LabelPrintModal";
 import { formatDate, formatDateTime } from "../../i18n/format";
+import { tr } from "../../i18n/tr";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
@@ -196,7 +199,14 @@ export function GoodsReceiptPage() {
       </Grid.Col>
       {doc && (
         <Grid.Col span={{ base: 12, lg: 4 }}>
-          <RecordPanel contentType="inventory.goodsreceipt" objectId={doc.id} />
+          <Stack>
+            <AttachmentPanel
+              contentType="inventory.goodsreceipt"
+              objectId={doc.id}
+              defaultKind="DELIVERY_NOTE"
+            />
+            <RecordPanel contentType="inventory.goodsreceipt" objectId={doc.id} />
+          </Stack>
         </Grid.Col>
       )}
     </Grid>
@@ -212,6 +222,7 @@ function ReceiptForm({ doc }: { doc: GoodsReceiptDetail | null }) {
   const [error, setError] = useState("");
   const [confirmPost, setConfirmPost] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [labelsOpen, setLabelsOpen] = useState(false);
   const suppliers = useOptions({ endpoint: "suppliers" });
   const units = useOptions({ endpoint: "units" });
   const materials = useReceivableMaterials();
@@ -309,14 +320,27 @@ function ReceiptForm({ doc }: { doc: GoodsReceiptDetail | null }) {
           )}
           {doc?.status === "POSTED" && (
             <Button
-              component="a"
-              href={receiptLabelsUrl(doc.id)}
-              target="_blank"
               variant="default"
               leftSection={<IconPrinter size={16} />}
+              onClick={() => setLabelsOpen(true)}
             >
               {it.labels}
             </Button>
+          )}
+          {doc?.status === "POSTED" && (
+            <LabelPrintModal
+              opened={labelsOpen}
+              onClose={() => setLabelsOpen(false)}
+              title={it.labels}
+              options={[
+                {
+                  value: "receipt",
+                  label: tr.labels.kindLot,
+                  downloadPath: labelPaths.receipt(doc.id),
+                  printPath: printPaths.receipt(doc.id),
+                },
+              ]}
+            />
           )}
         </Group>
       </Group>

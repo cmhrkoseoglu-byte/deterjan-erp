@@ -15,6 +15,7 @@ export interface Lot {
   material_code: string;
   material_name: string;
   material_type: MaterialType;
+  material_gtin: string;
   unit: string;
   status: LotStatus;
   status_display: string;
@@ -248,10 +249,6 @@ export async function getLotTrace(id: number, direction: TraceDirection): Promis
   return data;
 }
 
-export function lotLabelUrl(id: number): string {
-  return `/api/v1/inventory/lots/${id}/label/`;
-}
-
 // --- hareket, bakiye, transfer -------------------------------------------------------------
 
 export function listMovements(params: ListParams = {}): Promise<Paginated<StockMovement>> {
@@ -311,10 +308,6 @@ export async function cancelGoodsReceipt(id: number, reason: string): Promise<Go
     reason,
   });
   return data;
-}
-
-export function receiptLabelsUrl(id: number): string {
-  return `/api/v1/inventory/goods-receipts/${id}/labels/`;
 }
 
 // --- sayım düzeltme ------------------------------------------------------------------------
