@@ -184,7 +184,7 @@ Demo kullanıcı adları rol kodlarıdır: `admin`, `yonetim`, `planlama`, `depo
 ## Faz 2 — Kalite, dolum, etiket ve ekler
 
 Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrıntıları `docs/DECISIONS.md`
-"Kalite kontrol (Faz 2, Adım 2.1)".
+"Kalite kontrol (Faz 2, Adım 2.1)"; Adım 2.2 ayrıntıları "Dolum ve ambalaj (Faz 2, Adım 2.2)".
 
 ### Adım 2.1 doğrulaması (kalite kontrol)
 
@@ -224,3 +224,36 @@ Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrınt
 | Mal kabul ve şarj bitişinde numune otomatik açılıyor, laboratuvara görev düşüyor | ✓ | inventory mal kabul testi, `test_goods_receipt_to_completed_order`, `test_rules.py` numune kuralları |
 | CoA PDF'i doğru bilgilerle üretiliyor | ✓ | `test_coa.py`, `test_sample_flow_via_api` |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | quality ve rework testleri `assert_stock_invariants()` ile biter |
+
+### Adım 2.2 doğrulaması (dolum ve ambalaj)
+
+- Backend: `pytest` 659 test geçti (filling: 56); `ruff check`, `ruff format --check`, `mypy` temiz;
+  OpenAPI şeması uyarısız; `makemigrations --check` temiz. Stoka dokunan dolum testleri
+  `assert_stock_invariants()` ile biter.
+- Ortak hazırlama servisi (`inventory.picking`): üretim testleri değişmeden geçti; dolum aynı kuralları
+  kullanır (`test_pick_rules`: karantina lot, yanlış malzeme, iki katı aşan hazırlama, yetkisiz rol).
+- Servis testleri (`apps/filling/tests/test_services.py`): üç durum makinesinin izinli ve yasak geçişleri;
+  ambalaj reçetesi sürümü ve kilidi; onayda fire payı ve adet yuvarlaması (şişe 1020, koli 85); hazırlamada
+  fire payı hariç ihtiyaç; iptalde geri transfer; D- lotunun karantinada açılması; bulk tüketimi ve
+  `LotLink`; yanlış malzeme / hat başında olmayan lot; üç tür fire; bitişte ambalaj tüketimi, mamul girişi,
+  `FINAL` numune; eşik üstü `filling.bulk_variance`; mamul lotu serbest kalınca emrin tamamlanması; rapor.
+- API testleri: her yazma ucunda yetkisiz rol 403 (planlama / depo / dolum ayrımı), okutma ile hazırlama
+  (`LOT:` önekli etiket içeriği dahil), tablet akışı, rapor.
+- İş akışı: yeni yedi kural `test_rules.py` içinde.
+- Demo verisi: `seed_filling_demo` (seed_demo sonunda) 6 ambalaj malzemesi, 2 mamul (koli / palet
+  dönüşümüyle), DH-01 dolum hattı, AMB-DEPO / DOLUM-1 / MAMUL-DEPO, onaylı ambalaj reçeteleri, mamul `FINAL`
+  spesifikasyonları ve ambalaj açılış stoku yazar (`test_seed_demo.py`).
+- Frontend: `npm test` 113 test (dolum: 11), `lint`, `format:check`, `typecheck`, `build` temiz. Ekranlar:
+  dolum emirleri, emir detayı (ihtiyaç, hazırlanan lotlar, partiler, rapor), ambalaj hazırlama tableti,
+  dolum hattı tableti (bulk lot seçimi / okutma, ambalaj lotu okutma, hızlı fire düğmeleri, parti bitişi),
+  ambalaj reçeteleri.
+
+### Faz 2 kabul kriterleri (Adım 2.2'ye düşenler)
+
+| Kriter | Durum | Kanıt |
+|---|---|---|
+| Uçtan uca: bulk lot serbest → dolum emri → ambalaj hazırlama → dolum (fire dahil) → mamul QC → mamul lot serbest | ✓ | `apps/filling/tests/test_e2e_filling.py` (üretim emri iki şarja bölünür, iki bulk lottan dolum; görev, bildirim ve stok değişmezleri her adımda) |
+| Mamul lotunun geri izlemesi: bulk lotlar + ambalaj lotları + bulkun hammadde lotları | ✓ | aynı test, adım 7 (`lot_trace_backward` çok seviyeli ağaç; ileri izlemede hammadde → mamul iki seviye) |
+| Teorik / gerçek bulk ve ambalaj tüketim raporu doğru | ✓ | `test_consumption_report`, e2e adım 8, API `test_filling_tablet_flow` |
+| Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | dolum testleri `invariants` fixture'ı ya da `assert_stock_invariants()` ile biter |
+| Okutma bileşeni tüm tablet ekranlarında | Adım 2.3 | Dolum tabletleri şimdilik düz okutma alanı kullanır; ortak `ScanInput` Adım 2.3 PR'ıyla bağlanır |
