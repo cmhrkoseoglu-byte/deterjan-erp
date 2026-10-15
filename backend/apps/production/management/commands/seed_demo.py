@@ -125,6 +125,8 @@ class Command(BaseCommand):
         approver = User.objects.get(username=PLANLAMA)
         with transaction.atomic():
             seed(approver, self.stdout.write)
+        # Örnek kalite spesifikasyonları (Faz 2, D-7); kalite modülünün kendi komutu.
+        call_command("seed_quality_demo", stdout=self.stdout)
         self.stdout.write(self.style.SUCCESS("Demo verisi hazır."))
 
 
