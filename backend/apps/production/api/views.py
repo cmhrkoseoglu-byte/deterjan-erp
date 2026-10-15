@@ -114,7 +114,8 @@ class ProductionOrderViewSet(
             "production_location",
             "created_by",
             "approved_by",
-        )
+            "rework_lot",
+        ).prefetch_related("rework_additions__material", "rework_additions__unit")
 
     def get_serializer_class(self) -> type[s.ProductionOrderSerializer]:
         if self.action == "list":

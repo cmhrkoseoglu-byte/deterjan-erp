@@ -1,9 +1,10 @@
-"""Uçtan uca üretim akışı (Faz 1, Adım 1.8).
+"""Uçtan uca üretim akışı (Faz 1, Adım 1.8; Faz 2'de lot kararları kalite numunesiyle).
 
-Mal kabul → lot serbest bırak → üretim emri → onay → malzeme hazırlama → şarj + tartım (biri
-tolerans dışı) → şarj bitir → bulk lot serbest bırak → emir tamam. Her adımda doğru görevin açılıp
-kapandığı, doğru bildirimin gittiği, stok değişmezlerinin sağlandığı ve soy ağacının doğru olduğu
-kontrol edilir. İkinci senaryo: tank kapasitesini aşan emir iki şarja bölünür (Karar D-4).
+Mal kabul → giriş numunesi → kalite kararıyla serbest → üretim emri → onay → malzeme hazırlama →
+şarj + tartım (biri tolerans dışı) → şarj bitir → son kontrol numunesiyle bulk lot serbest → emir
+tamam. Her adımda doğru görevin açılıp kapandığı, doğru bildirimin gittiği, stok değişmezlerinin
+sağlandığı ve soy ağacının doğru olduğu kontrol edilir. İkinci senaryo: tank kapasitesini aşan
+emir iki şarja bölünür (Karar D-4).
 """
 
 from datetime import date
@@ -23,6 +24,8 @@ from apps.masterdata.tests.factories import SupplierFactory, unit
 from apps.production import services
 from apps.production.models import ProductionOrder
 from apps.production.tests.factories import build_plant, order_data
+from apps.quality.models import Sample
+from apps.quality.testing import open_sample_for, pass_sample
 from apps.workflow.models import Notification, Task
 
 D = Decimal
@@ -76,22 +79,26 @@ def receive(staff, plant, commit):
 def test_goods_receipt_to_completed_order(staff, commit):
     plant = build_plant(staff[PLANLAMA], stock=False)
 
-    # 1. Mal kabul → laboratuvara giriş kontrolü görevleri (yalnızca kontrollü lotlar).
+    # 1. Mal kabul → giriş numuneleri ve laboratuvara giriş kontrolü görevleri (yalnızca
+    #    kontrollü lotlar).
     lots = receive(staff, plant, commit)
     las, sles, water = lots["LAS"], lots["SLES"], lots["SU"]
     assert las.status == sles.status == Lot.Status.QUARANTINE
     assert water.status == Lot.Status.RELEASED
-    assert task_for("incoming_qc", las).status == Task.Status.OPEN
-    assert task_for("incoming_qc", sles).status == Task.Status.OPEN
-    assert not Task.objects.filter(rule_code="incoming_qc", related_object_id=water.pk).exists()
+    las_sample, sles_sample = open_sample_for(las, "INCOMING"), open_sample_for(sles, "INCOMING")
+    assert task_for("incoming_qc", las_sample).status == Task.Status.OPEN
+    assert task_for("incoming_qc", sles_sample).status == Task.Status.OPEN
+    assert not Sample.objects.filter(lot=water).exists()
+    assert Task.objects.filter(rule_code="incoming_qc").count() == 2
     check()
 
-    # 2. Laboratuvar lotları serbest bırakır → stok depoya geçer, görevler kapanır.
+    # 2. Laboratuvar sonuçları girip serbest kararı verir → stok mal kabulün depo lokasyonuna
+    #    geçer, görevler kapanır.
     with commit():
-        inventory.release_lot(staff[LABORATUVAR], las, "Uygun", to_location=plant.storage)
-        inventory.release_lot(staff[LABORATUVAR], sles, "Uygun", to_location=plant.storage)
-    assert task_for("incoming_qc", las).status == Task.Status.DONE
-    assert task_for("incoming_qc", sles).status == Task.Status.DONE
+        pass_sample(staff[LABORATUVAR], las_sample)
+        pass_sample(staff[LABORATUVAR], sles_sample)
+    assert task_for("incoming_qc", las_sample).status == Task.Status.DONE
+    assert task_for("incoming_qc", sles_sample).status == Task.Status.DONE
     assert current_balance(las, plant.storage) == D("2000")
     check()
 
@@ -151,7 +158,8 @@ def test_goods_receipt_to_completed_order(staff, commit):
     with commit():
         services.finish_batch(staff[URETIM], batch, D("1015"))
     output = batch.output_lot
-    sample_task = task_for("batch_sample_analysis", output)
+    final_sample = open_sample_for(output, "FINAL")
+    sample_task = task_for("batch_sample_analysis", final_sample)
     assert sample_task.status == Task.Status.OPEN
     assert sample_task.title == f"Numune analizi: {output.lot_no}"
     assert current_balance(output, plant.tank.location) == D("1015")
@@ -166,10 +174,11 @@ def test_goods_receipt_to_completed_order(staff, commit):
     forward = inventory_selectors.lot_trace_forward(las)
     assert [child["lot_no"] for child in forward["children"]] == [output.lot_no]
 
-    # 9. Laboratuvar bulk lotu serbest bırakır → görev kapanır, bildirim gider, emir tamamlanır.
+    # 9. Laboratuvar bulk lotu kalite kararıyla serbest bırakır → görev kapanır, bildirim gider,
+    #    emir tamamlanır.
     with commit():
-        inventory.release_lot(staff[LABORATUVAR], output, "Analiz uygun")
-    assert task_for("batch_sample_analysis", output).status == Task.Status.DONE
+        pass_sample(staff[LABORATUVAR], final_sample)
+    assert task_for("batch_sample_analysis", final_sample).status == Task.Status.DONE
     assert f"Bulk lot serbest bırakıldı: {output.lot_no}" in titles(staff[PLANLAMA])
     assert f"Bulk lot serbest bırakıldı: {output.lot_no}" in titles(staff[URETIM])
     order.refresh_from_db()
@@ -221,11 +230,11 @@ def test_split_order_two_batches_low_yield_and_completion(staff, commit):
     assert Task.objects.filter(rule_code="batch_sample_analysis").count() == 2
 
     with commit():
-        inventory.release_lot(staff[LABORATUVAR], first.output_lot)
+        pass_sample(staff[LABORATUVAR], open_sample_for(first.output_lot))
     order.refresh_from_db()
     assert order.status == Status.QC_PENDING
     with commit():
-        inventory.release_lot(staff[LABORATUVAR], second.output_lot)
+        pass_sample(staff[LABORATUVAR], open_sample_for(second.output_lot))
     order.refresh_from_db()
     assert order.status == Status.COMPLETED
 

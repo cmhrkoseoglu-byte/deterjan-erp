@@ -9,6 +9,10 @@ Kurallar:
   kendi bulk lotu vardır. Planlanan miktarın tamamı şarjlara dağıtılıp hepsi bitince emir analiz
   bekler; tüm çıktı lotları serbest bırakılınca emir tamamlanır.
 - Karar D-1: şebeke suyu stokludur ama depoda hazırlanmaz; tartımda kendi lokasyonundan düşülür.
+- Yeniden işleme (Faz 2): emir kalite kararıyla bloke edilmiş bir bulk lotu (`rework_lot`) girdi
+  olarak kullanır. Reçete isteğe bağlıdır (seçilirse harmanlama, seçilmezse düzeltme satırları).
+  Lot hazırlanmaz, bulunduğu lokasyondan tüketilir; CLAUDE.md kural 4'ün tek istisnasıdır.
+  Yeniden işleme emri tamamlanınca asıl emir kendiliğinden kapanabilir.
 """
 
 from collections.abc import Mapping, Sequence
@@ -41,6 +45,7 @@ from apps.production.models import (
     ProductionBatch,
     ProductionOrder,
     ProductionRequirement,
+    ReworkAddition,
 )
 from apps.production.state import production_batch_states, production_order_states
 from apps.recipes import services as recipes
@@ -56,6 +61,7 @@ MovementType = StockMovement.Type
 
 ORDER_FIELDS = (
     "recipe_version",
+    "rework_lot",
     "planned_quantity",
     "unit",
     "planned_date",
@@ -64,6 +70,16 @@ ORDER_FIELDS = (
     "priority",
     "notes",
 )
+ADDITION_FIELDS = (
+    "sequence",
+    "material",
+    "quantity",
+    "unit",
+    "tolerance_pct",
+    "is_water",
+    "instruction",
+)
+ADDITION_TYPES = (Material.Type.RAW, Material.Type.BULK)
 # Hazırlama bu durumlarda yapılır; onaylı emirde ilk hazırlama hazırlığı başlatır. Şarj sırasında
 # eksik çıkan malzeme için de hazırlama yapılabilir.
 PICKABLE_STATUSES = (
@@ -118,6 +134,7 @@ def _lock_order(order: ProductionOrder) -> ProductionOrder:
             "equipment__location",
             "production_location",
             "recipe_version",
+            "rework_lot__material__base_unit",
         )
         .get(pk=order.pk)
     )
@@ -182,13 +199,56 @@ def _validate_version(version: RecipeVersion) -> None:
         )
 
 
+def lot_stock(lot: Lot) -> Decimal:
+    """Lotun tüm lokasyonlardaki toplam stoku (temel birimde)."""
+    total = StockBalance.objects.filter(lot=lot).aggregate(t=Sum("quantity"))["t"]
+    return total or Decimal(0)
+
+
+def _validate_rework_lot(order: ProductionOrder, lot: Lot) -> None:
+    if lot.material.material_type != Material.Type.BULK:
+        raise BusinessRuleError(
+            "invalid_rework_lot", "Yeniden işleme yalnızca dökme (bulk) lot için yapılır."
+        )
+    if lot.status != Lot.Status.BLOCKED:
+        raise BusinessRuleError(
+            "rework_lot_not_blocked",
+            f"Lot {lot.lot_no} bloke değil; yeniden işleme için kalite kararı gerekir.",
+        )
+    others = ProductionOrder.objects.filter(rework_lot=lot).exclude(status=Status.CANCELLED)
+    if order.pk is not None:
+        others = others.exclude(pk=order.pk)
+    if others.exists():
+        raise BusinessRuleError(
+            "rework_order_exists", f"Lot {lot.lot_no} için açık bir yeniden işleme emri var."
+        )
+    if lot_stock(lot) <= 0:
+        raise BusinessRuleError("lot_not_in_stock", f"Lot {lot.lot_no} stokta yok.")
+
+
 def _prepare_order(order: ProductionOrder) -> None:
-    """Emir alanlarını doğrular; ürünü, temel birim miktarını ve üretim lokasyonunu doldurur."""
-    version = RecipeVersion.objects.select_related("recipe__product__base_unit").get(
-        pk=order.recipe_version_id
-    )
-    _validate_version(version)
-    order.product = version.recipe.product
+    """Emir alanlarını doğrular; ürünü, temel birim miktarını ve üretim lokasyonunu doldurur.
+
+    Yeniden işleme emrinde reçete isteğe bağlıdır; ürün lotun malzemesidir."""
+    if order.recipe_version_id is not None:
+        version = RecipeVersion.objects.select_related("recipe__product__base_unit").get(
+            pk=order.recipe_version_id
+        )
+        _validate_version(version)
+        order.product = version.recipe.product
+    elif order.rework_lot_id is None:
+        raise BusinessRuleError("recipe_version_required", "Reçete sürümü seçilmelidir.")
+    if order.rework_lot_id is not None:
+        lot = Lot.objects.select_related("material__base_unit").get(pk=order.rework_lot_id)
+        _validate_rework_lot(order, lot)
+        if order.recipe_version_id is None:
+            order.product = lot.material
+        elif lot.material_id != order.product.pk:
+            raise BusinessRuleError(
+                "rework_lot_mismatch",
+                f"Lot {lot.lot_no} {lot.material.code} ürününe ait; reçete "
+                f"{order.product.code} üretiyor.",
+            )
     _validate_equipment(order.equipment)
     if order.production_location_id is None:
         location = default_production_location(order.equipment)
@@ -221,9 +281,14 @@ def create_order(actor: User | None, data: Mapping[str, Any]) -> ProductionOrder
     sabitlenir; ürün sürümün ürünüdür. Üretim lokasyonu verilmezse tankın deposundaki üretim
     lokasyonu seçilir."""
     _require_role(actor, ORDER_ROLES, "Üretim emrini yalnızca planlama açar.")
-    order = ProductionOrder(**_pick_fields(data, ORDER_FIELDS))
+    values = _pick_fields(data, (*ORDER_FIELDS, "additions"))
+    additions = values.pop("additions", None)
+    order = ProductionOrder(**values)
     _prepare_order(order)
-    return create_document(order, actor, prefix="UE", machine=production_order_states)
+    order = create_document(order, actor, prefix="UE", machine=production_order_states)
+    if additions is not None:
+        set_rework_additions(actor, order, additions)
+    return order
 
 
 @transaction.atomic
@@ -232,7 +297,8 @@ def update_order(
 ) -> ProductionOrder:
     """Taslak emri günceller (rol: planlama). Onaylanan emir değiştirilmez."""
     _require_role(actor, ORDER_ROLES, "Üretim emrini yalnızca planlama değiştirir.")
-    values = _pick_fields(data, ORDER_FIELDS)
+    values = _pick_fields(data, (*ORDER_FIELDS, "additions"))
+    additions = values.pop("additions", None)
     order = _lock_order(order)
     _require_status(order, (Status.DRAFT,), "document_locked", "değiştirilemez")
     if "equipment" in values and "production_location" not in values:
@@ -241,7 +307,67 @@ def update_order(
     for name, value in values.items():
         setattr(order, name, value)
     _prepare_order(order)
-    return save_with_audit(order, actor)
+    order = save_with_audit(order, actor)
+    if additions is not None:
+        set_rework_additions(actor, order, additions)
+    elif order.rework_lot_id is None and order.rework_additions.exists():
+        set_rework_additions(actor, order, [])
+    return order
+
+
+def _validate_addition(order: ProductionOrder, addition: ReworkAddition) -> None:
+    material = addition.material
+    if material.material_type not in ADDITION_TYPES:
+        raise BusinessRuleError(
+            "invalid_ingredient", "Düzeltme satırında yalnızca hammadde ya da dökme ürün olur."
+        )
+    if not material.is_active:
+        raise BusinessRuleError("inactive_reference", f"Pasif malzeme seçilemez: {material}.")
+    if material.pk == order.product.pk:
+        raise BusinessRuleError(
+            "recipe_self_reference",
+            "Ürünün kendisi düzeltme satırı olamaz; yeniden işlenen lot zaten girdidir.",
+        )
+    if addition.quantity is None or addition.quantity <= 0:
+        raise BusinessRuleError("invalid_quantity", "Miktar sıfırdan büyük olmalıdır.")
+    masterdata.to_base_quantity(material, addition.quantity, addition.unit)
+
+
+@transaction.atomic
+def set_rework_additions(
+    actor: User | None, order: ProductionOrder, additions: Sequence[Mapping[str, Any]]
+) -> list[ReworkAddition]:
+    """Yeniden işleme emrinin düzeltme satırlarını verilen listeyle değiştirir (rol: planlama,
+    yalnızca taslakta). Satırlar onayda ihtiyaç listesine eklenir. Kaldırılan satırlar emrin
+    denetim kaydına yazılır."""
+    _require_role(actor, ORDER_ROLES, "Üretim emrini yalnızca planlama değiştirir.")
+    order = _lock_order(order)
+    _require_status(order, (Status.DRAFT,), "document_locked", "değiştirilemez")
+    if additions and order.rework_lot_id is None:
+        raise BusinessRuleError(
+            "additions_need_rework", "Düzeltme satırı yalnızca yeniden işleme emrinde olur."
+        )
+    existing = list(order.rework_additions.all())
+    if existing:
+        log_change(
+            _actor(actor),
+            order,
+            AuditLog.Action.UPDATE,
+            {"rework_additions": [[str(a) for a in existing], None]},
+            "düzeltme satırları yeniden yazıldı (taslak)",
+        )
+        for item in existing:
+            item.delete()
+    result = []
+    for index, data in enumerate(additions, start=1):
+        values = _pick_fields(data, ADDITION_FIELDS)
+        if values.get("sequence") is None:
+            values["sequence"] = index
+        addition = ReworkAddition(order=order, **values)
+        _validate_addition(order, addition)
+        addition.full_clean(exclude=["created_by", "updated_by", "order"])
+        result.append(save_with_audit(addition, actor))
+    return result
 
 
 @transaction.atomic
@@ -253,27 +379,8 @@ def approve_order(actor: User | None, order: ProductionOrder, note: str = "") ->
     order = _lock_order(order)
     production_order_states.assert_can_transition(order.status, Status.APPROVED)
     _prepare_order(order)
-    scaled = recipes.scale_requirements(order.recipe_version, order.planned_quantity, order.unit)
-    for item in scaled:
-        if item.quantity <= 0:
-            raise BusinessRuleError(
-                "quantity_too_small",
-                f"{item.material.code} ihtiyacı bu miktarda sıfıra iniyor; planlanan miktarı "
-                "artırın.",
-            )
-        save_with_audit(
-            ProductionRequirement(
-                order=order,
-                recipe_line=item.line,
-                material=item.material,
-                required_quantity=item.quantity,
-                tolerance_pct=item.tolerance_pct,
-                sequence=item.sequence,
-                is_water=item.is_water,
-                instruction=item.line.instruction,
-            ),
-            actor,
-        )
+    for requirement in _build_requirements(order):
+        save_with_audit(requirement, actor)
     order.approved_by = actor
     order.approved_at = timezone.now()
     order.save(update_fields=["approved_by", "approved_at", "planned_base_quantity", "product"])
@@ -283,8 +390,83 @@ def approve_order(actor: User | None, order: ProductionOrder, note: str = "") ->
         actor,
         machine=production_order_states,
         note=note,
-        event_payload={"priority": order.priority},
+        event_payload=_approval_payload(order),
     )
+
+
+def _approval_payload(order: ProductionOrder) -> dict[str, Any]:
+    payload: dict[str, Any] = {"priority": order.priority}
+    if order.rework_lot is not None:
+        payload["rework_lot"] = lot_payload(order.rework_lot)
+    return payload
+
+
+def _build_requirements(order: ProductionOrder) -> list[ProductionRequirement]:
+    """Onayda yazılacak ihtiyaç listesi (temel birimde).
+
+    Normal emir: reçete planlanan miktara ölçeklenir. Yeniden işleme emri: önce lotun tüm stoku
+    (sabit lot satırı); reçete seçildiyse planlanan miktardan lot miktarı düşülür ve kalan taze
+    ürün için reçete ölçeklenir (harmanlama); sonra düzeltme satırları."""
+    requirements: list[ProductionRequirement] = []
+    recipe_quantity, recipe_unit = order.planned_quantity, order.unit
+    if order.rework_lot is not None:
+        lot = order.rework_lot
+        quantity = quantize(lot_stock(lot))
+        requirements.append(
+            ProductionRequirement(
+                order=order,
+                material=lot.material,
+                lot=lot,
+                required_quantity=quantity,
+                tolerance_pct=Decimal(0),
+                instruction=f"Yeniden işlenen lot {lot.lot_no}",
+            )
+        )
+        recipe_quantity = order.planned_base_quantity - quantity
+        recipe_unit = order.product.base_unit
+        if order.recipe_version is not None and recipe_quantity <= 0:
+            unit = order.product.base_unit.code
+            raise BusinessRuleError(
+                "rework_quantity_too_small",
+                f"Reçeteyle harmanlamada planlanan miktar lot miktarından "
+                f"({format_quantity(quantity)} {unit}) büyük olmalıdır.",
+            )
+    if order.recipe_version is not None:
+        for item in recipes.scale_requirements(order.recipe_version, recipe_quantity, recipe_unit):
+            requirements.append(
+                ProductionRequirement(
+                    order=order,
+                    recipe_line=item.line,
+                    material=item.material,
+                    required_quantity=item.quantity,
+                    tolerance_pct=item.tolerance_pct,
+                    is_water=item.is_water,
+                    instruction=item.line.instruction,
+                )
+            )
+    for addition in order.rework_additions.select_related("material__base_unit", "unit"):
+        _validate_addition(order, addition)
+        requirements.append(
+            ProductionRequirement(
+                order=order,
+                material=addition.material,
+                required_quantity=quantize(
+                    masterdata.to_base_quantity(addition.material, addition.quantity, addition.unit)
+                ),
+                tolerance_pct=addition.tolerance_pct,
+                is_water=addition.is_water,
+                instruction=addition.instruction,
+            )
+        )
+    for sequence, requirement in enumerate(requirements, start=1):
+        requirement.sequence = sequence
+        if requirement.required_quantity <= 0:
+            raise BusinessRuleError(
+                "quantity_too_small",
+                f"{requirement.material.code} ihtiyacı bu miktarda sıfıra iniyor; planlanan "
+                "miktarı artırın.",
+            )
+    return requirements
 
 
 @transaction.atomic
@@ -357,6 +539,11 @@ def pick_material(
         raise BusinessRuleError(
             "water_not_picked", "Şebeke suyu hazırlanmaz; tartımda doğrudan düşülür."
         )
+    if requirement.lot_id is not None:
+        raise BusinessRuleError(
+            "rework_lot_not_picked",
+            "Yeniden işlenen lot hazırlanmaz; tartımda bulunduğu yerden düşülür.",
+        )
     lot = Lot.objects.select_related("material__base_unit").get(pk=lot.pk)
     if lot.material_id != requirement.material_id:
         raise BusinessRuleError(
@@ -411,7 +598,7 @@ def missing_materials(order: ProductionOrder) -> list[ProductionRequirement]:
     """Hazırlanan miktarı toleransın alt sınırına ulaşmayan (su dışı) ihtiyaçlar."""
     missing = []
     for requirement in order.requirements.select_related("material").order_by("sequence"):
-        if requirement.is_water:
+        if not requirement.is_picked:
             continue
         lower = requirement.required_quantity * (1 - requirement.tolerance_pct / HUNDRED)
         if picked_quantity(requirement) < lower:
@@ -627,15 +814,14 @@ def deviation_pct(planned: Decimal, actual: Decimal) -> Decimal:
 def _consumption_location(
     order: ProductionOrder, requirement: ProductionRequirement, lot: Lot, quantity: Decimal
 ) -> Location:
-    if not requirement.is_water:
+    if requirement.is_picked:
         return order.production_location
-    # Su (D-1): hazırlanmaz, stoklu olduğu lokasyondan düşülür.
-    balances = list(
-        StockBalance.objects.filter(lot=lot, quantity__gt=0)
-        .exclude(location__location_type=Location.Type.QUARANTINE)
-        .select_related("location")
-        .order_by("-quantity", "location__code")
-    )
+    # Su (D-1): hazırlanmaz, stoklu olduğu lokasyondan düşülür. Yeniden işlenen lot da hazırlanmaz;
+    # bulunduğu lokasyondan (tank ya da karantina dahil) düşülür.
+    queryset = StockBalance.objects.filter(lot=lot, quantity__gt=0)
+    if requirement.lot_id is None:
+        queryset = queryset.exclude(location__location_type=Location.Type.QUARANTINE)
+    balances = list(queryset.select_related("location").order_by("-quantity", "location__code"))
     if not balances:
         raise BusinessRuleError("lot_not_in_stock", f"Lot {lot.lot_no} stokta yok.")
     enough = [b for b in balances if b.quantity >= quantity]
@@ -710,6 +896,10 @@ def record_consumption(
             f"Lot {lot.lot_no} {lot.material.code} malzemesine ait; bu satır "
             f"{requirement.material.code} istiyor.",
         )
+    if requirement.lot_id is not None and lot.pk != requirement.lot_id:
+        raise BusinessRuleError(
+            "rework_lot_mismatch", "Bu satır yalnızca yeniden işlenen lottan tüketilir."
+        )
     actual_quantity = quantize(actual_quantity)
     if actual_quantity <= 0:
         raise BusinessRuleError("invalid_quantity", "Tartılan miktar sıfırdan büyük olmalıdır.")
@@ -734,6 +924,7 @@ def record_consumption(
         MovementType.ISSUE_PRODUCTION,
         order,
         f"Şarj {batch.batch_no}",
+        rework=requirement.lot_id is not None,
     )
     link = inventory.link_lots(actor, lot, batch.output_lot, actual_quantity, source=batch)
     consumption = save_with_audit(
@@ -896,11 +1087,17 @@ def cancel_batch(actor: User | None, batch: ProductionBatch, reason: str) -> Pro
 
 
 def unreleased_output_lots(order: ProductionOrder) -> list[Lot]:
-    """Tamamlanan şarjların serbest bırakılmamış çıktı lotları."""
+    """Tamamlanan şarjların serbest bırakılmamış çıktı lotları. Tamamlanmış bir yeniden işleme
+    emrinde tüketilen lot sayılmaz (yerini yeni lot aldı)."""
+    reworked = set(
+        ProductionOrder.objects.filter(
+            rework_lot__isnull=False, status=Status.COMPLETED
+        ).values_list("rework_lot_id", flat=True)
+    )
     return [
         batch.output_lot
         for batch in order.batches.filter(status=BatchStatus.COMPLETED).select_related("output_lot")
-        if batch.output_lot.status != Lot.Status.RELEASED
+        if batch.output_lot.status != Lot.Status.RELEASED and batch.output_lot_id not in reworked
     ]
 
 

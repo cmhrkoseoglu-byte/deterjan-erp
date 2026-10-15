@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 
 from apps.core.models import DocumentModel
 from apps.core.permissions import HasRole
-from apps.core.roles import DEPO, LABORATUVAR
+from apps.core.roles import ADMIN, DEPO, LABORATUVAR
 from apps.inventory import importers, labels, selectors, services
 from apps.inventory.api import serializers as s
 from apps.inventory.models import (
@@ -31,9 +31,12 @@ from apps.inventory.models import (
 from apps.masterdata.api.serializers import ImportReportSerializer
 from apps.masterdata.models import Material
 
-# Stoka yazan roller (admin her yere erişir); lot kararı laboratuvarındır. Okuma herkese açık.
+# Stoka yazan roller (admin her yere erişir); lot bloke laboratuvarındır. Okuma herkese açık.
+# Faz 2: lot serbest bırakma ve ret kalite kararıyladır (`quality`); elle serbest bırakma yalnızca
+# admin (Karar D-5).
 STOCK_WRITE_ROLES = (DEPO,)
 LOT_DECISION_ROLES = (LABORATUVAR,)
+MANUAL_RELEASE_ROLES = (ADMIN,)
 READ_ACTIONS = frozenset({"list", "retrieve", "metadata", "trace", "label", "labels", "available"})
 PDF = "application/pdf"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -87,13 +90,15 @@ class LotFilter(django_filters.FilterSet):
 
 
 class LotViewSet(RolePermissionMixin, viewsets.ReadOnlyModelViewSet):
-    """Lotlar. Durum yalnızca `release`, `reject`, `block` ile (laboratuvar) değişir."""
+    """Lotlar. Serbest bırakma ve ret kalite kararıyladır (`/quality/samples/{id}/decide/`);
+    burada laboratuvarın `block` işlemi ve admin'in gerekçeli elle serbest bırakması (D-5) var."""
 
     filterset_class = LotFilter
     search_fields = ["lot_no", "supplier_lot_no", "material__code", "material__name"]
     ordering_fields = ["lot_no", "expiry_date", "created_at", "total_quantity"]
     ordering = ["-created_at", "-id"]
     write_roles = LOT_DECISION_ROLES
+    action_roles = {"release": MANUAL_RELEASE_ROLES}
 
     def get_queryset(self) -> QuerySet[Lot]:
         return selectors.lots_with_stock().select_related("released_by")
@@ -107,7 +112,8 @@ class LotViewSet(RolePermissionMixin, viewsets.ReadOnlyModelViewSet):
     @extend_schema(request=s.LotReleaseSerializer, responses=s.LotDetailSerializer)
     @action(detail=True, methods=["post"])
     def release(self, request: Request, pk: str | None = None) -> Response:
-        """Lotu serbest bırakır; karantinadaki stok `to_location`'a taşınır."""
+        """Elle serbest bırakma (yalnızca admin, gerekçe zorunlu; Karar D-5). Karantinadaki stok
+        `to_location`'a taşınır."""
         body = s.LotReleaseSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         lot = services.release_lot(
@@ -116,15 +122,6 @@ class LotViewSet(RolePermissionMixin, viewsets.ReadOnlyModelViewSet):
             body.validated_data["note"],
             to_location=body.validated_data["to_location"],
         )
-        return self._detail(lot)
-
-    @extend_schema(request=s.LotDecisionSerializer, responses=s.LotDetailSerializer)
-    @action(detail=True, methods=["post"])
-    def reject(self, request: Request, pk: str | None = None) -> Response:
-        """Lotu reddeder (neden zorunlu)."""
-        body = s.LotDecisionSerializer(data=request.data)
-        body.is_valid(raise_exception=True)
-        lot = services.reject_lot(_user(request), self.get_object(), body.validated_data["note"])
         return self._detail(lot)
 
     @extend_schema(request=s.LotDecisionSerializer, responses=s.LotDetailSerializer)

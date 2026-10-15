@@ -64,22 +64,39 @@ def test_stock_writes_require_depo(role, client_for):
     assert client.get(url("opening-template")).status_code == 403
 
 
-@pytest.mark.parametrize("role", ["depo", "uretim", "planlama"])
-def test_lot_decisions_require_laboratory(role, client_for):
+@pytest.mark.parametrize("role", ["depo", "uretim", "planlama", "laboratuvar", "yonetim"])
+def test_manual_release_is_admin_only(role, client_for):
+    """Karar D-5: elle serbest bırakma yalnızca admin; laboratuvar kalite kararıyla bırakır."""
     lot = stocked_lot("5", status=Lot.Status.QUARANTINE)
     client = client_for(role)
-    for action in ("release", "reject", "block"):
-        assert client.post(url(f"lot-{action}", lot.pk), {"note": "x"}).status_code == 403
+    assert client.post(url("lot-release", lot.pk), {"note": "x"}).status_code == 403
+    if role != "laboratuvar":
+        assert client.post(url("lot-block", lot.pk), {"note": "x"}).status_code == 403
     lot.refresh_from_db()
     assert lot.status == Lot.Status.QUARANTINE
 
 
+def test_reject_endpoint_removed(client_for):
+    """Faz 2: ret yalnızca kalite kararıyla (`/quality/samples/{id}/decide/`)."""
+    lot = stocked_lot("5", status=Lot.Status.QUARANTINE)
+    response = client_for("admin").post(f"/api/v1/inventory/lots/{lot.pk}/reject/", {"note": "x"})
+    assert response.status_code == 404
+
+
 def test_admin_can_do_everything(client_for):
     lot = stocked_lot("5", location=quarantine_location(), status=Lot.Status.QUARANTINE)
-    response = client_for("admin").post(
+    admin = client_for("admin")
+    no_reason = admin.post(
         url("lot-release", lot.pk), {"to_location": storage_location().pk}, format="json"
     )
+    assert no_reason.status_code == 400 and no_reason.json()["code"] == "note_required"
+    response = admin.post(
+        url("lot-release", lot.pk),
+        {"note": "Acil sevk", "to_location": storage_location().pk},
+        format="json",
+    )
     assert response.status_code == 200, response.json()
+    assert response.json()["status_note"] == "Elle serbest bırakma (D-5): Acil sevk"
 
 
 # --- lot -------------------------------------------------------------------------------------
@@ -115,29 +132,27 @@ def test_lot_list_filters_and_detail(client_for):
     assert detail["receipt"] is None
 
 
-def test_release_reject_block_via_api(client_for):
-    lab = client_for("laboratuvar")
+def test_release_and_block_via_api(client_for):
+    admin, lab = client_for("admin"), client_for("laboratuvar")
     q, store = quarantine_location(), storage_location()
     lot = stocked_lot("10", location=q, status=Lot.Status.QUARANTINE)
 
-    missing = lab.post(url("lot-release", lot.pk), {"note": "Uygun"}, format="json")
+    missing = admin.post(url("lot-release", lot.pk), {"note": "Acil"}, format="json")
     assert missing.status_code == 400
     assert missing.json()["code"] == "release_location_required"
 
-    ok = lab.post(
-        url("lot-release", lot.pk), {"note": "Uygun", "to_location": store.pk}, format="json"
+    ok = admin.post(
+        url("lot-release", lot.pk), {"note": "Acil", "to_location": store.pk}, format="json"
     )
     assert ok.status_code == 200, ok.json()
     assert ok.json()["status"] == "RELEASED"
     assert ok.json()["balances"][0]["location"] == store.pk
 
+    no_note = lab.post(url("lot-block", lot.pk), {}, format="json")
+    assert no_note.status_code == 400 and no_note.json()["code"] == "note_required"
     blocked = lab.post(url("lot-block", lot.pk), {"note": "Şikâyet"}, format="json")
     assert blocked.json()["status"] == "BLOCKED"
-    no_note = lab.post(url("lot-reject", lot.pk), {}, format="json")
-    assert no_note.status_code == 400 and no_note.json()["code"] == "note_required"
-    rejected = lab.post(url("lot-reject", lot.pk), {"note": "Uygunsuz"}, format="json")
-    assert rejected.json()["status"] == "REJECTED"
-    again = lab.post(url("lot-release", lot.pk), {"to_location": store.pk}, format="json")
+    again = lab.post(url("lot-block", lot.pk), {"note": "x"}, format="json")
     assert again.status_code == 400 and again.json()["code"] == "invalid_transition"
 
 

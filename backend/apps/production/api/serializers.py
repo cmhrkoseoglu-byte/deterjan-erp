@@ -4,14 +4,15 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.inventory.api.serializers import UserNameField
-from apps.inventory.models import StockBalance
-from apps.masterdata.models import Equipment, Location, UnitOfMeasure
+from apps.inventory.models import Lot, StockBalance
+from apps.masterdata.models import Equipment, Location, Material, UnitOfMeasure
 from apps.production import selectors, services
 from apps.production.models import (
     BatchConsumption,
     MaterialPick,
     ProductionBatch,
     ProductionOrder,
+    ReworkAddition,
 )
 from apps.production.state import production_batch_states, production_order_states
 from apps.recipes.models import RecipeVersion
@@ -24,15 +25,50 @@ def _quantity(**kwargs: Any) -> serializers.DecimalField:
 # --- emir --------------------------------------------------------------------------------------
 
 
+class ReworkAdditionSerializer(serializers.ModelSerializer):
+    """Yeniden işleme emrinin düzeltme satırı."""
+
+    material = serializers.PrimaryKeyRelatedField(queryset=Material.objects.all())
+    unit = serializers.PrimaryKeyRelatedField(queryset=UnitOfMeasure.objects.all())
+    material_code = serializers.CharField(source="material.code", read_only=True)
+    material_name = serializers.CharField(source="material.name", read_only=True)
+    unit_code = serializers.CharField(source="unit.code", read_only=True)
+    sequence = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+
+    class Meta:
+        model = ReworkAddition
+        fields = [
+            "id",
+            "sequence",
+            "material",
+            "material_code",
+            "material_name",
+            "quantity",
+            "unit",
+            "unit_code",
+            "tolerance_pct",
+            "is_water",
+            "instruction",
+        ]
+        read_only_fields = ["id"]
+        validators: list = []
+
+
 class ProductionOrderSerializer(serializers.ModelSerializer):
     status_display = serializers.SerializerMethodField()
     priority_display = serializers.CharField(source="get_priority_display", read_only=True)
     product_code = serializers.CharField(source="product.code", read_only=True)
     product_name = serializers.CharField(source="product.name", read_only=True)
     base_unit = serializers.CharField(source="product.base_unit.code", read_only=True)
-    recipe_code = serializers.CharField(source="recipe_version.recipe.code", read_only=True)
-    recipe_id = serializers.IntegerField(source="recipe_version.recipe_id", read_only=True)
-    version_no = serializers.IntegerField(source="recipe_version.version_no", read_only=True)
+    recipe_code = serializers.CharField(
+        source="recipe_version.recipe.code", read_only=True, default=None
+    )
+    recipe_id = serializers.IntegerField(
+        source="recipe_version.recipe_id", read_only=True, default=None
+    )
+    version_no = serializers.IntegerField(
+        source="recipe_version.version_no", read_only=True, default=None
+    )
     unit_code = serializers.CharField(source="unit.code", read_only=True)
     equipment_code = serializers.CharField(source="equipment.code", read_only=True)
     equipment_name = serializers.CharField(source="equipment.name", read_only=True)
@@ -40,8 +76,19 @@ class ProductionOrderSerializer(serializers.ModelSerializer):
         source="production_location.code", read_only=True
     )
     recipe_version = serializers.PrimaryKeyRelatedField(
-        queryset=RecipeVersion.objects.select_related("recipe__product")
+        queryset=RecipeVersion.objects.select_related("recipe__product"),
+        required=False,
+        allow_null=True,
+        default=None,
     )
+    rework_lot = serializers.PrimaryKeyRelatedField(
+        queryset=Lot.objects.select_related("material"),
+        required=False,
+        allow_null=True,
+        default=None,
+    )
+    rework_lot_no = serializers.CharField(source="rework_lot.lot_no", read_only=True, default=None)
+    additions = ReworkAdditionSerializer(source="rework_additions", many=True, required=False)
     unit = serializers.PrimaryKeyRelatedField(queryset=UnitOfMeasure.objects.all())
     equipment = serializers.PrimaryKeyRelatedField(
         queryset=Equipment.objects.select_related("location")
@@ -66,6 +113,9 @@ class ProductionOrderSerializer(serializers.ModelSerializer):
             "recipe_id",
             "recipe_code",
             "version_no",
+            "rework_lot",
+            "rework_lot_no",
+            "additions",
             "planned_quantity",
             "unit",
             "unit_code",
@@ -94,6 +144,17 @@ class ProductionOrderSerializer(serializers.ModelSerializer):
     def get_status_display(self, order: ProductionOrder) -> str:
         return production_order_states.label(order.status)
 
+    def to_internal_value(self, data: Any) -> Any:
+        values = super().to_internal_value(data)
+        if "rework_additions" in values:
+            values["additions"] = values.pop("rework_additions")
+        if self.partial:
+            # PATCH: gönderilmeyen alanlara varsayılan (None) yazılmasın.
+            for name in ("recipe_version", "rework_lot"):
+                if name not in data:
+                    values.pop(name, None)
+        return values
+
 
 class RequirementRowSerializer(serializers.Serializer):
     id = serializers.IntegerField(source="requirement.id")
@@ -107,6 +168,9 @@ class RequirementRowSerializer(serializers.Serializer):
         max_digits=6, decimal_places=2, source="requirement.tolerance_pct"
     )
     is_water = serializers.BooleanField(source="requirement.is_water")
+    is_picked = serializers.BooleanField(source="requirement.is_picked")
+    lot = serializers.IntegerField(source="requirement.lot_id", allow_null=True)
+    lot_no = serializers.CharField(source="requirement.lot.lot_no", default=None)
     instruction = serializers.CharField(source="requirement.instruction")
     picked_quantity = _quantity(source="picked")
     consumed_quantity = _quantity(source="consumed")
@@ -311,6 +375,9 @@ class BatchLineSerializer(serializers.Serializer):
         max_digits=6, decimal_places=2, source="requirement.tolerance_pct"
     )
     is_water = serializers.BooleanField(source="requirement.is_water")
+    is_picked = serializers.BooleanField(source="requirement.is_picked")
+    lot = serializers.IntegerField(source="requirement.lot_id", allow_null=True)
+    lot_no = serializers.CharField(source="requirement.lot.lot_no", default=None)
     instruction = serializers.CharField(source="requirement.instruction")
     planned_quantity = _quantity(source="planned")
     consumed_quantity = _quantity(source="consumed")

@@ -547,7 +547,7 @@ def test_order_completes_when_output_lot_released(
     assert exc.value.code == "output_lots_not_released"
 
     with commit():
-        inventory.release_lot(lab, batch.output_lot, "Analiz uygun")
+        inventory.release_lot(lab, batch.output_lot, "Analiz uygun", quality_decision=True)
 
     order.refresh_from_db()
     assert order.status == Status.COMPLETED
@@ -570,12 +570,12 @@ def test_split_order_completes_after_all_batches(plant, planner, depo, operator,
     assert order.status == Status.QC_PENDING
 
     with commit():
-        inventory.release_lot(lab, first.output_lot)
+        inventory.release_lot(lab, first.output_lot, quality_decision=True)
     order.refresh_from_db()
     assert order.status == Status.QC_PENDING
 
     with commit():
-        inventory.release_lot(lab, second.output_lot)
+        inventory.release_lot(lab, second.output_lot, quality_decision=True)
     order.refresh_from_db()
     assert order.status == Status.COMPLETED
 
@@ -587,7 +587,7 @@ def test_rejected_output_lot_keeps_order_waiting(plant, planner, depo, operator,
     services.finish_batch(operator, batch, D("1000"))
 
     with commit():
-        inventory.reject_lot(lab, batch.output_lot, "Viskozite düşük")
+        inventory.reject_lot(lab, batch.output_lot, "Viskozite düşük", quality_decision=True)
 
     order.refresh_from_db()
     assert order.status == Status.QC_PENDING

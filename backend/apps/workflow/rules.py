@@ -76,17 +76,27 @@ class CancelTasksRule:
 Rule = TaskRule | NotifyRule | CancelTasksRule
 
 
-def _qc_lots(payload: Payload) -> list[Subject]:
+def _sample_at(*stages: str) -> Callable[[Payload], list[Subject]]:
+    """Numune olayının kendisi (numune görevi), aşama uyuyorsa."""
+
+    def subjects(payload: Payload) -> list[Subject]:
+        return [payload] if payload.get("stage") in stages else []
+
+    return subjects
+
+
+def _rework_lot(payload: Payload) -> list[Subject]:
+    """Yeniden işleme kararında lot (planlama görevi lota bağlanır)."""
+    lot = payload.get("lot")
+    if payload.get("decision") != "REWORK" or not lot:
+        return []
     return [
-        {**lot, "receipt_number": payload.get("number", "")}
-        for lot in payload.get("lots", [])
-        if lot.get("requires_qc")
+        {**lot, "sample_number": payload.get("number", ""), "reason": payload.get("reason", "")}
     ]
 
 
-def _output_lot(payload: Payload) -> list[Subject]:
-    lot = payload.get("output_lot")
-    return [{**lot, "order_number": payload.get("order", {}).get("number", "")}] if lot else []
+def _in_process_rejected(payload: Payload) -> bool:
+    return payload.get("stage") == "IN_PROCESS" and payload.get("decision") == "REJECT"
 
 
 def _expiring_body(payload: Payload) -> str:
@@ -114,14 +124,16 @@ def _below_min_body(payload: Payload) -> str:
 
 
 RULES: tuple[Rule, ...] = (
+    # Faz 2: mal kabul ve şarj bitişinde quality numune açar; görev numuneye bağlıdır ve numune
+    # karara bağlanınca (ya da iptal edilince) kapanır.
     TaskRule(
         code="incoming_qc",
-        event=ev.GOODS_RECEIPT_POSTED,
+        event=ev.SAMPLE_CREATED,
         role=LABORATUVAR,
         title="Giriş kontrolü: {lot_no}",
-        description="{material_code} {material_name} — mal kabul {receipt_number}",
-        subjects=_qc_lots,
-        close_on=(CloseOn(ev.LOT_RELEASED), CloseOn(ev.LOT_REJECTED)),
+        description="{material_code} {material_name} — numune {number}",
+        subjects=_sample_at("INCOMING"),
+        close_on=(CloseOn(ev.SAMPLE_DECIDED), CloseOn(ev.SAMPLE_CANCELLED)),
     ),
     NotifyRule(
         code="lot_rejected",
@@ -160,12 +172,40 @@ RULES: tuple[Rule, ...] = (
     ),
     TaskRule(
         code="batch_sample_analysis",
-        event=ev.PRODUCTION_BATCH_COMPLETED,
+        event=ev.SAMPLE_CREATED,
         role=LABORATUVAR,
         title="Numune analizi: {lot_no}",
-        description="{material_code} {material_name} — üretim emri {order_number}",
-        subjects=_output_lot,
-        close_on=(CloseOn(ev.LOT_RELEASED), CloseOn(ev.LOT_REJECTED)),
+        description="{material_code} {material_name} — numune {number}",
+        subjects=_sample_at("IN_PROCESS", "FINAL"),
+        close_on=(CloseOn(ev.SAMPLE_DECIDED), CloseOn(ev.SAMPLE_CANCELLED)),
+    ),
+    TaskRule(
+        code="conditional_release_approval",
+        event=ev.SAMPLE_AWAITING_APPROVAL,
+        role=YONETIM,
+        title="Şartlı kabul onayı: {lot_no}",
+        description="{material_code} {material_name} — numune {number}. {reason}",
+        close_on=(CloseOn(ev.SAMPLE_DECIDED), CloseOn(ev.SAMPLE_IN_TEST)),
+    ),
+    TaskRule(
+        code="rework_order",
+        event=ev.SAMPLE_DECIDED,
+        role=PLANLAMA,
+        title="Yeniden işleme emri aç: {lot_no}",
+        description="{material_code} {material_name} — numune {sample_number}. {reason}",
+        subjects=_rework_lot,
+        close_on=(
+            CloseOn(ev.PRODUCTION_ORDER_APPROVED, lambda payload: payload.get("rework_lot")),
+        ),
+    ),
+    NotifyRule(
+        code="in_process_out_of_spec",
+        event=ev.SAMPLE_DECIDED,
+        roles=(URETIM, PLANLAMA),
+        level="WARNING",
+        title="Ara kontrol uygun değil: {lot_no}",
+        body="{material_code} {material_name} — numune {number}. {reason}",
+        when=_in_process_rejected,
     ),
     NotifyRule(
         code="bulk_lot_released",

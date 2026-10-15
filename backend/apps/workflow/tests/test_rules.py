@@ -38,49 +38,48 @@ def order_ref(order, **extra):
     return ref(order, number=f"UE-2026-{order.pk:05d}", **extra)
 
 
-# --- goods_receipt.posted → Giriş kontrolü (laboratuvar) ----------------------------------------
-
-
-def test_goods_receipt_opens_incoming_qc_task_only_for_qc_lots(fire, staff):
-    receipt, qc_lot, free_lot = WidgetFactory(), WidgetFactory(), WidgetFactory()
-
-    fire(
-        ev.GOODS_RECEIPT_POSTED,
-        ref(
-            receipt,
-            number="MK-2026-00001",
-            lots=[lot_ref(qc_lot, requires_qc=True), lot_ref(free_lot, requires_qc=False)],
-        ),
-        staff["depo"],
+def sample_ref(sample, lot, *, stage, number="NM-2026-00001", **extra):
+    return ref(
+        sample,
+        number=number,
+        stage=stage,
+        lot_no=f"H-261015-{lot.pk:03d}",
+        material_code="LAS",
+        material_name="LAS %96",
+        lot=lot_ref(lot),
+        **extra,
     )
+
+
+# --- sample.created (giriş) → Giriş kontrolü (laboratuvar) -------------------------------------
+
+
+def test_incoming_sample_opens_incoming_qc_task(fire, staff):
+    sample, lot = WidgetFactory(), WidgetFactory()
+
+    fire(ev.SAMPLE_CREATED, sample_ref(sample, lot, stage="INCOMING"), staff["depo"])
 
     task = Task.objects.get()
     assert task.rule_code == "incoming_qc"
-    assert task.title == f"Giriş kontrolü: H-261015-{qc_lot.pk:03d}"
-    assert task.description == "LAS LAS %96 — mal kabul MK-2026-00001"
+    assert task.title == f"Giriş kontrolü: H-261015-{lot.pk:03d}"
+    assert task.description == "LAS LAS %96 — numune NM-2026-00001"
     assert task.assigned_role.name == "laboratuvar"
-    assert task.related_object == qc_lot
+    assert task.related_object == sample
     assert task.status == Task.Status.OPEN
     assert task.created_by == staff["depo"]
     assert titles_for(staff["laboratuvar"]) == [f"Yeni görev: {task.title}"]
     assert titles_for(staff["depo"]) == []
 
 
-@pytest.mark.parametrize("closing_event", [ev.LOT_RELEASED, ev.LOT_REJECTED])
-def test_incoming_qc_task_closes_on_lot_decision(fire, staff, closing_event):
-    receipt, lot, other = WidgetFactory(), WidgetFactory(), WidgetFactory()
-    fire(
-        ev.GOODS_RECEIPT_POSTED,
-        ref(receipt, lots=[lot_ref(lot, requires_qc=True), lot_ref(other, requires_qc=True)]),
-    )
+@pytest.mark.parametrize("closing_event", [ev.SAMPLE_DECIDED, ev.SAMPLE_CANCELLED])
+def test_incoming_qc_task_closes_on_sample_decision(fire, staff, closing_event):
+    sample, other, lot = WidgetFactory(), WidgetFactory(), WidgetFactory()
+    fire(ev.SAMPLE_CREATED, sample_ref(sample, lot, stage="INCOMING"))
+    fire(ev.SAMPLE_CREATED, sample_ref(other, lot, stage="INCOMING"))
 
-    fire(closing_event, lot_ref(lot, material_type="RAW"), staff["laboratuvar"])
+    fire(closing_event, sample_ref(sample, lot, stage="INCOMING"), staff["laboratuvar"])
 
-    closed = Task.objects.get(related_object_id=lot.pk)
-    assert closed.status == Task.Status.DONE
-    assert closed.completed_by == staff["laboratuvar"]
-    assert closed.completion_note == f"Otomatik kapandı: {closing_event}"
-    # Başka lotun görevi açık kalır.
+    assert Task.objects.get(related_object_id=sample.pk).status == Task.Status.DONE
     assert Task.objects.get(related_object_id=other.pk).status == Task.Status.OPEN
 
 
@@ -179,34 +178,96 @@ def test_deviation_warns_planning_and_lab(fire, staff):
     assert titles_for(staff["uretim"]) == []
 
 
-# --- production_batch.completed → Numune analizi (laboratuvar) ----------------------------------
+# --- sample.created (şarj sırası / son) → Numune analizi (laboratuvar) ------------------------
 
 
-@pytest.mark.parametrize("closing_event", [ev.LOT_RELEASED, ev.LOT_REJECTED])
-def test_batch_completed_opens_sample_analysis_for_output_lot(fire, staff, closing_event):
-    order, batch, output_lot = WidgetFactory(), WidgetFactory(), WidgetFactory()
+@pytest.mark.parametrize("stage", ["IN_PROCESS", "FINAL"])
+def test_batch_sample_opens_sample_analysis_task(fire, staff, stage):
+    sample, lot = WidgetFactory(), WidgetFactory()
 
-    fire(
-        ev.PRODUCTION_BATCH_COMPLETED,
-        ref(
-            batch,
-            batch_no="B-261015-001",
-            order=order_ref(order),
-            output_lot=ref(output_lot, lot_no="B-261015-001", material_code="BULK-BUL"),
-        ),
-        staff["uretim"],
-    )
+    fire(ev.SAMPLE_CREATED, sample_ref(sample, lot, stage=stage), staff["uretim"])
 
     task = Task.objects.get(rule_code="batch_sample_analysis")
-    assert task.title == "Numune analizi: B-261015-001"
+    assert task.title == f"Numune analizi: H-261015-{lot.pk:03d}"
     assert task.assigned_role.name == "laboratuvar"
-    assert task.related_object == output_lot
-    assert task.description.endswith(f"üretim emri UE-2026-{order.pk:05d}")
+    assert task.related_object == sample
 
-    fire(closing_event, ref(output_lot, lot_no="B-261015-001", material_type="BULK"))
+    fire(ev.SAMPLE_DECIDED, sample_ref(sample, lot, stage=stage, decision="RELEASE"))
 
     task.refresh_from_db()
     assert task.status == Task.Status.DONE
+
+
+# --- sample.awaiting_approval → Şartlı kabul onayı (yönetim) ------------------------------------
+
+
+@pytest.mark.parametrize("closing_event", [ev.SAMPLE_DECIDED, ev.SAMPLE_IN_TEST])
+def test_conditional_release_opens_management_task(fire, staff, closing_event):
+    sample, lot = WidgetFactory(), WidgetFactory()
+
+    fire(
+        ev.SAMPLE_AWAITING_APPROVAL,
+        sample_ref(sample, lot, stage="FINAL", decision="CONDITIONAL_RELEASE", reason="pH 8,2"),
+        staff["laboratuvar"],
+    )
+
+    task = Task.objects.get(rule_code="conditional_release_approval")
+    assert task.title == f"Şartlı kabul onayı: H-261015-{lot.pk:03d}"
+    assert task.description == "LAS LAS %96 — numune NM-2026-00001. pH 8,2"
+    assert task.assigned_role.name == "yonetim"
+    assert task.related_object == sample
+
+    fire(closing_event, sample_ref(sample, lot, stage="FINAL"), staff["yonetim"])
+
+    task.refresh_from_db()
+    assert task.status == Task.Status.DONE
+
+
+# --- sample.decided (REWORK) → Yeniden işleme emri aç (planlama) --------------------------------
+
+
+def test_rework_decision_opens_planning_task_closed_by_rework_order(fire, staff):
+    sample, lot, order = WidgetFactory(), WidgetFactory(), WidgetFactory()
+
+    fire(
+        ev.SAMPLE_DECIDED,
+        sample_ref(sample, lot, stage="FINAL", decision="REWORK", reason="Viskozite düşük"),
+        staff["laboratuvar"],
+    )
+
+    task = Task.objects.get(rule_code="rework_order")
+    assert task.title == f"Yeniden işleme emri aç: H-261015-{lot.pk:03d}"
+    assert task.description == "LAS LAS %96 — numune NM-2026-00001. Viskozite düşük"
+    assert task.assigned_role.name == "planlama"
+    assert task.related_object == lot
+
+    fire(ev.PRODUCTION_ORDER_APPROVED, order_ref(order, rework_lot=lot_ref(lot)))
+
+    task.refresh_from_db()
+    assert task.status == Task.Status.DONE
+
+
+def test_other_decisions_open_no_rework_task(fire, staff):
+    sample, lot = WidgetFactory(), WidgetFactory()
+
+    fire(ev.SAMPLE_DECIDED, sample_ref(sample, lot, stage="FINAL", decision="REJECT"))
+
+    assert not Task.objects.filter(rule_code="rework_order").exists()
+
+
+def test_in_process_reject_notifies_production_and_planning(fire, staff):
+    sample, lot = WidgetFactory(), WidgetFactory()
+
+    fire(
+        ev.SAMPLE_DECIDED,
+        sample_ref(sample, lot, stage="IN_PROCESS", decision="REJECT", reason="pH yüksek"),
+        staff["laboratuvar"],
+    )
+    fire(ev.SAMPLE_DECIDED, sample_ref(sample, lot, stage="FINAL", decision="REJECT"))
+
+    expected = [f"Ara kontrol uygun değil: H-261015-{lot.pk:03d}"]
+    assert titles_for(staff["uretim"]) == expected
+    assert titles_for(staff["planlama"]) == expected
 
 
 # --- lot.released (BULK) → bildirim (planlama, uretim) ------------------------------------------
@@ -360,7 +421,7 @@ def test_empty_daily_check_lists_send_nothing(fire, staff):
 
 
 def test_every_rule_row_is_covered():
-    """Spesifikasyondaki 9 satır + bulk lot reddi (üretim planı) + 2 günlük kontrol tabloda."""
+    """Faz 1'in 9 satırı + bulk lot reddi + 2 günlük kontrol + Faz 2 kalite kuralları tabloda."""
     assert [rule.code for rule in rules.RULES] == [
         "incoming_qc",
         "lot_rejected",
@@ -368,6 +429,9 @@ def test_every_rule_row_is_covered():
         "start_batch",
         "production_deviation",
         "batch_sample_analysis",
+        "conditional_release_approval",
+        "rework_order",
+        "in_process_out_of_spec",
         "bulk_lot_released",
         "bulk_lot_rejected",
         "production_low_yield",
@@ -423,12 +487,12 @@ def test_failing_rule_does_not_block_other_rules(fire, staff, monkeypatch, caplo
         raise RuntimeError("bozuk")
 
     monkeypatch.setattr(services, "auto_close_tasks", broken)
-    lot = WidgetFactory()
+    sample, lot = WidgetFactory(), WidgetFactory()
 
-    fire(ev.LOT_RELEASED, ref(lot, lot_no="B-1", material_type="BULK"))
+    fire(ev.SAMPLE_DECIDED, sample_ref(sample, lot, stage="FINAL", decision="REWORK"))
 
     assert "İş akışı kuralı başarısız" in caplog.text
-    assert len(titles_for(staff["planlama"])) == 1
+    assert Task.objects.filter(rule_code="rework_order").count() == 1
 
 
 def test_rolled_back_transaction_creates_no_task(staff, django_capture_on_commit_callbacks):

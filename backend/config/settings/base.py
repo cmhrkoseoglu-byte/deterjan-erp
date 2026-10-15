@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "apps.recipes",
     "apps.inventory",
     "apps.production",
+    "apps.quality",
     "apps.workflow",
 ]
 
@@ -158,6 +159,7 @@ SPECTACULAR_SETTINGS = {
         "LotStatusEnum": "apps.inventory.models.Lot.Status",
         "StockDocumentStatusEnum": "apps.inventory.models.GoodsReceipt.Status",
         "ProductionBatchStatusEnum": "apps.production.models.ProductionBatch.Status",
+        "SampleStageEnum": "apps.quality.models.SampleStage",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
