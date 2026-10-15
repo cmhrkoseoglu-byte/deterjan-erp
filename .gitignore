@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+celerybeat-schedule*
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Ortam ve gizli bilgiler
+.env
+.env.*
+!.env.example
+
+# Medya ve statik çıktılar
+media/
+backend/media/
+backend/staticfiles/
+
+# Editör / işletim sistemi
+.idea/
+.vscode/
+.DS_Store

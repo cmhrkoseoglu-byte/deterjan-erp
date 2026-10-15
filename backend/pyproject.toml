@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deterjan-erp-backend"
+version = "0.1.0"
+description = "Deterjan fabrikası üretim takip sistemi - backend"
+requires-python = ">=3.12"
+dependencies = [
+    "Django>=5.1,<6.0",
+    "djangorestframework>=3.15",
+    "drf-spectacular>=0.27",
+    "django-filter>=24.0",
+    "django-environ>=0.11",
+    "psycopg[binary]>=3.2",
+    "channels>=4.1",
+    "channels-redis>=4.2",
+    "celery>=5.4",
+    "redis>=5.0",
+    "uvicorn[standard]>=0.30",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-django>=4.8",
+    "factory-boy>=3.3",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "django-stubs[compatible-mypy]>=5.0",
+    "djangorestframework-stubs[compatible-mypy]>=3.15",
+]
+
+# Uygulama paket olarak kurulmaz; yalnızca bağımlılıklar kurulur.
+[tool.setuptools]
+packages = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["**/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "DJ", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+pythonpath = ["."]
+python_files = ["test_*.py"]
+addopts = "-ra"
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+ignore_missing_imports = true
+files = ["apps"]
+
+[tool.django-stubs]
+django_settings_module = "config.settings.test"
