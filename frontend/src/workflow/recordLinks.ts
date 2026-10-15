@@ -11,6 +11,8 @@ export const RECORD_ROUTES: Record<string, (id: number) => string> = {
   "inventory.lot": (id) => `/depo/lotlar/${id}`,
   "inventory.goodsreceipt": (id) => `/depo/mal-kabul/${id}`,
   "inventory.stockadjustment": (id) => `/depo/sayim/${id}`,
+  "production.productionorder": (id) => `/uretim/emirler/${id}`,
+  "production.productionbatch": (id) => `/uretim/sarjlar/${id}`,
 };
 
 /** Kaydın detay sayfası; sayfası henüz yoksa null. */

@@ -1,4 +1,3 @@
-from decimal import Decimal
 from typing import Any
 
 from drf_spectacular.utils import extend_schema_field
@@ -196,6 +195,10 @@ class ProductionBatchSerializer(serializers.ModelSerializer):
         return production_batch_states.label(batch.status)
 
 
+# Hesaplanan miktarlar diğer miktar alanları gibi metin döner ("600.0000"); JSON sayısı olmaz.
+_QUANTITY = _quantity(read_only=True)
+
+
 class ProductionOrderDetailSerializer(ProductionOrderSerializer):
     requirements = serializers.SerializerMethodField()
     picks = serializers.SerializerMethodField()
@@ -246,13 +249,13 @@ class ProductionOrderDetailSerializer(ProductionOrderSerializer):
     def get_allowed_transitions(self, order: ProductionOrder) -> list[str]:
         return production_order_states.allowed_transitions(order.status)
 
-    @extend_schema_field(serializers.DecimalField(max_digits=18, decimal_places=4))
-    def get_remaining_quantity(self, order: ProductionOrder) -> Decimal:
-        return services.remaining_quantity(order)
+    @extend_schema_field(_QUANTITY)
+    def get_remaining_quantity(self, order: ProductionOrder) -> str:
+        return _QUANTITY.to_representation(services.remaining_quantity(order))
 
-    @extend_schema_field(serializers.DecimalField(max_digits=18, decimal_places=4))
-    def get_suggested_batch_quantity(self, order: ProductionOrder) -> Decimal:
-        return services.suggested_batch_quantity(order)
+    @extend_schema_field(_QUANTITY)
+    def get_suggested_batch_quantity(self, order: ProductionOrder) -> str:
+        return _QUANTITY.to_representation(services.suggested_batch_quantity(order))
 
 
 # --- şarj ---------------------------------------------------------------------------------------

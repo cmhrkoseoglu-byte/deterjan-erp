@@ -121,6 +121,9 @@ def test_create_update_approve_order(plant, planner):
     codes = [(r["material_code"], r["required_quantity"]) for r in response.data["requirements"]]
     assert codes == [("LAS", "900.0000"), ("SLES", "450.0000"), ("SU", "150.0000")]
     assert response.data["allowed_transitions"] == ["CANCELLED", "MATERIAL_PREP"]
+    # Hesaplanan miktarlar da JSON'da metin döner (arayüz "600.0000" bekler).
+    assert response.json()["remaining_quantity"] == "1500.0000"
+    assert response.json()["suggested_batch_quantity"] == "1000.0000"
 
     listing = api.get(url("order-list"), {"status": "APPROVED"})
     assert [row["id"] for row in listing.data["results"]] == [body["id"]]

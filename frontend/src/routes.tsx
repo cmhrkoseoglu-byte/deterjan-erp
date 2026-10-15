@@ -8,6 +8,10 @@ import { AdjustmentPage } from "./modules/inventory/AdjustmentPage";
 import { GoodsReceiptPage } from "./modules/inventory/GoodsReceiptPage";
 import { InventoryPage } from "./modules/inventory/InventoryPage";
 import { LotPage } from "./modules/inventory/LotPage";
+import { BatchPage } from "./modules/production/BatchPage";
+import { OrderPage } from "./modules/production/OrderPage";
+import { PrepPage } from "./modules/production/PrepPage";
+import { ProductionPage } from "./modules/production/ProductionPage";
 import { MasterDataPage } from "./modules/masterdata/MasterDataPage";
 import { RecipeListPage } from "./modules/recipes/RecipeListPage";
 import { RecipePage } from "./modules/recipes/RecipePage";
@@ -24,6 +28,10 @@ function menuRoles(key: string) {
 
 function recipesPage(page: ReactNode) {
   return <RequireRole roles={menuRoles("recipes")}>{page}</RequireRole>;
+}
+
+function productionPage(page: ReactNode) {
+  return <RequireRole roles={menuRoles("production")}>{page}</RequireRole>;
 }
 
 // Hazır modül sayfaları. Erişim menüdeki rollerle aynıdır; asıl yetki backend'dedir.
@@ -44,8 +52,13 @@ const pageRoutes: RouteObject[] = [
   { path: "depo/mal-kabul/:receiptId", element: <GoodsReceiptPage /> },
   { path: "depo/sayim/:adjustmentId", element: <AdjustmentPage /> },
   { path: "depo/:tab?", element: <InventoryPage /> },
+  // Üretim: planlama emir açar, depo hazırlar, üretim tartar; düğmeler rolle daralır.
+  { path: "uretim/emirler/:orderId/hazirlama", element: productionPage(<PrepPage />) },
+  { path: "uretim/emirler/:orderId", element: productionPage(<OrderPage />) },
+  { path: "uretim/sarjlar/:batchId", element: productionPage(<BatchPage />) },
+  { path: "uretim/:tab?", element: productionPage(<ProductionPage />) },
 ];
-const IMPLEMENTED = new Set(["masterdata", "recipes", "inventory"]);
+const IMPLEMENTED = new Set(["masterdata", "recipes", "inventory", "production"]);
 
 // Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar rol korumalı bir yer tutucuya gider.
 const moduleRoutes: RouteObject[] = MENU.filter(
