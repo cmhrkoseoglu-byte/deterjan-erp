@@ -26,10 +26,15 @@ export interface ProductionOrder {
   product_code: string;
   product_name: string;
   base_unit: string;
-  recipe_version: number;
-  recipe_id: number;
-  recipe_code: string;
-  version_no: number;
+  /** Yeniden işleme emrinde boş olabilir (düzeltme listesiyle). */
+  recipe_version: number | null;
+  recipe_id: number | null;
+  recipe_code: string | null;
+  version_no: number | null;
+  /** Yeniden işlenen bloke bulk lot (yalnızca yeniden işleme emrinde). */
+  rework_lot: number | null;
+  rework_lot_no: string | null;
+  additions: ReworkAddition[];
   planned_quantity: string;
   unit: number;
   unit_code: string;
@@ -47,6 +52,20 @@ export interface ProductionOrder {
   created_at: string;
 }
 
+export interface ReworkAddition {
+  id?: number;
+  sequence?: number | null;
+  material: number;
+  material_code?: string;
+  material_name?: string;
+  quantity: string;
+  unit: number;
+  unit_code?: string;
+  tolerance_pct: string;
+  is_water: boolean;
+  instruction: string;
+}
+
 export interface RequirementRow {
   id: number;
   sequence: number;
@@ -57,6 +76,10 @@ export interface RequirementRow {
   required_quantity: string;
   tolerance_pct: string;
   is_water: boolean;
+  /** Depoda hazırlanır mı? (Su ve yeniden işlenen sabit lot hazırlanmaz.) */
+  is_picked: boolean;
+  lot: number | null;
+  lot_no: string | null;
   instruction: string;
   picked_quantity: string;
   consumed_quantity: string;
@@ -141,6 +164,9 @@ export interface BatchLine {
   unit: string;
   tolerance_pct: string;
   is_water: boolean;
+  is_picked: boolean;
+  lot: number | null;
+  lot_no: string | null;
   instruction: string;
   planned_quantity: string;
   consumed_quantity: string;
@@ -174,6 +200,8 @@ export interface ProductionBatchDetail extends ProductionBatch {
 
 export interface OrderPayload {
   recipe_version: number | null;
+  rework_lot?: number | null;
+  additions?: ReworkAddition[];
   planned_quantity: string;
   unit: number | null;
   planned_date: string;

@@ -33,7 +33,6 @@ import { formatDate } from "../../i18n/format";
 import { ImportModal } from "../common/ImportModal";
 import { ct } from "../common/strings";
 import { adjustmentPath, lotPath, receiptPath, STOCK_WRITE_ROLES } from "./config";
-import { LotDecisionModal, type LotDecision } from "./LotDecisionModal";
 import { DocStatusBadge, ExpiryText, LotStatusBadge, Qty } from "./shared";
 import { it } from "./strings";
 
@@ -311,78 +310,6 @@ export function LotsTab() {
       {list.pages > 1 && (
         <Pagination value={list.page} onChange={list.setPage} total={list.pages} />
       )}
-    </Stack>
-  );
-}
-
-// --- lot onay (laboratuvar) ----------------------------------------------------------------
-
-export function ApprovalTab() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const [target, setTarget] = useState<{ lot: Lot; decision: LotDecision } | null>(null);
-  const list = usePagedList("approval", listLots, { status: "QUARANTINE" }, search);
-  const rows = list.query.data?.results ?? [];
-
-  const columns: Column<Lot>[] = [
-    ...lotColumns().filter((column) => column.header !== it.status),
-    {
-      header: ct.actions,
-      render: (row) => (
-        <Group gap={4} wrap="nowrap" onClick={(event) => event.stopPropagation()}>
-          <Button
-            size="compact-sm"
-            color="green"
-            onClick={() => setTarget({ lot: row, decision: "release" })}
-          >
-            {it.release}
-          </Button>
-          <Button
-            size="compact-sm"
-            color="red"
-            variant="light"
-            onClick={() => setTarget({ lot: row, decision: "reject" })}
-          >
-            {it.reject}
-          </Button>
-        </Group>
-      ),
-    },
-  ];
-
-  return (
-    <Stack>
-      <Text size="sm" c="dimmed">
-        {it.approvalIntro}
-      </Text>
-      <SearchBox
-        value={search}
-        placeholder={it.searchLots}
-        onChange={(value) => {
-          setSearch(value);
-          list.setPage(1);
-        }}
-      />
-      <ListTable
-        rows={rows}
-        loading={list.query.isLoading}
-        error={list.query.error}
-        onOpen={(row) => navigate(lotPath(row.id))}
-        columns={columns}
-      />
-      {list.pages > 1 && (
-        <Pagination value={list.page} onChange={list.setPage} total={list.pages} />
-      )}
-      <LotDecisionModal
-        lot={target?.lot ?? null}
-        decision={target?.decision ?? null}
-        onClose={() => setTarget(null)}
-        onDone={() => {
-          setTarget(null);
-          void queryClient.invalidateQueries({ queryKey: ["inventory"] });
-        }}
-      />
     </Stack>
   );
 }

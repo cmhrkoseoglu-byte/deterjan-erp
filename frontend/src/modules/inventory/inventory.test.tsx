@@ -5,6 +5,7 @@ import * as authApi from "../../api/auth";
 import * as inventoryApi from "../../api/inventory";
 import type { GoodsReceiptDetail, LotDetail, TraceNode } from "../../api/inventory";
 import * as mdApi from "../../api/masterdata";
+import * as qualityApi from "../../api/quality";
 import * as workflowApi from "../../api/workflow";
 import { page, userWith } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
@@ -29,6 +30,10 @@ vi.mock("../../api/masterdata", async (importOriginal) => ({
   listRecords: vi.fn(),
 }));
 vi.mock("../../api/workflow");
+vi.mock("../../api/quality", async (importOriginal) => ({
+  ...(await importOriginal<typeof qualityApi>()),
+  listSamples: vi.fn(),
+}));
 
 function lot(overrides: Partial<LotDetail> = {}): LotDetail {
   return {
@@ -111,6 +116,7 @@ beforeEach(() => {
   vi.mocked(inventoryApi.listAdjustments).mockResolvedValue(page([]));
   vi.mocked(inventoryApi.listMovements).mockResolvedValue(page([]));
   vi.mocked(inventoryApi.getLotTrace).mockResolvedValue(trace());
+  vi.mocked(qualityApi.listSamples).mockResolvedValue(page([]));
 });
 
 describe("depo sekmeleri", () => {
@@ -122,18 +128,14 @@ describe("depo sekmeleri", () => {
     expect(screen.queryByText("Açılış stoku içe aktar")).not.toBeInTheDocument();
   });
 
-  it("laboratuvar doğrudan lot onaya düşer", async () => {
+  it("laboratuvarın lot onay sekmesi yoktur; karar kalite modülündedir", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("laboratuvar"));
     renderApp("/depo");
-    expect(await screen.findByRole("tab", { name: "Lot onay" })).toHaveAttribute(
+    expect(await screen.findByRole("tab", { name: "Stok sorgu" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    await waitFor(() =>
-      expect(inventoryApi.listLots).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "QUARANTINE" }),
-      ),
-    );
+    expect(screen.queryByRole("tab", { name: "Lot onay" })).not.toBeInTheDocument();
   });
 
   it("rolün göremediği sekmenin adresi varsayılan sekmeye döner", async () => {
@@ -156,11 +158,42 @@ describe("depo sekmeleri", () => {
 });
 
 describe("lot detay", () => {
-  it("laboratuvar karantinadaki lotu hedef lokasyonla serbest bırakır", async () => {
-    const user = userEvent.setup();
+  it("laboratuvar lotu serbest bırakamaz; numunelerini görür ve bloke edebilir", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("laboratuvar"));
     vi.mocked(inventoryApi.getLot).mockResolvedValue(lot());
-    vi.mocked(inventoryApi.releaseLot).mockResolvedValue(lot({ status: "RELEASED" }));
+    vi.mocked(qualityApi.listSamples).mockResolvedValue(
+      page([
+        {
+          id: 31,
+          number: "NM-2026-00001",
+          status: "IN_TEST",
+          status_display: "Testte",
+          lot: 7,
+          lot_no: "H-261015-001",
+          lot_status: "QUARANTINE",
+          material: 50,
+          material_code: "LABSA",
+          material_name: "Lineer alkil benzen sülfonik asit",
+          material_type: "RAW",
+          stage: "INCOMING",
+          stage_display: "Giriş kontrolü",
+          origin: "GOODS_RECEIPT",
+          origin_display: "Mal kabul",
+          specification: 2,
+          specification_label: "v1",
+          taken_by: null,
+          taken_by_name: null,
+          taken_at: "2026-10-15T10:00:00+03:00",
+          retain_location: null,
+          retain_location_code: null,
+          note: "",
+          decided_at: null,
+          created_by_name: null,
+          created_at: "2026-10-15T10:00:00+03:00",
+          waiting_minutes: 30,
+        },
+      ]),
+    );
     renderApp("/depo/lotlar/7");
 
     expect(await screen.findByRole("heading", { name: "H-261015-001" })).toBeInTheDocument();
@@ -168,17 +201,37 @@ describe("lot detay", () => {
       "href",
       "/depo/mal-kabul/4",
     );
+    expect(await screen.findByRole("link", { name: "NM-2026-00001" })).toHaveAttribute(
+      "href",
+      "/kalite/numuneler/31",
+    );
+    // Açık numune varken yenisi açılmaz; serbest bırakma ve ret numune kararıyladır.
+    expect(screen.queryByRole("button", { name: "Numune aç" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /serbest bırak/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reddet" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bloke et" })).toBeInTheDocument();
     // Transfer depo işidir; laboratuvar görmez.
     expect(screen.queryByRole("button", { name: "Transfer" })).not.toBeInTheDocument();
+  });
 
-    await user.click(screen.getByRole("button", { name: "Serbest bırak" }));
+  it("admin gerekçeyle elle serbest bırakır (D-5)", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    vi.mocked(inventoryApi.getLot).mockResolvedValue(lot());
+    vi.mocked(inventoryApi.releaseLot).mockResolvedValue(lot({ status: "RELEASED" }));
+    renderApp("/depo/lotlar/7");
+
+    await user.click(await screen.findByRole("button", { name: "Elle serbest bırak" }));
     const dialog = await screen.findByRole("dialog");
     const submit = within(dialog).getByRole("button", { name: "Serbest bırak" });
-    expect(submit).toBeDisabled(); // karantinada stok var: hedef zorunlu
     await user.click(within(dialog).getByRole("textbox", { name: /Hedef lokasyon/ }));
     await user.click(await screen.findByRole("option", { name: "HM-01 - Hammadde rafı" }));
+    expect(submit).toBeDisabled(); // gerekçe zorunlu
+    await user.type(within(dialog).getByRole("textbox", { name: /Neden/ }), "Acil sevkiyat");
     await user.click(submit);
-    await waitFor(() => expect(inventoryApi.releaseLot).toHaveBeenCalledWith(7, "", 5));
+    await waitFor(() =>
+      expect(inventoryApi.releaseLot).toHaveBeenCalledWith(7, "Acil sevkiyat", 5),
+    );
   });
 
   it("soy ağacını iç içe gösterir; depo rolü karar veremez ama transfer yapabilir", async () => {

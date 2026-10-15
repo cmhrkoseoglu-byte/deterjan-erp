@@ -21,7 +21,6 @@ import {
   IconArrowBackUp,
   IconArrowLeft,
   IconArrowsTransferDown,
-  IconBan,
   IconCheck,
   IconLock,
   IconPrinter,
@@ -44,7 +43,14 @@ import { hasAnyRole } from "../../auth/roles";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ct } from "../common/strings";
-import { INVENTORY_BASE, LOT_DECISION_ROLES, receiptPath, STOCK_WRITE_ROLES } from "./config";
+import { LotQualitySection } from "../quality/LotQualitySection";
+import {
+  INVENTORY_BASE,
+  LOT_BLOCK_ROLES,
+  MANUAL_RELEASE_ROLES,
+  receiptPath,
+  STOCK_WRITE_ROLES,
+} from "./config";
 import { LotDecisionModal, type LotDecision } from "./LotDecisionModal";
 import { ExpiryText, Info, LotStatusBadge, Qty } from "./shared";
 import { it } from "./strings";
@@ -56,7 +62,8 @@ export function LotPage() {
   const lotId = Number(useParams().lotId);
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const canDecide = hasAnyRole(user, LOT_DECISION_ROLES);
+  const canBlock = hasAnyRole(user, LOT_BLOCK_ROLES);
+  const canRelease = hasAnyRole(user, MANUAL_RELEASE_ROLES);
   const canMove = hasAnyRole(user, STOCK_WRITE_ROLES);
   const [direction, setDirection] = useState<TraceDirection>("backward");
   const [decision, setDecision] = useState<LotDecision | null>(null);
@@ -106,26 +113,17 @@ export function LotPage() {
               )}
             </Group>
             <Group gap="xs">
-              {canDecide && allowed.has("RELEASED") && (
+              {canRelease && allowed.has("RELEASED") && (
                 <Button
                   color="green"
+                  variant="light"
                   leftSection={<IconCheck size={16} />}
                   onClick={() => setDecision("release")}
                 >
-                  {it.release}
+                  {it.manualRelease}
                 </Button>
               )}
-              {canDecide && allowed.has("REJECTED") && (
-                <Button
-                  color="red"
-                  variant="light"
-                  leftSection={<IconBan size={16} />}
-                  onClick={() => setDecision("reject")}
-                >
-                  {it.reject}
-                </Button>
-              )}
-              {canDecide && allowed.has("BLOCKED") && (
+              {canBlock && allowed.has("BLOCKED") && (
                 <Button
                   color="orange"
                   variant="light"
@@ -195,6 +193,8 @@ export function LotPage() {
               )}
             </SimpleGrid>
           </Paper>
+
+          <LotQualitySection lot={data} />
 
           <Title order={4}>{it.balances}</Title>
           {data.balances.length === 0 ? (

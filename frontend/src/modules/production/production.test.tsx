@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../api/auth";
+import * as inventoryApi from "../../api/inventory";
 import * as mdApi from "../../api/masterdata";
 import * as productionApi from "../../api/production";
 import type {
@@ -27,6 +28,11 @@ vi.mock("../../api/production", async (importOriginal) => ({
   pickMaterial: vi.fn(),
   pickSuggestions: vi.fn(),
   consume: vi.fn(),
+  saveOrder: vi.fn(),
+}));
+vi.mock("../../api/inventory", async (importOriginal) => ({
+  ...(await importOriginal<typeof inventoryApi>()),
+  getLot: vi.fn(),
 }));
 vi.mock("../../api/masterdata", async (importOriginal) => ({
   ...(await importOriginal<typeof mdApi>()),
@@ -45,6 +51,9 @@ function requirement(overrides: Partial<RequirementRow> = {}): RequirementRow {
     required_quantity: "600.0000",
     tolerance_pct: "1.00",
     is_water: false,
+    is_picked: true,
+    lot: null,
+    lot_no: null,
     instruction: "",
     picked_quantity: "0.0000",
     consumed_quantity: "0.0000",
@@ -68,6 +77,9 @@ function order(overrides: Partial<ProductionOrderDetail> = {}): ProductionOrderD
     recipe_id: 4,
     recipe_code: "REC-BULASIK",
     version_no: 1,
+    rework_lot: null,
+    rework_lot_no: null,
+    additions: [],
     planned_quantity: "1000.0000",
     unit: 1,
     unit_code: "KG",
@@ -92,6 +104,7 @@ function order(overrides: Partial<ProductionOrderDetail> = {}): ProductionOrderD
         material_code: "SU",
         material_name: "Şebeke suyu",
         is_water: true,
+        is_picked: false,
         required_quantity: "400.0000",
         to_pick: "0.0000",
         is_ready: true,
@@ -120,6 +133,9 @@ function line(overrides: Partial<BatchLine> = {}): BatchLine {
     unit: "KG",
     tolerance_pct: "1.00",
     is_water: false,
+    is_picked: true,
+    lot: null,
+    lot_no: null,
     instruction: "Yavaşça ekle.",
     planned_quantity: "600.0000",
     consumed_quantity: "0.0000",
@@ -254,6 +270,119 @@ describe("üretim emri", () => {
     expect(within(table).getByText("Şebeke suyu (hazırlanmaz)"));
     expect(screen.getByRole("button", { name: "Malzeme hazırla" }));
     expect(screen.queryByRole("button", { name: "Onayla" })).toBeNull();
+  });
+});
+
+describe("yeniden işleme emri", () => {
+  const blockedLot = {
+    id: 90,
+    lot_no: "B-261015-001",
+    material: 80,
+    material_code: "BULASIK-LIMON",
+    material_name: "Bulaşık deterjanı",
+    material_type: "BULK",
+    unit: "KG",
+    status: "BLOCKED",
+    status_display: "Bloke",
+    source: "PRODUCTION",
+    source_display: "Üretim",
+    supplier: null,
+    supplier_name: null,
+    supplier_lot_no: "",
+    manufactured_at: "2026-10-15",
+    expiry_date: null,
+    is_expired: false,
+    released_by_name: null,
+    released_at: null,
+    status_note: "NM-2026-00002: Yeniden işleme",
+    total_quantity: "1000.0000",
+    allowed_transitions: [],
+    created_at: "2026-10-15T10:00:00+03:00",
+    balances: [],
+    receipt: null,
+  } as inventoryApi.LotDetail;
+
+  it("lot seçili açılır; reçete isteğe bağlı, düzeltme listesiyle kaydedilir", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("planlama"));
+    vi.mocked(inventoryApi.getLot).mockResolvedValue(blockedLot);
+    vi.mocked(mdApi.listRecords).mockImplementation(async (endpoint) =>
+      endpoint === "materials"
+        ? page([{ id: 60, code: "NACL", name: "Tuz", is_active: true }])
+        : endpoint === "units"
+          ? page([{ id: 1, code: "KG", name: "Kilogram", is_active: true }])
+          : page([]),
+    );
+    vi.mocked(productionApi.saveOrder).mockResolvedValue(
+      order({ id: 4, status: "DRAFT", rework_lot: 90, rework_lot_no: "B-261015-001" }),
+    );
+    renderApp("/uretim/emirler/yeni?yeniden-isleme=90");
+
+    expect(await screen.findByRole("heading", { name: "Yeni yeniden işleme emri" }));
+    expect(await screen.findByText(/B-261015-001 \(BULASIK-LIMON/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Satır ekle" }));
+    const additions = screen.getByTestId("additions");
+    await user.click(within(additions).getByRole("textbox", { name: "Malzeme" }));
+    await user.click(await screen.findByRole("option", { name: "NACL - Tuz" }));
+    await user.type(within(additions).getByRole("textbox", { name: "Miktar" }), "20");
+    await user.click(within(additions).getByRole("textbox", { name: "Birim" }));
+    await user.click(await screen.findByRole("option", { name: "KG - Kilogram" }));
+    await user.click(screen.getByRole("button", { name: "Taslağı kaydet" }));
+    await waitFor(() =>
+      expect(productionApi.saveOrder).toHaveBeenCalledWith(
+        null,
+        expect.objectContaining({
+          recipe_version: null,
+          rework_lot: 90,
+          additions: [
+            {
+              material: 60,
+              quantity: "20",
+              unit: 1,
+              tolerance_pct: "2",
+              is_water: false,
+              instruction: "",
+            },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it("sabit lot satırı hazırlanmaz; emirde yeniden işlenen lot görünür", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));
+    vi.mocked(productionApi.getOrder).mockResolvedValue(
+      order({
+        recipe_version: null,
+        recipe_id: null,
+        recipe_code: null,
+        version_no: null,
+        rework_lot: 90,
+        rework_lot_no: "B-261015-001",
+        requirements: [
+          requirement({
+            id: 20,
+            material_code: "BULASIK-LIMON",
+            material_name: "Bulaşık deterjanı",
+            required_quantity: "1000.0000",
+            is_picked: false,
+            lot: 90,
+            lot_no: "B-261015-001",
+            to_pick: "0.0000",
+            is_ready: true,
+          }),
+          requirement({ id: 21, sequence: 2, material_code: "NACL", material_name: "Tuz" }),
+        ],
+      }),
+    );
+    renderApp("/uretim/emirler/3");
+    const rows = await screen.findByTestId("requirements");
+    expect(rows).toHaveTextContent("Yeniden işlenen lot: B-261015-001");
+    expect(screen.getByText("Reçetesiz (düzeltme listesi)")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "B-261015-001" })).toHaveAttribute(
+      "href",
+      "/depo/lotlar/90",
+    );
   });
 });
 

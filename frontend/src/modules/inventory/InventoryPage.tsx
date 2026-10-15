@@ -4,8 +4,8 @@ import { Navigate, useNavigate, useParams } from "react-router-dom";
 import type { Role } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
-import { INVENTORY_BASE, LOT_DECISION_ROLES } from "./config";
-import { AdjustmentsTab, ApprovalTab, LotsTab, ReceiptsTab, StockTab } from "./ListTabs";
+import { INVENTORY_BASE } from "./config";
+import { AdjustmentsTab, LotsTab, ReceiptsTab, StockTab } from "./ListTabs";
 import { it } from "./strings";
 
 interface TabDef {
@@ -26,12 +26,6 @@ const TABS: TabDef[] = [
     render: () => <ReceiptsTab />,
   },
   {
-    slug: "lot-onay",
-    label: it.tabs.approval,
-    roles: LOT_DECISION_ROLES,
-    render: () => <ApprovalTab />,
-  },
-  {
     slug: "sayim",
     label: it.tabs.adjustments,
     roles: ["depo", "yonetim"],
@@ -45,12 +39,8 @@ export function InventoryPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const visible = TABS.filter((item) => hasAnyRole(user, item.roles));
-  // Sekmesiz adreste varsayılan: laboratuvar lot onaya, diğerleri stok sorguya düşer.
-  const fallback =
-    visible.some((item) => item.slug === "lot-onay") && !hasAnyRole(user, ["depo"])
-      ? "lot-onay"
-      : visible[0].slug;
-  const current = visible.find((item) => item.slug === (tab ?? fallback));
+  // Lot serbest bırakma ve ret kalite modülündedir (numune kararı); burada stok sorgu açılır.
+  const current = visible.find((item) => item.slug === (tab ?? visible[0].slug));
   if (!current) return <Navigate to={INVENTORY_BASE} replace />;
 
   return (

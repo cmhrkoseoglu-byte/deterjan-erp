@@ -1,8 +1,10 @@
 import {
+  ActionIcon,
   Alert,
   Anchor,
   Badge,
   Button,
+  Checkbox,
   Grid,
   Group,
   Loader,
@@ -24,12 +26,16 @@ import {
   IconFlask2,
   IconPackage,
   IconPlayerPlay,
+  IconPlus,
+  IconRecycle,
+  IconTrash,
   IconX,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
+import { getLot } from "../../api/inventory";
 import { listRecords, type Equipment } from "../../api/masterdata";
 import {
   cancelOrder,
@@ -40,6 +46,7 @@ import {
   type OrderPayload,
   type Priority,
   type ProductionOrderDetail,
+  type ReworkAddition,
 } from "../../api/production";
 import { listRecipes } from "../../api/recipes";
 import { useAuth } from "../../auth/AuthContext";
@@ -62,6 +69,7 @@ import {
   PREP_ROLES,
   prepPath,
   PRODUCTION_BASE,
+  REWORK_PARAM,
 } from "./config";
 import { BatchStatusBadge, OrderStatusBadge, ReasonModal } from "./shared";
 import { pt } from "./strings";
@@ -117,7 +125,18 @@ function BackLink() {
   );
 }
 
+interface AdditionDraft {
+  material: string | null;
+  quantity: string;
+  unit: string | null;
+  tolerance_pct: string;
+  is_water: boolean;
+  instruction: string;
+}
+
 interface Draft {
+  rework_lot: string | null;
+  additions: AdditionDraft[];
   recipe: string | null;
   planned_quantity: string;
   unit: string | null;
@@ -128,9 +147,31 @@ interface Draft {
   notes: string;
 }
 
-function toDraft(order: ProductionOrderDetail | null): Draft {
+function toAdditionDraft(row: ReworkAddition): AdditionDraft {
   return {
-    recipe: order ? String(order.recipe_id) : null,
+    material: String(row.material),
+    quantity: trimDecimal(row.quantity),
+    unit: String(row.unit),
+    tolerance_pct: trimDecimal(row.tolerance_pct),
+    is_water: row.is_water,
+    instruction: row.instruction,
+  };
+}
+
+const EMPTY_ADDITION: AdditionDraft = {
+  material: null,
+  quantity: "",
+  unit: null,
+  tolerance_pct: "2",
+  is_water: false,
+  instruction: "",
+};
+
+function toDraft(order: ProductionOrderDetail | null, reworkLot: string | null = null): Draft {
+  return {
+    rework_lot: order?.rework_lot ? String(order.rework_lot) : reworkLot,
+    additions: (order?.additions ?? []).map(toAdditionDraft),
+    recipe: order?.recipe_id ? String(order.recipe_id) : null,
     planned_quantity: order ? trimDecimal(order.planned_quantity) : "",
     unit: order ? String(order.unit) : null,
     planned_date: order?.planned_date ?? today(),
@@ -173,8 +214,15 @@ function OrderForm({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState(() => toDraft(order));
+  const [searchParams] = useSearchParams();
+  const [draft, setDraft] = useState(() => toDraft(order, searchParams.get(REWORK_PARAM)));
   const [error, setError] = useState("");
+  const reworkLotId = idOrNull(draft.rework_lot);
+  const reworkLot = useQuery({
+    queryKey: ["inventory", "lot", reworkLotId],
+    queryFn: () => getLot(reworkLotId!),
+    enabled: reworkLotId !== null,
+  });
   const recipes = useRecipes();
   const tanks = useMixingTanks();
   const units = useOptions({ endpoint: "units" });
@@ -182,8 +230,10 @@ function OrderForm({
   const set = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }));
 
   const recipe = (recipes.data ?? []).find((row) => String(row.id) === draft.recipe);
+  const isRework = reworkLotId !== null;
   const recipeOptions = (recipes.data ?? [])
     .filter((row) => row.approved_version)
+    .filter((row) => !reworkLot.data || row.product === reworkLot.data.material)
     .map((row) => ({
       value: String(row.id),
       label: `${row.code} - ${row.name} (v${row.approved_version!.version_no})`,
@@ -200,6 +250,19 @@ function OrderForm({
     mutationFn: () => {
       const payload: OrderPayload = {
         recipe_version: recipe?.approved_version?.id ?? null,
+        ...(isRework
+          ? {
+              rework_lot: reworkLotId,
+              additions: draft.additions.map((row) => ({
+                material: Number(row.material),
+                quantity: normalizeDecimal(row.quantity),
+                unit: Number(row.unit),
+                tolerance_pct: normalizeDecimal(row.tolerance_pct || "0"),
+                is_water: row.is_water,
+                instruction: row.instruction.trim(),
+              })),
+            }
+          : {}),
         planned_quantity: normalizeDecimal(draft.planned_quantity),
         unit: idOrNull(draft.unit),
         planned_date: draft.planned_date,
@@ -226,8 +289,17 @@ function OrderForm({
       {!order && (
         <>
           <BackLink />
-          <Title order={2}>{pt.newOrder}</Title>
+          <Title order={2}>{isRework ? pt.newReworkOrder : pt.newOrder}</Title>
         </>
+      )}
+      {isRework && reworkLot.data && (
+        <Alert color="orange" variant="light" icon={<IconRecycle size={18} />}>
+          {pt.reworkIntro(
+            reworkLot.data.lot_no,
+            `${reworkLot.data.material_code} - ${reworkLot.data.material_name}`,
+            `${formatNumber(reworkLot.data.total_quantity)} ${reworkLot.data.unit}`,
+          )}
+        </Alert>
       )}
       {error && (
         <Alert color="red" variant="light">
@@ -238,7 +310,9 @@ function OrderForm({
         <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
           <Select
             label={pt.recipe}
-            withAsterisk
+            withAsterisk={!isRework}
+            description={isRework ? pt.reworkRecipeHint : undefined}
+            clearable={isRework}
             searchable
             data={recipeOptions}
             value={draft.recipe}
@@ -248,6 +322,7 @@ function OrderForm({
           <Group gap="xs" grow wrap="nowrap">
             <TextInput
               label={pt.plannedQuantity}
+              description={isRework ? pt.reworkQuantityHint : undefined}
               withAsterisk
               inputMode="decimal"
               value={draft.planned_quantity}
@@ -301,12 +376,108 @@ function OrderForm({
           onChange={(event) => set({ notes: event.currentTarget.value })}
         />
       </Paper>
+      {isRework && (
+        <AdditionsEditor
+          rows={draft.additions}
+          units={units.data ?? []}
+          onChange={(additions) => set({ additions })}
+        />
+      )}
       <Group justify="flex-end">
         <Button loading={save.isPending} onClick={() => save.mutate()}>
           {pt.saveDraft}
         </Button>
       </Group>
     </Stack>
+  );
+}
+
+/** Yeniden işleme emrinin düzeltme listesi: lota eklenecek malzemeler (ör. tuz, su, parfüm). */
+function AdditionsEditor({
+  rows,
+  units,
+  onChange,
+}: {
+  rows: AdditionDraft[];
+  units: { value: string; label: string }[];
+  onChange: (rows: AdditionDraft[]) => void;
+}) {
+  const materials = useOptions({ endpoint: "materials" });
+  const update = (index: number, patch: Partial<AdditionDraft>) =>
+    onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  return (
+    <Paper withBorder p="md" radius="md">
+      <Group justify="space-between" mb="xs">
+        <Title order={5}>{pt.additions}</Title>
+        <Button
+          size="xs"
+          variant="light"
+          leftSection={<IconPlus size={14} />}
+          onClick={() => onChange([...rows, { ...EMPTY_ADDITION }])}
+        >
+          {pt.addAddition}
+        </Button>
+      </Group>
+      <Text size="sm" c="dimmed" mb="xs">
+        {pt.additionsHint}
+      </Text>
+      <Stack gap="xs" data-testid="additions">
+        {rows.map((row, index) => (
+          <Group key={index} gap="xs" align="flex-end" wrap="wrap">
+            <Select
+              label={pt.material}
+              searchable
+              w={240}
+              data={materials.data ?? []}
+              value={row.material}
+              onChange={(value) => update(index, { material: value })}
+            />
+            <TextInput
+              label={pt.quantity}
+              inputMode="decimal"
+              w={100}
+              value={row.quantity}
+              onChange={(event) => update(index, { quantity: event.currentTarget.value })}
+            />
+            <Select
+              label={pt.unit}
+              w={100}
+              data={units}
+              value={row.unit}
+              onChange={(value) => update(index, { unit: value })}
+            />
+            <TextInput
+              label={pt.tolerance}
+              inputMode="decimal"
+              w={80}
+              value={row.tolerance_pct}
+              onChange={(event) => update(index, { tolerance_pct: event.currentTarget.value })}
+            />
+            <TextInput
+              label={pt.instruction}
+              w={220}
+              value={row.instruction}
+              onChange={(event) => update(index, { instruction: event.currentTarget.value })}
+            />
+            <Checkbox
+              mb={8}
+              label={pt.waterShort}
+              checked={row.is_water}
+              onChange={(event) => update(index, { is_water: event.currentTarget.checked })}
+            />
+            <ActionIcon
+              mb={4}
+              variant="subtle"
+              color="red"
+              aria-label={pt.removeAddition}
+              onClick={() => onChange(rows.filter((_, i) => i !== index))}
+            >
+              <IconTrash size={16} />
+            </ActionIcon>
+          </Group>
+        ))}
+      </Stack>
+    </Paper>
   );
 }
 
@@ -349,6 +520,11 @@ function OrderDetail({ order }: { order: ProductionOrderDetail }) {
         <Group>
           <Title order={2}>{pt.orderTitle(order.number)}</Title>
           <OrderStatusBadge status={order.status} />
+          {order.rework_lot && (
+            <Badge color="orange" variant="light" leftSection={<IconRecycle size={12} />}>
+              {pt.rework}
+            </Badge>
+          )}
         </Group>
         <Group gap="xs">
           {canPlan && isDraft && (
@@ -405,8 +581,19 @@ function OrderDetail({ order }: { order: ProductionOrderDetail }) {
               <Text size="sm">{`${order.product_code} - ${order.product_name}`}</Text>
             </Info>
             <Info label={pt.recipe}>
-              <Text size="sm">{pt.recipeVersion(order.recipe_code, order.version_no)}</Text>
+              <Text size="sm">
+                {order.recipe_code
+                  ? pt.recipeVersion(order.recipe_code, order.version_no ?? 0)
+                  : pt.noRecipe}
+              </Text>
             </Info>
+            {order.rework_lot && (
+              <Info label={pt.reworkLot}>
+                <Anchor component={Link} to={lotPath(order.rework_lot)} size="sm">
+                  {order.rework_lot_no}
+                </Anchor>
+              </Info>
+            )}
             <Info label={pt.plannedQuantity}>
               <Qty value={order.planned_quantity} unit={order.unit_code} />
             </Info>
@@ -478,6 +665,11 @@ function OrderDetail({ order }: { order: ProductionOrderDetail }) {
                             {pt.water}
                           </Badge>
                         )}
+                        {row.lot && (
+                          <Badge size="xs" variant="light" color="orange">
+                            {`${pt.reworkLot}: ${row.lot_no}`}
+                          </Badge>
+                        )}
                       </Group>
                     </Table.Td>
                     <Table.Td ta="right">
@@ -485,7 +677,7 @@ function OrderDetail({ order }: { order: ProductionOrderDetail }) {
                     </Table.Td>
                     <Table.Td ta="right">%{formatNumber(row.tolerance_pct)}</Table.Td>
                     <Table.Td ta="right">
-                      {row.is_water ? (
+                      {!row.is_picked ? (
                         "—"
                       ) : (
                         <Text span size="sm" c={row.is_ready ? "green" : undefined}>

@@ -13,6 +13,8 @@ export const RECORD_ROUTES: Record<string, (id: number) => string> = {
   "inventory.stockadjustment": (id) => `/depo/sayim/${id}`,
   "production.productionorder": (id) => `/uretim/emirler/${id}`,
   "production.productionbatch": (id) => `/uretim/sarjlar/${id}`,
+  "quality.sample": (id) => `/kalite/numuneler/${id}`,
+  "quality.specification": (id) => `/kalite/spesifikasyonlar/${id}`,
 };
 
 /** Kaydın detay sayfası; sayfası henüz yoksa null. */
