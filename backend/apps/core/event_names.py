@@ -32,6 +32,7 @@ BELOW_MIN_STOCK = "inventory.below_min_stock"
 PRODUCTION_ORDER_APPROVED = "production_order.approved"
 PRODUCTION_ORDER_MATERIAL_READY = "production_order.material_ready"
 PRODUCTION_ORDER_CANCELLED = "production_order.cancelled"
+PRODUCTION_ORDER_COMPLETED = "production_order.completed"
 PRODUCTION_BATCH_STARTED = "production_batch.started"
 PRODUCTION_BATCH_COMPLETED = "production_batch.completed"
 PRODUCTION_DEVIATION = "production.deviation"
@@ -40,3 +41,13 @@ PRODUCTION_LOW_YIELD = "production.low_yield"
 # recipes
 RECIPE_VERSION_APPROVED = "recipe_version.approved"
 RECIPE_VERSION_OBSOLETE = "recipe_version.obsolete"
+
+# quality (Faz 2, Adım 2.1). Numune olayları durum makinesinden (`sample.<durum>`); payload'da
+# numune alanlarına ek olarak `lot` (lot sözlüğü), `stage`, karar olaylarında `decision` bulunur.
+SAMPLE_CREATED = "sample.created"
+SAMPLE_IN_TEST = "sample.in_test"
+SAMPLE_AWAITING_APPROVAL = "sample.awaiting_approval"
+SAMPLE_DECIDED = "sample.decided"
+SAMPLE_CANCELLED = "sample.cancelled"
+SPECIFICATION_APPROVED = "specification.approved"
+SPECIFICATION_OBSOLETE = "specification.obsolete"

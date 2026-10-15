@@ -94,7 +94,10 @@ export interface Partner extends Audited {
   contact_person: string;
 }
 
-/** Ana veri uç noktaları (`/masterdata/<endpoint>/`). */
+/**
+ * Ana veri uç noktaları (`/masterdata/<endpoint>/`). Başka modülün ana veri benzeri listesi
+ * (aktif/pasif, kod + ad) modül önekiyle yazılır, ör. `quality/tests` → `/quality/tests/`.
+ */
 export type MasterDataEndpoint =
   | "units"
   | "categories"
@@ -104,7 +107,12 @@ export type MasterDataEndpoint =
   | "locations"
   | "equipment"
   | "suppliers"
-  | "customers";
+  | "customers"
+  | "quality/tests";
+
+function basePath(endpoint: MasterDataEndpoint): string {
+  return endpoint.includes("/") ? `/${endpoint}` : `/masterdata/${endpoint}`;
+}
 
 export type ListParams = Record<string, string | number | boolean | undefined>;
 
@@ -118,14 +126,14 @@ export async function listRecords<T>(
   endpoint: MasterDataEndpoint,
   params: ListParams = {},
 ): Promise<Paginated<T>> {
-  const { data } = await api.get<Paginated<T>>(`/masterdata/${endpoint}/`, {
+  const { data } = await api.get<Paginated<T>>(`${basePath(endpoint)}/`, {
     params: clean(params),
   });
   return data;
 }
 
 export async function getRecord<T>(endpoint: MasterDataEndpoint, id: number): Promise<T> {
-  const { data } = await api.get<T>(`/masterdata/${endpoint}/${id}/`);
+  const { data } = await api.get<T>(`${basePath(endpoint)}/${id}/`);
   return data;
 }
 
@@ -135,8 +143,8 @@ export async function saveRecord<T>(
   payload: Record<string, unknown>,
 ): Promise<T> {
   const { data } = id
-    ? await api.patch<T>(`/masterdata/${endpoint}/${id}/`, payload)
-    : await api.post<T>(`/masterdata/${endpoint}/`, payload);
+    ? await api.patch<T>(`${basePath(endpoint)}/${id}/`, payload)
+    : await api.post<T>(`${basePath(endpoint)}/`, payload);
   return data;
 }
 
@@ -146,7 +154,7 @@ export async function setRecordActive<T>(
   active: boolean,
 ): Promise<T> {
   const { data } = await api.post<T>(
-    `/masterdata/${endpoint}/${id}/${active ? "activate" : "deactivate"}/`,
+    `${basePath(endpoint)}/${id}/${active ? "activate" : "deactivate"}/`,
   );
   return data;
 }

@@ -388,7 +388,10 @@ def test_post_goods_receipt_creates_lots_and_movements(depo, receipt_setup, publ
     ]
 
 
-def test_goods_receipt_opens_incoming_qc_task(depo, receipt_setup, commit, make_user):
+def test_goods_receipt_opens_incoming_sample_and_qc_task(depo, receipt_setup, commit, make_user):
+    """Faz 2: mal kabul kaydedilince giriş numunesi açılır, görev numuneye bağlıdır (karar ve
+    görevin kapanışı quality testlerinde)."""
+    from apps.quality.models import Sample
     from apps.workflow.models import Task
 
     make_user("laboratuvar")
@@ -396,16 +399,12 @@ def test_goods_receipt_opens_incoming_qc_task(depo, receipt_setup, commit, make_
     with commit():
         services.post_goods_receipt(depo, receipt)
     lot = receipt.lines.get(line_no=1).created_lot
+    sample = Sample.objects.get(lot=lot)
+    assert sample.stage == "INCOMING" and sample.origin == "GOODS_RECEIPT"
     task = Task.objects.get(rule_code="incoming_qc")
     assert task.title == f"Giriş kontrolü: {lot.lot_no}"
-    assert task.related_object_id == lot.pk
+    assert task.related_object_id == sample.pk
     assert task.status == Task.Status.OPEN
-
-    lab = make_user("laboratuvar")
-    with commit():
-        services.release_lot(lab, lot, to_location=receipt_setup["storage"])
-    task.refresh_from_db()
-    assert task.status == Task.Status.DONE
 
 
 def test_goods_receipt_converts_units_to_base(depo, receipt_setup):
@@ -514,7 +513,7 @@ def test_release_lot_moves_quarantine_stock(lab, published, commit):
     quarantine, target = quarantine_location(), storage_location()
     lot = stocked_lot("80", location=quarantine, status=Lot.Status.QUARANTINE)
     with commit():
-        services.release_lot(lab, lot, "Analiz uygun", to_location=target)
+        services.release_lot(lab, lot, "Analiz uygun", to_location=target, quality_decision=True)
     lot.refresh_from_db()
     assert lot.status == Lot.Status.RELEASED
     assert lot.released_by == lab and lot.status_note == "Analiz uygun"
@@ -533,10 +532,10 @@ def test_release_lot_moves_quarantine_stock(lab, published, commit):
 def test_release_lot_requires_target_for_quarantine_stock(lab):
     lot = stocked_lot("5", location=quarantine_location(), status=Lot.Status.QUARANTINE)
     with pytest.raises(BusinessRuleError) as exc:
-        services.release_lot(lab, lot)
+        services.release_lot(lab, lot, quality_decision=True)
     assert exc.value.code == "release_location_required"
     with pytest.raises(BusinessRuleError) as exc:
-        services.release_lot(lab, lot, to_location=quarantine_location())
+        services.release_lot(lab, lot, to_location=quarantine_location(), quality_decision=True)
     assert exc.value.code == "invalid_release_location"
     lot.refresh_from_db()
     assert lot.status == Lot.Status.QUARANTINE
@@ -551,32 +550,61 @@ def test_release_bulk_lot_in_tank_needs_no_transfer(lab):
         status=Lot.Status.QUARANTINE,
         source=Lot.Source.PRODUCTION,
     )
-    services.release_lot(lab, lot)
+    services.release_lot(lab, lot, quality_decision=True)
     assert balance(lot, tank) == D("900")
 
 
-def test_lot_decisions_require_laboratory_role(depo):
+def test_release_and_reject_only_through_quality_decision(lab, depo):
+    """Faz 2: laboratuvar dahil kimse lotu kalite kararı dışında serbest bırakamaz ya da
+    reddedemez; bloke laboratuvarın işidir."""
     lot = stocked_lot("5", status=Lot.Status.QUARANTINE)
+    for user in (lab, depo):
+        with pytest.raises(PermissionDenied):
+            services.release_lot(user, lot, "acil")
+        with pytest.raises(PermissionDenied):
+            services.reject_lot(user, lot, "x")
     with pytest.raises(PermissionDenied):
-        services.release_lot(depo, lot)
-    with pytest.raises(PermissionDenied):
-        services.reject_lot(depo, lot, "x")
+        services.block_lot(depo, lot, "x")
+    lot.refresh_from_db()
+    assert lot.status == Lot.Status.QUARANTINE
+
+
+def test_admin_manual_release_requires_reason_and_is_audited(make_user, commit, published):
+    """Karar D-5: admin gerekçe yazarak lotu elle serbest bırakabilir."""
+    admin = make_user("admin")
+    quarantine, target = quarantine_location(), storage_location()
+    lot = stocked_lot("10", location=quarantine, status=Lot.Status.QUARANTINE)
+    with pytest.raises(BusinessRuleError) as exc:
+        services.release_lot(admin, lot, "  ", to_location=target)
+    assert exc.value.code == "note_required"
+    with commit():
+        services.release_lot(admin, lot, "Laboratuvar kapalı, müşteri acil", to_location=target)
+    lot.refresh_from_db()
+    assert lot.status == Lot.Status.RELEASED
+    assert lot.status_note == "Elle serbest bırakma (D-5): Laboratuvar kapalı, müşteri acil"
+    assert AuditLog.objects.filter(
+        object_id=lot.pk,
+        actor=admin,
+        changes__status=["QUARANTINE", "RELEASED"],
+        note__startswith="Elle serbest bırakma (D-5)",
+    ).exists()
+    assert balance(lot, target) == D("10")
 
 
 def test_reject_and_block(lab, published, commit):
     lot = stocked_lot("5", status=Lot.Status.QUARANTINE)
     with pytest.raises(BusinessRuleError) as exc:
-        services.reject_lot(lab, lot, " ")
+        services.reject_lot(lab, lot, " ", quality_decision=True)
     assert exc.value.code == "note_required"
     with commit():
-        services.reject_lot(lab, lot, "Aktif madde düşük")
+        services.reject_lot(lab, lot, "Aktif madde düşük", quality_decision=True)
     lot.refresh_from_db()
     assert lot.status == Lot.Status.REJECTED
     assert [e.payload["note"] for e in published if e.name == ev.LOT_REJECTED] == [
         "Aktif madde düşük"
     ]
     with pytest.raises(BusinessRuleError) as exc:
-        services.release_lot(lab, lot)
+        services.release_lot(lab, lot, quality_decision=True)
     assert exc.value.code == "invalid_transition"
 
     other = stocked_lot("5")
@@ -585,7 +613,7 @@ def test_reject_and_block(lab, published, commit):
     other.refresh_from_db()
     assert other.status == Lot.Status.BLOCKED
     assert ev.LOT_BLOCKED in [e.name for e in published]
-    services.release_lot(lab, other, "Şikâyet asılsız")
+    services.release_lot(lab, other, "Şikâyet asılsız", quality_decision=True)
     other.refresh_from_db()
     assert other.status == Lot.Status.RELEASED
 
@@ -610,7 +638,7 @@ def test_lot_state_machine_allowed_transitions(lab, start, action, end):
     )
     if start == Lot.Status.BLOCKED:
         services.block_lot(lab, lot, "ön koşul")
-    getattr(services, f"{action}_lot")(lab, lot, "not")
+    getattr(services, f"{action}_lot")(lab, lot, "not", quality_decision=True)
     lot.refresh_from_db()
     assert lot.status == end
 
@@ -618,17 +646,17 @@ def test_lot_state_machine_allowed_transitions(lab, start, action, end):
 @pytest.mark.parametrize("action", ["release", "block", "reject"])
 def test_lot_state_machine_forbidden_transitions(lab, action):
     lot = services.create_lot(lab, material=MaterialFactory(), source=Lot.Source.PURCHASE)
-    services.reject_lot(lab, lot, "ret")
+    services.reject_lot(lab, lot, "ret", quality_decision=True)
     with pytest.raises(BusinessRuleError) as exc:
-        getattr(services, f"{action}_lot")(lab, lot, "not")
+        getattr(services, f"{action}_lot")(lab, lot, "not", quality_decision=True)
     assert exc.value.code == "invalid_transition"
     released = services.create_lot(
         lab, material=MaterialFactory(), source=Lot.Source.PURCHASE, status=Lot.Status.RELEASED
     )
     with pytest.raises(BusinessRuleError):
-        services.release_lot(lab, released)
+        services.release_lot(lab, released, quality_decision=True)
     with pytest.raises(BusinessRuleError):
-        services.reject_lot(lab, released, "doğrudan ret yok")
+        services.reject_lot(lab, released, "doğrudan ret yok", quality_decision=True)
 
 
 # --- sayım düzeltme --------------------------------------------------------------------------

@@ -13,6 +13,9 @@ import { OrderPage } from "./modules/production/OrderPage";
 import { PrepPage } from "./modules/production/PrepPage";
 import { ProductionPage } from "./modules/production/ProductionPage";
 import { MasterDataPage } from "./modules/masterdata/MasterDataPage";
+import { QualityPage } from "./modules/quality/QualityPage";
+import { SamplePage } from "./modules/quality/SamplePage";
+import { SpecificationPage } from "./modules/quality/SpecificationPage";
 import { RecipeListPage } from "./modules/recipes/RecipeListPage";
 import { RecipePage } from "./modules/recipes/RecipePage";
 import { VersionPage } from "./modules/recipes/VersionPage";
@@ -32,6 +35,10 @@ function recipesPage(page: ReactNode) {
 
 function productionPage(page: ReactNode) {
   return <RequireRole roles={menuRoles("production")}>{page}</RequireRole>;
+}
+
+function qualityPage(page: ReactNode) {
+  return <RequireRole roles={menuRoles("quality")}>{page}</RequireRole>;
 }
 
 // Hazır modül sayfaları. Erişim menüdeki rollerle aynıdır; asıl yetki backend'dedir.
@@ -57,8 +64,12 @@ const pageRoutes: RouteObject[] = [
   { path: "uretim/emirler/:orderId", element: productionPage(<OrderPage />) },
   { path: "uretim/sarjlar/:batchId", element: productionPage(<BatchPage />) },
   { path: "uretim/:tab?", element: productionPage(<ProductionPage />) },
+  // Kalite: laboratuvar numune ve spesifikasyon, yönetim şartlı kabul onayı.
+  { path: "kalite/numuneler/:sampleId", element: qualityPage(<SamplePage />) },
+  { path: "kalite/spesifikasyonlar/:specId", element: qualityPage(<SpecificationPage />) },
+  { path: "kalite/:tab?", element: qualityPage(<QualityPage />) },
 ];
-const IMPLEMENTED = new Set(["masterdata", "recipes", "inventory", "production"]);
+const IMPLEMENTED = new Set(["masterdata", "recipes", "inventory", "production", "quality"]);
 
 // Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar rol korumalı bir yer tutucuya gider.
 const moduleRoutes: RouteObject[] = MENU.filter(

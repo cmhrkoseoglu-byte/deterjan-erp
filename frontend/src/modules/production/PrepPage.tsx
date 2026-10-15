@@ -63,7 +63,7 @@ export function PrepPage() {
 function Prep({ order }: { order: ProductionOrderDetail }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const lines = order.requirements.filter((row) => !row.is_water);
+  const lines = order.requirements.filter((row) => row.is_picked);
   const firstOpen = lines.find((row) => !row.is_ready) ?? lines[0];
   const [selected, setSelected] = useState<number | null>(firstOpen?.id ?? null);
   const [error, setError] = useState("");
@@ -128,7 +128,7 @@ function Prep({ order }: { order: ProductionOrderDetail }) {
           order={order}
           row={current}
           onPicked={(next) => {
-            const nextOpen = next.requirements.find((r) => !r.is_water && !r.is_ready);
+            const nextOpen = next.requirements.find((r) => r.is_picked && !r.is_ready);
             if (nextOpen) setSelected(nextOpen.id);
           }}
         />

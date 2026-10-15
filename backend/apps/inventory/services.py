@@ -181,6 +181,7 @@ def post_movement(
     *,
     reversal_of: StockMovement | None = None,
     transfer_group: uuid.UUID | None = None,
+    rework: bool = False,
 ) -> StockMovement:
     """Stok hareketi yazar ve bakiyeyi aynı transaction'da günceller. **Stoka dokunmanın tek yolu.**
 
@@ -188,6 +189,9 @@ def post_movement(
     yuvarlanır. Bakiye satırı `select_for_update` ile kilitlenir; sıfırın altına düşecekse
     `BusinessRuleError("negative_stock")`. Üretime çıkış ve sevkiyat yalnızca serbest ve SKT'si
     geçmemiş lottan yapılır (`lot_not_released`, `lot_expired`). `source`: hareketi doğuran belge.
+
+    `rework=True`: kural 4'ün tek istisnası (Faz 2, yeniden işleme). Yeniden işleme emri, kalite
+    kararıyla bloke edilmiş kendi lotunu tüketir; yalnızca `production.services` verir.
     """
     if not isinstance(quantity, Decimal):
         raise TypeError("Miktar Decimal olmalıdır.")
@@ -211,7 +215,15 @@ def post_movement(
 
     if movement_type in USABLE_LOT_ONLY_TYPES:
         # Lot satırı kilitlenir: aynı anda verilen bir red/bloke kararı tüketimi kaçırmasın.
-        assert_lot_usable(Lot.objects.select_for_update().get(pk=lot.pk))
+        locked = Lot.objects.select_for_update().get(pk=lot.pk)
+        if rework and movement_type == MovementType.ISSUE_PRODUCTION:
+            if locked.status != Lot.Status.BLOCKED:
+                raise BusinessRuleError(
+                    "rework_lot_not_blocked",
+                    f"Lot {locked.lot_no} yeniden işleme için bloke durumda olmalıdır.",
+                )
+        else:
+            assert_lot_usable(locked)
 
     balance = _lock_balance(material, lot, location)
     new_quantity = balance.quantity + quantity
@@ -450,7 +462,7 @@ def link_lots(
 
 
 def can_decide_lot(actor: User | None) -> bool:
-    """Lot serbest bırakma / reddetme / bloke yetkisi: laboratuvar (ve admin)."""
+    """Lot bloke etme yetkisi: laboratuvar (ve admin)."""
     actor = _actor(actor)
     return (
         actor is not None
@@ -472,8 +484,6 @@ def lot_payload(lot: Lot, **extra: Any) -> dict[str, Any]:
 
 
 def _set_lot_status(actor: User | None, lot: Lot, to_status: str, note: str) -> Lot:
-    if not can_decide_lot(actor):
-        raise PermissionDenied("Lot kararını yalnızca laboratuvar verir.")
     actor = _actor(actor)
     lot = Lot.objects.select_for_update().select_related("material").get(pk=lot.pk)
     from_status = lot.status
@@ -506,14 +516,32 @@ def _set_lot_status(actor: User | None, lot: Lot, to_status: str, note: str) -> 
 
 @transaction.atomic
 def release_lot(
-    actor: User | None, lot: Lot, note: str = "", to_location: Location | None = None
+    actor: User | None,
+    lot: Lot,
+    note: str = "",
+    to_location: Location | None = None,
+    *,
+    quality_decision: bool = False,
 ) -> Lot:
-    """Lotu serbest bırakır (rol: laboratuvar). Karantinadaki ya da bloke lot serbest bırakılır.
+    """Lotu serbest bırakır. Karantinadaki ya da bloke lot serbest bırakılır.
+
+    Faz 2: lot yalnızca kalite kararıyla serbest bırakılır; `quality_decision=True` yalnızca
+    `quality.services` tarafından verilir (yetkiyi kalite servisi denetler). Karar D-5: kalite
+    kararı dışında yalnızca `admin` rolü, gerekçe yazarak lotu elle serbest bırakabilir; gerekçe
+    denetim günlüğüne yazılır.
 
     Lotun karantina lokasyonlarındaki stoku `to_location`'a transfer edilir; karantinada stok
     varsa hedef lokasyon zorunludur ve karantina türünde olamaz. Olay: `lot.released`.
     """
     note = note.strip()
+    if not quality_decision:
+        user = _actor(actor)
+        if user is None or not user.is_active or not user.is_admin:
+            raise PermissionDenied(
+                "Lot yalnızca kalite kararıyla serbest bırakılır; elle serbest bırakma admin "
+                "yetkisindedir."
+            )
+        note = f"Elle serbest bırakma (D-5): {_require_note(note, 'Elle serbest bırakma')}"
     lot = _set_lot_status(actor, lot, Lot.Status.RELEASED, note)
     quarantined = list(
         StockBalance.objects.filter(
@@ -551,16 +579,21 @@ def _require_note(note: str, what: str) -> str:
 
 
 @transaction.atomic
-def reject_lot(actor: User | None, lot: Lot, note: str) -> Lot:
-    """Lotu reddeder (rol: laboratuvar). Neden zorunlu; reddedilen lot geri alınamaz, stoku yerinde
-    kalır (iade/imha Faz 4). Olay: `lot.rejected`."""
+def reject_lot(actor: User | None, lot: Lot, note: str, *, quality_decision: bool = False) -> Lot:
+    """Lotu reddeder. Faz 2: yalnızca kalite kararıyla (`quality_decision=True`, yalnızca
+    `quality.services` verir). Neden zorunlu; reddedilen lot geri alınamaz, stoku yerinde kalır
+    (iade/imha Faz 4). Olay: `lot.rejected`."""
+    if not quality_decision:
+        raise PermissionDenied("Lot yalnızca kalite kararıyla reddedilir.")
     return _set_lot_status(actor, lot, Lot.Status.REJECTED, _require_note(note, "Ret"))
 
 
 @transaction.atomic
-def block_lot(actor: User | None, lot: Lot, note: str) -> Lot:
-    """Lotu bloke eder (rol: laboratuvar). Neden zorunlu; bloke lot yeniden serbest bırakılabilir
-    ya da reddedilebilir. Olay: `lot.blocked`."""
+def block_lot(actor: User | None, lot: Lot, note: str, *, quality_decision: bool = False) -> Lot:
+    """Lotu bloke eder (rol: laboratuvar). Neden zorunlu; bloke lot yeni numuneyle yeniden karara
+    gider (serbest, ret ya da yeniden işleme). Olay: `lot.blocked`."""
+    if not quality_decision and not can_decide_lot(actor):
+        raise PermissionDenied("Lotu yalnızca laboratuvar bloke eder.")
     return _set_lot_status(actor, lot, Lot.Status.BLOCKED, _require_note(note, "Bloke"))
 
 

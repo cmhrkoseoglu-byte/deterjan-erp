@@ -126,11 +126,18 @@ def _guard_document_state(instance: DocumentModel, before: DocumentModel) -> Non
 
 
 def create_document[D: DocumentModel](
-    instance: D, actor: User | None, *, prefix: str, machine: StateMachine, note: str = ""
+    instance: D,
+    actor: User | None,
+    *,
+    prefix: str,
+    machine: StateMachine,
+    note: str = "",
+    event_payload: dict[str, Any] | None = None,
 ) -> D:
     """Yeni belgeyi numara (`next_document_number(prefix)`) ve başlangıç durumuyla oluşturur.
 
     Denetim kaydı (`create`) yazılır ve commit sonrası `<makine_adı>.created` olayı yayınlanır.
+    `event_payload` olayın standart alanlarına eklenir.
     """
     if not instance._state.adding:
         raise ValueError("create_document yalnızca yeni belge için kullanılır.")
@@ -146,6 +153,7 @@ def create_document[D: DocumentModel](
                 "id": instance.pk,
                 "number": instance.number,
                 "status": instance.status,
+                **(event_payload or {}),
             },
             _real_actor(actor),
         )

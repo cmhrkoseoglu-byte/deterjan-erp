@@ -14,7 +14,11 @@ from apps.recipes.models import RecipeLine, RecipeVersion
 
 
 class ProductionOrder(DocumentModel):
-    """Üretim emri (`UE-`). Karar D-4: emir tank kapasitesini aşarsa birden çok şarja bölünür."""
+    """Üretim emri (`UE-`). Karar D-4: emir tank kapasitesini aşarsa birden çok şarja bölünür.
+
+    Yeniden işleme emri (Faz 2): `rework_lot` kalite kararıyla bloke edilen bulk lottur ve emrin
+    ilk girdisidir. Reçete isteğe bağlıdır: seçilirse lot reçeteli yeni şarjla harmanlanır,
+    seçilmezse planlamanın girdiği düzeltme satırları (`ReworkAddition`) kullanılır."""
 
     class Status(models.TextChoices):
         DRAFT = "DRAFT", "Taslak"
@@ -40,6 +44,17 @@ class ProductionOrder(DocumentModel):
         verbose_name="reçete sürümü",
         on_delete=models.PROTECT,
         related_name="production_orders",
+        null=True,
+        blank=True,
+        help_text="Yalnızca yeniden işleme emrinde boş olabilir (düzeltme listesi).",
+    )
+    rework_lot = models.ForeignKey(
+        Lot,
+        verbose_name="yeniden işlenen lot",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="rework_orders",
     )
     planned_quantity = models.DecimalField("planlanan miktar", max_digits=18, decimal_places=4)
     unit = models.ForeignKey(
@@ -85,7 +100,12 @@ class ProductionOrder(DocumentModel):
                 condition=Q(planned_quantity__gt=0),
                 name="production_order_quantity_positive",
                 violation_error_message="Planlanan miktar sıfırdan büyük olmalıdır.",
-            )
+            ),
+            models.CheckConstraint(
+                condition=Q(recipe_version__isnull=False) | Q(rework_lot__isnull=False),
+                name="production_order_recipe_or_rework",
+                violation_error_message="Reçetesiz emir yalnızca yeniden işleme emri olabilir.",
+            ),
         ]
 
 
@@ -99,7 +119,21 @@ class ProductionRequirement(BaseModel):
         related_name="requirements",
     )
     recipe_line = models.ForeignKey(
-        RecipeLine, verbose_name="reçete satırı", on_delete=models.PROTECT, related_name="+"
+        RecipeLine,
+        verbose_name="reçete satırı",
+        on_delete=models.PROTECT,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    # Yeniden işleme: satır yalnızca bu lottan tüketilir (hazırlanmaz, bulunduğu yerden düşülür).
+    lot = models.ForeignKey(
+        Lot,
+        verbose_name="sabit lot",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
     )
     material = models.ForeignKey(
         Material, verbose_name="malzeme", on_delete=models.PROTECT, related_name="+"
@@ -128,6 +162,53 @@ class ProductionRequirement(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.order_id}/{self.sequence} {self.material_id}"
+
+    @property
+    def is_picked(self) -> bool:
+        """Depo hazırlar mı? Su (D-1) ve yeniden işlenen lot hazırlanmaz."""
+        return not self.is_water and self.lot_id is None
+
+
+class ReworkAddition(BaseModel):
+    """Yeniden işleme emrinin düzeltme satırı (taslakta planlama girer; onayda ihtiyaç olur)."""
+
+    order = models.ForeignKey(
+        ProductionOrder,
+        verbose_name="üretim emri",
+        on_delete=models.PROTECT,
+        related_name="rework_additions",
+    )
+    sequence = models.PositiveIntegerField("sıra")
+    material = models.ForeignKey(
+        Material, verbose_name="malzeme", on_delete=models.PROTECT, related_name="+"
+    )
+    quantity = models.DecimalField("miktar", max_digits=18, decimal_places=4)
+    unit = models.ForeignKey(
+        UnitOfMeasure, verbose_name="birim", on_delete=models.PROTECT, related_name="+"
+    )
+    tolerance_pct = models.DecimalField(
+        "tartım toleransı (%)", max_digits=5, decimal_places=2, default=2
+    )
+    is_water = models.BooleanField("şebeke suyu", default=False)
+    instruction = models.TextField("talimat", blank=True)
+
+    class Meta:
+        verbose_name = "düzeltme satırı"
+        verbose_name_plural = "düzeltme satırları"
+        ordering = ["order", "sequence"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["order", "sequence"], name="production_rework_addition_seq_uniq"
+            ),
+            models.CheckConstraint(
+                condition=Q(quantity__gt=0),
+                name="production_rework_addition_quantity_positive",
+                violation_error_message="Miktar sıfırdan büyük olmalıdır.",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.order_id} #{self.sequence} {self.material_id}"
 
 
 class MaterialPick(BaseModel):

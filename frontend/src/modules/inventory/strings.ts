@@ -5,7 +5,6 @@ export const it = {
     stock: "Stok sorgu",
     lots: "Lotlar",
     receipts: "Mal kabul",
-    approval: "Lot onay",
     adjustments: "Sayım düzeltme",
   },
   material: "Malzeme",
@@ -57,14 +56,14 @@ export const it = {
   statusNote: "Durum notu",
   label: "Etiket (PDF)",
   release: "Serbest bırak",
-  reject: "Reddet",
+  manualRelease: "Elle serbest bırak",
   block: "Bloke et",
   transfer: "Transfer",
-  releaseTitle: (lot: string) => `${lot} serbest bırakılsın mı?`,
+  releaseTitle: (lot: string) => `${lot} elle serbest bırakılsın mı?`,
   releaseTarget: "Hedef lokasyon",
   releaseTargetHint: "Karantinadaki stok bu lokasyona taşınır.",
-  rejectTitle: (lot: string) => `${lot} reddedilsin mi?`,
-  rejectHint: "Reddedilen lot geri alınamaz; stoku karantinada kalır.",
+  manualReleaseHint:
+    "Kalite kararı dışında elle serbest bırakma (yalnızca yönetici). Gerekçe denetim günlüğüne yazılır; olağan serbest bırakma numune kararıyla yapılır.",
   blockTitle: (lot: string) => `${lot} bloke edilsin mi?`,
   reasonRequired: "Neden (zorunlu)",
   noteOptional: "Not (isteğe bağlı)",
@@ -111,10 +110,6 @@ export const it = {
   notFound: "Bulunamadı",
   expiryHint: "Boş bırakılırsa raf ömründen hesaplanır.",
   lockedDoc: "Kaydedilmiş ya da iptal edilmiş belge değiştirilemez.",
-  // Lot onay
-  approvalIntro:
-    "Karantinadaki lotlar. Giriş kontrolü sonucuna göre serbest bırakın ya da reddedin.",
-  approvalEmpty: "Karantinada lot yok.",
   // Sayım düzeltme
   newAdjustment: "Yeni sayım düzeltme",
   adjustmentTitle: (n: string) => `Sayım düzeltme ${n}`,

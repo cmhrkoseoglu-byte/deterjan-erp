@@ -25,11 +25,11 @@ class RequirementRow:
 
     @property
     def is_ready(self) -> bool:
-        return self.requirement.is_water or self.picked >= self.lower_limit
+        return not self.requirement.is_picked or self.picked >= self.lower_limit
 
     @property
     def to_pick(self) -> Decimal:
-        if self.requirement.is_water:
+        if not self.requirement.is_picked:
             return Decimal(0)
         return max(self.requirement.required_quantity - self.picked, Decimal(0))
 
@@ -78,8 +78,10 @@ def pick_suggestions(
 def consumable_balances(
     order: ProductionOrder, requirement: ProductionRequirement
 ) -> QuerySet[StockBalance]:
-    """Tartımda kullanılabilecek stok (FEFO): su için tüm serbest stok, diğerleri için emrin
-    üretim lokasyonundaki serbest stok."""
+    """Tartımda kullanılabilecek stok (FEFO): su için tüm serbest stok, yeniden işlenen lot için
+    lotun bulunduğu her lokasyon, diğerleri için emrin üretim lokasyonundaki serbest stok."""
+    if requirement.lot_id is not None:
+        return inventory_selectors.balances().filter(lot_id=requirement.lot_id)
     balances = inventory_selectors.available_lots(requirement.material).exclude(
         location__location_type=Location.Type.QUARANTINE
     )

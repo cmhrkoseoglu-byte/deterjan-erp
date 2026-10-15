@@ -10,6 +10,10 @@ export const PRODUCTION_BASE = "/uretim";
 export const orderPath = (id: number | "yeni") => `${PRODUCTION_BASE}/emirler/${id}`;
 export const prepPath = (id: number) => `${PRODUCTION_BASE}/emirler/${id}/hazirlama`;
 export const batchPath = (id: number) => `${PRODUCTION_BASE}/sarjlar/${id}`;
+/** Bloke bulk lot için yeniden işleme emri formu (lot seçili gelir). */
+export const REWORK_PARAM = "yeniden-isleme";
+export const reworkOrderPath = (lotId: number) =>
+  `${PRODUCTION_BASE}/emirler/yeni?${REWORK_PARAM}=${lotId}`;
 
 export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
   DRAFT: "blue",

@@ -223,6 +223,7 @@ export async function getLot(id: number): Promise<LotDetail> {
   return data;
 }
 
+/** Kalite kararı dışında elle serbest bırakma (Karar D-5): yalnızca admin, gerekçe zorunlu. */
 export async function releaseLot(
   id: number,
   note: string,
@@ -232,11 +233,6 @@ export async function releaseLot(
     note,
     to_location: toLocation,
   });
-  return data;
-}
-
-export async function rejectLot(id: number, note: string): Promise<LotDetail> {
-  const { data } = await api.post<LotDetail>(`/inventory/lots/${id}/reject/`, { note });
   return data;
 }
 
