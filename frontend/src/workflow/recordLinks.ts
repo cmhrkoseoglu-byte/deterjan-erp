@@ -7,7 +7,11 @@ import type { RelatedRecord } from "../api/workflow";
  *   "inventory.lot": (id) => `/depo/lotlar/${id}`,
  *   "production.productionorder": (id) => `/uretim/emirler/${id}`,
  */
-export const RECORD_ROUTES: Record<string, (id: number) => string> = {};
+export const RECORD_ROUTES: Record<string, (id: number) => string> = {
+  "inventory.lot": (id) => `/depo/lotlar/${id}`,
+  "inventory.goodsreceipt": (id) => `/depo/mal-kabul/${id}`,
+  "inventory.stockadjustment": (id) => `/depo/sayim/${id}`,
+};
 
 /** Kaydın detay sayfası; sayfası henüz yoksa null. */
 export function recordPath(related: RelatedRecord | null | undefined): string | null {

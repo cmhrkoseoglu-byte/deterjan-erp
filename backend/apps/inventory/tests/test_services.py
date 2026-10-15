@@ -167,10 +167,13 @@ def test_movements_and_links_are_immutable(depo):
     [
         "UPDATE inventory_stockmovement SET note = 'x'",
         "DELETE FROM inventory_stockmovement",
+        "UPDATE inventory_lotlink SET quantity = 1",
+        "DELETE FROM inventory_lotlink",
     ],
 )
-def test_database_trigger_blocks_raw_changes(sql):
-    stocked_lot("10")
+def test_database_trigger_blocks_raw_changes(sql, depo):
+    parent = stocked_lot("10")
+    services.link_lots(depo, parent, stocked_lot("1"), D("1"))
     with pytest.raises(DatabaseError), transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(sql)
 
@@ -396,6 +399,13 @@ def test_goods_receipt_opens_incoming_qc_task(depo, receipt_setup, commit, make_
     task = Task.objects.get(rule_code="incoming_qc")
     assert task.title == f"Giriş kontrolü: {lot.lot_no}"
     assert task.related_object_id == lot.pk
+    assert task.status == Task.Status.OPEN
+
+    lab = make_user("laboratuvar")
+    with commit():
+        services.release_lot(lab, lot, to_location=receipt_setup["storage"])
+    task.refresh_from_db()
+    assert task.status == Task.Status.DONE
 
 
 def test_goods_receipt_converts_units_to_base(depo, receipt_setup):

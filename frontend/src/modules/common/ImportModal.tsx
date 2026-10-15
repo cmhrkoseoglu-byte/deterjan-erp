@@ -27,11 +27,15 @@ import {
 import { ct } from "./strings";
 
 interface Props {
-  kind: ImportKind;
+  kind?: ImportKind;
   title: string;
   opened: boolean;
   onClose: () => void;
   onImported: () => void;
+  /** Ana veri dışı içe aktarmalar (ör. açılış stoku) kendi uç noktalarını verir. */
+  upload?: (file: File, confirm: boolean) => Promise<ImportReport>;
+  templateUrl?: string;
+  intro?: string;
 }
 
 /** 400 `import_has_errors` yanıtındaki raporu çıkarır. */
@@ -44,7 +48,16 @@ function reportFromError(error: unknown): ImportReport | null {
 }
 
 /** Excel / CSV içe aktarma: dosya seç → önizle (satır hataları) → aktar. */
-export function ImportModal({ kind, title, opened, onClose, onImported }: Props) {
+export function ImportModal({
+  kind,
+  title,
+  opened,
+  onClose,
+  onImported,
+  upload: uploadFn,
+  templateUrl,
+  intro,
+}: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<ImportReport | null>(null);
   const [error, setError] = useState("");
@@ -58,7 +71,8 @@ export function ImportModal({ kind, title, opened, onClose, onImported }: Props)
   }, [opened]);
 
   const upload = useMutation({
-    mutationFn: ({ confirm }: { confirm: boolean }) => uploadImport(kind, file!, confirm),
+    mutationFn: ({ confirm }: { confirm: boolean }) =>
+      uploadFn ? uploadFn(file!, confirm) : uploadImport(kind!, file!, confirm),
     onSuccess: (result) => {
       setError("");
       setReport(result);
@@ -84,8 +98,8 @@ export function ImportModal({ kind, title, opened, onClose, onImported }: Props)
   return (
     <Modal opened={opened} onClose={onClose} title={ct.importTitle(title)} size="xl">
       <Stack>
-        <Text size="sm">{ct.importIntro}</Text>
-        <Anchor href={importTemplateUrl(kind)} download size="sm">
+        <Text size="sm">{intro ?? ct.importIntro}</Text>
+        <Anchor href={templateUrl ?? importTemplateUrl(kind!)} download size="sm">
           <Group gap={4}>
             <IconDownload size={16} />
             {ct.importTemplate}

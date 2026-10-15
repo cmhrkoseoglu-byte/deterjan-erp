@@ -13,10 +13,16 @@ describe("visibleMenu", () => {
     expect(keys(userWith(["depo"]))).toEqual(["home", "inventory"]);
   });
 
-  it("laboratuvar rolü kalite modülünü görür, depoyu görmez", () => {
+  it("laboratuvar rolü kalite modülünü ve (lot onay için) depoyu görür", () => {
     const visible = keys(userWith(["laboratuvar"]));
     expect(visible).toContain("quality");
-    expect(visible).not.toContain("inventory");
+    expect(visible).toContain("inventory");
+    expect(visible).not.toContain("sales");
+  });
+
+  it("stok sorgu her role açıktır", () => {
+    expect(keys(userWith(["uretim"]))).toContain("inventory");
+    expect(keys(userWith(["sevkiyat"]))).toContain("inventory");
   });
 
   it("reçeteleri planlama ve laboratuvar görür", () => {
