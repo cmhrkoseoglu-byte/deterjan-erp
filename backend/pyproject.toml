@@ -26,6 +26,8 @@ dev = [
     "pytest>=8.0",
     "pytest-django>=4.8",
     "factory-boy>=3.3",
+    # channels.testing (WebSocket testleri) daphne'yi içe aktarır.
+    "daphne>=4.1",
     "pre-commit>=4.0",
     # Sürüm .pre-commit-config.yaml'daki ruff-pre-commit rev ile aynı tutulmalı.
     "ruff==0.17.0",
