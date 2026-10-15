@@ -1,0 +1,63 @@
+// Kullanıcıya görünen tüm metinler (CLAUDE.md §6: arayüz Türkçe).
+export const tr = {
+  appName: "Deterjan ERP",
+  common: {
+    loading: "Yükleniyor…",
+    unexpectedError: "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.",
+    networkError: "Sunucuya ulaşılamadı. Bağlantınızı kontrol edin.",
+    backToHome: "Ana sayfaya dön",
+  },
+  auth: {
+    loginTitle: "Giriş yap",
+    loginSubtitle: "Üretim takip sistemine hoş geldiniz",
+    username: "Kullanıcı adı",
+    password: "Şifre",
+    submit: "Giriş yap",
+    logout: "Çıkış yap",
+    usernameRequired: "Kullanıcı adı gerekli",
+    passwordRequired: "Şifre gerekli",
+  },
+  layout: {
+    notifications: "Bildirimler",
+    openMenu: "Menüyü aç/kapat",
+    roles: "Roller",
+  },
+  roles: {
+    admin: "Sistem yöneticisi",
+    yonetim: "Yönetim",
+    planlama: "Planlama",
+    depo: "Depo",
+    uretim: "Üretim",
+    laboratuvar: "Laboratuvar",
+    dolum: "Dolum",
+    sevkiyat: "Sevkiyat",
+    satin_alma: "Satın alma",
+  },
+  menu: {
+    home: "Görevlerim",
+    masterdata: "Ana veriler",
+    inventory: "Depo ve stok",
+    production: "Üretim",
+    quality: "Kalite kontrol",
+    filling: "Dolum",
+    sales: "Sevkiyat",
+    purchasing: "Satın alma",
+    reporting: "Raporlar",
+    adminPanel: "Yönetim paneli",
+  },
+  home: {
+    greeting: (name: string) => `Merhaba, ${name}`,
+    tasksTitle: "Görevlerim",
+    tasksEmpty: "Görev modülü Faz 1'de eklenecek. Size atanan görevler burada listelenecek.",
+  },
+  placeholder: {
+    comingSoon: "Bu modül henüz hazır değil.",
+    plannedPhase: (phase: number) => `Faz ${phase} kapsamında eklenecek.`,
+  },
+  errors: {
+    notFoundTitle: "Sayfa bulunamadı",
+    notFoundText: "Aradığınız sayfa yok ya da taşınmış olabilir.",
+    forbiddenTitle: "Yetkiniz yok",
+    forbiddenText: "Bu sayfayı görüntülemek için gerekli role sahip değilsiniz.",
+  },
+} as const;
