@@ -1,7 +1,9 @@
 """Stok okuma sorguları: bakiyeler, FEFO'ya göre kullanılabilir lotlar, lot soy ağacı (geri/ileri
 izleme), SKT'si yaklaşan lotlar, minimum stok altındaki malzemeler."""
 
+import re
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, Literal
@@ -11,7 +13,8 @@ from django.db.models import DecimalField, F, OuterRef, Q, QuerySet, Subquery, S
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from apps.inventory.models import Lot, LotLink, StockBalance
+from apps.core.exceptions import BusinessRuleError
+from apps.inventory.models import Lot, LotLink, PalletLabel, StockBalance
 from apps.masterdata.models import Location, Material
 
 ZERO = Value(Decimal(0), output_field=DecimalField(max_digits=18, decimal_places=4))
@@ -207,3 +210,171 @@ def below_min_stock() -> QuerySet[Material]:
         .filter(stock_quantity__lt=F("min_stock"))
         .order_by("code")
     )
+
+
+# --- barkod okutma -----------------------------------------------------------------------------
+
+# Barkod okuyucunun başa eklediği AIM simge kimlikleri (]C1 = GS1-128, ]Q3 = QR, ]d2 = DataMatrix).
+_AIM_PREFIX = re.compile(r"^\][A-Za-z][0-9]")
+_GS = "\x1d"
+# Ham (parantezsiz) GS1 verisi olarak denenecek başlangıçlar: SSCC ya da GTIN.
+_RAW_GS1 = re.compile(r"^(00\d{18}|0[12]\d{14})")
+_GS1_PAREN = re.compile(r"\((\d{2,4})\)([^(]*)")
+# Desteklenen AI'lar ve sabit uzunlukları (None: değişken, GS ya da sonla biter).
+_GS1_AIS: dict[str, int | None] = {
+    "00": 18,
+    "01": 14,
+    "02": 14,
+    "11": 6,
+    "13": 6,
+    "15": 6,
+    "17": 6,
+    "10": None,
+    "21": None,
+    "37": None,
+}
+SCAN_PREFIXES = {"LOT:": "lot", "LOC:": "location", "MAT:": "material"}
+
+
+@dataclass
+class ScanResult:
+    """Okutulan kodun çözümü. `lots` aynı lot numarasının birden çok malzemede olabileceği için
+    listedir (okutma bileşeni beklenen malzemeye göre seçer)."""
+
+    kind: Literal["lot", "location", "material", "pallet"]
+    code: str
+    lots: list[Lot] = field(default_factory=list)
+    material: Material | None = None
+    location: Location | None = None
+    pallet: PalletLabel | None = None
+    gs1: dict[str, str] = field(default_factory=dict)
+
+
+def parse_gs1(code: str) -> dict[str, str]:
+    """GS1 verisini AI → değer sözlüğüne çevirir: "(01)…(10)…" ya da FNC1/GS ayırıcılı ham veri.
+    Çözülemezse boş sözlük."""
+    if code.startswith("("):
+        pairs = _GS1_PAREN.findall(code)
+        if not pairs or "".join(f"({ai}){value}" for ai, value in pairs) != code:
+            return {}
+        parsed = {ai: value.strip(_GS) for ai, value in pairs}
+        for ai, value in parsed.items():
+            length = _GS1_AIS.get(ai)
+            if length is not None and (len(value) != length or not value.isdigit()):
+                return {}
+        return parsed
+    result: dict[str, str] = {}
+    rest = code
+    while rest:
+        rest = rest.lstrip(_GS)
+        if not rest:
+            break
+        ai = rest[:2]
+        if ai not in _GS1_AIS:
+            return {}
+        length = _GS1_AIS[ai]
+        if length is None:
+            end = rest.find(_GS, 2)
+            value, rest = (rest[2:], "") if end == -1 else (rest[2:end], rest[end:])
+        else:
+            value, rest = rest[2 : 2 + length], rest[2 + length :]
+            if len(value) != length or not value.isdigit():
+                return {}
+        result[ai] = value
+    return result
+
+
+def _material_by_gtin(gtin: str) -> Material | None:
+    """(01)/(02) 14 haneli GTIN'i kayıtlı GTIN-8/12/13/14 ile eşler."""
+    candidates = {gtin, gtin[1:], gtin[2:], gtin[6:]}
+    return (
+        Material.objects.select_related("base_unit")
+        .filter(gtin__in=[c for c in candidates if c])
+        .first()
+    )
+
+
+def _lots_by_no(lot_no: str, material: Material | None = None) -> list[Lot]:
+    queryset = Lot.objects.select_related("material__base_unit").filter(lot_no__iexact=lot_no)
+    if material is not None:
+        queryset = queryset.filter(material=material)
+    return list(queryset.order_by("material__code"))
+
+
+def decode_scan(raw: str) -> ScanResult:
+    """Okutulan barkodu çözer: `LOT:` / `LOC:` / `MAT:` önekleri, GS1 (00 SSCC, 01/02 GTIN,
+    10 lot) ve öneksiz değerler (Faz 1'de basılmış lot no, lokasyon ya da malzeme kodu, GTIN).
+
+    Bulunamazsa `scan_not_found` hatası.
+    """
+    code = raw.strip()
+    aim = _AIM_PREFIX.match(code)
+    if aim:
+        code = code[aim.end() :]
+    code = code.lstrip(_GS)
+    upper = code.upper()
+
+    for prefix, kind in SCAN_PREFIXES.items():
+        if not upper.startswith(prefix):
+            continue
+        value = code[len(prefix) :].strip()
+        if kind == "lot" and (lots := _lots_by_no(value)):
+            return ScanResult("lot", raw, lots=lots, material=lots[0].material)
+        if kind == "location":
+            location = Location.objects.select_related("warehouse").filter(code=value.upper())
+            if found := location.first():
+                return ScanResult("location", raw, location=found)
+        if kind == "material":
+            material = Material.objects.filter(code=value.upper()).first()
+            if material is not None:
+                return ScanResult("material", raw, material=material)
+        raise BusinessRuleError("scan_not_found", f"Okutulan kod bulunamadı: {value}.")
+
+    gs1: dict[str, str] = {}
+    if code.startswith("(") or (aim and aim.group() == "]C1") or _RAW_GS1.match(code):
+        gs1 = parse_gs1(code)
+    if gs1:
+        if "00" in gs1:
+            pallet = (
+                PalletLabel.objects.select_related("lot__material__base_unit")
+                .filter(sscc=gs1["00"])
+                .first()
+            )
+            if pallet is None:
+                raise BusinessRuleError(
+                    "scan_not_found", f"Bu SSCC ile palet kaydı yok: {gs1['00']}."
+                )
+            return ScanResult(
+                "pallet",
+                raw,
+                lots=[pallet.lot],
+                material=pallet.lot.material,
+                pallet=pallet,
+                gs1=gs1,
+            )
+        gtin = gs1.get("01") or gs1.get("02")
+        material = _material_by_gtin(gtin) if gtin else None
+        if material is None:
+            raise BusinessRuleError(
+                "scan_not_found", f"Bu GTIN ile kayıtlı malzeme yok: {gtin or code}."
+            )
+        if "10" in gs1:
+            lots = _lots_by_no(gs1["10"], material)
+            if not lots:
+                raise BusinessRuleError(
+                    "scan_not_found", f"{material.code} malzemesinde {gs1['10']} lotu bulunamadı."
+                )
+            return ScanResult("lot", raw, lots=lots, material=material, gs1=gs1)
+        return ScanResult("material", raw, material=material, gs1=gs1)
+
+    if lots := _lots_by_no(code):
+        return ScanResult("lot", raw, lots=lots, material=lots[0].material)
+    location_match = Location.objects.select_related("warehouse").filter(code=upper).first()
+    if location_match is not None:
+        return ScanResult("location", raw, location=location_match)
+    material_match = Material.objects.filter(code=upper).first()
+    if material_match is None and code.isdigit():
+        material_match = _material_by_gtin(code.zfill(14))
+    if material_match is not None:
+        return ScanResult("material", raw, material=material_match)
+    raise BusinessRuleError("scan_not_found", f"Okutulan kod tanınmadı: {code}.")

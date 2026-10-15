@@ -4,11 +4,13 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.core.api.labels import LabelOutputSerializer, PrintRequestSerializer
 from apps.core.models import User
 from apps.inventory.models import (
     GoodsReceipt,
     GoodsReceiptLine,
     Lot,
+    PalletLabel,
     StockAdjustment,
     StockAdjustmentLine,
     StockBalance,
@@ -43,6 +45,7 @@ class LotSerializer(serializers.ModelSerializer):
     material_code = serializers.CharField(source="material.code", read_only=True)
     material_name = serializers.CharField(source="material.name", read_only=True)
     material_type = serializers.CharField(source="material.material_type", read_only=True)
+    material_gtin = serializers.CharField(source="material.gtin", read_only=True)
     unit = serializers.CharField(source="material.base_unit.code", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     source_display = serializers.CharField(source="get_source_display", read_only=True)
@@ -63,6 +66,7 @@ class LotSerializer(serializers.ModelSerializer):
             "material_code",
             "material_name",
             "material_type",
+            "material_gtin",
             "unit",
             "status",
             "status_display",
@@ -444,3 +448,102 @@ class StockAdjustmentDetailSerializer(StockAdjustmentSerializer):
 class OpeningUploadSerializer(serializers.Serializer):
     file = serializers.FileField()
     confirm = serializers.BooleanField(default=False)
+
+
+# --- etiket ve okutma ----------------------------------------------------------------------------
+
+
+class CaseLabelOutputSerializer(LabelOutputSerializer):
+    units_per_case = serializers.IntegerField(
+        min_value=1, required=False, allow_null=True, label="koli içi adet"
+    )
+
+
+LOT_LABEL_KINDS = [("lot", "Lot etiketi"), ("case", "Koli etiketi")]
+
+
+class LotPrintSerializer(PrintRequestSerializer):
+    kind = serializers.ChoiceField(choices=LOT_LABEL_KINDS)
+    units_per_case = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+
+
+class PalletLabelSerializer(serializers.ModelSerializer):
+    lot_no = serializers.CharField(source="lot.lot_no", read_only=True)
+    material_code = serializers.CharField(source="lot.material.code", read_only=True)
+    material_name = serializers.CharField(source="lot.material.name", read_only=True)
+    created_by_name = UserNameField(source="created_by")
+
+    class Meta:
+        model = PalletLabel
+        fields = [
+            "id",
+            "sscc",
+            "lot",
+            "lot_no",
+            "material_code",
+            "material_name",
+            "case_count",
+            "units_per_case",
+            "created_by_name",
+            "created_at",
+        ]
+        read_only_fields = ["id", "sscc", "created_at"]
+
+
+class ScanLotSerializer(serializers.ModelSerializer):
+    material_code = serializers.CharField(source="material.code", read_only=True)
+    material_name = serializers.CharField(source="material.name", read_only=True)
+    material_type = serializers.CharField(source="material.material_type", read_only=True)
+    unit = serializers.CharField(source="material.base_unit.code", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    is_expired = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Lot
+        fields = [
+            "id",
+            "lot_no",
+            "material",
+            "material_code",
+            "material_name",
+            "material_type",
+            "unit",
+            "status",
+            "status_display",
+            "expiry_date",
+            "is_expired",
+        ]
+        read_only_fields = fields
+
+    def get_is_expired(self, lot: Lot) -> bool:
+        return lot.expiry_date is not None and lot.expiry_date < timezone.localdate()
+
+
+class ScanMaterialSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    code = serializers.CharField()
+    name = serializers.CharField()
+    material_type = serializers.CharField()
+
+
+class ScanLocationSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    code = serializers.CharField()
+    name = serializers.CharField()
+    warehouse_code = serializers.CharField(source="warehouse.code")
+
+
+class ScanPalletSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    sscc = serializers.CharField()
+    case_count = serializers.IntegerField()
+
+
+class ScanResultSerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=["lot", "location", "material", "pallet"])
+    code = serializers.CharField()
+    lots = ScanLotSerializer(many=True)
+    material = ScanMaterialSerializer(allow_null=True)
+    location = ScanLocationSerializer(allow_null=True)
+    pallet = ScanPalletSerializer(allow_null=True)
+    gs1 = serializers.DictField(child=serializers.CharField())

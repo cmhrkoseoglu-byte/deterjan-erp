@@ -15,8 +15,10 @@ router.register("locations", views.LocationViewSet, basename="location")
 router.register("equipment", views.EquipmentViewSet, basename="equipment")
 router.register("suppliers", views.SupplierViewSet, basename="supplier")
 router.register("customers", views.CustomerViewSet, basename="customer")
+router.register("printers", views.PrinterViewSet, basename="printer")
 
 urlpatterns = [
+    path("label-settings/", views.LabelSettingsView.as_view(), name="label-settings"),
     path(
         "import/templates/<str:kind>/",
         views.ImportTemplateView.as_view(),

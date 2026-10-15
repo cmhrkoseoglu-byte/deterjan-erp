@@ -5,10 +5,12 @@ from rest_framework import serializers
 from apps.masterdata.models import (
     Customer,
     Equipment,
+    LabelSettings,
     Location,
     Material,
     MaterialCategory,
     MaterialUnitConversion,
+    Printer,
     Supplier,
     UnitOfMeasure,
     Warehouse,
@@ -88,6 +90,7 @@ class MaterialSerializer(serializers.ModelSerializer):
             "density",
             "shelf_life_days",
             "min_stock",
+            "gtin",
             "requires_incoming_qc",
             "is_hazardous",
             "storage_notes",
@@ -224,3 +227,51 @@ class ImportReportSerializer(serializers.Serializer):
     file_errors = serializers.ListField(child=serializers.CharField())
     rows = ImportRowSerializer(many=True)
     imported = serializers.BooleanField()
+
+
+class PrinterSerializer(serializers.ModelSerializer):
+    printer_type_display = serializers.CharField(source="get_printer_type_display", read_only=True)
+    location_code = serializers.CharField(source="location.code", read_only=True, default=None)
+
+    class Meta:
+        model = Printer
+        fields = [
+            "id",
+            "code",
+            "name",
+            "printer_type",
+            "printer_type_display",
+            "host",
+            "port",
+            "dpi",
+            "location",
+            "location_code",
+            "note",
+            *AUDIT_FIELDS,
+        ]
+        read_only_fields = AUDIT_FIELDS
+        extra_kwargs = NO_UNIQUE_VALIDATOR
+
+
+class LabelSettingsSerializer(serializers.ModelSerializer):
+    sscc_enabled = serializers.SerializerMethodField()
+    default_printer_code = serializers.CharField(
+        source="default_printer.code", read_only=True, default=None
+    )
+
+    class Meta:
+        model = LabelSettings
+        fields = [
+            "company_name",
+            "gs1_company_prefix",
+            "sscc_extension_digit",
+            "next_sscc_serial",
+            "default_printer",
+            "default_printer_code",
+            "sscc_enabled",
+            "updated_at",
+        ]
+        read_only_fields = ["next_sscc_serial", "updated_at"]
+
+    def get_sscc_enabled(self, instance: LabelSettings) -> bool:
+        return bool(instance.gs1_company_prefix)

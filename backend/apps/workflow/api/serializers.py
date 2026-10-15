@@ -3,7 +3,7 @@ from typing import Any
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from apps.core.api.serializers import AuditLogSerializer, ContentTypeField
+from apps.core.api.serializers import AttachmentSerializer, AuditLogSerializer, ContentTypeField
 from apps.core.models import User
 from apps.workflow.models import Comment, Notification, Task
 from apps.workflow.selectors import user_can_act_on_task
@@ -141,6 +141,7 @@ class CommentSerializer(serializers.ModelSerializer):
     author = UserBriefSerializer(read_only=True)
     mentions = UserBriefSerializer(many=True, read_only=True)
     can_edit = serializers.SerializerMethodField()
+    attachments = serializers.SerializerMethodField()
 
     class Meta:
         model = Comment
@@ -154,12 +155,18 @@ class CommentSerializer(serializers.ModelSerializer):
             "created_at",
             "edited_at",
             "can_edit",
+            "attachments",
         ]
         read_only_fields = fields
 
     def get_can_edit(self, obj: Comment) -> bool:
         request = self.context.get("request")
         return request is not None and obj.author_id == request.user.pk
+
+    @extend_schema_field(AttachmentSerializer(many=True))
+    def get_attachments(self, obj: Comment) -> list[dict]:
+        items = [item for item in obj.attachments.all() if item.is_active]
+        return list(AttachmentSerializer(items, many=True, context=self.context).data)
 
 
 class CommentCreateSerializer(serializers.Serializer):

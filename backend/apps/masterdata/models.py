@@ -6,7 +6,7 @@ Bu dosyada iş mantığı yoktur; yazma işlemleri `services.py` üzerinden yap�
 from django.db import models
 from django.db.models import Q
 
-from apps.core.models import MasterDataModel
+from apps.core.models import BaseModel, MasterDataModel
 from apps.masterdata.fields import CodeField
 
 
@@ -93,6 +93,13 @@ class Material(MasterDataModel):
         max_digits=18,
         decimal_places=4,
     )
+    # GS1 ürün numarası (Karar D-6): doluysa mamul koli etiketi GS1-128 basılır.
+    gtin = models.CharField(
+        "GTIN (barkod no)",
+        max_length=14,
+        blank=True,
+        help_text="GTIN-8/12/13/14; kontrol hanesi doğrulanır",
+    )
     requires_incoming_qc = models.BooleanField("giriş kontrolü gerekli", default=True)
     is_hazardous = models.BooleanField("tehlikeli madde", default=False)
     storage_notes = models.TextField("depolama notu", blank=True)
@@ -111,6 +118,12 @@ class Material(MasterDataModel):
                 condition=Q(min_stock__isnull=True) | Q(min_stock__gte=0),
                 name="masterdata_material_min_stock_non_negative",
                 violation_error_message="Minimum stok negatif olamaz.",
+            ),
+            models.UniqueConstraint(
+                fields=["gtin"],
+                condition=~Q(gtin=""),
+                name="masterdata_material_gtin_uniq",
+                violation_error_message="Bu GTIN başka bir malzemede kayıtlı.",
             ),
         ]
 
@@ -279,3 +292,87 @@ class Customer(BusinessPartner):
     class Meta(BusinessPartner.Meta):
         verbose_name = "müşteri"
         verbose_name_plural = "müşteriler"
+
+
+class Printer(MasterDataModel):
+    """Etiket yazıcısı. Zebra yazıcılara ağ üzerinden (TCP 9100) ham ZPL gönderilir."""
+
+    class Type(models.TextChoices):
+        ZPL = "ZPL", "Zebra (ZPL)"
+
+    code = CodeField("kod", unique=True)
+    name = models.CharField("ad", max_length=128)
+    printer_type = models.CharField(
+        "yazıcı türü", max_length=16, choices=Type.choices, default=Type.ZPL
+    )
+    host = models.CharField("IP adresi / ana bilgisayar", max_length=255)
+    port = models.PositiveIntegerField("port", default=9100)
+    dpi = models.PositiveIntegerField("çözünürlük (dpi)", default=203)
+    location = models.ForeignKey(
+        Location,
+        verbose_name="lokasyon",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="printers",
+    )
+    note = models.TextField("not", blank=True)
+
+    class Meta:
+        verbose_name = "yazıcı"
+        verbose_name_plural = "yazıcılar"
+        ordering = ["code"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(port__gte=1) & Q(port__lte=65535),
+                name="masterdata_printer_port_range",
+                violation_error_message="Port 1 ile 65535 arasında olmalıdır.",
+            ),
+            models.CheckConstraint(
+                condition=Q(dpi__in=[152, 203, 300, 600]),
+                name="masterdata_printer_dpi_valid",
+                violation_error_message="Çözünürlük 152, 203, 300 ya da 600 dpi olmalıdır.",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.code} - {self.name}"
+
+
+class LabelSettings(BaseModel):
+    """Etiket ayarları (tek kayıt). GS1 firma öneki girilince SSCC palet etiketi açılır
+    (Karar D-6). Yalnızca `masterdata.services.update_label_settings` ve `next_sscc` yazar."""
+
+    company_name = models.CharField("etikette firma adı", max_length=128, blank=True)
+    gs1_company_prefix = models.CharField(
+        "GS1 firma öneki",
+        max_length=12,
+        blank=True,
+        help_text="6-12 hane; boşsa SSCC palet etiketi kapalıdır",
+    )
+    sscc_extension_digit = models.PositiveSmallIntegerField("SSCC uzantı hanesi", default=0)
+    next_sscc_serial = models.PositiveBigIntegerField(
+        "sıradaki SSCC seri no", default=1, editable=False
+    )
+    default_printer = models.ForeignKey(
+        Printer,
+        verbose_name="varsayılan yazıcı",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "etiket ayarları"
+        verbose_name_plural = "etiket ayarları"
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(sscc_extension_digit__lte=9),
+                name="masterdata_labelsettings_extension_digit",
+                violation_error_message="Uzantı hanesi 0-9 arasında olmalıdır.",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return "Etiket ayarları"

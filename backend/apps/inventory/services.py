@@ -34,6 +34,7 @@ from apps.inventory.models import (
     Lot,
     LotLink,
     LotNumberSequence,
+    PalletLabel,
     StockAdjustment,
     StockAdjustmentLine,
     StockBalance,
@@ -1049,3 +1050,31 @@ def post_opening_balance(
         None,
         "Açılış stoku",
     )
+
+
+# --- etiketler ---------------------------------------------------------------------------------
+
+
+@transaction.atomic
+def create_pallet_label(
+    actor: User, lot: Lot, case_count: int, *, units_per_case: int | None = None
+) -> PalletLabel:
+    """Mamul lotu için yeni SSCC'li palet etiketi kaydı açar (Karar D-6). GS1 firma öneki
+    tanımlı değilse `sscc_disabled`; mamul olmayan ya da reddedilmiş lotta hata."""
+    if lot.material.material_type != Material.Type.FINISHED:
+        raise BusinessRuleError(
+            "not_finished_goods", "Palet etiketi yalnızca mamul lotlarına basılır."
+        )
+    if lot.status == Lot.Status.REJECTED:
+        raise BusinessRuleError("lot_rejected", f"{lot.lot_no} reddedildi; etiket basılmaz.")
+    if case_count < 1:
+        raise BusinessRuleError("invalid_case_count", "Koli sayısı en az 1 olmalıdır.")
+    if units_per_case is not None and units_per_case < 1:
+        raise BusinessRuleError("invalid_units_per_case", "Koli içi adet en az 1 olmalıdır.")
+    pallet = PalletLabel(
+        sscc=masterdata.next_sscc(actor),
+        lot=lot,
+        case_count=case_count,
+        units_per_case=units_per_case,
+    )
+    return save_with_audit(pallet, actor)

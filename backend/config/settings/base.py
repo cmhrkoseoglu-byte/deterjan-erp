@@ -90,7 +90,7 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -160,6 +160,8 @@ SPECTACULAR_SETTINGS = {
         "StockDocumentStatusEnum": "apps.inventory.models.GoodsReceipt.Status",
         "ProductionBatchStatusEnum": "apps.production.models.ProductionBatch.Status",
         "SampleStageEnum": "apps.quality.models.SampleStage",
+        "AttachmentKindEnum": "apps.core.models.Attachment.Kind",
+        "LotLabelKindEnum": "apps.inventory.api.serializers.LOT_LABEL_KINDS",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
@@ -177,6 +179,11 @@ DEMO_USER_PASSWORD = env("DEMO_USER_PASSWORD", default="")
 
 # Üretim: verim (çıktı / şarj miktarı) bu yüzdenin altındaysa `production.low_yield` olayı.
 PRODUCTION_LOW_YIELD_THRESHOLD_PCT = env("PRODUCTION_LOW_YIELD_THRESHOLD_PCT", default="97")
+
+# Ekler (Adım 2.4): en büyük dosya boyutu.
+ATTACHMENT_MAX_BYTES = env.int("ATTACHMENT_MAX_BYTES", default=20 * 1024 * 1024)
+# Etiket yazıcısına (TCP 9100) bağlantı zaman aşımı, saniye.
+PRINTER_TIMEOUT_SECONDS = env.float("PRINTER_TIMEOUT_SECONDS", default=5.0)
 
 LOGGING = {
     "version": 1,
