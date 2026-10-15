@@ -4,11 +4,13 @@ import { AxiosError, AxiosHeaders } from "axios";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "./api/auth";
+import * as workflowApi from "./api/workflow";
 import { api } from "./api/client";
 import type { CurrentUser } from "./api/types";
 import { renderApp } from "./test/render";
 
 vi.mock("./api/auth");
+vi.mock("./api/workflow");
 
 const depoUser: CurrentUser = {
   id: 7,
@@ -34,6 +36,10 @@ describe("uygulama akışı", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(authApi.fetchCsrf).mockResolvedValue();
+    const empty = { count: 0, next: null, previous: null, results: [] };
+    vi.mocked(workflowApi.fetchTasks).mockResolvedValue(empty);
+    vi.mocked(workflowApi.fetchNotifications).mockResolvedValue(empty);
+    vi.mocked(workflowApi.fetchUnreadCount).mockResolvedValue(0);
   });
 
   it("oturum yoksa giriş ekranına yönlendirir", async () => {

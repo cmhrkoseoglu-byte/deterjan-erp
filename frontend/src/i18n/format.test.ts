@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatDateTime, formatMoney, formatNumber } from "./format";
+import { formatDate, formatDateTime, formatElapsed, formatMoney, formatNumber } from "./format";
 
 describe("formatNumber", () => {
   it("Türkçe binlik ve ondalık ayırıcı kullanır", () => {
@@ -40,5 +40,24 @@ describe("formatDate", () => {
   it("boş değerde boş metin döner", () => {
     expect(formatDate(null)).toBe("");
     expect(formatDateTime(undefined)).toBe("");
+  });
+});
+
+describe("formatElapsed", () => {
+  const now = new Date("2026-10-15T12:00:00Z");
+  it.each([
+    ["2026-10-15T11:59:30Z", "az önce"],
+    ["2026-10-15T11:15:00Z", "45 dk"],
+    ["2026-10-15T09:00:00Z", "3 sa"],
+    ["2026-10-15T08:40:00Z", "3 sa 20 dk"],
+    ["2026-10-13T08:00:00Z", "2 gün 4 sa"],
+    ["2026-10-14T12:00:00Z", "1 gün"],
+    ["2026-10-16T12:00:00Z", "az önce"],
+  ])("%s → %s", (from, expected) => {
+    expect(formatElapsed(from, now)).toBe(expected);
+  });
+
+  it("boş değerde boş metin", () => {
+    expect(formatElapsed(null, now)).toBe("");
   });
 });

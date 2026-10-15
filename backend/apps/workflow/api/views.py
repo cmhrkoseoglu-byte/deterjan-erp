@@ -17,7 +17,6 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from apps.core.api.serializers import AuditLogSerializer
 from apps.core.models import AuditLog, User
 from apps.workflow import selectors, services
 from apps.workflow.api.serializers import (
@@ -27,6 +26,7 @@ from apps.workflow.api.serializers import (
     MarkReadResultSerializer,
     MarkReadSerializer,
     NotificationSerializer,
+    RecordHistorySerializer,
     RecordQuerySerializer,
     TaskCompleteSerializer,
     TaskSerializer,
@@ -208,7 +208,7 @@ class CommentViewSet(
 class RecordHistoryView(generics.ListAPIView):
     """Bir kaydın denetim geçmişi (yorum panelindeki "Geçmiş" sekmesi)."""
 
-    serializer_class = AuditLogSerializer
+    serializer_class = RecordHistorySerializer
     filter_backends: list = []
 
     def get_queryset(self) -> QuerySet[AuditLog]:

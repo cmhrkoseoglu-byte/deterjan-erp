@@ -178,4 +178,19 @@ class RecordQuerySerializer(serializers.Serializer):
 
 
 class RecordHistorySerializer(AuditLogSerializer):
-    pass
+    """Yorum panelindeki kayıt geçmişi: herkese açık olduğu için IP adresi gösterilmez."""
+
+    action_label = serializers.CharField(source="get_action_display", read_only=True)
+
+    class Meta(AuditLogSerializer.Meta):
+        fields = [
+            "id",
+            "timestamp",
+            "actor",
+            "actor_name",
+            "action",
+            "action_label",
+            "changes",
+            "note",
+        ]
+        read_only_fields = fields

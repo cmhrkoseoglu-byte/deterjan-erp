@@ -281,7 +281,10 @@ def test_record_history_lists_audit_entries_for_that_record(make_user):
     )
 
     assert response.status_code == 200
-    assert [e["object_repr"] for e in response.json()["results"]] == ["A"]
+    results = response.json()["results"]
+    assert len(results) == 1
+    assert results[0]["action_label"] == "Oluşturma"
+    assert "ip_address" not in results[0]
 
 
 def test_mentionable_users_search(make_user):

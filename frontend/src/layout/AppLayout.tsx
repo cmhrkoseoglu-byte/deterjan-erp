@@ -1,11 +1,9 @@
 import {
-  ActionIcon,
   AppShell,
   Avatar,
   Badge,
   Burger,
   Group,
-  Indicator,
   Menu,
   NavLink,
   ScrollArea,
@@ -14,11 +12,13 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconBell, IconChevronDown, IconLogout } from "@tabler/icons-react";
+import { IconChevronDown, IconLogout } from "@tabler/icons-react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { displayName } from "../auth/roles";
 import { tr } from "../i18n/tr";
+import { NotificationBell } from "../workflow/NotificationBell";
+import { RealtimeProvider } from "../workflow/realtime";
 import { visibleMenu } from "./menu";
 
 export function AppLayout() {
@@ -40,103 +40,94 @@ export function AppLayout() {
   }
 
   return (
-    <AppShell
-      header={{ height: 64 }}
-      // 768 px (sm) ve üstünde menü sabit açık; daha dar ekranda hamburger menü.
-      navbar={{ width: 260, breakpoint: "sm", collapsed: { mobile: !opened } }}
-      padding="md"
-    >
-      <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between" wrap="nowrap">
-          <Group gap="sm" wrap="nowrap">
-            <Burger
-              opened={opened}
-              onClick={toggle}
-              hiddenFrom="sm"
-              size="md"
-              aria-label={tr.layout.openMenu}
-            />
-            <Link to="/" style={{ color: "inherit", textDecoration: "none" }}>
-              <Title order={3}>{tr.appName}</Title>
-            </Link>
-          </Group>
-          <Group gap="sm" wrap="nowrap">
-            {/* Bildirim zili: workflow modülü (Faz 1) bağlanana kadar yer tutucu. */}
-            <Indicator disabled inline>
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                size="xl"
-                radius="xl"
-                aria-label={tr.layout.notifications}
-              >
-                <IconBell size={24} />
-              </ActionIcon>
-            </Indicator>
-            <Menu position="bottom-end" width={240}>
-              <Menu.Target>
-                <UnstyledButton p={6} style={{ borderRadius: 8 }}>
-                  <Group gap="xs" wrap="nowrap">
-                    <Avatar radius="xl" color="blue">
-                      {name.charAt(0).toLocaleUpperCase("tr-TR")}
-                    </Avatar>
-                    <Text fw={500} visibleFrom="xs">
-                      {name}
-                    </Text>
-                    <IconChevronDown size={16} />
+    <RealtimeProvider>
+      <AppShell
+        header={{ height: 64 }}
+        // 768 px (sm) ve üstünde menü sabit açık; daha dar ekranda hamburger menü.
+        navbar={{ width: 260, breakpoint: "sm", collapsed: { mobile: !opened } }}
+        padding="md"
+      >
+        <AppShell.Header>
+          <Group h="100%" px="md" justify="space-between" wrap="nowrap">
+            <Group gap="sm" wrap="nowrap">
+              <Burger
+                opened={opened}
+                onClick={toggle}
+                hiddenFrom="sm"
+                size="md"
+                aria-label={tr.layout.openMenu}
+              />
+              <Link to="/" style={{ color: "inherit", textDecoration: "none" }}>
+                <Title order={3}>{tr.appName}</Title>
+              </Link>
+            </Group>
+            <Group gap="sm" wrap="nowrap">
+              <NotificationBell />
+              <Menu position="bottom-end" width={240}>
+                <Menu.Target>
+                  <UnstyledButton p={6} style={{ borderRadius: 8 }}>
+                    <Group gap="xs" wrap="nowrap">
+                      <Avatar radius="xl" color="blue">
+                        {name.charAt(0).toLocaleUpperCase("tr-TR")}
+                      </Avatar>
+                      <Text fw={500} visibleFrom="xs">
+                        {name}
+                      </Text>
+                      <IconChevronDown size={16} />
+                    </Group>
+                  </UnstyledButton>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Label>{tr.layout.roles}</Menu.Label>
+                  <Group gap={4} px="sm" pb="xs">
+                    {user.roles.map((role) => (
+                      <Badge key={role} variant="light" size="sm">
+                        {tr.roles[role] ?? role}
+                      </Badge>
+                    ))}
                   </Group>
-                </UnstyledButton>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Label>{tr.layout.roles}</Menu.Label>
-                <Group gap={4} px="sm" pb="xs">
-                  {user.roles.map((role) => (
-                    <Badge key={role} variant="light" size="sm">
-                      {tr.roles[role] ?? role}
-                    </Badge>
-                  ))}
-                </Group>
-                <Menu.Divider />
-                <Menu.Item leftSection={<IconLogout size={18} />} onClick={handleLogout} py="sm">
-                  {tr.auth.logout}
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
+                  <Menu.Divider />
+                  <Menu.Item leftSection={<IconLogout size={18} />} onClick={handleLogout} py="sm">
+                    {tr.auth.logout}
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            </Group>
           </Group>
-        </Group>
-      </AppShell.Header>
+        </AppShell.Header>
 
-      <AppShell.Navbar p="sm">
-        <ScrollArea>
-          <nav>
-            {items.map((item) => {
-              const Icon = item.icon;
-              const common = {
-                label: item.label,
-                leftSection: <Icon size={22} stroke={1.6} />,
-                onClick: close,
-                py: "sm",
-                style: { borderRadius: 8 },
-              } as const;
-              return item.external ? (
-                <NavLink key={item.key} component="a" href={item.path} {...common} />
-              ) : (
-                <NavLink
-                  key={item.key}
-                  component={Link}
-                  to={item.path}
-                  active={isActive(item.path)}
-                  {...common}
-                />
-              );
-            })}
-          </nav>
-        </ScrollArea>
-      </AppShell.Navbar>
+        <AppShell.Navbar p="sm">
+          <ScrollArea>
+            <nav>
+              {items.map((item) => {
+                const Icon = item.icon;
+                const common = {
+                  label: item.label,
+                  leftSection: <Icon size={22} stroke={1.6} />,
+                  onClick: close,
+                  py: "sm",
+                  style: { borderRadius: 8 },
+                } as const;
+                return item.external ? (
+                  <NavLink key={item.key} component="a" href={item.path} {...common} />
+                ) : (
+                  <NavLink
+                    key={item.key}
+                    component={Link}
+                    to={item.path}
+                    active={isActive(item.path)}
+                    {...common}
+                  />
+                );
+              })}
+            </nav>
+          </ScrollArea>
+        </AppShell.Navbar>
 
-      <AppShell.Main>
-        <Outlet />
-      </AppShell.Main>
-    </AppShell>
+        <AppShell.Main>
+          <Outlet />
+        </AppShell.Main>
+      </AppShell>
+    </RealtimeProvider>
   );
 }
