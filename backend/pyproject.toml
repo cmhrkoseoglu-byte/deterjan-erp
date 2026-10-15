@@ -51,7 +51,8 @@ known-first-party = ["apps", "config"]
 DJANGO_SETTINGS_MODULE = "config.settings.test"
 pythonpath = ["."]
 python_files = ["test_*.py"]
-addopts = "-ra"
+# --ds ortam değişkenini (konteynerde DJANGO_SETTINGS_MODULE=config.settings.dev) ezer.
+addopts = "-ra --ds=config.settings.test"
 
 [tool.mypy]
 python_version = "3.12"
