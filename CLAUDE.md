@@ -148,16 +148,28 @@ fazla rolü olabilir. Görevler role ya da kişiye atanabilir.
 ## 9. Komutlar
 
 ```bash
-docker compose up -d                       # tüm servisler
-docker compose exec backend pytest         # testler
-docker compose exec backend ruff check .   # lint
+cp .env.example .env                       # ilk kurulumda
+docker compose up -d                       # tüm servisler (http://localhost/)
 docker compose exec backend python manage.py migrate
 docker compose exec backend python manage.py seed_roles
+docker compose exec backend python manage.py create_demo_users   # demo kullanıcılar (yalnızca dev)
 docker compose exec backend python manage.py seed_demo   # örnek veri (Faz 1 sonunda)
-cd frontend && npm run dev                 # frontend geliştirme sunucusu
+
+docker compose exec backend pytest                  # backend testleri
+docker compose exec backend ruff check .            # lint
+docker compose exec backend ruff format --check .   # biçim
+docker compose exec backend mypy                    # tip denetimi
+
+cd frontend && npm ci                      # frontend bağımlılıkları
+cd frontend && npm test                    # Vitest
+cd frontend && npm run lint && npm run format:check && npm run typecheck && npm run build
+
+scripts/smoke_test.sh                      # servisler ayaktayken uçtan uca duman testi
+pre-commit install                         # commit öncesi kancalar (bir kez)
+pre-commit run --all-files
 ```
 
-(Bu bölümü Faz 0 sonunda gerçek komutlarla güncelle.)
+CI: `.github/workflows/ci.yml` (backend, frontend, Docker Compose duman testi).
 
 ## 10. Açık kararlar
 

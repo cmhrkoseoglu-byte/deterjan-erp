@@ -26,7 +26,9 @@ dev = [
     "pytest>=8.0",
     "pytest-django>=4.8",
     "factory-boy>=3.3",
-    "ruff>=0.6",
+    "pre-commit>=4.0",
+    # Sürüm .pre-commit-config.yaml'daki ruff-pre-commit rev ile aynı tutulmalı.
+    "ruff==0.17.0",
     "mypy>=1.11",
     "django-stubs[compatible-mypy]>=5.0",
     "djangorestframework-stubs[compatible-mypy]>=3.15",
@@ -59,6 +61,14 @@ python_version = "3.12"
 plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
 ignore_missing_imports = true
 files = ["apps"]
+
+# CLAUDE.md §6: her servis fonksiyonu tip ipuçlu. Servis, seçici ve durum katmanında
+# tip ipucu eksik fonksiyon hata sayılır; gövdeler de denetlenir.
+[[tool.mypy.overrides]]
+module = ["apps.*.services", "apps.*.selectors", "apps.*.state"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
 
 [tool.django-stubs]
 django_settings_module = "config.settings.test"
