@@ -17,7 +17,14 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconHistory, IconMessage } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  Fragment,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { getErrorMessage } from "../api/client";
 import {
   addComment,
@@ -81,6 +88,7 @@ function MentionTextarea({
   autoFocus?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const pendingCaret = useRef<number | null>(null);
   const [caret, setCaret] = useState(0);
   const [highlight, setHighlight] = useState(0);
   const [dismissed, setDismissed] = useState(false);
@@ -99,11 +107,17 @@ function MentionTextarea({
     const next = before + value.slice(caret);
     onChange(next);
     setCaret(before.length);
-    requestAnimationFrame(() => {
-      ref.current?.focus();
-      ref.current?.setSelectionRange(before.length, before.length);
-    });
+    pendingCaret.current = before.length;
   }
+
+  // Seçilen kişi eklenince imleci, yeniden çizimden hemen sonra (sonraki tuştan önce) eklenen
+  // adın sonuna taşı.
+  useLayoutEffect(() => {
+    if (pendingCaret.current === null || !ref.current) return;
+    ref.current.focus();
+    ref.current.setSelectionRange(pendingCaret.current, pendingCaret.current);
+    pendingCaret.current = null;
+  }, [value]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (options.length) {
