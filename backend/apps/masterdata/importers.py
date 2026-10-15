@@ -101,10 +101,13 @@ def _fold(text: str) -> str:
     return text.replace("I", "ı").replace("İ", "i").lower().strip()
 
 
-def choice_parser(choices: type[models.TextChoices]) -> Callable[[Any], str]:
-    """Kodu (RAW) ya da Türkçe adı (Hammadde) kabul eden seçim çözücü."""
+def choice_parser(
+    choices: type[models.TextChoices], aliases: dict[str, str] | None = None
+) -> Callable[[Any], str]:
+    """Kodu (RAW), Türkçe adı (Hammadde) ya da yaygın eş anlamlıyı kabul eden seçim çözücü."""
     lookup = {_fold(value): value for value in choices.values}
     lookup.update({_fold(str(label)): value for value, label in choices.choices})
+    lookup.update({_fold(alias): value for alias, value in (aliases or {}).items()})
 
     def parse(value: Any) -> str:
         found = lookup.get(_fold(_text(value)))
@@ -176,7 +179,16 @@ SPECS: dict[str, ImportSpec] = {
             Column(
                 "Tür",
                 "material_type",
-                choice_parser(Material.Type),
+                choice_parser(
+                    Material.Type,
+                    {
+                        "Yarı mamul": "BULK",
+                        "Yarı mamül": "BULK",
+                        "Dökme": "BULK",
+                        "Mamül": "FINISHED",
+                        "Ürün": "FINISHED",
+                    },
+                ),
                 required=True,
                 example="Hammadde",
                 help="Hammadde, Ambalaj, Yarı mamul (dökme), Mamul",

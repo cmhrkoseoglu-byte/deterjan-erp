@@ -19,6 +19,12 @@ describe("visibleMenu", () => {
     expect(visible).not.toContain("inventory");
   });
 
+  it("reçeteleri planlama ve laboratuvar görür", () => {
+    expect(keys(userWith(["laboratuvar"]))).toContain("recipes");
+    expect(keys(userWith(["planlama"]))).toEqual(expect.arrayContaining(["masterdata", "recipes"]));
+    expect(keys(userWith(["uretim"]))).not.toContain("recipes");
+  });
+
   it("birden fazla rolün menüleri birleşir", () => {
     expect(keys(userWith(["depo", "sevkiyat"]))).toEqual(["home", "inventory", "sales"]);
   });

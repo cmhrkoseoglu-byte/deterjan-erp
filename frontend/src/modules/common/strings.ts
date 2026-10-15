@@ -1,0 +1,46 @@
+// Ana veri ve reçete ekranlarının ortak metinleri (CLAUDE.md §6: arayüz Türkçe).
+export const ct = {
+  new: "Yeni",
+  edit: "Düzenle",
+  save: "Kaydet",
+  cancel: "Vazgeç",
+  close: "Kapat",
+  search: "Ara (kod, ad)",
+  actions: "İşlemler",
+  active: "Aktif",
+  inactive: "Pasif",
+  deactivate: "Pasife al",
+  activate: "Aktif et",
+  statusFilter: "Durum",
+  all: "Tümü",
+  empty: "Kayıt yok.",
+  yes: "Evet",
+  no: "Hayır",
+  saved: "Kaydedildi.",
+  totalCount: (n: number) => `${n} kayıt`,
+  confirmDeactivate: (name: string) =>
+    `“${name}” pasife alınsın mı? Pasif kayıtlar yeni işlemlerde seçilemez.`,
+  confirmTitle: "Emin misiniz?",
+  readOnly: "Bu kaydı yalnızca görüntüleyebilirsiniz.",
+  importButton: "Excel'den içe aktar",
+  importTitle: (title: string) => `${title}: Excel'den içe aktar`,
+  importIntro:
+    "Şablonu indirip doldurun, sonra dosyayı seçin. Önce önizleme yapılır; hatasızsa aktarabilirsiniz. Kodu sistemde olan satır kaydı günceller.",
+  importTemplate: "Şablonu indir (.xlsx)",
+  importFile: "Dosya (.xlsx ya da .csv)",
+  importPreview: "Önizle",
+  importConfirm: (n: number) => `${n} satırı aktar`,
+  importDone: (created: number, updated: number) =>
+    `İçe aktarma tamamlandı: ${created} yeni, ${updated} güncellenen kayıt.`,
+  importSummary: (total: number, create: number, update: number, invalid: number) =>
+    `${total} satır: ${create} yeni, ${update} güncelleme, ${invalid} hatalı.`,
+  importHasErrors:
+    "Hatalı satırları düzeltip dosyayı yeniden seçin; hatalı satır varken hiçbir kayıt aktarılmaz.",
+  importRow: "Satır",
+  importCode: "Kod",
+  importAction: "İşlem",
+  importErrors: "Hatalar",
+  importCreate: "Yeni",
+  importUpdate: "Güncelleme",
+  importOk: "Hazır",
+} as const;

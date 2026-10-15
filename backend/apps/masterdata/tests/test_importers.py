@@ -170,3 +170,13 @@ def test_template_round_trip_is_valid(kind, make_user):
 
     assert report["file_errors"] == []
     assert report["invalid"] == 0, report["rows"]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("Hammadde", "RAW"), ("raw", "RAW"), ("Yarı mamul", "BULK"), ("DÖKME", "BULK")],
+)
+def test_material_type_accepts_codes_labels_and_aliases(value, expected):
+    parse = importers.SPECS["materials"].columns[2].parse
+
+    assert parse(value) == expected

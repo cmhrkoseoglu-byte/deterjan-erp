@@ -83,3 +83,36 @@ Demo kullanıcı adları rol kodlarıdır: `admin`, `yonetim`, `planlama`, `depo
 | Yetkisiz rol 403 | ✓ | `test_users_list_forbidden_for_other_roles` vb., duman testinde `depo` → `/api/v1/users/` 403 |
 | CI yeşil; `ruff check`, `ruff format --check`, `mypy` temiz | ✓ | GitHub Actions `CI` iş akışı |
 | `docs/PROGRESS.md` güncel | ✓ | Bu dosya |
+
+## Faz 1 — Ana veriler, reçete, stok/lot, üretim ve iş akışı
+
+| Adım | Durum | Not |
+|---|---|---|
+| 1.1 `masterdata` | Tamamlandı (2026-10-15) | Birim, kategori, malzeme, malzemeye özel dönüşüm, depo, lokasyon, ekipman, tedarikçi, müşteri; `convert_quantity`; Excel/CSV içe aktarma (önizleme + onay) ve şablonlar; API ve ekranlar |
+| 1.2 `recipes` | Tamamlandı (2026-10-15) | Sürümlü reçete, satır, proses adımı; onay (tek onaylı sürüm, eskisi geçersiz), kopyalama, ölçekleme; API ve ekranlar (sürüm karşılaştırma dahil) |
+| 1.3 `inventory` | Başlamadı | |
+| 1.4 `production` | Başlamadı | |
+| 1.5 `workflow` | Ayrı thread'de | |
+| 1.6 API | 1.1 ve 1.2 kısmı tamam | `/api/v1/masterdata/…`, `/api/v1/recipes/…` |
+| 1.7 Ekranlar | 1.1 ve 1.2 kısmı tamam | Ana veriler (sekme başına liste + form + içe aktarma), Reçeteler |
+| 1.8 Demo verisi ve uçtan uca test | Başlamadı | |
+
+### Adım 1.1 ve 1.2 doğrulaması
+
+- `pytest` 285 test geçti (masterdata ve recipes için 143 yeni test); `ruff check`, `ruff format --check`,
+  `mypy` temiz; OpenAPI şeması uyarısız.
+- Kabul kriteri "onaylı reçete sürümü değiştirilemiyor; kopyalanıp yeni sürüm onaylanınca eski sürüm
+  OBSOLETE": `test_new_approval_makes_previous_obsolete`, `test_approved_version_cannot_be_changed`,
+  `test_approve_copy_and_obsolete_flow` (API).
+- Kabul kriteri "malzeme Excel'den önizlemeli içe aktarılabiliyor": `test_preview_reports_row_errors_and_writes_nothing`,
+  `test_run_import_with_errors_writes_nothing`, `test_import_preview_then_confirm` (API),
+  `test_template_round_trip_is_valid` (indirilen şablon hatasız geçer). Açılış stoku içe aktarma Adım 1.3'te.
+- Karar D-1: `test_water_is_an_ordinary_stocked_ingredient`.
+- Durum makinesi: izinli tüm geçişler ve yasak geçişler (`test_state_machine_*`). Yetkisiz rol 403
+  (`test_other_roles_cannot_write`, `test_write_endpoints_forbidden_for_other_roles`,
+  `test_approve_forbidden_for_other_roles`).
+- Frontend: `npm test` 47 test, `lint`, `format:check`, `typecheck`, `build` temiz.
+- Tarayıcıyla (Playwright, gerçek backend) `planlama` kullanıcısıyla denendi: hatalı Excel önizlemede satır
+  hataları ve kapalı "aktar" düğmesi, düzeltilmiş dosyayla 7 malzemenin aktarımı, depo → tank lokasyonu →
+  tank (lokasyonsuz tank kuralı formda görünüyor), reçete → sürüm → satırlar (su işaretli) → ölçekleme →
+  onay → kopyala → değiştir → v1 ile karşılaştır → v2 onayı → v1 "Geçersiz". 768 px genişlikte kontrol edildi.

@@ -88,7 +88,7 @@ Tanklar aynı zamanda lokasyondur (üretilen bulk ürün tankta durur).
 **`StockBalance`**: `material`, `lot`, `location`, `quantity`; `unique(material, lot, location)`; `quantity >= 0` CHECK kısıtı.
 
 **`LotLink`** (soy ağacı): `parent_lot` (girdi), `child_lot` (çıktı), `quantity` (girdi lottan kullanılan, temel birim),
-`source_content_type/object_id`. 
+`source_content_type/object_id`.
 
 **`GoodsReceipt`** (`DocumentModel`, numara `MK-`): `supplier`, `receipt_date`, `delivery_note_no` (irsaliye no),
 `status`: `DRAFT` → `POSTED` | `CANCELLED`. Satırlar **`GoodsReceiptLine`**: `material`, `quantity` + `unit`,
