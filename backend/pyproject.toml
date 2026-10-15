@@ -19,6 +19,7 @@ dependencies = [
     "celery>=5.4",
     "redis>=5.0",
     "uvicorn[standard]>=0.30",
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]

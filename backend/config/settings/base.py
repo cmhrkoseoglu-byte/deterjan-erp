@@ -31,6 +31,8 @@ INSTALLED_APPS = [
     "channels",
     # Proje modülleri
     "apps.core",
+    "apps.masterdata",
+    "apps.recipes",
     "apps.workflow",
 ]
 
@@ -146,7 +148,12 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "SCHEMA_PATH_PREFIX": r"/api/v1",
     "COMPONENT_SPLIT_REQUEST": True,
-    "ENUM_NAME_OVERRIDES": {"HealthStateEnum": "apps.core.api.serializers.HEALTH_STATES"},
+    "ENUM_NAME_OVERRIDES": {
+        "HealthStateEnum": "apps.core.api.serializers.HEALTH_STATES",
+        "AuditActionEnum": "apps.core.models.AuditLog.Action",
+        "ImportRowActionEnum": "apps.masterdata.api.serializers.IMPORT_ROW_ACTIONS",
+        "RecipeVersionStatusEnum": "apps.recipes.models.RecipeVersion.Status",
+    },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
     "SERVE_AUTHENTICATION": ["apps.core.authentication.SessionAuthentication"],

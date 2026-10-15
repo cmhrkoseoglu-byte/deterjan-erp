@@ -3,6 +3,7 @@ import {
   IconChartBar,
   IconChecklist,
   IconDatabase,
+  IconListDetails,
   IconFlask,
   IconPackages,
   IconBottle,
@@ -37,6 +38,14 @@ export const MENU: readonly MenuItem[] = [
     path: "/ana-veriler",
     icon: IconDatabase,
     roles: ["planlama", "yonetim"],
+    phase: 1,
+  },
+  {
+    key: "recipes",
+    label: tr.menu.recipes,
+    path: "/receteler",
+    icon: IconListDetails,
+    roles: ["planlama", "laboratuvar"],
     phase: 1,
   },
   {

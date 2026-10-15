@@ -33,3 +33,7 @@ PRODUCTION_BATCH_STARTED = "production_batch.started"
 PRODUCTION_BATCH_COMPLETED = "production_batch.completed"
 PRODUCTION_DEVIATION = "production.deviation"
 PRODUCTION_LOW_YIELD = "production.low_yield"
+
+# recipes
+RECIPE_VERSION_APPROVED = "recipe_version.approved"
+RECIPE_VERSION_OBSOLETE = "recipe_version.obsolete"

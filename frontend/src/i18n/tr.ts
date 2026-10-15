@@ -37,6 +37,7 @@ export const tr = {
   menu: {
     home: "Görevlerim",
     masterdata: "Ana veriler",
+    recipes: "Reçeteler",
     inventory: "Depo ve stok",
     production: "Üretim",
     quality: "Kalite kontrol",
