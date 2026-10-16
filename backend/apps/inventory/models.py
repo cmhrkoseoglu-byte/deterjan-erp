@@ -13,7 +13,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import Q
 
-from apps.core.models import BaseModel, DocumentModel, User
+from apps.core.models import BaseModel, Currency, DocumentModel, User
 from apps.masterdata.models import Location, Material, Supplier, UnitOfMeasure
 
 
@@ -66,6 +66,13 @@ class Lot(BaseModel):
     )
     released_at = models.DateTimeField("serbest bırakılma zamanı", null=True, blank=True)
     status_note = models.TextField("durum notu", blank=True)
+    # Maliyet (Faz 4, Adım 4.1): TL / temel birim. Yalnızca `inventory.services.set_lot_cost`
+    # yazar (costing modülü hesaplar); döküm `costing.LotCost`'tadır. Tutarlar yalnızca yonetim
+    # ve admin rolüne gösterilir.
+    unit_cost = models.DecimalField(
+        "birim maliyet", null=True, blank=True, editable=False, max_digits=18, decimal_places=4
+    )
+    cost_is_estimated = models.BooleanField("tahmini maliyet", default=False, editable=False)
 
     class Meta:
         verbose_name = "lot"
@@ -362,9 +369,16 @@ class GoodsReceiptLine(BaseModel):
         "birim fiyat",
         null=True,
         blank=True,
-        help_text="Satır biriminde",
+        help_text="Satır biriminde, satırın para biriminde",
         max_digits=18,
         decimal_places=4,
+    )
+    currency = models.CharField(
+        "para birimi", max_length=3, choices=Currency.choices, default=Currency.TRY
+    )
+    # 1 birim yabancı para = kaç TL; TL satırda boştur.
+    exchange_rate = models.DecimalField(
+        "kur", null=True, blank=True, max_digits=18, decimal_places=4
     )
     # Kaydedilince dolar.
     base_quantity = models.DecimalField(
@@ -403,10 +417,54 @@ class GoodsReceiptLine(BaseModel):
                 name="inventory_receipt_line_price_non_negative",
                 violation_error_message="Birim fiyat negatif olamaz.",
             ),
+            models.CheckConstraint(
+                condition=Q(exchange_rate__isnull=True) | Q(exchange_rate__gt=0),
+                name="inventory_receipt_line_rate_positive",
+                violation_error_message="Kur sıfırdan büyük olmalıdır.",
+            ),
         ]
 
     def __str__(self) -> str:
         return f"{self.receipt_id}/{self.line_no} {self.material_id}"
+
+
+class GoodsReceiptExtraCost(BaseModel):
+    """Mal kabulün ek masrafı (nakliye, gümrük, diğer), TL. Satırlara miktar ya da tutar oranında
+    dağıtılıp lot maliyetine eklenir (costing). Kaydedilmiş mal kabule de sonradan girilebilir."""
+
+    class Kind(models.TextChoices):
+        FREIGHT = "FREIGHT", "Nakliye"
+        CUSTOMS = "CUSTOMS", "Gümrük"
+        OTHER = "OTHER", "Diğer"
+
+    class Allocation(models.TextChoices):
+        QUANTITY = "QUANTITY", "Miktar oranında"
+        VALUE = "VALUE", "Tutar oranında"
+
+    receipt = models.ForeignKey(
+        GoodsReceipt, verbose_name="mal kabul", on_delete=models.PROTECT, related_name="extra_costs"
+    )
+    kind = models.CharField("tür", max_length=16, choices=Kind.choices)
+    description = models.CharField("açıklama", max_length=200, blank=True)
+    amount = models.DecimalField("tutar (TL)", max_digits=18, decimal_places=2)
+    allocation = models.CharField(
+        "dağıtım", max_length=16, choices=Allocation.choices, default=Allocation.QUANTITY
+    )
+
+    class Meta:
+        verbose_name = "mal kabul ek masrafı"
+        verbose_name_plural = "mal kabul ek masrafları"
+        ordering = ["receipt", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(amount__gt=0),
+                name="inventory_receipt_extra_cost_positive",
+                violation_error_message="Tutar sıfırdan büyük olmalıdır.",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.receipt_id} {self.kind} {self.amount}"
 
 
 class StockAdjustment(DocumentModel):

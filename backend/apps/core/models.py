@@ -61,6 +61,14 @@ class User(AbstractUser):
         self.__dict__.pop("role_names", None)
 
 
+class Currency(models.TextChoices):
+    """Para birimleri (satış siparişi, mal kabul fiyatı)."""
+
+    TRY = "TRY", "TL"
+    EUR = "EUR", "Euro"
+    USD = "USD", "ABD doları"
+
+
 class BaseModel(models.Model):
     """Tüm iş modellerinin atası: oluşturma/güncelleme zamanı ve kullanıcısı."""
 

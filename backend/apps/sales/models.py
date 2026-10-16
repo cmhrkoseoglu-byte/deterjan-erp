@@ -12,15 +12,9 @@ from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.db.models import Q
 
-from apps.core.models import BaseModel, DocumentModel, User
+from apps.core.models import BaseModel, Currency, DocumentModel, User
 from apps.inventory.models import PickRecord, StockMovement, StockReservation
 from apps.masterdata.models import Customer, Location, Material, UnitOfMeasure
-
-
-class Currency(models.TextChoices):
-    TRY = "TRY", "TL"
-    EUR = "EUR", "Euro"
-    USD = "USD", "ABD doları"
 
 
 class SalesOrder(DocumentModel):

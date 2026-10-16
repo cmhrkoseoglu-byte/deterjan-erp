@@ -5,9 +5,12 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.core.api.labels import LabelOutputSerializer, PrintRequestSerializer
-from apps.core.models import User
+from apps.core.models import Currency, User
+from apps.core.permissions import user_has_role
+from apps.core.roles import SATIN_ALMA, YONETIM
 from apps.inventory.models import (
     GoodsReceipt,
+    GoodsReceiptExtraCost,
     GoodsReceiptLine,
     Lot,
     PalletLabel,
@@ -16,8 +19,17 @@ from apps.inventory.models import (
     StockBalance,
     StockMovement,
 )
+from apps.inventory.services import RECEIPT_PRICE_FIELDS
 from apps.inventory.state import goods_receipt_states, lot_states
 from apps.masterdata.models import Location, Material, Supplier, UnitOfMeasure
+
+# Mal kabuldeki alış fiyatı, kur ve ek masrafı görür ve girer (admin her yerde). Depo miktarı
+# görür, tutarı görmez (Faz 4, Adım 4.1).
+RECEIPT_PRICE_ROLES = (SATIN_ALMA, YONETIM)
+
+
+def can_see_receipt_prices(request: Any) -> bool:
+    return request is not None and user_has_role(request.user, RECEIPT_PRICE_ROLES)
 
 
 def user_name(user: User | None) -> str | None:
@@ -347,6 +359,8 @@ class GoodsReceiptLineSerializer(serializers.ModelSerializer):
             "manufactured_at",
             "expiry_date",
             "unit_price",
+            "currency",
+            "exchange_rate",
             "base_quantity",
             "base_unit_code",
             "created_lot",
@@ -354,6 +368,50 @@ class GoodsReceiptLineSerializer(serializers.ModelSerializer):
             "created_lot_status",
         ]
         read_only_fields = ["line_no", "base_quantity", "created_lot"]
+
+    def _shows_prices(self) -> bool:
+        return can_see_receipt_prices(self.context.get("request"))
+
+    def to_representation(self, instance: GoodsReceiptLine) -> dict[str, Any]:
+        data = super().to_representation(instance)
+        if not self._shows_prices():
+            for name in RECEIPT_PRICE_FIELDS:
+                data.pop(name, None)
+        return data
+
+    def to_internal_value(self, data: Any) -> Any:
+        # Fiyat yetkisi olmayan rolün gönderdiği fiyat alanları yok sayılır (mevcut değer kalır).
+        if isinstance(data, dict) and not self._shows_prices():
+            data = {k: v for k, v in data.items() if k not in RECEIPT_PRICE_FIELDS}
+        return super().to_internal_value(data)
+
+
+class GoodsReceiptExtraCostSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+
+    class Meta:
+        model = GoodsReceiptExtraCost
+        fields = ["id", "kind", "description", "amount", "allocation"]
+
+
+class ReceiptLinePriceSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    unit_price = serializers.DecimalField(
+        max_digits=18, decimal_places=4, allow_null=True, required=False
+    )
+    currency = serializers.ChoiceField(choices=Currency.choices, required=False)
+    exchange_rate = serializers.DecimalField(
+        max_digits=18, decimal_places=4, allow_null=True, required=False
+    )
+
+
+class ReceiptCostsSerializer(serializers.Serializer):
+    """Mal kabul fiyatları ve ek masrafları (satin_alma, yonetim, admin). Kaydedilmiş mal kabulde
+    `note` zorunludur; `extra_costs` verilmezse ek masraflar değişmez."""
+
+    lines = ReceiptLinePriceSerializer(many=True, required=False)
+    extra_costs = GoodsReceiptExtraCostSerializer(many=True, required=False)
+    note = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class GoodsReceiptSerializer(DocumentSerializer):
@@ -398,9 +456,18 @@ class GoodsReceiptDetailSerializer(GoodsReceiptSerializer):
     (`id`'li satır güncellenir, `id`'siz eklenir, listede olmayan kaldırılır)."""
 
     lines = GoodsReceiptLineSerializer(many=True, required=False)
+    extra_costs = serializers.SerializerMethodField()
 
     class Meta(GoodsReceiptSerializer.Meta):
-        fields = [*GoodsReceiptSerializer.Meta.fields, "lines"]
+        fields = [*GoodsReceiptSerializer.Meta.fields, "lines", "extra_costs"]
+
+    @extend_schema_field(GoodsReceiptExtraCostSerializer(many=True, allow_null=True))
+    def get_extra_costs(self, receipt: GoodsReceipt) -> list[dict[str, Any]] | None:
+        """Ek masraflar; fiyat yetkisi olmayan role `null`."""
+        if not can_see_receipt_prices(self.context.get("request")):
+            return None
+        rows = GoodsReceiptExtraCostSerializer(receipt.extra_costs.all(), many=True).data
+        return list(rows)
 
 
 class CancelSerializer(serializers.Serializer):
