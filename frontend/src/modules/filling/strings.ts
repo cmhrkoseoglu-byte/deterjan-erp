@@ -79,6 +79,7 @@ export const ft = {
   prepIntro:
     "Ambalaj lotunu okutun ya da önerilen lotu seçin, miktarı girin. Malzeme hat başına taşınır.",
   scan: "Lot okut",
+  printCaseLabel: "Koli etiketi",
   scanPlaceholder: "Barkodu okutun ya da lot numarasını yazın",
   quantity: "Miktar",
   fefo: "Önerilen lotlar (SKT'si en yakın önce)",

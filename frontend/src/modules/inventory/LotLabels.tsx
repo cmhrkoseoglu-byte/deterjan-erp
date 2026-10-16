@@ -25,7 +25,9 @@ import { PALLET_ROLES } from "./config";
 const t = tr.labels;
 
 /** Lot için etiket seçenekleri: lot etiketi; mamulde koli etiketi (D-6: GTIN'e göre). */
-function lotLabelOptions(lot: Pick<Lot, "id" | "material_type" | "material_gtin">) {
+type LabelLot = Pick<Lot, "id" | "material_type" | "material_gtin">;
+
+function lotLabelOptions(lot: LabelLot, caseFirst = false) {
   const options: LabelKindOption[] = [
     {
       value: "lot",
@@ -46,10 +48,19 @@ function lotLabelOptions(lot: Pick<Lot, "id" | "material_type" | "material_gtin"
       withUnitsPerCase: true,
     });
   }
-  return options;
+  return caseFirst ? options.reverse() : options;
 }
 
-export function LotLabelButton({ lot }: { lot: Lot }) {
+/** Lot etiketi düğmesi. `caseFirst`: mamulde koli etiketi önce seçili gelir (dolum hattı). */
+export function LotLabelButton({
+  lot,
+  caseFirst = false,
+  label = t.print,
+}: {
+  lot: LabelLot;
+  caseFirst?: boolean;
+  label?: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -58,12 +69,12 @@ export function LotLabelButton({ lot }: { lot: Lot }) {
         leftSection={<IconPrinter size={16} />}
         onClick={() => setOpen(true)}
       >
-        {t.print}
+        {label}
       </Button>
       <LabelPrintModal
         opened={open}
         onClose={() => setOpen(false)}
-        options={lotLabelOptions(lot)}
+        options={lotLabelOptions(lot, caseFirst)}
       />
     </>
   );

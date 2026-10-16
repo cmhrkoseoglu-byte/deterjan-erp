@@ -17,7 +17,7 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconArrowLeft, IconBarcode, IconFlagCheck, IconX } from "@tabler/icons-react";
+import { IconArrowLeft, IconFlagCheck, IconX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -36,10 +36,13 @@ import {
 } from "../../api/filling";
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
+import { errorFeedback } from "../../components/scan/feedback";
+import { ScanInput, type ScanInputHandle } from "../../components/scan/ScanInput";
 import { formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { normalizeDecimal } from "../common/forms";
 import { lotPath } from "../inventory/config";
+import { LotLabelButton } from "../inventory/LotLabels";
 import { ExpiryText, Info, Qty } from "../inventory/shared";
 import { ReasonModal } from "../production/shared";
 import { fillingOrderPath, LINE_ROLES } from "./config";
@@ -111,16 +114,27 @@ function Run({ run }: { run: FillingRunDetail }) {
           <Title order={2}>{ft.runTitle(run.output_lot_no)}</Title>
           <RunStatusBadge status={run.status} />
         </Group>
-        {editable && (
-          <Button
-            color="red"
-            variant="light"
-            leftSection={<IconX size={16} />}
-            onClick={() => setCancelOpen(true)}
-          >
-            {ft.cancelRun}
-          </Button>
-        )}
+        <Group gap="xs">
+          <LotLabelButton
+            caseFirst
+            label={ft.printCaseLabel}
+            lot={{
+              id: run.output_lot,
+              material_type: "FINISHED",
+              material_gtin: run.finished_product_gtin,
+            }}
+          />
+          {editable && (
+            <Button
+              color="red"
+              variant="light"
+              leftSection={<IconX size={16} />}
+              onClick={() => setCancelOpen(true)}
+            >
+              {ft.cancelRun}
+            </Button>
+          )}
+        </Group>
       </Group>
       <Paper withBorder p="md" radius="md">
         <SimpleGrid cols={{ base: 2, sm: 4 }}>
@@ -191,6 +205,23 @@ function ErrorText({ error, testId }: { error: string; testId?: string }) {
   );
 }
 
+function packagingMaterials(run: FillingRunDetail) {
+  return run.packaging.map((line) => ({ id: line.material, code: line.material_code ?? "" }));
+}
+
+/** Seçilen (okutulan ya da listeden) lot numarası. */
+function ChosenLot({ lotNo }: { lotNo: string }) {
+  if (!lotNo) return null;
+  return (
+    <Text size="sm">
+      {`${ft.lotNo}: `}
+      <Text span fw={700}>
+        {lotNo}
+      </Text>
+    </Text>
+  );
+}
+
 function BulkForm({
   run,
   onSaved,
@@ -198,6 +229,8 @@ function BulkForm({
   run: FillingRunDetail;
   onSaved: (r: FillingRunDetail) => void;
 }) {
+  const scanRef = useRef<ScanInputHandle>(null);
+  const quantityRef = useRef<HTMLInputElement>(null);
   const [lotNo, setLotNo] = useState("");
   const [lotId, setLotId] = useState<number | null>(null);
   const [quantity, setQuantity] = useState("");
@@ -216,7 +249,11 @@ function BulkForm({
       setQuantity("");
       onSaved(saved);
     },
-    onError: (err) => setError(getErrorMessage(err)),
+    onError: (err) => {
+      setError(getErrorMessage(err));
+      errorFeedback();
+      scanRef.current?.focus();
+    },
   });
   const canSubmit = (lotId !== null || lotNo.trim() !== "") && quantity.trim() !== "";
   return (
@@ -226,19 +263,22 @@ function BulkForm({
         <Text size="sm" c="dimmed">
           {ft.bulkHint}
         </Text>
-        <Group align="flex-end" grow>
-          <TextInput
-            size="lg"
+        <Group align="flex-start" grow>
+          <ScanInput
+            ref={scanRef}
+            expect="lot"
+            expectedMaterial={{ id: run.bulk_product, code: run.bulk_product_code }}
             label={ft.scan}
             placeholder={ft.scanPlaceholder}
-            leftSection={<IconBarcode size={20} />}
-            value={lotNo}
-            onChange={(event) => {
-              setLotNo(event.currentTarget.value);
-              setLotId(null);
+            onLot={(lot) => {
+              setLotNo(lot.lot_no);
+              setLotId(lot.id);
+              setError("");
+              quantityRef.current?.focus();
             }}
           />
           <TextInput
+            ref={quantityRef}
             size="lg"
             label={`${ft.quantity} (${run.bulk_unit})`}
             inputMode="decimal"
@@ -257,6 +297,7 @@ function BulkForm({
             {ft.consumeBulk}
           </Button>
         </Group>
+        <ChosenLot lotNo={lotNo} />
         <ErrorText error={error} testId="bulk-error" />
         <Text fw={600} size="sm">
           {ft.bulkLots}
@@ -303,21 +344,15 @@ function PackagingScan({
   run: FillingRunDetail;
   onSaved: (r: FillingRunDetail) => void;
 }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const [lotNo, setLotNo] = useState("");
-  const [error, setError] = useState("");
+  const ref = useRef<ScanInputHandle>(null);
   const scan = useMutation({
-    mutationFn: () => scanPackaging(run.id, { lot_no: lotNo.trim() }),
-    onSuccess: (saved) => {
-      notifications.show({ color: "green", message: ft.scannedOk(lotNo.trim()) });
-      setError("");
-      setLotNo("");
+    mutationFn: (lot: { id: number; lot_no: string }) => scanPackaging(run.id, { lot: lot.id }),
+    onSuccess: (saved, lot) => {
+      notifications.show({ color: "green", message: ft.scannedOk(lot.lot_no) });
       onSaved(saved);
     },
-    onError: (err) => {
-      setError(getErrorMessage(err));
-      ref.current?.select();
-    },
+    // Sunucunun reddi (ör. lot hat başında değil) okutma alanında kırmızı gösterilir.
+    onError: (err) => ref.current?.showError(getErrorMessage(err)),
   });
   const scanned = new Set(run.scanned_lots.map((row) => row.lot));
   return (
@@ -327,19 +362,15 @@ function PackagingScan({
         <Text size="sm" c="dimmed">
           {ft.packagingHint}
         </Text>
-        <TextInput
+        <ScanInput
           ref={ref}
-          size="lg"
+          expect="lot"
+          expectedMaterial={packagingMaterials(run)}
           label={ft.scan}
           placeholder={ft.scanPlaceholder}
-          leftSection={<IconBarcode size={20} />}
-          value={lotNo}
-          onChange={(event) => setLotNo(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && lotNo.trim()) scan.mutate();
-          }}
+          disabled={scan.isPending}
+          onLot={(lot) => scan.mutate(lot)}
         />
-        <ErrorText error={error} testId="scan-error" />
         <Text fw={600} size="sm">
           {ft.lineStock}
         </Text>
@@ -420,6 +451,7 @@ function ScrapForm({
           value={kind}
           onChange={(value) => {
             setKind(value as ScrapKind);
+            setLotNo("");
             setReason(null);
           }}
           data={(["FINISHED", "PACKAGING", "BULK"] as ScrapKind[]).map((value) => ({
@@ -441,13 +473,17 @@ function ScrapForm({
         </Group>
         <Group align="flex-end" grow>
           {needsLot && (
-            <TextInput
-              size="lg"
+            <ScanInput
+              key={kind}
+              expect="lot"
+              expectedMaterial={
+                kind === "BULK"
+                  ? { id: run.bulk_product, code: run.bulk_product_code }
+                  : packagingMaterials(run)
+              }
               label={ft.scan}
               placeholder={ft.scanPlaceholder}
-              leftSection={<IconBarcode size={20} />}
-              value={lotNo}
-              onChange={(event) => setLotNo(event.currentTarget.value)}
+              onLot={(lot) => setLotNo(lot.lot_no)}
             />
           )}
           <TextInput
@@ -458,6 +494,7 @@ function ScrapForm({
             onChange={(event) => setQuantity(event.currentTarget.value)}
           />
         </Group>
+        {needsLot && <ChosenLot lotNo={lotNo} />}
         <Textarea
           label={ft.scrapNote}
           withAsterisk={reason === "OTHER"}

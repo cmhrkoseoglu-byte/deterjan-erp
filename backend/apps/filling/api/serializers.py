@@ -285,6 +285,10 @@ class FillingRunSerializer(serializers.ModelSerializer):
     finished_product_name = serializers.CharField(
         source="order.finished_product.name", read_only=True
     )
+    # Koli etiketi GS1-128 mi firma içi mi basılacak (Karar D-6).
+    finished_product_gtin = serializers.CharField(
+        source="order.finished_product.gtin", read_only=True
+    )
     output_lot_no = serializers.CharField(source="output_lot.lot_no", read_only=True)
     output_lot_status = serializers.CharField(source="output_lot.status", read_only=True)
     output_lot_status_display = serializers.CharField(
@@ -303,6 +307,7 @@ class FillingRunSerializer(serializers.ModelSerializer):
             "order_status",
             "finished_product_code",
             "finished_product_name",
+            "finished_product_gtin",
             "status",
             "status_display",
             "output_lot",

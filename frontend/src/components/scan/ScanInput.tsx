@@ -16,6 +16,7 @@ import { errorFeedback, successFeedback } from "./feedback";
 const t = tr.scan;
 
 type Expect = "lot" | "location" | "any";
+type ExpectedMaterial = { id: number; code: string };
 
 export interface ScanInputHandle {
   focus: () => void;
@@ -26,7 +27,8 @@ export interface ScanInputHandle {
 
 export interface ScanInputProps {
   expect?: Expect;
-  expectedMaterial?: { id: number; code: string } | null;
+  /** Beklenen malzeme ya da malzemeler (ör. ambalaj reçetesindeki kalemler). */
+  expectedMaterial?: ExpectedMaterial | ExpectedMaterial[] | null;
   onLot?: (lot: ScanLot, result: ScanResult) => void;
   onLocation?: (location: NonNullable<ScanResult["location"]>, result: ScanResult) => void;
   onResult?: (result: ScanResult) => void;
@@ -123,11 +125,18 @@ export const ScanInput = forwardRef<ScanInputHandle, ScanInputProps>(function Sc
     if (expect === "lot") {
       if (result.lots.length === 0) return fail(t.notLot);
       let lots = result.lots;
-      if (expectedMaterial) {
-        lots = lots.filter((lot) => lot.material === expectedMaterial.id);
+      const expected = expectedMaterial
+        ? Array.isArray(expectedMaterial)
+          ? expectedMaterial
+          : [expectedMaterial]
+        : [];
+      if (expected.length) {
+        const ids = new Set(expected.map((m) => m.id));
+        lots = lots.filter((lot) => ids.has(lot.material));
         if (lots.length === 0) {
           const found = result.lots.map((lot) => lot.material_code).join(", ");
-          return fail(t.wrongMaterial(expectedMaterial.code, found), true);
+          const wanted = expected.map((m) => m.code).join(", ");
+          return fail(t.wrongMaterial(wanted, found), true);
         }
       }
       if (lots.length > 1) return fail(t.multipleLots);
