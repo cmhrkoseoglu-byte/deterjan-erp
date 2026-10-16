@@ -24,6 +24,9 @@ LOT_RELEASED = "lot.released"
 LOT_REJECTED = "lot.rejected"
 LOT_BLOCKED = "lot.blocked"
 GOODS_RECEIPT_CANCELLED = "goods_receipt.cancelled"
+# costing (Faz 4, Adım 4.1): kaydedilmiş mal kabulde fiyat / ek masraf düzeltmesi; payload'da
+# `number`, `note`, `lots` (lot sözlükleri). Costing bu lotların maliyetini yeniden hesaplar.
+GOODS_RECEIPT_COST_CHANGED = "goods_receipt.cost_changed"
 STOCK_ADJUSTMENT_POSTED = "stock_adjustment.posted"
 LOTS_EXPIRING = "inventory.lots_expiring"
 BELOW_MIN_STOCK = "inventory.below_min_stock"

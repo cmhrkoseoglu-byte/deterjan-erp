@@ -9,10 +9,9 @@ göre değişir. Mal kabul `inventory` modülünün belgesidir; siparişle bağ�
 from django.db import models
 from django.db.models import Q
 
-from apps.core.models import BaseModel, DocumentModel, User
+from apps.core.models import BaseModel, Currency, DocumentModel, User
 from apps.inventory.models import GoodsReceiptLine
 from apps.masterdata.models import Material, Supplier, UnitOfMeasure
-from apps.sales.models import Currency
 
 
 class PurchasingSettings(BaseModel):

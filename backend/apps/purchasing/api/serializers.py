@@ -3,6 +3,7 @@ from typing import Any
 
 from rest_framework import serializers
 
+from apps.core.models import Currency
 from apps.core.permissions import user_has_role
 from apps.inventory.api.serializers import UserNameField
 from apps.masterdata.models import Location, Material, Supplier, UnitOfMeasure
@@ -14,7 +15,6 @@ from apps.purchasing.models import (
     PurchasingSettings,
 )
 from apps.purchasing.state import purchase_order_states, purchase_request_states
-from apps.sales.models import Currency
 
 # Depo siparişi ve beklenen teslimatları görür, tutarları görmez.
 PRICE_FIELDS = frozenset(

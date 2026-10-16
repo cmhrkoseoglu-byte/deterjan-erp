@@ -21,15 +21,17 @@ from django.db import models, transaction
 from django.db.models import F, Max
 from django.utils import timezone
 
+from apps.core import event_names as ev
 from apps.core import events
 from apps.core.audit import log_change, snapshot
 from apps.core.exceptions import BusinessRuleError
-from apps.core.models import AuditLog, DocumentModel, User
+from apps.core.models import AuditLog, Currency, DocumentModel, User
 from apps.core.roles import LABORATUVAR
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
 from apps.core.state import StateMachine
 from apps.inventory.models import (
     GoodsReceipt,
+    GoodsReceiptExtraCost,
     GoodsReceiptLine,
     Lot,
     LotLink,
@@ -881,6 +883,10 @@ RECEIPT_LINE_FIELDS = (
     "currency",
     "exchange_rate",
 )
+# Fiyat alanları: mal kabul satırında yalnızca bunlar fiyat yetkisi (satin_alma, yonetim, admin)
+# ile değişir; kaydedilmiş mal kabulde de `set_receipt_costs` ile düzeltilir.
+RECEIPT_PRICE_FIELDS = ("unit_price", "currency", "exchange_rate")
+EXTRA_COST_FIELDS = ("kind", "description", "amount", "allocation")
 
 
 def _validate_receipt(receipt: GoodsReceipt) -> None:
@@ -917,6 +923,29 @@ def _validate_receipt_line(line: GoodsReceiptLine) -> None:
     if line.manufactured_at and line.expiry_date and line.expiry_date < line.manufactured_at:
         raise BusinessRuleError(
             "invalid_expiry_date", "Son kullanma tarihi üretim tarihinden önce olamaz."
+        )
+    _validate_line_price(line)
+
+
+def _validate_line_price(line: GoodsReceiptLine) -> None:
+    """Para birimi ve kur: TL satırda kur boş tutulur; yabancı para biriminde fiyat varsa kur
+    zorunludur."""
+    if not line.currency:
+        line.currency = Currency.TRY
+    if line.currency not in Currency.values:
+        raise BusinessRuleError("invalid_currency", "Geçersiz para birimi.")
+    if line.unit_price is not None and line.unit_price < 0:
+        raise BusinessRuleError("invalid_price", "Birim fiyat negatif olamaz.")
+    if line.currency == Currency.TRY:
+        line.exchange_rate = None
+        return
+    if line.exchange_rate is not None and line.exchange_rate <= 0:
+        raise BusinessRuleError("invalid_exchange_rate", "Kur sıfırdan büyük olmalıdır.")
+    if line.unit_price is not None and line.exchange_rate is None:
+        raise BusinessRuleError(
+            "exchange_rate_required",
+            f"Satır {line.line_no}: {line.currency} fiyatında kur (1 {line.currency} = ? TL) "
+            "girilmelidir.",
         )
 
 
@@ -1064,6 +1093,123 @@ def post_goods_receipt(actor: User | None, receipt: GoodsReceipt) -> GoodsReceip
 def cancel_goods_receipt(actor: User | None, receipt: GoodsReceipt, reason: str) -> GoodsReceipt:
     """Taslak mal kabulü iptal eder (neden zorunlu). Kaydedilmiş mal kabul iptal edilmez."""
     return cancel_document(receipt, actor, reason=reason, machine=goods_receipt_states)
+
+
+def _sync_extra_costs(
+    actor: User | None, receipt: GoodsReceipt, items: Iterable[Mapping[str, Any]]
+) -> None:
+    """Ek masrafları verilen listeyle eşitler (`id`'li güncellenir, `id`'siz eklenir, listede
+    olmayan kaldırılır; kaldırma denetim günlüğüne mal kabul üzerinden yazılır)."""
+    existing = {row.pk: row for row in receipt.extra_costs.select_for_update()}
+    keep: set[int] = set()
+    pending: list[GoodsReceiptExtraCost] = []
+    for item in items:
+        values = dict(item)
+        row_id = values.pop("id", None)
+        values = _pick(values, EXTRA_COST_FIELDS)
+        if row_id is not None:
+            row = existing.get(row_id)
+            if row is None:
+                raise BusinessRuleError(
+                    "extra_cost_not_found", f"Mal kabulde {row_id} numaralı ek masraf yok."
+                )
+            keep.add(row_id)
+            for name, value in values.items():
+                setattr(row, name, value)
+        else:
+            row = GoodsReceiptExtraCost(receipt=receipt, **values)
+        if row.amount is None or row.amount <= 0:
+            raise BusinessRuleError("invalid_amount", "Ek masraf tutarı sıfırdan büyük olmalıdır.")
+        if row.kind not in GoodsReceiptExtraCost.Kind.values:
+            raise BusinessRuleError("invalid_extra_cost_kind", "Geçersiz ek masraf türü.")
+        if row.allocation not in GoodsReceiptExtraCost.Allocation.values:
+            raise BusinessRuleError("invalid_allocation", "Geçersiz dağıtım yöntemi.")
+        pending.append(row)
+    for row_id, row in existing.items():
+        if row_id in keep:
+            continue
+        log_change(
+            _actor(actor),
+            receipt,
+            AuditLog.Action.UPDATE,
+            {"extra_cost": [snapshot(row), None]},
+            "Ek masraf kaldırıldı",
+        )
+        row.delete()
+    for row in pending:
+        row.full_clean(exclude=["created_by", "updated_by", "receipt"])
+        save_with_audit(row, actor)
+
+
+@transaction.atomic
+def set_receipt_costs(
+    actor: User | None,
+    receipt: GoodsReceipt,
+    *,
+    lines: Iterable[Mapping[str, Any]] = (),
+    extra_costs: Iterable[Mapping[str, Any]] | None = None,
+    note: str = "",
+) -> GoodsReceipt:
+    """Mal kabulün fiyatlarını (satır: `unit_price`, `currency`, `exchange_rate`) ve ek
+    masraflarını yazar. Yetki API'de: satin_alma, yonetim, admin.
+
+    Taslakta serbestçe; kaydedilmiş mal kabulde düzeltme notu zorunludur ve olay
+    `goods_receipt.cost_changed` (oluşan lotlarla) yayınlanır: costing bu lotların maliyetini
+    notla yeni sürüm olarak yeniden hesaplar. İptal edilmiş mal kabule fiyat girilmez.
+    `extra_costs` verilmezse ek masraflar değişmez; boş liste hepsini kaldırır.
+    """
+    actor = _actor(actor)
+    receipt = _lock_document(receipt)
+    note = note.strip()
+    if receipt.status == GoodsReceipt.Status.CANCELLED:
+        raise BusinessRuleError("document_locked", f"{receipt.number} iptal; fiyat girilemez.")
+    posted = receipt.status == GoodsReceipt.Status.POSTED
+    if posted and not note:
+        raise BusinessRuleError(
+            "note_required", "Kaydedilmiş mal kabulde fiyat düzeltmesi için not girilmelidir."
+        )
+    by_id = {line.pk: line for line in receipt.lines.select_for_update()}
+    for item in lines:
+        values = dict(item)
+        line = by_id.get(values.pop("id", None))
+        if line is None:
+            raise BusinessRuleError("line_not_found", "Mal kabulde bu satır yok.")
+        for name, value in _pick(values, RECEIPT_PRICE_FIELDS).items():
+            setattr(line, name, value)
+        _validate_line_price(line)
+        save_with_audit(line, actor, note=note)
+    if extra_costs is not None:
+        _sync_extra_costs(actor, receipt, extra_costs)
+    if posted:
+        log_change(actor, receipt, AuditLog.Action.UPDATE, {}, f"Fiyat düzeltmesi: {note}")
+        lots = [
+            lot_payload(line.created_lot)
+            for line in receipt.lines.select_related("created_lot__material").order_by("line_no")
+            if line.created_lot is not None
+        ]
+        events.publish(
+            ev.GOODS_RECEIPT_COST_CHANGED,
+            {
+                "model": receipt._meta.label_lower,
+                "id": receipt.pk,
+                "number": receipt.number,
+                "note": note,
+                "lots": lots,
+            },
+            actor,
+        )
+    return receipt
+
+
+def set_lot_cost(
+    actor: User | None, lot: Lot, unit_cost: Decimal | None, *, estimated: bool, note: str = ""
+) -> Lot:
+    """Lotun birim maliyetini (TL / temel birim) yazar. Yalnızca costing modülü çağırır; döküm
+    `costing.LotCost`'tadır. Değişiklik denetim günlüğüne yazılır."""
+    lot = Lot.objects.select_for_update(of=("self",)).get(pk=lot.pk)
+    lot.unit_cost = unit_cost
+    lot.cost_is_estimated = estimated
+    return save_with_audit(lot, actor, note=note)
 
 
 # --- sayım düzeltme (Karar D-3: depo onaylar) ------------------------------------------------

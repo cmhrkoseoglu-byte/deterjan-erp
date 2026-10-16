@@ -24,6 +24,8 @@ import { SpecificationPage } from "./modules/quality/SpecificationPage";
 import { ReturnPage } from "./modules/returns/ReturnPage";
 import { ReturnsPage } from "./modules/returns/ReturnsPage";
 import { TracePage } from "./modules/traceability/TracePage";
+import { CostingPage } from "./modules/costing/CostingPage";
+import { LotCostPage } from "./modules/costing/LotCostPage";
 import { RecipeListPage } from "./modules/recipes/RecipeListPage";
 import { RecipePage } from "./modules/recipes/RecipePage";
 import { VersionPage } from "./modules/recipes/VersionPage";
@@ -62,6 +64,10 @@ function salesPage(page: ReactNode) {
 
 function returnsPage(page: ReactNode) {
   return <RequireRole roles={menuRoles("returns")}>{page}</RequireRole>;
+}
+
+function costingPage(page: ReactNode) {
+  return <RequireRole roles={menuRoles("costing")}>{page}</RequireRole>;
 }
 
 function qualityPage(page: ReactNode) {
@@ -138,6 +144,9 @@ const pageRoutes: RouteObject[] = [
       </RequireRole>
     ),
   },
+  // Maliyet: yalnızca yönetim (ve admin); tutarlar backend'de de yalnızca bu rollere döner.
+  { path: "maliyet/lotlar/:lotId", element: costingPage(<LotCostPage />) },
+  { path: "maliyet/:tab?", element: costingPage(<CostingPage />) },
 ];
 const IMPLEMENTED = new Set([
   "masterdata",
@@ -149,6 +158,7 @@ const IMPLEMENTED = new Set([
   "sales",
   "returns",
   "traceability",
+  "costing",
   "purchasing",
 ]);
 

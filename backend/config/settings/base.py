@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "apps.sales",
     "apps.returns",
     "apps.traceability",
+    "apps.costing",
     "apps.purchasing",
     "apps.workflow",
 ]
@@ -172,7 +173,7 @@ SPECTACULAR_SETTINGS = {
         "ConsumptionKindEnum": "apps.filling.models.ConsumptionKind",
         "ScrapKindEnum": "apps.filling.models.ScrapRecord.Kind",
         "SalesOrderStatusEnum": "apps.sales.models.SalesOrder.Status",
-        "CurrencyEnum": "apps.sales.models.Currency",
+        "CurrencyEnum": "apps.core.models.Currency",
         "StockReservationStatusEnum": "apps.inventory.models.StockReservation.Status",
         "CustomerReturnStatusEnum": "apps.returns.models.CustomerReturn.Status",
         "ReturnDispositionEnum": "apps.returns.models.CustomerReturnLine.Disposition",

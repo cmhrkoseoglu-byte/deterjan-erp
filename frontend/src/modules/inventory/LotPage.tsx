@@ -20,6 +20,7 @@ import { notifications } from "@mantine/notifications";
 import {
   IconArrowBackUp,
   IconArrowLeft,
+  IconCoin,
   IconArrowsTransferDown,
   IconCheck,
   IconLock,
@@ -38,6 +39,7 @@ import {
 } from "../../api/inventory";
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
+import { lotCostPath } from "../costing/config";
 import { AttachmentPanel } from "../../components/attachments/AttachmentPanel";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
@@ -65,6 +67,8 @@ export function LotPage() {
   const canBlock = hasAnyRole(user, LOT_BLOCK_ROLES);
   const canRelease = hasAnyRole(user, MANUAL_RELEASE_ROLES);
   const canMove = hasAnyRole(user, STOCK_WRITE_ROLES);
+  // Maliyet tutarlarını yalnızca yönetim görür (Karar D-15).
+  const canSeeCost = hasAnyRole(user, ["yonetim"]);
   const [direction, setDirection] = useState<TraceDirection>("backward");
   const [decision, setDecision] = useState<LotDecision | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -113,6 +117,16 @@ export function LotPage() {
               )}
             </Group>
             <Group gap="xs">
+              {canSeeCost && (
+                <Button
+                  component={Link}
+                  to={lotCostPath(data.id)}
+                  variant="default"
+                  leftSection={<IconCoin size={16} />}
+                >
+                  {it.lotCost}
+                </Button>
+              )}
               {canRelease && allowed.has("RELEASED") && (
                 <Button
                   color="green"

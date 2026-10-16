@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("inventory", "0004_pallet_labels"),
+        ("inventory", "0005_receipt_costs"),
         ("masterdata", "0004_labels_printers"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
