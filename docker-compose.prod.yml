@@ -1,42 +1,233 @@
-# Üretim ortamı İSKELETİ. Faz 5'te barındırma kararıyla (yerel sunucu / bulut) tamamlanacak.
-# Kullanım (taslak): docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Üretim ortamı (Faz 5, Adım 5.4/5.5). docker-compose.yml'nin üzerine bindirilir:
 #
-# Yapılacaklar (Faz 5):
-# - frontend: Vite dev server yerine derlenmiş statik dosyalar (nginx ile servis)
-# - backend: kaynak kod volume'ü olmadan, --reload olmadan, birden çok worker
-# - nginx: HTTPS sertifikası, statik/medya dosyaları
-# - yedekleme: PostgreSQL için düzenli yedek
+#   scripts/prod-compose.sh up -d --build
+#   (= docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod ...)
+#
+# Hedef: fabrikadaki yerel sunucu; aynı dosya bulut sanal sunucusunda da çalışır.
+# Dışarı yalnızca nginx açılır (80 -> 443 yönlendirme, 443 HTTPS). db ve redis port yayınlamaz.
+# Backend varsayılan köprü ağındadır: fabrika ağındaki etiket yazıcılarına (TCP 9100) çıkabilir.
+# Kurulum, sertifika, yedekleme ve güncelleme: docs/KURULUM.md
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+# Backend, worker, beat ve migrate aynı imajı kullanır (target: prod, root olmayan kullanıcı).
+x-app: &app
+  build:
+    context: ./backend
+    target: prod
+  image: deterjan-erp/backend:prod
+  environment:
+    DJANGO_SETTINGS_MODULE: config.settings.prod
+    APP_VERSION: ${APP_VERSION:-}
+  restart: unless-stopped
+  logging: *logging
 
 services:
+  # Tek seferlik: migration, collectstatic (static volume'üne) ve rol tanımları. Her `up`ta çalışır;
+  # backend/worker/beat bu iş başarıyla bitmeden başlamaz.
+  migrate:
+    <<: *app
+    # .env.prod gerçek kurulumda zorunludur; required: false yalnızca CI'daki `config` doğrulaması
+    # içindir (dosya yoksa prod ayarları zaten başlamayı reddeder).
+    env_file:
+      - path: ${ENV_FILE:-.env.prod}
+        required: false
+    command:
+      - sh
+      - -c
+      - python manage.py migrate --noinput && python manage.py collectstatic --noinput && python manage.py seed_roles
+    volumes:
+      - static:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
   backend:
-    environment:
-      DJANGO_SETTINGS_MODULE: config.settings.prod
-    # Ekler (core.Attachment) kalıcı volume'de; S3 uyumlu depoya geçilebilir (Adım 2.4).
+    <<: *app
+    env_file: !override
+      - path: ${ENV_FILE:-.env.prod}
+        required: false
+    command: >-
+      uvicorn config.asgi:application --host 0.0.0.0 --port 8000
+      --workers ${WEB_CONCURRENCY:-4} --proxy-headers --forwarded-allow-ips='*' --no-server-header
     volumes: !override
       - media:/app/media
-    command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 4
-    restart: unless-stopped
+      # Yedekleme durum dosyaları (status/*.json) uygulamada gösterilir; salt okunur.
+      - ${BACKUP_DIR:-./backups}:/backups:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/', timeout=4)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2g
 
   worker:
-    environment:
-      DJANGO_SETTINGS_MODULE: config.settings.prod
-    volumes: !reset []
-    restart: unless-stopped
+    <<: *app
+    env_file: !override
+      - path: ${ENV_FILE:-.env.prod}
+        required: false
+    command: celery -A config worker -l info --concurrency ${CELERY_CONCURRENCY:-2}
+    volumes: !override
+      - media:/app/media
+      - ${BACKUP_DIR:-./backups}:/backups:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping --destination celery@$$HOSTNAME --timeout 10 >/dev/null"]
+      interval: 60s
+      timeout: 20s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
 
   beat:
+    <<: *app
+    env_file: !override
+      - path: ${ENV_FILE:-.env.prod}
+        required: false
+    command: celery -A config beat -l info --schedule /var/lib/celery/celerybeat-schedule
+    volumes: !override
+      - celerybeat:/var/lib/celery
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  # Geliştirme sunucusu (Vite) üretimde çalışmaz; derlenmiş SPA'yı nginx sunar.
+  frontend:
+    profiles: ["dev-only"]
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    image: deterjan-erp/nginx:prod
     environment:
-      DJANGO_SETTINGS_MODULE: config.settings.prod
-    volumes: !reset []
+      SERVER_NAME: ${SERVER_NAME:-}
+      INTERNAL_NETWORKS: ${INTERNAL_NETWORKS:-127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      NGINX_ENTRYPOINT_QUIET_LOGS: "1"
+    ports: !override
+      - "80:80"
+      - "443:443"
+    volumes: !override
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - static:/var/www/static:ro
+    depends_on: !override
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # Sertifika adı ne olursa olsun TLS katmanı ve SPA dosyası yanıt veriyor mu?
+      test: ["CMD-SHELL", "wget -q --spider --no-check-certificate --header=\"Host: $${SERVER_NAME%% *}\" https://127.0.0.1/index.html || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   db:
     restart: unless-stopped
+    logging: *logging
+    shm_size: 256m
+    deploy:
+      resources:
+        limits:
+          memory: 2g
 
   redis:
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    # Şifre komut satırında görünmesin diye geçici yapılandırma dosyasına yazılır; ardından imajın
+    # kendi giriş betiği redis kullanıcısına geçerek sunucuyu başlatır.
+    command:
+      - sh
+      - -c
+      - |
+        if [ -z "$$REDIS_PASSWORD" ]; then echo "HATA: REDIS_PASSWORD tanımlı değil (.env.prod)" >&2; exit 1; fi
+        printf 'requirepass "%s"\n' "$$REDIS_PASSWORD" > /tmp/redis.conf
+        chown redis:redis /tmp/redis.conf && chmod 600 /tmp/redis.conf
+        exec docker-entrypoint.sh redis-server /tmp/redis.conf --appendonly yes
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
-  nginx:
+  # Gece yedeği + haftalık geri yükleme testi (busybox crond). Elle: scripts/backup.sh
+  backup:
+    build:
+      context: ./backup
+    image: deterjan-erp/backup:prod
+    env_file:
+      - path: ${ENV_FILE:-.env.prod}
+        required: false
+    environment:
+      TZ: Europe/Istanbul
+      PGHOST: db
+      APP_VERSION: ${APP_VERSION:-}
+    volumes:
+      - media:/media:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+      # Dış disk: tanımsızsa boş bir yer tutucu bağlanır (dış kopya kapalı sayılır). Disk konteyner
+      # başladıktan sonra takılır ya da değiştirilirse: scripts/prod-compose.sh restart backup
+      - ${BACKUP_OFFSITE_DIR:-./backup/offsite-disabled}:/offsite
+      - ./backup/rclone:/config/rclone
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x crond >/dev/null"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 1g
 
 volumes:
   media:
+  static:
+  celerybeat:

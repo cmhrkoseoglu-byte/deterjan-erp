@@ -1188,6 +1188,30 @@ yazar (ve `history.jsonl`'e ekler); backend ve worker klasörü salt okur, `ops.
  "mismatches": [{"table": "inventory_lot", "expected": 10, "actual": 9}]}
 ```
 
+### Üretim kurulumu ve yedek servisi
+
+- Üretim: `scripts/prod-compose.sh` (`docker-compose.yml` + `docker-compose.prod.yml`, `.env.prod`).
+  nginx derlenmiş arayüzü ve statik dosyaları verir, 443'te TLS 1.2/1.3 sonlandırır, 80'i yönlendirir;
+  `/admin/`, `/api/docs/`, `/api/schema/` yalnızca `INTERNAL_NETWORKS` (iç ağ/VPN) IP'lerine açık.
+  `migrate` servisi her açılışta migrate, collectstatic, seed_roles çalıştırır. Backend imajı geliştirme
+  paketleri olmadan, root olmayan kullanıcıyla çalışır. db ve Redis'in portu dışarı açılmaz, Redis şifreli.
+- Sertifika üç yoldan biriyle (KURULUM.md §4): firma alan adı + Let's Encrypt DNS-01, satın alınmış sertifika
+  ya da iç sertifika otoritesi (`scripts/gen-selfsigned-cert.sh`; CA tabletlere bir kez yüklenir).
+- `backup` servisi: her gece 02:00 tutarlı anlık görüntüden `pg_dump` (tablo sayımları aynı işlemde) +
+  ekler arşivi + manifest (sha256), 30 gün saklama; her pazar 04:00 son yedeği geçici veritabanına kurup
+  tablo sayılarını manifestle karşılaştıran geri yükleme testi. Saatler `BACKUP_CRON`, `RESTORE_TEST_CRON`.
+- **Ayrı konum kopyası başarısızsa yedek başarısız sayılır** (`status: failed`, `offsite: failed`; mesaj
+  yerel kopyanın sağlam olduğunu söyler) ve admin'e uyarı gider. Gerekçe: D-20 ayrı konumda kopyayı şart
+  koşuyor; sessizce yalnızca yerelde kalan yedek fark edilmez.
+- Harici disk/NAS klasöründe `.deterjan-erp-offsite` işaret dosyası bulunmalı; yoksa kopya yapılmaz ve
+  hata verilir. Gerekçe: takılı olmayan USB diskte kopyanın sessizce sunucunun kendi diskine yazılmasını
+  önlemek. Disk değiştirildikten sonra `backup` servisi yeniden başlatılır.
+- Gerçek geri yükleme `scripts/restore.sh <çalışma|latest>`: önce güvenlik amaçlı yedek alır, servisleri
+  durdurur, veritabanını ve ekleri geri yükler, servisleri başlatır; "EVET" onayı ister.
+- CI: `prod` işi üretim imajlarıyla HTTPS üzerinden duman testi, yedek ve geri yükleme testini çalıştırır;
+  `security` işi gitleaks (tüm geçmiş), pip-audit ve `npm audit --omit=dev --audit-level=high`.
+- API dokümantasyonu katı CSP altında çalışsın diye `SpectacularSwaggerSplitView` (satır içi betik yok).
+
 ### KVKK
 
 - Envanter `docs/KVKK.md`. Şoför TC kimlik numarası yalnızca irsaliyede açıktır; irsaliye PDF'inin ve

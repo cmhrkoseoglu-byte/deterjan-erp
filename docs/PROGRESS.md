@@ -531,3 +531,42 @@ limiti), D-14 (tank temizliği), D-15 (kg başı genel gider) `docs/DECISIONS.md
 | Kalibrasyonu geçmiş terazi kuralı çalışıyor | ✓ | `test_overdue_calibration_blocks_weighing`, `test_due_soon_calibration_warns_but_allows`, `test_scale_required_when_scales_exist`, `test_failed_calibration_puts_scale_down` |
 | Temizliği yapılmamış tank kuralı çalışıyor | ✓ | `test_product_change_requires_cleaning`, `test_same_product_needs_no_cleaning`, `test_changeover_rule_allows_switch_without_cleaning`, API `test_cleaning_check_and_record` |
 | Stok değişmezleri tüm yeni testlerde geçiyor (bakım, İSG) | ✓ | yedek parça sarfı ve depolama limiti testleri `invariants` fixture'ı ile biter |
+
+## Faz 5 — Entegrasyonlar ve canlıya geçiş
+
+Faz dosyası: `docs/plan/FAZ-5-entegrasyon-canli.md`. Kararlar D-16 … D-20 (DECISIONS.md).
+
+| Adım | Durum | Not |
+|---|---|---|
+| 5.4 Canlı ortam | Kod tamam (2026-10-16), sunucuya kurulum bekliyor | Üretim compose, nginx HTTPS + güvenlik başlıkları, üretim ayarları, `docs/KURULUM.md`, `docs/CANLI-KONTROL-LISTESI.md` |
+| 5.5 Yedek, izleme, güvenlik | Kod tamam (2026-10-16), sunucuya kurulum bekliyor | Gece yedeği + ayrı konum kopyası + haftalık otomatik geri yükleme testi; `ops` izleme ve uyarılar; kilit, hareketsizlik süresi, 2FA, şifre politikası; CI gizli bilgi ve bağımlılık taraması; `docs/KVKK.md` |
+
+### Adım 5.4 ve 5.5 doğrulaması (canlı ortam ve güvenlik)
+
+- Sandbox'ta üretim kurulumu (`scripts/prod-compose.sh up -d --build --wait`) tüm servisler sağlıklı;
+  `scripts/prod_smoke_test.sh https://localhost` geçti: HTTP→HTTPS 301, TLS 1.0/1.1 reddi, her yanıtta HSTS,
+  CSP, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy; bilinmeyen API adresi JSON 404 (DEBUG
+  kapalı); statik dosyalar nginx'ten; bilinmeyen Host 444; HTTPS üzerinden giriş, Secure/HttpOnly çerezler,
+  WebSocket 101; `check --deploy` uyarısız; yedek alındı (103 tablo), geri yükleme testi geçici veritabanında
+  sayıları tuttu, `/api/v1/ops/health/` tümü `ok`. Aynı test CI'da `prod` işinde çalışır.
+- Hata durumları elle denendi: ayrı konum işaret dosyası yok → yedek `failed`; bozuk `db.dump` → sha256 hatası;
+  manifestte değiştirilmiş sayı → `mismatches` dolu, test başarısız; veritabanı kapalı → Türkçe hata mesajı.
+  Ayrı konum klasörü ve rclone hedefi kopyalanıp doğrulandı; ayrı konumdan geri yükleme testi geçti.
+  `scripts/restore.sh latest --yes` ile tam geri yükleme provası yapıldı.
+- Giriş güvenliği: `apps/core/tests/test_security.py` (26 test: kilit ve süresi, var olmayan kullanıcı adı,
+  admin bildirimi ve kilit açma, RFC 6238 test vektörü, 2FA kurulum/giriş/tekrar kullanılamayan kod/kurtarma
+  kodu, zorunlu rolde kurulum öncesi engel, yönetim paneli 2FA, şifre politikası ve değiştirme, hareketsizlik
+  süresi, arka plan isteğinin oturumu uzatmaması, saha tableti çerezi ve sahte çerezin reddi).
+- İzleme ve KVKK: `apps/ops/tests/test_ops.py` (21 test: durum dosyası içe aktarımı, yedek/test/disk/yük/kuyruk
+  kontrolleri, uyarının bir kez ve saatte bir tekrarı, düzelme bildirimi, dış izleme ucu, IP saklama süresi).
+- Frontend: iki adımlı giriş, Güvenlik sayfası (2FA kurulum, kurtarma kodları, şifre değiştirme), Sistem
+  (durum, kullanıcılar, bu cihaz), hareketsizlik başlığı ve süresi, arayüz hata kaydı; 259 test geçiyor.
+  Güvenlik sayfasının üretim kurulumundaki görüntüsü: `/mnt/project-files/faz5-canli-guvenlik/guvenlik-sayfasi.png`.
+- Backend 1081+ test, ruff, mypy temiz; gitleaks (tüm geçmiş), pip-audit ve npm audit (yüksek/kritik) temiz.
+
+### Faz 5 kabul kriterleri (Adım 5.4 ve 5.5'e düşenler)
+
+| Kabul kriteri | Durum | Kanıt |
+|---|---|---|
+| Canlı ortam HTTPS, güvenlik başlıkları ve `DEBUG=False` ile çalışıyor; güvenlik kontrol listesi tamam | Sandbox'ta ✓; gerçek sunucuda kontrol listesi kurulumda işaretlenecek | `scripts/prod_smoke_test.sh`, CI `prod` işi, `docs/CANLI-KONTROL-LISTESI.md` |
+| Yedekten geri yükleme testi başarılı ve otomatik | ✓ (her pazar 04:00 + CI) | `backup/restore-test.sh`, duman testindeki geri yükleme adımı, `ops` izleme kontrolü |

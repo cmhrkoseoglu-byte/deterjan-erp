@@ -1,0 +1,12 @@
+# gitleaks yapılandırması (CI "Güvenlik taramaları" işi): varsayılan kurallar + test verisi istisnaları.
+# Gerçek gizli bilgiler (.env, .env.prod, sertifika anahtarları, rclone.conf) .gitignore ile depo
+# dışındadır; buraya yalnızca bilinçli olarak sahte olan değerler eklenir.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Testlerdeki sahte şifreler ve TOTP test vektörleri (gerçek gizli bilgi değil)"
+paths = [
+    '''^backend/apps/[^/]+/tests/''',
+    '''^frontend/src/.*\.test\.tsx?$''',
+]
