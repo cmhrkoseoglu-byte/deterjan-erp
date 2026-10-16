@@ -116,7 +116,17 @@ def _output_lot(payload: Payload) -> list[Subject]:
 def _rework_lot(payload: Payload) -> list[Subject]:
     """Yeniden işleme kararında lot (planlama görevi lota bağlanır)."""
     lot = payload.get("lot")
-    if payload.get("decision") != "REWORK" or not lot:
+    if payload.get("decision") != "REWORK" or not lot or payload.get("stage") == "RETURN":
+        return []
+    return [
+        {**lot, "sample_number": payload.get("number", ""), "reason": payload.get("reason", "")}
+    ]
+
+
+def _return_rework_lot(payload: Payload) -> list[Subject]:
+    """İade numunesinde yeniden işleme kararı: lot (mamul) planlamaya görevle bağlanır."""
+    lot = payload.get("lot")
+    if payload.get("decision") != "REWORK" or not lot or payload.get("stage") != "RETURN":
         return []
     return [
         {**lot, "sample_number": payload.get("number", ""), "reason": payload.get("reason", "")}
@@ -330,6 +340,39 @@ RULES: tuple[Rule, ...] = (
         notify_roles=(PLANLAMA,),
         title="Dolum emri iptal edildi: {number}",
         body="Emre bağlı açık görevler iptal edildi.",
+    ),
+    # Faz 3, Adım 3.3: müşteri iadesi.
+    TaskRule(
+        code="return_qc",
+        event=ev.SAMPLE_CREATED,
+        role=LABORATUVAR,
+        title="İade kontrolü: {lot_no}",
+        description="{material_code} {material_name} — numune {number}",
+        subjects=_sample_at("RETURN"),
+        close_on=(CloseOn(ev.SAMPLE_DECIDED), CloseOn(ev.SAMPLE_CANCELLED)),
+    ),
+    TaskRule(
+        code="return_rework",
+        event=ev.SAMPLE_DECIDED,
+        role=PLANLAMA,
+        title="İade lotu yeniden işlenecek: {lot_no}",
+        description="{material_code} {material_name} — numune {sample_number}. {reason}",
+        subjects=_return_rework_lot,
+    ),
+    TaskRule(
+        code="return_scrap",
+        event=ev.CUSTOMER_RETURN_SCRAP_REQUIRED,
+        role=DEPO,
+        title="İade imha et: {number}",
+        description="{customer_name}: imha kararı verilen iade satırlarını imha edip kaydedin.",
+        close_on=(CloseOn(ev.CUSTOMER_RETURN_CLOSED),),
+    ),
+    NotifyRule(
+        code="return_closed",
+        event=ev.CUSTOMER_RETURN_CLOSED,
+        roles=(SEVKIYAT,),
+        title="İade sonuçlandı: {number}",
+        body="{customer_name}",
     ),
     NotifyRule(
         code="lots_expiring",

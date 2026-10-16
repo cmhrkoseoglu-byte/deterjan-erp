@@ -4,7 +4,9 @@ import {
   IconChecklist,
   IconDatabase,
   IconListDetails,
+  IconArrowBackUp,
   IconFlask,
+  IconRoute,
   IconPackages,
   IconBottle,
   IconSettings,
@@ -87,6 +89,23 @@ export const MENU: readonly MenuItem[] = [
     path: "/sevkiyat",
     icon: IconTruckDelivery,
     roles: ["sevkiyat", "yonetim"],
+    phase: 3,
+  },
+  {
+    key: "returns",
+    label: tr.menu.returns,
+    path: "/iadeler",
+    icon: IconArrowBackUp,
+    // Depo da görür: teslim alır ve imha eder.
+    roles: ["sevkiyat", "laboratuvar", "depo", "yonetim"],
+    phase: 3,
+  },
+  {
+    key: "traceability",
+    label: tr.menu.traceability,
+    path: "/izlenebilirlik",
+    icon: IconRoute,
+    roles: ["laboratuvar", "yonetim"],
     phase: 3,
   },
   {

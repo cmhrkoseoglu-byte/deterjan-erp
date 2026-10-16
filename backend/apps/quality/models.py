@@ -18,6 +18,7 @@ class SampleStage(models.TextChoices):
     INCOMING = "INCOMING", "Giriş"
     IN_PROCESS = "IN_PROCESS", "Şarj sırasında"
     FINAL = "FINAL", "Son kontrol"
+    RETURN = "RETURN", "İade"
 
 
 class TestDefinition(MasterDataModel):
@@ -187,6 +188,7 @@ class Sample(DocumentModel):
         GOODS_RECEIPT = "GOODS_RECEIPT", "Mal kabul"
         PRODUCTION = "PRODUCTION", "Şarj bitişi"
         FILLING = "FILLING", "Dolum"
+        RETURN = "RETURN", "Müşteri iadesi"
         MANUAL = "MANUAL", "Elle"
 
     lot = models.ForeignKey(

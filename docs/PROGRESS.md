@@ -257,3 +257,34 @@ Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrınt
 | Teorik / gerçek bulk ve ambalaj tüketim raporu doğru | ✓ | `test_consumption_report`, e2e adım 8, API `test_filling_tablet_flow` |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | dolum testleri `invariants` fixture'ı ya da `assert_stock_invariants()` ile biter |
 | Okutma bileşeni tüm tablet ekranlarında | Adım 2.3 | Dolum tabletleri şimdilik düz okutma alanı kullanır; ortak `ScanInput` Adım 2.3 PR'ıyla bağlanır |
+
+## Faz 3 — Satış, sevkiyat ve izlenebilirlik
+
+### Adım 3.3 ve 3.4 doğrulaması (iade, izlenebilirlik, geri çağırma)
+
+- Backend: `pytest` 696 test geçti (returns + traceability: 37); `ruff check`, `ruff format --check`,
+  `mypy` temiz; `makemigrations --check` temiz. Stoka dokunan iade testleri `assert_stock_invariants()` ile
+  biter.
+- İade servis testleri (`apps/returns/tests/test_services.py`): durum makinesinin izinli ve yasak
+  geçişleri; kabulde `RETURN` hareketi, lotun bloke edilmesi ve iade numunesi; serbest bırakma →
+  yeniden sevke uygun ve mamul deposuna dönüş; red → imha görevi, `SCRAP` hareketi ve iadenin
+  sonuçlanması; `REWORK` → planlama görevi; `FINAL` spesifikasyona düşme; `REWORK`un iade dışında hâlâ
+  yalnızca bulk lota verilmesi; yetkisiz roller.
+- İzlenebilirlik testleri (`apps/traceability/tests`): geri izleme tedarikçi, tedarikçi lot no ve mal
+  kabul belgesine iner; ileri izleme stok, sevk (ters kayıt düşülmüş) ve iade miktarlarını verir; geri
+  çağırma özeti, Excel ve PDF; yetkisiz rol 403.
+- Performans: 5 seviyeli, 10.050 hareketli veride geri çağırma simülasyonu yerel çalıştırmada 0,3–0,42 sn
+  (hedef < 1 sn).
+- Frontend: `npm test` 125 test (iade 7, izlenebilirlik 5), `lint`, `format:check`, `typecheck`, `build`
+  temiz. Ekranlar: İadeler (liste, oluştur, kabul, imha, kayıt paneli), İzlenebilirlik (geri / ileri izleme
+  ağacı, geri çağırma simülasyonu, Excel/PDF). Numune ekranı iade numunesinde "Yeniden işleme" kararını
+  gösterir.
+
+### Faz 3 kabul kriterleri (Adım 3.3 ve 3.4'e düşenler)
+
+| Kriter | Durum | Kanıt |
+|---|---|---|
+| İade karantinaya giriyor ve QC kararıyla yönleniyor | ✓ | `apps/returns/tests/test_services.py` (serbest / red / yeniden işleme) |
+| Hammadde lotunun ileri izlemesi doğru müşteri ve miktarları veriyor; geri izleme tedarikçiye iniyor | Kısmen | Miktarlar ve tedarikçi `apps/traceability/tests/test_selectors.py`; müşteri ayağı Adım 3.2 ile |
+| Geri çağırma simülasyonu 10.000 hareketlik veride 1 sn altında | ✓ | `test_recall_performance_on_deep_wide_data` (10.050 hareket, ~0,4 sn) |
+| Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | iade testleri `invariants` fixture'ı ile biter |

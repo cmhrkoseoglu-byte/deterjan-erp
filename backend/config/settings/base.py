@@ -37,6 +37,8 @@ INSTALLED_APPS = [
     "apps.production",
     "apps.quality",
     "apps.filling",
+    "apps.returns",
+    "apps.traceability",
     "apps.workflow",
 ]
 
@@ -165,6 +167,8 @@ SPECTACULAR_SETTINGS = {
         "PackagingSpecStatusEnum": "apps.filling.models.PackagingSpec.Status",
         "ConsumptionKindEnum": "apps.filling.models.ConsumptionKind",
         "ScrapKindEnum": "apps.filling.models.ScrapRecord.Kind",
+        "CustomerReturnStatusEnum": "apps.returns.models.CustomerReturn.Status",
+        "ReturnDispositionEnum": "apps.returns.models.CustomerReturnLine.Disposition",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],

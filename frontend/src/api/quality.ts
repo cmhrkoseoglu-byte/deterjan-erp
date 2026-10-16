@@ -3,9 +3,9 @@ import { api } from "./client";
 import type { ListParams } from "./masterdata";
 import type { Paginated } from "./types";
 
-export type SampleStage = "INCOMING" | "IN_PROCESS" | "FINAL";
+export type SampleStage = "INCOMING" | "IN_PROCESS" | "FINAL" | "RETURN";
 export type SampleStatus = "PENDING" | "IN_TEST" | "AWAITING_APPROVAL" | "DECIDED" | "CANCELLED";
-export type SampleOrigin = "GOODS_RECEIPT" | "PRODUCTION" | "FILLING" | "MANUAL";
+export type SampleOrigin = "GOODS_RECEIPT" | "PRODUCTION" | "FILLING" | "RETURN" | "MANUAL";
 export type ResultType = "NUMERIC" | "PASS_FAIL" | "TEXT";
 export type SpecStatus = "DRAFT" | "APPROVED" | "OBSOLETE";
 export type DecisionType = "RELEASE" | "REJECT" | "REWORK" | "CONDITIONAL_RELEASE";

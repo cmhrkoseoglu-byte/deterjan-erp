@@ -8,7 +8,12 @@ export const qt = {
     specs: "Spesifikasyonlar",
     tests: "Test tanımları",
   },
-  stage: { INCOMING: "Giriş kontrolü", IN_PROCESS: "Şarj sırası kontrol", FINAL: "Son kontrol" },
+  stage: {
+    INCOMING: "Giriş kontrolü",
+    IN_PROCESS: "Şarj sırası kontrol",
+    FINAL: "Son kontrol",
+    RETURN: "İade kontrolü",
+  },
   sampleStatus: {
     PENDING: "Bekliyor",
     IN_TEST: "Testte",
@@ -31,6 +36,7 @@ export const qt = {
     REWORK: "Bulk lot bloke edilir; planlamaya yeniden işleme emri açma görevi düşer.",
     REJECT: "Lot reddedilir ve karantinada kalır; geri alınamaz.",
   },
+  returnReworkHint: "İade edilen lot bloke kalır; planlamaya yeniden işleme görevi düşer.",
   inProcessHint: "Ara kontrol lotun durumunu değiştirmez; uygun değilse üretime bildirim gider.",
   approval: {
     NOT_REQUIRED: "Gerekmez",

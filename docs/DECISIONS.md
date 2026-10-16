@@ -496,3 +496,69 @@ kapanır), `start_filling` (dolum, "Dolumu başlat: {number}", parti başlayınc
 `batch_sample_analysis` görevi mamul numunesi için açılmaz), `filling_bulk_variance` (planlama, yönetim;
 uyarı), `finished_lot_released` (sevkiyat, planlama: "Sevke hazır: {lot}"), `finished_lot_rejected`
 (planlama, dolum), `filling_order_cancelled` (açık görevleri iptal eder, planlamaya bildirim).
+
+## 2026-10-16 — İade (Faz 3, Adım 3.3)
+
+CUMHUR'un 2026-10-16'da onayladığı plan ve kararı:
+
+1. **İade gelince lotun tamamı karara kadar bekler** ("Tüm lot beklesin"). İade kabulünde lot `RELEASED`
+   ise `BLOCKED` olur (kalite kararı yoluyla, `inventory.block_lot(quality_decision=True)`); depodaki ve
+   müşteriden dönen miktar QC kararına kadar ne tüketilir ne sevk edilir. Lot zaten karantinada ya da
+   blokeliyse durumu değişmez.
+2. **İade ayrı modül**: `apps/returns` (`CustomerReturn`, numara `IA-`); izlenebilirlik ayrı modül:
+   `apps/traceability`. Satış (`sales`) modülü ikisine de bağımlı değildir. CLAUDE.md modül tablosu
+   buna göre güncellendi.
+
+Ayrıntılar:
+
+- **Durumlar**: Taslak → Kabul edildi → Sonuçlandı; taslak iptal edilebilir (gerekçeli). Kabulde her satır
+  `RETURN` hareketiyle iadenin karantina lokasyonuna (`QUARANTINE` türü) girer; lot numarası korunur.
+  Satır ürünü `FINISHED` olmalı, lot o ürünün lotu olmalı, bir iadede aynı lot bir kez.
+- **İade numunesi**: kabulde lotun açık numunesi varsa o kullanılır, yoksa `stage=RETURN`,
+  `origin=RETURN` numune açılır. `RETURN` aşamasında onaylı spesifikasyon yoksa ürünün `FINAL`
+  spesifikasyonu kullanılır.
+- **Karar → satır sonucu**: `lot.released` → yeniden sevke uygun (lot depodaki yerine, yoksa son pozitif
+  hareket aldığı karantina dışı lokasyona taşınır); `lot.rejected` → imha; `REWORK` kararı → yeniden
+  işleme (lot bloke kalır, planlamaya görev). `REWORK` kararı mamul lotlarda yalnızca iade numunesine
+  verilebilir; dışarıda hâlâ yalnızca bulk lota. Kabulde lot zaten `REJECTED` ise satır hemen imha olur.
+- **İmha**: imha satırı depo ya da sevkiyat tarafından "İmha et" ile `SCRAP` hareketiyle karantinadan
+  düşülür. Tüm satırlar sonuçlanınca (imha satırları düşülmüş, diğerleri karara bağlanmış) iade
+  kendiliğinden "Sonuçlandı" olur.
+- **Yetki**: iade açma / düzenleme / iptal `sevkiyat`; kabul `sevkiyat` ve `depo`; imha `depo` ve
+  `sevkiyat`; okuma her giriş yapmış kullanıcıya açık. Menüde "İadeler" spesifikasyondaki sevkiyat ve
+  laboratuvarın yanında `depo` (kabul, imha) ve `yonetim`e de görünür.
+- **Rezervasyonlar**: iade kabulü rezervasyonu olan bir lotu bloke edebilir. Lot `RELEASED` dışına
+  çıkınca rezervasyonun ne olacağını Adım 3.1 (satış) belirler; hangi PR ikinci gelirse bağlar.
+- **Sevkiyata bağ** (Adım 3.2'ye sözleşme): `CustomerReturn` şimdilik sevkiyatsız. Sevkiyat modülü
+  `CustomerReturn.shipment` (opsiyonel FK) alanını ve "iade miktarı o sevkiyatta o lottan sevk edilenden
+  fazla olamaz" kuralını ekler.
+
+### İade olay sözleşmesi (iş akışı tablosuna ek)
+
+| Olay | Payload |
+|---|---|
+| `customer_return.received`, `.closed`, `.cancelled` | `transition_status` payload'ı + `customer_code`, `customer_name`, `lots` (her satır için `lot_payload` + `disposition`) |
+| `customer_return.scrap_required` | `model: returns.customerreturn, id, number` + yukarıdaki ek alanlar |
+
+İş akışı kuralları: `return_qc` (laboratuvar, "İade kontrolü: {lot}", iade numunesi açılınca, karar ya da
+iptalde kapanır), `return_rework` (planlama, "İade lotu yeniden işlenecek: {lot}"), `return_scrap` (depo,
+"İade imha et: {number}", iade sonuçlanınca kapanır), `return_closed` (sevkiyata bildirim "İade
+sonuçlandı: {number}"). Mamul numunesinin `rework_order` kuralı iade numunesinde çalışmaz.
+
+## 2026-10-16 — İzlenebilirlik ve geri çağırma (Faz 3, Adım 3.4)
+
+- **Hedef 1 sn**: spesifikasyondaki 1 dakika yerine performans testi 10.000+ hareketli, 5 seviyeli veride
+  geri çağırma simülasyonunun 1 sn altında kalmasını ister (`test_recall_performance_on_deep_wide_data`).
+- **İleri kapanış** tek özyinelemeli CTE ile (`LotLink`); stok, sevk ve iade miktarları lot listesine toplu
+  sorgularla okunur. Sevk = `SHIPMENT` hareketleri eksi onları ters çeviren `REVERSAL`lar; iade =
+  `RETURN` hareketleri.
+- **Geri izleme** hammadde lotunda tedarikçi, tedarikçi lot no ve mal kabul belgesine (numara, tarih)
+  iner.
+- **Müşteri bilgisi** (Adım 3.2'ye sözleşme): sevkiyat modeli yokken sevk satırlarında müşteri alanları
+  boştur ("Müşteri bilgisi yok"). Sevkiyat modülü `traceability.selectors._customers_for` içinde
+  `SHIPMENT` hareketinin kaynağından (`source` → sevkiyat → sipariş → müşteri) `customer_id`,
+  `customer_code`, `customer_name` alanlarını doldurur; rapor, API ve çıktılar bu alanları kullanır.
+- **Çıktılar**: Excel (Özet, Etkilenen lotlar, Stokta kalan, Sevkiyatlar, Müşteriler) ve A4 yatay PDF.
+- **Yetki**: tüm izlenebilirlik uçları ve ekran `laboratuvar` ve `yonetim` (admin her zaman).
+- **API**: `/api/v1/traceability/lots/<id>/backward/`, `/forward/`, `/api/v1/traceability/recall/?lot=..`
+  (1–50 lot), `/recall/xlsx/`, `/recall/pdf/`.
