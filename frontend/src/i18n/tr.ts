@@ -46,6 +46,7 @@ export const tr = {
     returns: "İadeler",
     traceability: "İzlenebilirlik",
     purchasing: "Satın alma",
+    costing: "Maliyet",
     reporting: "Raporlar",
     adminPanel: "Yönetim paneli",
   },

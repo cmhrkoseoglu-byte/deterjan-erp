@@ -283,6 +283,7 @@ describe("mal kabul", () => {
       status_display: "Kaydedildi",
       cancel_reason: "",
       cancelled_at: null,
+      extra_costs: null,
       posted_at: "2026-10-15T11:00:00+03:00",
       posted_by_name: "Depo",
       created_at: "2026-10-15T10:00:00+03:00",

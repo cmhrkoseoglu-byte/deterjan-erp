@@ -783,3 +783,63 @@ Kod incelemesinde bulunan hatalar düzeltilirken netleşen kurallar:
 (bildirim "Sevk edildi: {number}" siparişi oluşturan kullanıcıya ve `yonetim`e, lot listesiyle);
 `shipment_cancelled` (açık görevleri iptal eder). Bildirim kuralı artık rollerin yanında payload'dan
 kullanıcı da alabilir (`NotifyRule.users`).
+
+## 2026-10-16 — Maliyet (Faz 4, Adım 4.1)
+
+Plan: `/mnt/project-files/faz4-costing/plan.md` (karar kartıyla onaya sunuldu). Kararlar:
+
+- **Karar D-12 "Önerilen sıra"** (CUMHUR kararı): maliyet, satın alma, raporlama, bakım, İSG; aynı anda
+  iki thread.
+- **Karar D-15 "Kg başına"** (CUMHUR kararı): yönetim enerji, işçilik ve amortisman için kg başı oran girer
+  (`costing.CostRate`, aşama: üretim / dolum, `valid_from` ile geçerlilik). Oranlar bulk ve dolum lot
+  maliyetine **ayrı kalem** olarak eklenir. Üretimde gerçek çıktının kg'ı, dolumda doldurulan bulk'ın kg'ı
+  esas alınır; kg'a çevrilemeyen miktar (yoğunluk yok) kalemi "eksik" işaretler. Oran yoksa maliyet yalnızca
+  malzemedir. Oranlar silinmez; yeni tarihli oran eskisinin yerini alır, sıfır oran o kalemi kapatır.
+- **Fiili maliyet, lot bazında, saklanır**: `LotCost` (sürümlü, lot başına tek güncel) + `LotCostLine`
+  (kalem kalem döküm). Maliyet mal kabul kaydında, şarj bitiminde ve dolum partisi bitiminde olayla
+  hesaplanır (`goods_receipt.posted`, `production_batch.completed`, `filling_run.completed`). Yeniden
+  hesaplama ayrı işlemdir, not zorunludur, yeni sürüm açar; "sonraki lotlara da uygula" seçeneği bu lottan
+  türeyen bulk ve mamul lotları sırayla yeniden hesaplar.
+- **Alış maliyeti** = satır tutarı (birim fiyat × miktar × kur) + ek masraf payı, ÷ temel birim miktarı.
+  Ek masraflar (`GoodsReceiptExtraCost`: nakliye, gümrük, diğer) satırlara miktar ya da tutar oranında
+  dağıtılır; tutarda fiyatı olan satır yoksa miktara düşer. Yuvarlama farkı en büyük paya eklenir, toplam
+  her zaman ek masrafa eşittir.
+- **Fiyatı olmayan lot "tahmini"**: malzemenin son tahmini olmayan alış maliyeti, yoksa standart maliyeti
+  (`costing.StandardCost`, Maliyet > Standart maliyetler) kullanılır. İkisi de yoksa lot "eksik" işaretlenir
+  (`Lot.unit_cost` boş); tahmini ve eksik işaretleri bulk ve mamul lota taşınır.
+- **Mamul maliyeti** = bulk + ambalaj + dolum oranları + fire (bulk ve ambalaj fire kayıtları), ÷ iyi adet.
+  Mamul fire payı (`finished_scrap_cost`) bilgi amaçlıdır, toplama ayrıca eklenmez.
+- **Para birimi**: `Currency` (TRY / EUR / USD) `core`'a taşındı (satış da oradan kullanır). Mal kabul
+  satırında yabancı para ve fiyat varsa kur zorunludur (`exchange_rate_required`); TRY'de kur boşaltılır.
+- **Kaydedilmiş mal kabulde fiyat düzeltmesi**: `POST /api/v1/inventory/goods-receipts/<id>/costs/`
+  (`inventory.services.set_receipt_costs`), not zorunlu, denetimli, `goods_receipt.cost_changed` olayı
+  yayınlar; maliyet o kabulün lotlarını yeni sürümle yeniden hesaplar. Sonraki bulk / mamul lotlar
+  kendiliğinden değişmez; lot maliyet ekranında "Yeniden hesapla" (zincirle) yapılır. İptal edilmiş kabulde
+  düzeltme yok (`document_locked`).
+- **Yetki**: maliyet API'si (`/api/v1/costing/...`) yalnızca `yonetim` ve `admin`. Mal kabul satırındaki
+  fiyat, para birimi, kur ve ek masraflar yalnızca `satin_alma` ve `yonetim`e (ve admin'e) görünür;
+  diğer roller için alanlar yanıtta yoktur, `extra_costs` `null` döner ve gönderilen değerler yok sayılır.
+  Depo mal kabul formunda fiyat alanı yoktur; fiyat "Fiyat ve masraflar" panelinden girilir.
+- **Satın alma (Adım 4.2) ile paylaşım**: satın alma, PO'ya bağlı mal kabulde aynı alanları doldurur:
+  `GoodsReceiptLine.unit_price`, `currency`, `exchange_rate` (ve gerekirse `GoodsReceipt.extra_costs`).
+  Kayıttan önce doldurulursa maliyet `goods_receipt.posted` ile hesaplanır; kayıttan sonra fiyat değişirse
+  `set_receipt_costs` kullanılır (olay ve yeniden hesap onun içindedir). `Lot.unit_cost` ve
+  `Lot.cost_is_estimated` yalnızca `inventory.services.set_lot_cost` ile yazılır (costing çağırır).
+
+### Maliyet okuma API'si (raporlama thread'i, Adım 4.3 için)
+
+Tutarlar `Decimal`; para 2, birim maliyet 4 ondalık. Hepsi `apps/costing/selectors.py`'dedir.
+
+| Fonksiyon | Dönen |
+|---|---|
+| `lot_unit_cost(lot)` | `UnitCost(unit_cost: Decimal \| None, is_estimated: bool)`; maliyetsiz lotta `(None, True)` |
+| `stock_value(material_type=, warehouse_id=, location_id=, material=)` | `{total_value, by_type: [{material_type, value}], rows: [{material_id, material_code, material_name, material_type, unit, quantity, value, average_unit_cost, uncosted_quantity, estimated_quantity}]}` |
+| `stock_value_lots(**aynı filtreler)` | lot × lokasyon satırları (miktar, birim maliyet, değer, işaretler) |
+| `cost_trend(material=, date_from=, date_to=)` | ürün × ay: ortalama birim maliyet, miktar, lot sayısı |
+| `batch_variance(product=, date_from=, date_to=)` | şarj başına teorik (reçete × bugünkü bilinen maliyet) ve fiili birim maliyet, fark ve % |
+| `scrap_cost(product=, date_from=, date_to=)` | dolum lotu başına bulk / ambalaj fire tutarı ve mamul fire payı |
+| `top_materials(date_from=, date_to=, material_type=, limit=20)` | üretim ve dolumda tüketilen malzemelerin tutara göre sıralı listesi |
+
+Doğrudan alanlar: `inventory.Lot.unit_cost` (boş = maliyet yok) ve `Lot.cost_is_estimated`. Lotun kalem
+döküm ve sürümleri `costing.LotCost` / `LotCostLine` (`is_current=True`). Pano maliyet kartları yalnızca
+`yonetim` ve `admin`'e gösterilmelidir.

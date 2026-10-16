@@ -2,6 +2,7 @@ import {
   IconBuildingFactory2,
   IconChartBar,
   IconChecklist,
+  IconCoin,
   IconDatabase,
   IconListDetails,
   IconArrowBackUp,
@@ -115,6 +116,15 @@ export const MENU: readonly MenuItem[] = [
     path: "/satin-alma",
     icon: IconShoppingCart,
     roles: ["satin_alma", "yonetim"],
+    phase: 4,
+  },
+  {
+    key: "costing",
+    label: tr.menu.costing,
+    path: "/maliyet",
+    icon: IconCoin,
+    // Maliyet tutarlarını yalnızca yönetim (ve admin) görür (Karar D-15).
+    roles: ["yonetim"],
     phase: 4,
   },
   {
