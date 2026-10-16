@@ -678,3 +678,74 @@ sonuçlandı: {number}"). Mamul numunesinin `rework_order` kuralı iade numunesi
 - **Yetki**: tüm izlenebilirlik uçları ve ekran `laboratuvar` ve `yonetim` (admin her zaman).
 - **API**: `/api/v1/traceability/lots/<id>/backward/`, `/forward/`, `/api/v1/traceability/recall/?lot=..`
   (1–50 lot), `/recall/xlsx/`, `/recall/pdf/`.
+
+## 2026-10-16 — Sevkiyat (Faz 3, Adım 3.2)
+
+Plan CUMHUR tarafından onaylandı (karar kartı, 2026-10-16). Kararlar ve sözleşmeler:
+
+- **Model `apps/sales` içinde**: `Shipment` (numara `SV-`, Karar D-10 gereği tek sipariş),
+  `ShipmentLine` (planlanan: sipariş satırı + miktar) ve `ShipmentPick` (okutulan: lot, miktar, kaynak
+  ve hedef lokasyon, okutan, zaman, farklı lot gerekçesi, sevkte oluşan `SHIPMENT` hareketi).
+  Spesifikasyondaki `ShipmentLine.lot / picked_by / picked_at` alanları `ShipmentPick`'tedir; bir satır
+  birden çok lottan toplanabilir.
+- **Durumlar**: Planlandı → Toplanıyor → Yüklendi → Sevk edildi, + İptal (sevk edilmeden, gerekçeli).
+  İlk okutma Toplanıyor yapar. "Yükleme tamam" `depo`, "Sevki onayla" `sevkiyat` işidir.
+- **Planlama**: satır başına varsayılan miktar sipariş − sevk edilen − açık sevkiyatlarda planlanandır
+  (`plannable_quantity`); azaltılabilir, aşılamaz (`shipment_exceeds_order`). Bir sipariş birden çok
+  sevkiyatla parça parça gidebilir. Açık sevkiyatı olan sipariş iptal edilemez ve kapatılamaz
+  (`open_shipments`).
+- **Okutma malı sevk alanına taşır**: sevkiyatın sevk alanı (`loading_location`, varsayılan ilk aktif
+  `SHIPPING` lokasyonu; yalnızca Planlandı'da değişir). Okutmada satırın o lottaki rezervasyonu bırakılır
+  (gerekirse kısmen), lot `TRANSFER` ile sevk alanına taşınır ve orada aynı sipariş satırına yeniden
+  rezerve edilir (Adım 3.1 rezervasyon sözleşmesi). Okutma geri alınırsa (yalnızca Toplanıyor'da) lot
+  geldiği yere döner ve kullanılabilirse yeniden rezerve edilir; iptalde tüm okutmalar geri döner.
+- **Okutma kuralları**: lot serbest ve SKT'si geçmemiş olmalı (`assert_lot_usable`), müşterinin asgari
+  raf ömrünü karşılamalı (D-11, `shelf_life_error`), satırın kalanını aşamaz (`pick_exceeds_line`).
+  Miktar verilmezse satırın kalanı (lot rezerveyse rezerve miktar kadar) alınır. Satırın başka lotlarda
+  rezervasyonu varken rezervesiz lot ya da rezervesinden fazlası okutulursa gerekçe istenir
+  (`lot_not_reserved`); satır taahhüdünü aşan rezervasyon SKT'si en geç olandan başlayarak bırakılır.
+- **Sevk onayı**: önce sevk alanındaki rezervasyonlar `consume_reservation` ile `CONSUMED`, sonra
+  `post_movement(-miktar, SHIPMENT, kaynak=sevkiyat)` sevk alanından çıkar; sipariş Kısmen sevk edildi /
+  Sevk edildi olur. Plaka ve şoför adı sevk onayında zorunludur (`vehicle_required`). Okutulduktan sonra
+  lot kullanılamaz hale gelirse (bloke, red, karantina) sevk reddedilir (`picked_lot_unusable`,
+  `picked_lot_unreserved`); depo okutmayı geri alır.
+- **Eksik yükleme**: satır eksik toplanmışsa da yüklenebilir; eksik kalan miktar siparişte yeniden
+  planlanabilir görünür. Satırın sevk edilen miktarı `CONSUMED` rezervasyonların toplamıdır ve sevkiyat
+  okutmalarının toplamına eşittir.
+- **İptal sonrası**: sevkiyat iptalinde "Sevkiyat planla" görevi yeniden açılmaz; kalan miktar siparişte
+  planlanabilir görünür.
+- **KVKK**: şoför TC kimlik no (11 hane) API'de yalnızca yazılır, okurken `*******1234` döner; ekranda ve
+  denetim günlüğünde de maskelidir (`Shipment.AUDIT_MASKED_FIELDS`, `core.audit.mask_identifier`). Tam
+  numara yalnızca irsaliye PDF'inde yazılır; irsaliye JSON'unda da maskelidir.
+- **İrsaliye**: `GET /api/v1/sales/shipments/{id}/waybill.pdf` (A4) ve aynı veri `waybill/` (JSON,
+  e-İrsaliye Faz 5 için) yalnızca Yüklendi ve Sevk edildi durumunda (`waybill_not_ready`). Firma bilgileri
+  `.env`'den: `COMPANY_NAME`, `COMPANY_ADDRESS`, `COMPANY_TAX_OFFICE`, `COMPANY_TAX_NO`. Koli sayısı
+  ürünün `KOLI` birim dönüşümünden hesaplanır (artan adet ayrıca yazılır).
+- **İzlenebilirlik**: `traceability.selectors._customers_for` sevk hareketinin kaynağı `sales.shipment`
+  olan satırlara müşteri kodu, adı ve sipariş numarasını doldurur (Adım 3.4 sözleşmesi).
+- **İade bağı**: `CustomerReturn.shipment` (isteğe bağlı). Sevkiyat sevk edilmiş ve aynı müşterinin
+  olmalı (`shipment_not_dispatched`, `shipment_customer_mismatch`); satırdaki lot o sevkiyatta olmalı
+  (`lot_not_in_shipment`) ve o lottan o sevkiyata yapılan iadelerin toplamı sevk edileni aşamaz
+  (`return_exceeds_shipped`). Taslak satırlar kabul anında yeniden kontrol edilir.
+- **Yetki**: planlama, düzenleme, sevk onayı, iptal `sevkiyat`; okutma, geri alma, yükleme `depo`; okuma
+  `sevkiyat`, `yonetim`, `planlama`, `depo`. Müşteriye sevk edilen lotlar `sevkiyat` ve `yonetim`.
+- **Ekranlar**: Sevkiyat menüsünde "Sevkiyatlar" sekmesi ve sevkiyat detayı (satırlar, okutulanlar,
+  yükleme ve sevk onayı, irsaliye, kayıt paneli); sipariş detayında "Sevkiyat planla" ve siparişin
+  sevkiyatları; depoya "Toplama" sekmesi ve toplama tableti (satır başına kalan, rezerve lotlar önce sonra
+  FEFO önerisi, raf ömrü uyarısı, `ScanInput` ile lot okutma, farklı lotta gerekçe, "Yükleme tamam");
+  müşteri kartında sevk edilen lotlar; iade formunda sevkiyat seçimi.
+
+### Sevkiyat olay sözleşmesi (iş akışı tablosuna ek)
+
+| Olay | Payload |
+|---|---|
+| `shipment.planned` | `transition_status` payload'ı + `order {model, id, number}`, `order_number`, `customer_code`, `customer_name`, `vehicle_plate`, `order_fully_planned` |
+| `shipment.picking`, `.loaded`, `.cancelled` | aynı alanlar (`order_fully_planned` hariç) |
+| `shipment.dispatched` | aynı alanlar + `order_created_by_id`, `lots` (`lot_payload` + `quantity`) |
+
+İş akışı kuralları: `plan_shipment` görevi `shipment.planned` ile, sipariş tamamen planlandıysa kapanır;
+`pick_shipment` (depo, "Toplama yap: {number}", yükleme ya da iptalde kapanır); `dispatch_shipment`
+(sevkiyat, "Sevki onayla / irsaliye kes: {number}", sevk ya da iptalde kapanır); `shipment_dispatched`
+(bildirim "Sevk edildi: {number}" siparişi oluşturan kullanıcıya ve `yonetim`e, lot listesiyle);
+`shipment_cancelled` (açık görevleri iptal eder). Bildirim kuralı artık rollerin yanında payload'dan
+kullanıcı da alabilir (`NotifyRule.users`).

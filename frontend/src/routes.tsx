@@ -29,7 +29,9 @@ import { RecipePage } from "./modules/recipes/RecipePage";
 import { VersionPage } from "./modules/recipes/VersionPage";
 import { CustomerPage } from "./modules/sales/CustomerPage";
 import { SalesOrderPage } from "./modules/sales/OrderPage";
+import { ShipmentPickPage } from "./modules/sales/PickPage";
 import { SalesPage } from "./modules/sales/SalesPage";
+import { ShipmentPage } from "./modules/sales/ShipmentPage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ModulePlaceholderPage } from "./pages/ModulePlaceholderPage";
@@ -100,6 +102,9 @@ const pageRoutes: RouteObject[] = [
   // Sevkiyat: sevkiyat ve yönetim sipariş açar; planlama ve depo siparişleri ve rezervasyonu görür.
   { path: "sevkiyat/siparisler/:orderId", element: salesPage(<SalesOrderPage />) },
   { path: "sevkiyat/musteriler/:customerId", element: salesPage(<CustomerPage />) },
+  // Sevkiyat: sevkiyat planlar ve sevki onaylar; depo tablette lot okutur ve yüklemeyi bitirir.
+  { path: "sevkiyat/sevkiyatlar/:shipmentId", element: salesPage(<ShipmentPage />) },
+  { path: "sevkiyat/sevkiyatlar/:shipmentId/toplama", element: salesPage(<ShipmentPickPage />) },
   { path: "sevkiyat/:tab?", element: salesPage(<SalesPage />) },
   // İadeler: sevkiyat açar, sevkiyat ya da depo teslim alır, depo imha eder; laboratuvar izler.
   { path: "iadeler", element: returnsPage(<ReturnsPage />) },

@@ -48,6 +48,9 @@ export interface CustomerReturn {
   customer: number;
   customer_code: string;
   customer_name: string;
+  /** İadenin geldiği sevkiyat (isteğe bağlı): iade o sevkiyatta sevk edilenden fazla olamaz. */
+  shipment: number | null;
+  shipment_number: string | null;
   return_date: string;
   reason: string;
   quarantine_location: number;
@@ -62,6 +65,7 @@ export interface CustomerReturnDetail extends CustomerReturn {
 
 export interface ReturnPayload {
   customer: number | null;
+  shipment: number | null;
   return_date: string;
   reason: string;
   quarantine_location: number | null;

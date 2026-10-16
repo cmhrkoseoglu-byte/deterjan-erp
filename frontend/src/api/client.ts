@@ -42,3 +42,12 @@ export function getErrorMessage(error: unknown): string {
   }
   return tr.common.unexpectedError;
 }
+
+/** API iş kuralı hatasının sabit kodu (ör. "lot_not_reserved"); yoksa boş metin. */
+export function getErrorCode(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as ApiError | undefined;
+    if (data && typeof data === "object" && typeof data.code === "string") return data.code;
+  }
+  return "";
+}

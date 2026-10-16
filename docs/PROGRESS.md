@@ -333,7 +333,7 @@ D-10 (her sevkiyat tek siparişe bağlı), D-11 (müşteri bazında asgari kalan
 | Kriter | Durum | Kanıt |
 |---|---|---|
 | Rezerve stok başka siparişe ayrılamıyor; `available` hesabı doğru | ✓ | `test_reserved_stock_is_not_given_to_another_order`, `test_reserved_stock_cannot_be_reserved_twice`, API `test_stock_balances_show_reserved_quantity` |
-| Raf ömrü yetersiz lot (müşteri şartı) rezerve edilmiyor | ✓ (rezervasyon) | `test_shelf_life_requirement_skips_short_lots`; toplamada engel Adım 3.2 |
+| Raf ömrü yetersiz lot (müşteri şartı) rezerve edilmiyor | ✓ | `test_shelf_life_requirement_skips_short_lots`; toplamada engel `test_unshippable_lots_cannot_be_picked` (Adım 3.2) |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | sales testleri `invariants` fixture'ı, rezervasyon testleri `assert_stock_invariants()` |
 
 ### Adım 3.3 ve 3.4 doğrulaması (iade, izlenebilirlik, geri çağırma)
@@ -361,7 +361,50 @@ D-10 (her sevkiyat tek siparişe bağlı), D-11 (müşteri bazında asgari kalan
 | Kriter | Durum | Kanıt |
 |---|---|---|
 | İade karantinaya giriyor ve QC kararıyla yönleniyor | ✓ | `apps/returns/tests/test_services.py` (serbest / red / yeniden işleme) |
-| Hammadde lotunun ileri izlemesi doğru müşteri ve miktarları veriyor; geri izleme tedarikçiye iniyor | Kısmen | Miktarlar ve tedarikçi `apps/traceability/tests/test_selectors.py`; müşteri ayağı Adım 3.2 ile |
+| Hammadde lotunun ileri izlemesi doğru müşteri ve miktarları veriyor; geri izleme tedarikçiye iniyor | ✓ (Adım 3.2 ile) | Miktarlar ve tedarikçi `apps/traceability/tests/test_selectors.py`; müşteri ayağı `test_customer_leg_from_shipments` ve uçtan uca test |
 | Geri çağırma simülasyonu 10.000 hareketlik veride 1 sn altında | ✓ | `test_recall_performance_on_deep_wide_data` (10.050 hareket, ~0,4 sn) |
 | İade blokajı rezervasyonu bırakır, eksik yeniden açılır | ✓ | `test_return_hold_releases_reservations_and_reopens_shortage` |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | iade testleri `invariants` fixture'ı ile biter |
+
+### Adım 3.2 doğrulaması (sevkiyat, toplama, irsaliye ve uçtan uca test)
+
+- Backend: `pytest` 828 test geçti (sevkiyat, iade bağı ve uçtan uca: 40; izlenebilirlik müşteri ayağı: 1;
+  etiket ve ekler PR #9 ile birlikte); `ruff check`, `ruff format --check`, `mypy` temiz; OpenAPI şeması
+  uyarısız; `makemigrations --check` temiz. Stoka dokunan tüm sevkiyat testleri `invariants` fixture'ı ile
+  `assert_stock_invariants()` çağırır.
+- Sevkiyat servisleri (`apps/sales/tests/test_shipments.py`): planlamada kalan miktar ve sınırlar; okutmada
+  stok ve rezervasyonun sevk alanına taşınması; kısmi okutma ve satırı aşma; karantina, SKT'si geçmiş ve raf
+  ömrü yetersiz lotun okutulamaması; farklı lotta gerekçe ve eski rezervasyonun bırakılması; geri alma;
+  yükleme ve sevk onayında `SHIPMENT` hareketi, `CONSUMED` rezervasyon ve sipariş durumu; kısmi sevk;
+  okutulduktan sonra bloke olan lotun sevki durdurması; iptalde okutmaların geri dönmesi; görevler ve
+  "Sevk edildi" bildirimi; denetim günlüğünde maskeli TC no; durum makinesinin izinli ve yasak geçişleri.
+- API (`test_shipment_api.py`): planla, lot no ya da `LOT:` etiketiyle okut, farklı lot gerekçesi, geri al,
+  yükle, sevk et, irsaliye JSON (maskeli TC) ve PDF, toplama önerisi, müşteriye sevk edilen lotlar, rol
+  matrisi (yetkisiz rol 403).
+- İade bağı (`apps/returns/tests/test_shipment_link.py`): iade sevk edilenden fazla olamaz, sevkiyat sevk
+  edilmiş ve aynı müşterinin olmalı.
+- Uçtan uca (`apps/sales/tests/test_e2e_shipment.py`): mal kabul → QC → üretim → bulk serbest → dolum →
+  mamul serbest → sipariş → FEFO rezervasyon → ikinci siparişte eksik → sevkiyat planı → karantina lotu
+  reddedilir → toplama → yükleme → sevk → irsaliye PDF → hammadde lotunun ileri izlemesinde doğru müşteri
+  ve miktar → geri izleme tedarikçiye → geri çağırma → iade (sevk edilenden fazlası reddedilir) → QC
+  serbest → stoğa dönüş.
+- Demo verisi: `seed_sales_demo` bir siparişe planlanmış sevkiyat ve sevk edilmiş bir sevkiyat (irsaliyesi
+  alınabilir) ekler (`test_seed_demo_includes_sales`).
+- Frontend: `npm test` 164 test (sevkiyat ekranları 14, iade bağı 2), `lint`, `format:check`, `typecheck`,
+  `build` temiz. Ekranlar: Sevkiyatlar listesi ve sevkiyat detayı (satırlar, okutulanlar, araç ve şoför,
+  yükleme ve sevk onayı, irsaliye PDF, iptal, kayıt paneli); sipariş detayında "Sevkiyat planla" ve
+  siparişin sevkiyatları; depoya Toplama sekmesi ve toplama tableti (satır başına kalan, rezerve lot önce
+  sonra FEFO önerisi, raf ömrü uyarısı, `ScanInput` ile okutma, farklı lotta gerekçe, geri alma, "Yükleme
+  tamam"); müşteri kartında sevk edilen lotlar; iade formunda sevkiyat seçimi.
+
+### Faz 3 kabul kriterleri (tamamı)
+
+| Kriter | Durum | Kanıt |
+|---|---|---|
+| Uçtan uca test: mal kabul → … → mamul lot serbest → sipariş → rezervasyon → toplama → sevk → irsaliye PDF | ✓ | `test_goods_receipt_to_shipment_waybill_trace_and_return`; API'de `test_full_shipment_flow` |
+| Rezerve stok başka siparişe ayrılamıyor; `available` hesabı doğru | ✓ | `test_reserved_stock_is_not_given_to_another_order`, `test_reserved_stock_cannot_be_reserved_twice`, `test_stock_balances_show_reserved_quantity`; uçtan uca testte ikinci siparişin eksiği |
+| Karantina / SKT geçmiş / raf ömrü yetersiz lot sevk edilemiyor | ✓ | `test_unshippable_lots_cannot_be_picked` (üç durum), `test_lot_blocked_after_picking_stops_dispatch`, API `test_shelf_life_block_and_unknown_lot`; uçtan uca testte karantina lotu |
+| İade karantinaya giriyor ve QC kararıyla yönleniyor | ✓ | `apps/returns/tests/test_services.py`; uçtan uca testte iade → serbest → stok |
+| Hammadde lotunun ileri izlemesi doğru müşterileri ve miktarları veriyor; geri izleme tedarikçiye iniyor | ✓ | `test_customer_leg_from_shipments`, uçtan uca test (müşteri ve 600 adet), `apps/traceability/tests/test_selectors.py` |
+| Geri çağırma simülasyonu 10.000 hareketlik demo veride 1 sn altında | ✓ | `test_recall_performance_on_deep_wide_data` (10.050 hareket, ~0,4 sn) |
+| Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | sevkiyat, iade ve uçtan uca testler `invariants` fixture'ı ile biter |

@@ -6,6 +6,7 @@ import * as inventoryApi from "../../api/inventory";
 import * as mdApi from "../../api/masterdata";
 import * as returnsApi from "../../api/returns";
 import type { CustomerReturnDetail } from "../../api/returns";
+import * as salesApi from "../../api/sales";
 import * as workflowApi from "../../api/workflow";
 import { page, userWith } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
@@ -23,6 +24,10 @@ vi.mock("../../api/returns", async (importOriginal) => ({
 vi.mock("../../api/inventory", async (importOriginal) => ({
   ...(await importOriginal<typeof inventoryApi>()),
   listLots: vi.fn(),
+}));
+vi.mock("../../api/sales", async (importOriginal) => ({
+  ...(await importOriginal<typeof salesApi>()),
+  listShipments: vi.fn(),
 }));
 vi.mock("../../api/masterdata", async (importOriginal) => ({
   ...(await importOriginal<typeof mdApi>()),
@@ -46,6 +51,8 @@ function doc(overrides: Partial<CustomerReturnDetail> = {}): CustomerReturnDetai
     customer: 3,
     customer_code: "M001",
     customer_name: "Zincir Market A.Ş.",
+    shipment: null,
+    shipment_number: null,
     return_date: "2026-10-16",
     reason: "Kapak sızdırıyor",
     quarantine_location: 2,
@@ -93,6 +100,7 @@ beforeEach(() => {
   vi.mocked(workflowApi.fetchRecordHistory).mockResolvedValue([]);
   vi.mocked(mdApi.listRecords).mockResolvedValue(page([]));
   vi.mocked(inventoryApi.listLots).mockResolvedValue(page([]));
+  vi.mocked(salesApi.listShipments).mockResolvedValue(page([]));
   vi.mocked(returnsApi.listReturns).mockResolvedValue(page([doc()]));
   vi.mocked(returnsApi.getReturn).mockResolvedValue(doc());
 });
@@ -176,6 +184,55 @@ describe("iade detayı", () => {
         reason: "Kapak sızdırıyor",
         lines: [{ id: 11, product: 60, lot: 30, quantity: "12", unit: 1 }],
       }),
+    );
+  });
+
+  it("iade sevkiyata bağlanır; seçilen sevkiyat kaydedilir ve detayda bağlantı olur", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("sevkiyat"));
+    const draft = doc({
+      status: "DRAFT",
+      received_at: null,
+      lines: [{ ...doc().lines[0], disposition: "PENDING", sample: null, sample_number: null }],
+    });
+    vi.mocked(returnsApi.getReturn).mockResolvedValue(draft);
+    vi.mocked(returnsApi.saveReturn).mockResolvedValue(
+      doc({ ...draft, shipment: 70, shipment_number: "SV-2026-00001" }),
+    );
+    vi.mocked(salesApi.listShipments).mockResolvedValue(
+      page([
+        {
+          id: 70,
+          number: "SV-2026-00001",
+          order_number: "SS-2026-00001",
+          planned_date: "2026-10-16",
+        } as salesApi.Shipment,
+      ]),
+    );
+    renderApp("/iadeler/4");
+    const select = await screen.findByRole("textbox", { name: /^Sevkiyat/ });
+    await userEvent.click(select);
+    await userEvent.click(await screen.findByRole("option", { name: /SV-2026-00001/ }));
+    expect(salesApi.listShipments).toHaveBeenCalledWith({ customer: "3", page_size: 100 }, [
+      "DISPATCHED",
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: "Taslağı kaydet" }));
+    await waitFor(() =>
+      expect(returnsApi.saveReturn).toHaveBeenCalledWith(
+        4,
+        expect.objectContaining({ shipment: 70 }),
+      ),
+    );
+  });
+
+  it("sevkiyata bağlı iadenin detayında sevkiyat bağlantısı görünür", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("laboratuvar"));
+    vi.mocked(returnsApi.getReturn).mockResolvedValue(
+      doc({ shipment: 70, shipment_number: "SV-2026-00001" }),
+    );
+    renderApp("/iadeler/4");
+    expect(await screen.findByRole("link", { name: "SV-2026-00001" })).toHaveAttribute(
+      "href",
+      "/sevkiyat/sevkiyatlar/70",
     );
   });
 

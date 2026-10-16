@@ -80,9 +80,12 @@ function detail(overrides: Partial<SalesOrderDetail> = {}): SalesOrderDetail {
         reserved_quantity: "700.0000",
         shipped_quantity: "0.0000",
         shortage_quantity: "20.0000",
+        planned_quantity: "0.0000",
+        plannable_quantity: "720.0000",
       },
     ],
     totals: [{ currency: "TRY", amount: "1150.00" }],
+    shipments: [],
     reservations: [
       {
         id: 51,

@@ -27,6 +27,7 @@ import {
   IconPlus,
   IconRefresh,
   IconTrash,
+  IconTruck,
   IconX,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -62,14 +63,20 @@ import { CancelModal } from "../inventory/CancelModal";
 import { today } from "../inventory/config";
 import { idOrNull } from "../inventory/options";
 import { Info, Qty } from "../inventory/shared";
+import { RowsTable } from "../filling/FillingPage";
+import { shipmentColumns } from "./columns";
 import {
   customerPath,
   ORDER_WRITE_ROLES,
   RESERVABLE_STATUSES,
   SALES_BASE,
   salesOrderPath,
+  SHIPMENT_WRITE_ROLES,
+  SHIPPABLE_ORDER_STATUSES,
+  shipmentPath,
 } from "./config";
 import { SalesOrderStatusBadge } from "./shared";
+import { PlanShipmentModal } from "./ShipmentForms";
 import { st } from "./strings";
 
 const CURRENCIES = (Object.keys(st.currency) as Currency[]).map((value) => ({
@@ -239,6 +246,7 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reserveLine, setReserveLine] = useState<SalesOrderLine | null>(null);
   const [releasing, setReleasing] = useState<Reservation | null>(null);
+  const [planOpen, setPlanOpen] = useState(false);
   const customers = useOptions({ endpoint: "customers" });
   const units = useOptions({ endpoint: "units" });
   const products = useFinishedProducts();
@@ -336,6 +344,11 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
   const hasShortage = !!doc?.lines.some((line) => Number(line.shortage_quantity) > 0);
   const activeReservations = (doc?.reservations ?? []).filter((r) => r.status === "ACTIVE");
   const otherReservations = (doc?.reservations ?? []).filter((r) => r.status !== "ACTIVE");
+  const canPlan =
+    !!doc &&
+    hasAnyRole(user, SHIPMENT_WRITE_ROLES) &&
+    SHIPPABLE_ORDER_STATUSES.includes(doc.status) &&
+    doc.lines.some((line) => Number(line.plannable_quantity) > 0);
 
   return (
     <Stack>
@@ -368,6 +381,11 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
               onClick={() => setConfirmOpen(true)}
             >
               {st.confirm}
+            </Button>
+          )}
+          {canPlan && (
+            <Button leftSection={<IconTruck size={16} />} onClick={() => setPlanOpen(true)}>
+              {st.planShipment}
             </Button>
           )}
           {reservable && hasShortage && (
@@ -609,7 +627,7 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
         </Stack>
       ) : (
         doc && (
-          <Table.ScrollContainer minWidth={820}>
+          <Table.ScrollContainer minWidth={900}>
             <Table striped fz="sm" data-testid="order-lines">
               <Table.Thead>
                 <Table.Tr>
@@ -618,6 +636,7 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
                   <Table.Th ta="right">{st.quantity}</Table.Th>
                   <Table.Th ta="right">{st.baseQuantity}</Table.Th>
                   <Table.Th ta="right">{st.reserved}</Table.Th>
+                  <Table.Th ta="right">{st.planned}</Table.Th>
                   <Table.Th ta="right">{st.shipped}</Table.Th>
                   <Table.Th ta="right">{st.shortage}</Table.Th>
                   <Table.Th ta="right">{st.lineTotal}</Table.Th>
@@ -638,6 +657,7 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
                         <Qty value={line.base_quantity} unit={line.base_unit_code} />
                       </Table.Td>
                       <Table.Td ta="right">{formatNumber(line.reserved_quantity)}</Table.Td>
+                      <Table.Td ta="right">{formatNumber(line.planned_quantity)}</Table.Td>
                       <Table.Td ta="right">{formatNumber(line.shipped_quantity)}</Table.Td>
                       <Table.Td ta="right">
                         <Text span size="sm" c={short ? "red" : undefined} fw={short ? 600 : 400}>
@@ -692,6 +712,28 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
         </Stack>
       )}
 
+      {doc && doc.status !== "DRAFT" && (
+        <Stack gap="xs">
+          <Title order={4}>{st.shipments}</Title>
+          {doc.shipments.length === 0 ? (
+            <Text size="sm" c="dimmed">
+              {st.noShipments}
+            </Text>
+          ) : (
+            <RowsTable
+              testId="order-shipments"
+              columns={shipmentColumns.filter(
+                (column) => column.header !== st.customer && column.header !== st.order,
+              )}
+              rows={doc.shipments}
+              loading={false}
+              error={null}
+              onOpen={(row) => navigate(shipmentPath(row.id))}
+            />
+          )}
+        </Stack>
+      )}
+
       <ConfirmModal
         opened={confirmOpen}
         message={st.confirmQuestion}
@@ -725,6 +767,18 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
           onDone={(saved) => {
             setCancelOpen(false);
             refresh(saved);
+          }}
+        />
+      )}
+      {doc && planOpen && (
+        <PlanShipmentModal
+          order={doc}
+          onClose={() => setPlanOpen(false)}
+          onDone={(shipment) => {
+            setPlanOpen(false);
+            void queryClient.invalidateQueries({ queryKey: ["sales"] });
+            void queryClient.invalidateQueries({ queryKey: ["workflow"] });
+            navigate(shipmentPath(shipment.id));
           }}
         />
       )}
