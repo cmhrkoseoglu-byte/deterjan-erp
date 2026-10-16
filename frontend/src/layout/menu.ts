@@ -78,7 +78,7 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.filling,
     path: "/dolum",
     icon: IconBottle,
-    roles: ["dolum", "planlama", "yonetim"],
+    roles: ["dolum", "planlama", "depo", "yonetim"],
     phase: 2,
   },
   {

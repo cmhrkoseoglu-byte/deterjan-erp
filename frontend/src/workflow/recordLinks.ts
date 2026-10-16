@@ -13,6 +13,9 @@ export const RECORD_ROUTES: Record<string, (id: number) => string> = {
   "inventory.stockadjustment": (id) => `/depo/sayim/${id}`,
   "production.productionorder": (id) => `/uretim/emirler/${id}`,
   "production.productionbatch": (id) => `/uretim/sarjlar/${id}`,
+  "filling.fillingorder": (id) => `/dolum/emirler/${id}`,
+  "filling.fillingrun": (id) => `/dolum/partiler/${id}`,
+  "filling.packagingspec": (id) => `/dolum/ambalaj-receteleri/${id}`,
   "quality.sample": (id) => `/kalite/numuneler/${id}`,
   "quality.specification": (id) => `/kalite/spesifikasyonlar/${id}`,
 };

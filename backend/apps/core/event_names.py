@@ -51,3 +51,13 @@ SAMPLE_DECIDED = "sample.decided"
 SAMPLE_CANCELLED = "sample.cancelled"
 SPECIFICATION_APPROVED = "specification.approved"
 SPECIFICATION_OBSOLETE = "specification.obsolete"
+
+# filling (Faz 2, Adım 2.2). Emir olayları durum makinesinden (`filling_order.<durum>`); parti
+# olayları `filling_run.started` / `filling_run.completed` (payload'da `order`, `output_lot`).
+FILLING_ORDER_APPROVED = "filling_order.approved"
+FILLING_ORDER_MATERIAL_READY = "filling_order.material_ready"
+FILLING_ORDER_CANCELLED = "filling_order.cancelled"
+FILLING_ORDER_COMPLETED = "filling_order.completed"
+FILLING_RUN_STARTED = "filling_run.started"
+FILLING_RUN_COMPLETED = "filling_run.completed"
+FILLING_BULK_VARIANCE = "filling.bulk_variance"

@@ -487,3 +487,30 @@ class StockAdjustmentLine(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.adjustment_id}/{self.line_no} {self.lot_id}"
+
+
+class PickRecord(BaseModel):
+    """Ortak hazırlama kaydı (soyut): depodan bir belgenin kullanım lokasyonuna transfer edilen lot.
+
+    Üretimde malzeme hazırlama (`production.MaterialPick`) ve dolumda ambalaj hazırlama
+    (`filling.PackagingPick`) bu alanları kullanır; yazma `inventory.picking` servisleriyle olur.
+    """
+
+    lot = models.ForeignKey(Lot, verbose_name="lot", on_delete=models.PROTECT, related_name="+")
+    quantity = models.DecimalField("miktar (temel birim)", max_digits=18, decimal_places=4)
+    from_location = models.ForeignKey(
+        Location, verbose_name="kaynak lokasyon", on_delete=models.PROTECT, related_name="+"
+    )
+    to_location = models.ForeignKey(
+        Location, verbose_name="hedef lokasyon", on_delete=models.PROTECT, related_name="+"
+    )
+    picked_by = models.ForeignKey(
+        User, verbose_name="hazırlayan", on_delete=models.PROTECT, null=True, related_name="+"
+    )
+    picked_at = models.DateTimeField("hazırlama zamanı")
+    transfer_group = models.UUIDField("transfer grubu", editable=False)
+    # Belge hazırlıkta iptal edilince malzeme kaynağa geri transfer edilir.
+    returned_at = models.DateTimeField("iade zamanı", null=True, blank=True, editable=False)
+
+    class Meta:
+        abstract = True
