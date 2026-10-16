@@ -267,6 +267,8 @@ describe("tolerans hesabı", () => {
     expect(remaining("600", "250")).toBe(350);
     expect(remaining("600", "700")).toBe(0);
     expect(gaugeValue("600", "720")).toBe(100);
+    expect(gaugeValue("690", "690")).toBe(100);
+    expect(gaugeValue("600", "300")).toBe(50);
   });
 });
 
