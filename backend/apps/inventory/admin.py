@@ -13,6 +13,7 @@ from apps.inventory.models import (
     StockAdjustmentLine,
     StockBalance,
     StockMovement,
+    StockReservation,
 )
 
 
@@ -91,3 +92,11 @@ class StockAdjustmentAdmin(ReadOnlyAdmin):
     list_filter = ("status",)
     search_fields = ("number",)
     inlines = (StockAdjustmentLineInline,)
+
+
+@admin.register(StockReservation)
+class StockReservationAdmin(ReadOnlyAdmin):
+    list_display = ("document_number", "lot", "location", "quantity", "status", "created_at")
+    list_filter = ("status",)
+    search_fields = ("document_number", "lot__lot_no")
+    list_select_related = ("lot", "location")

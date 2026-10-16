@@ -24,6 +24,9 @@ import { SpecificationPage } from "./modules/quality/SpecificationPage";
 import { RecipeListPage } from "./modules/recipes/RecipeListPage";
 import { RecipePage } from "./modules/recipes/RecipePage";
 import { VersionPage } from "./modules/recipes/VersionPage";
+import { CustomerPage } from "./modules/sales/CustomerPage";
+import { SalesOrderPage } from "./modules/sales/OrderPage";
+import { SalesPage } from "./modules/sales/SalesPage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ModulePlaceholderPage } from "./pages/ModulePlaceholderPage";
@@ -44,6 +47,10 @@ function productionPage(page: ReactNode) {
 
 function fillingPage(page: ReactNode) {
   return <RequireRole roles={menuRoles("filling")}>{page}</RequireRole>;
+}
+
+function salesPage(page: ReactNode) {
+  return <RequireRole roles={menuRoles("sales")}>{page}</RequireRole>;
 }
 
 function qualityPage(page: ReactNode) {
@@ -83,6 +90,10 @@ const pageRoutes: RouteObject[] = [
   { path: "dolum/partiler/:runId", element: fillingPage(<RunPage />) },
   { path: "dolum/ambalaj-receteleri/:specId", element: fillingPage(<SpecPage />) },
   { path: "dolum/:tab?", element: fillingPage(<FillingPage />) },
+  // Sevkiyat: sevkiyat ve yönetim sipariş açar; planlama ve depo siparişleri ve rezervasyonu görür.
+  { path: "sevkiyat/siparisler/:orderId", element: salesPage(<SalesOrderPage />) },
+  { path: "sevkiyat/musteriler/:customerId", element: salesPage(<CustomerPage />) },
+  { path: "sevkiyat/:tab?", element: salesPage(<SalesPage />) },
 ];
 const IMPLEMENTED = new Set([
   "masterdata",
@@ -91,6 +102,7 @@ const IMPLEMENTED = new Set([
   "production",
   "quality",
   "filling",
+  "sales",
 ]);
 
 // Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar rol korumalı bir yer tutucuya gider.
