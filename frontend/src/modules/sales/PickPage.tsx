@@ -285,7 +285,7 @@ function defaultQuantity(row: PickSuggestion, lotId: number): string {
   if (own.length === 0) return trimDecimal(String(remaining));
   const reserved = own.filter((item) => item.reserved);
   const available = reserved.length
-    ? reserved.reduce((sum, item) => sum + Number(item.quantity), 0)
+    ? reserved.reduce((sum, item) => sum + Number(item.reserved_quantity), 0)
     : Math.max(...own.map((item) => Number(item.quantity)));
   return trimDecimal(String(Math.min(remaining, available)));
 }
@@ -427,7 +427,7 @@ function PickForm({
                   const chosen = lot?.id === item.lot;
                   return (
                     <Table.Tr
-                      key={`${item.lot}-${item.location}-${item.reserved ? "r" : "f"}`}
+                      key={`${item.lot}-${item.location}`}
                       style={{ cursor: item.meets_shelf_life ? "pointer" : "not-allowed" }}
                       bg={chosen ? "var(--mantine-color-blue-light)" : undefined}
                       c={item.meets_shelf_life ? undefined : "dimmed"}
@@ -447,7 +447,11 @@ function PickForm({
                             {st.shelfLifeShort}
                           </Badge>
                         ) : (
-                          item.reserved && <Badge variant="light">{st.reservedBadge}</Badge>
+                          item.reserved && (
+                            <Badge variant="light">
+                              {st.reservedBadge(formatNumber(item.reserved_quantity))}
+                            </Badge>
+                          )
                         )}
                       </Table.Td>
                     </Table.Tr>
