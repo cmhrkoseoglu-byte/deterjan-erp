@@ -106,3 +106,9 @@ PURCHASE_ORDER_SENT = "purchase_order.sent"
 PURCHASE_ORDER_PARTIALLY_RECEIVED = "purchase_order.partially_received"
 PURCHASE_ORDER_RECEIVED = "purchase_order.received"
 PURCHASE_ORDER_CANCELLED = "purchase_order.cancelled"
+
+# reporting (Faz 4, Adım 4.3). Arka plan rapor işi bitti ya da hata verdi. Payload:
+# `{"model": "reporting.reportjob", "id", "repr", "report_code", "title", "file_format",
+# "row_count", "requested_by_id", "error"}`; bildirim yalnızca raporu isteyen kişiye gider.
+REPORT_JOB_DONE = "report_job.done"
+REPORT_JOB_FAILED = "report_job.failed"
