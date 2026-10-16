@@ -82,6 +82,7 @@ export const it = {
   document: "Belge",
   // Mal kabul
   newReceipt: "Yeni mal kabul",
+  receiveFromOrder: "Siparişten mal kabul",
   receiptTitle: (n: string) => `Mal kabul ${n}`,
   receiptNew: "Yeni mal kabul",
   receiptDate: "Kabul tarihi",

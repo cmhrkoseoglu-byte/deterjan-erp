@@ -463,3 +463,26 @@ limiti), D-14 (tank temizliği), D-15 (kg başı genel gider) `docs/DECISIONS.md
 | Bulk ve mamul lot maliyeti kalem kalem doğru (elle hesaplanmış örnek) | ✓ | `test_hand_calculated_purchase_bulk_and_finished_lot_cost` |
 | Maliyet tutarları yetkisiz role API'de dönmüyor | ✓ | `test_cost_amounts_are_forbidden_to_other_roles`, `test_receipt_prices_hidden_from_depo_and_ignored_on_write` |
 | Stok değişmezleri yeni testlerde geçiyor (maliyet) | ✓ | costing testleri `invariants` fixture'ı ile biter |
+
+### Adım 4.2 doğrulaması (satın alma)
+
+- Yeni uygulama `apps/purchasing`: talep `ST-`, sipariş `SA-` (onay limiti D-13), siparişten mal kabul,
+  öneri (basit MRP), tedarikçi performansı, sipariş PDF'i ve e-posta. Ekranlar `/satin-alma`: siparişler,
+  beklenen teslimatlar, talepler, öneriler, tedarikçi performansı, ayarlar (rollere göre).
+- Backend: `pytest` 907 test yeşil (34'ü satın alma; maliyet PR'ıyla birleştirildikten sonra), `ruff check`, `ruff format --check`, `mypy` temiz,
+  `makemigrations --check` değişiklik yok. Frontend: `npm test` 191 test (10'u satın alma), lint, biçim,
+  tip denetimi ve build temiz.
+- Testlerde: limit altı/üstü onay ve limitsiz durumda yonetim onayı, onaya gönderme ve geri gönderme
+  görevleri, onayda depoya beklenen teslimat bildirimi, PDF ekli e-posta ve e-posta hatasında geri alma,
+  talep → sipariş → iptalde talebin yeniden açılması, %10 fazla teslim toleransı, siparişsiz mal kabulün
+  etkilenmemesi, kalanı kapatma, teslimatı olan siparişin iptal edilememesi, tedarikçi performansı,
+  `lot.rejected` bildiriminin satın almaya tedarikçi adıyla gitmesi, depo rolünün fiyat görmemesi,
+  yetkisiz rollerin 403 alması.
+
+### Faz 4 kabul kriterleri (Adım 4.2'ye düşenler)
+
+| Kriter | Durum | Kanıt |
+|---|---|---|
+| Minimum stok ve açık emir ihtiyacından satın alma talebi önerisi | ✓ | `test_suggestions_from_min_stock_and_open_production_orders` (öneri ve 07:00'de otomatik talep), API `test_supplier_performance_and_suggestions_api` |
+| Siparişe bağlı mal kabul bekleyen miktarı doğru düşürüyor | ✓ | `test_receipt_from_order_decreases_pending_quantity` (kısmi ve tam teslim, durum PARTIALLY_RECEIVED → RECEIVED, fiyat ve kur siparişten) |
+| Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | stoka dokunan satın alma testleri `invariants` fixture'ı ile biter |

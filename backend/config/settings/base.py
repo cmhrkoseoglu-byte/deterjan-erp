@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "apps.returns",
     "apps.traceability",
     "apps.costing",
+    "apps.purchasing",
     "apps.workflow",
 ]
 
@@ -176,6 +177,10 @@ SPECTACULAR_SETTINGS = {
         "StockReservationStatusEnum": "apps.inventory.models.StockReservation.Status",
         "CustomerReturnStatusEnum": "apps.returns.models.CustomerReturn.Status",
         "ReturnDispositionEnum": "apps.returns.models.CustomerReturnLine.Disposition",
+        "PurchaseOrderStatusEnum": "apps.purchasing.models.PurchaseOrder.Status",
+        "PurchaseRequestStatusEnum": "apps.purchasing.models.PurchaseRequest.Status",
+        "PurchaseRequestSourceEnum": "apps.purchasing.models.PurchaseRequest.Source",
+        "LotSourceEnum": "apps.inventory.models.Lot.Source",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
@@ -214,3 +219,8 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "INFO"},
 }
+
+# E-posta (Faz 4: satın alma siparişi gönderimi). Örnek: EMAIL_URL=smtp+tls://kullanici:sifre@smtp.ornek.com:587
+# Tanımsızsa e-postalar konsola yazılır (gönderilmez).
+vars().update(env.email_url("EMAIL_URL", default="consolemail://"))
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="erp@localhost")

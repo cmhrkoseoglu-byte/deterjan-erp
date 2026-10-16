@@ -187,6 +187,24 @@ def _below_min_body(payload: Payload) -> str:
     return "\n".join(lines)
 
 
+def _lot_rejected_body(payload: Payload) -> str:
+    """Satın alma lotunda tedarikçi de yazılır (tedarikçiye iade süreci için)."""
+    head = f"{payload.get('material_code', '')} {payload.get('material_name', '')}."
+    if payload.get("supplier_name"):
+        head = f"{head} Tedarikçi: {payload['supplier_name']}."
+    return " ".join(f"{head} {payload.get('note', '')}".split())
+
+
+def _purchase_lines_body(payload: Payload) -> str:
+    lines = [
+        f"{line.get('material_code', '')} {line.get('material_name', '')}: "
+        f"{line.get('quantity', '')} {line.get('line_unit', '')} — "
+        f"teslim {line.get('expected_date', '')}"
+        for line in payload.get("lines", [])[:20]
+    ]
+    return "\n".join([f"Tedarikçi: {payload.get('supplier_name', '')}", *lines])
+
+
 def _shortage_body(payload: Payload) -> str:
     lines = [
         f"{line.get('product_code', '')} {line.get('product_name', '')}: "
@@ -230,7 +248,7 @@ RULES: tuple[Rule, ...] = (
         roles=(DEPO, SATIN_ALMA),
         level="WARNING",
         title="Lot reddedildi: {lot_no}",
-        body="{material_code} {material_name}. {note}",
+        body=_lot_rejected_body,
     ),
     TaskRule(
         code="material_prep",
@@ -509,6 +527,54 @@ RULES: tuple[Rule, ...] = (
         event=ev.SHIPMENT_CANCELLED,
         title="Sevkiyat iptal edildi: {number}",
         body="Sevkiyata bağlı açık görevler iptal edildi; toplanan lotlar yerine döndü.",
+    ),
+    # --- satın alma (Faz 4, Adım 4.2) ---
+    TaskRule(
+        code="purchase_request",
+        event=ev.PURCHASE_REQUEST_CREATED,
+        role=SATIN_ALMA,
+        title="Satın alma talebi: {number} — {material_code} {material_name}",
+        description="{quantity} {unit}, ihtiyaç tarihi {need_date}. {reason}",
+        close_on=(CloseOn(ev.PURCHASE_REQUEST_ORDERED), CloseOn(ev.PURCHASE_REQUEST_CANCELLED)),
+    ),
+    TaskRule(
+        code="purchase_order_approval",
+        event=ev.PURCHASE_ORDER_PENDING_APPROVAL,
+        role=YONETIM,
+        title="Satın alma siparişini onayla: {number}",
+        description="{supplier_name}, tutar {total} {currency} ({total_try} TL).",
+        close_on=(
+            CloseOn(ev.PURCHASE_ORDER_APPROVED),
+            CloseOn(ev.PURCHASE_ORDER_RETURNED),
+        ),
+    ),
+    NotifyRule(
+        code="purchase_order_returned",
+        event=ev.PURCHASE_ORDER_RETURNED,
+        roles=(SATIN_ALMA,),
+        level="WARNING",
+        title="Sipariş taslağa geri gönderildi: {number}",
+        body="{note}",
+    ),
+    NotifyRule(
+        code="expected_delivery",
+        event=ev.PURCHASE_ORDER_APPROVED,
+        roles=(DEPO,),
+        title="Beklenen teslimat: {number} ({expected_date})",
+        body=_purchase_lines_body,
+    ),
+    NotifyRule(
+        code="purchase_order_received",
+        event=ev.PURCHASE_ORDER_RECEIVED,
+        roles=(SATIN_ALMA,),
+        title="Sipariş teslim alındı: {number}",
+        body="{supplier_name} {receipt_number}",
+    ),
+    CancelTasksRule(
+        code="purchase_order_cancelled",
+        event=ev.PURCHASE_ORDER_CANCELLED,
+        title="Satın alma siparişi iptal edildi: {number}",
+        body="Siparişe bağlı açık görevler iptal edildi.",
     ),
 )
 

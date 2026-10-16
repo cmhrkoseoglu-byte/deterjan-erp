@@ -847,3 +847,76 @@ Tutarlar `Decimal`; para 2, birim maliyet 4 ondalık. Hepsi `apps/costing/select
 Doğrudan alanlar: `inventory.Lot.unit_cost` (boş = maliyet yok) ve `Lot.cost_is_estimated`. Lotun kalem
 döküm ve sürümleri `costing.LotCost` / `LotCostLine` (`is_current=True`). Pano maliyet kartları yalnızca
 `yonetim` ve `admin`'e gösterilmelidir.
+
+## 2026-10-16 — Satın alma (Faz 4, Adım 4.2)
+
+Yeni uygulama `apps/purchasing`, ekran menüde "Satın alma" (`/satin-alma`). Plan:
+`/mnt/project-files/faz4-purchasing/plan.md`.
+
+- **Satın alma talebi `ST-`**: elle (planlama, depo, üretim, satin_alma, yonetim) ya da otomatik açılır.
+  Durumlar `OPEN → ORDERED / CANCELLED`; siparişe bağlanınca ORDERED, sipariş satırı silinir ya da sipariş
+  iptal edilirse yeniden OPEN. Talebi açan kişi ya da satın alma düzenler/iptal eder.
+- **Otomatik talep (basit MRP)**: önerilen = ihtiyaç + minimum stok − serbest stok − açık sipariş − açık talep.
+  - İhtiyaç: APPROVED..IN_PRODUCTION üretim emirlerinin reçete ihtiyacı eksi tüketilen; dolum emirlerinin
+    ambalaj ihtiyacı eksi tüketilen. Şebeke suyu ve sabit lotlu satırlar dışarıda. Yalnızca RAW ve PACKAGING.
+  - Serbest stok: RELEASED + QUARANTINE (gelmiş ama analiz bekleyen), SKT'si geçmemiş, rezerve hariç.
+  - Açık sipariş: taslak ve onay bekleyen siparişler de sayılır (aynı ihtiyaç iki kez sipariş edilmesin).
+  - İhtiyaç tarihi: açığı karşılanmayan ilk emrin planlı tarihi, yoksa bugün.
+  - Her gün 07:00 kontrolünde (`DAILY_CHECK`) önerisi olan malzemeye açık talep yoksa otomatik talep açılır.
+    "Öneriler" sekmesinden elle de talep açılabilir.
+- **Satın alma siparişi `SA-`**: `DRAFT → PENDING_APPROVAL → APPROVED → SENT → PARTIALLY_RECEIVED → RECEIVED`,
+  ve `CANCELLED`. Şartnamedeki listeye **PENDING_APPROVAL** eklendi (yönetim onayı beklerken görünür olsun).
+  Yönetim siparişi notla taslağa geri gönderebilir.
+- **Onay limiti (D-13)**: limit `PurchasingSettings.approval_limit_try`, yalnızca yonetim girer. Sipariş TL
+  tutarı (satır tutarı × siparişteki kur) limitin altındaysa satin_alma doğrudan onaylar, değilse ya da limit
+  boşsa onaya gönderir ve yonetim onaylar (`approval_limit_exceeded`). Onayda tutar, kur ve limit siparişe
+  ve denetim günlüğüne yazılır.
+- **Kalanı kapat**: kısmen teslim alınmış sipariş notla RECEIVED'a kapatılır (tedarikçi kalanı göndermeyecek).
+  Teslimatı olan sipariş iptal edilemez (`order_has_receipts`).
+- **PDF ve e-posta**: sipariş PDF'i her zaman indirilebilir; "Tedarikçiye gönder" adresi onaylatır, PDF ekli
+  e-posta gönderir, sipariş SENT olur. E-posta gitmezse işlem geri alınır (`email_failed`). Sunucu `EMAIL_URL`
+  ile ayarlanır (`.env.example`); boşsa e-posta konsola yazılır. Adres boş bırakılırsa yalnızca SENT işaretlenir.
+- **Siparişten mal kabul**: depo "Beklenen teslimatlar"dan siparişi açar, gelen miktarı girer; mal kabul
+  taslağı sipariş birimi, birim fiyatı, para birimi ve kuruyla oluşur (`GoodsReceiptLine.currency`,
+  `exchange_rate`; maliyet thread'iyle aynı adlar). Bağ `purchasing.ReceiptLineLink` (mal kabul satırı →
+  sipariş satırı) tablosunda; teslim alınan miktar POSTED mal kabullerden hesaplanır, ayrı sayaç yok.
+  Fazla teslim toleransı varsayılan **%10** (ayarlardan değişir); taslaklar dahil aşılırsa `over_receipt`.
+- **Depo fiyat görmez**: sipariş tutarları, birim fiyat ve kur yalnızca satin_alma, yonetim ve admin'e döner;
+  depo siparişte miktarları görür. Sipariş PDF'i de yalnızca bu rollere açık.
+- **Tedarikçi performansı**: zamanında teslim oranı = teslim tarihi geçmiş satırlardan tarihine kadar tamamı
+  gelenler; QC red oranı = aralıkta kabul edilen lotlardan REJECTED olanlar. Varsayılan son 90 gün.
+
+### Mal kabul kancası (inventory → purchasing)
+
+`inventory` satın almayı import etmez. `inventory.services.register_receipt_post_hook(fn)` ile kaydedilen
+fonksiyonlar `post_goods_receipt` içinde, satırlar stoka işlendikten sonra ve mal kabul POSTED olmadan önce,
+aynı transaction'da `fn(receipt, actor)` olarak çağrılır. Satın alma bu kancada siparişin teslim
+alınabilir olduğunu, malzemenin tuttuğunu ve toleransı denetler (hata işlemi geri alır), sonra siparişi
+PARTIALLY_RECEIVED ya da RECEIVED yapar.
+
+### Raporlama için okuma API'si (Adım 4.3)
+
+| Fonksiyon | Döner |
+|---|---|
+| `purchasing.selectors.open_order_lines(supplier=None, material=None)` | Teslimat bekleyen sipariş satırları, `received_quantity` ve `pending_quantity` (temel birim) dolu |
+| `purchasing.selectors.order_lines()` | Tüm satırlar, teslim alınan ve taslak mal kabul miktarı annotate edilmiş queryset |
+| `purchasing.selectors.order_totals(order)` | `OrderTotals(total, total_try)` |
+| `purchasing.selectors.purchase_suggestions(today=None)` | `Suggestion` listesi: ihtiyaç, minimum stok, serbest stok, açık sipariş/talep, önerilen, ihtiyaç tarihi, kaynak emirler |
+| `purchasing.selectors.supplier_performance(date_from, date_to, supplier=None, today=None)` | `SupplierPerformance` listesi: `due_lines`, `on_time_lines`, `on_time_rate`, `received_lots`, `rejected_lots`, `reject_rate` (oranlar % ya da `None`) |
+
+Tutarlar yalnızca yonetim/satin_alma/admin'e gösterilmeli.
+
+### Satın alma olay sözleşmesi (iş akışı tablosuna ek)
+
+| Olay | Payload |
+|---|---|
+| `purchase_request.created`, `.ordered`, `.cancelled` | `transition_status` payload'ı + `material_id`, `material_code`, `material_name`, `unit`, `quantity`, `need_date`, `source`, `reason` |
+| `purchase_order.pending_approval`, `.approved`, `.draft` (geri gönderildi), `.sent`, `.cancelled` | `transition_status` payload'ı + `supplier_id`, `supplier_name`, `currency`, `total`, `total_try`, `expected_date` (en erken), `lines` (malzeme, miktar, birim, teslim tarihi) |
+| `purchase_order.partially_received`, `.received` | aynı alanlar + `receipt_id`, `receipt_number` |
+| `lot.rejected` | mevcut payload + `supplier_name` (satın alma lotunda) |
+
+İş akışı kuralları: `purchase_request` (satin_alma görevi, siparişe bağlanınca ya da iptalde kapanır);
+`purchase_order_approval` (yonetim görevi, onay ya da geri gönderimde kapanır); `purchase_order_returned`
+(satin_alma'ya uyarı); `expected_delivery` (onayda depoya "Beklenen teslimat" bildirimi, satır listesiyle);
+`purchase_order_received` (satin_alma'ya bildirim); `purchase_order_cancelled` (açık görevleri iptal eder).
+`lot_rejected` bildirimi satin_alma'ya da gider ve tedarikçi adını taşır.

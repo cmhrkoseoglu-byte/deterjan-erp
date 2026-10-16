@@ -569,7 +569,7 @@ def test_filling_order_cancelled_cancels_its_tasks(fire, staff):
 
 def test_every_rule_row_is_covered():
     """Faz 1'in 9 satırı + bulk lot reddi + 2 günlük kontrol + Faz 2 kalite ve dolum kuralları +
-    Faz 3 satış siparişi, iade ve sevkiyat kuralları."""
+    Faz 3 satış siparişi, iade ve sevkiyat kuralları + Faz 4 satın alma kuralları."""
     assert [rule.code for rule in rules.RULES] == [
         "incoming_qc",
         "lot_rejected",
@@ -605,6 +605,12 @@ def test_every_rule_row_is_covered():
         "dispatch_shipment",
         "shipment_dispatched",
         "shipment_cancelled",
+        "purchase_request",
+        "purchase_order_approval",
+        "purchase_order_returned",
+        "expected_delivery",
+        "purchase_order_received",
+        "purchase_order_cancelled",
     ]
 
 
