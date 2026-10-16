@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "apps.inventory",
     "apps.production",
     "apps.quality",
+    "apps.filling",
     "apps.workflow",
 ]
 
@@ -162,6 +163,10 @@ SPECTACULAR_SETTINGS = {
         "SampleStageEnum": "apps.quality.models.SampleStage",
         "AttachmentKindEnum": "apps.core.models.Attachment.Kind",
         "LotLabelKindEnum": "apps.inventory.api.serializers.LOT_LABEL_KINDS",
+        "FillingOrderStatusEnum": "apps.filling.models.FillingOrder.Status",
+        "PackagingSpecStatusEnum": "apps.filling.models.PackagingSpec.Status",
+        "ConsumptionKindEnum": "apps.filling.models.ConsumptionKind",
+        "ScrapKindEnum": "apps.filling.models.ScrapRecord.Kind",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
@@ -184,6 +189,9 @@ PRODUCTION_LOW_YIELD_THRESHOLD_PCT = env("PRODUCTION_LOW_YIELD_THRESHOLD_PCT", d
 ATTACHMENT_MAX_BYTES = env.int("ATTACHMENT_MAX_BYTES", default=20 * 1024 * 1024)
 # Etiket yazıcısına (TCP 9100) bağlantı zaman aşımı, saniye.
 PRINTER_TIMEOUT_SECONDS = env.float("PRINTER_TIMEOUT_SECONDS", default=5.0)
+# Dolum: gerçek bulk tüketimi teorikten (sağlam adet × dolum miktarı) bu yüzdeden fazla saparsa
+# `filling.bulk_variance` olayı (planlama ve yönetime uyarı).
+FILL_VARIANCE_THRESHOLD_PCT = env("FILL_VARIANCE_THRESHOLD_PCT", default="1.5")
 
 LOGGING = {
     "version": 1,

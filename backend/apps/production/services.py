@@ -34,6 +34,7 @@ from apps.core.models import AuditLog, User
 from apps.core.permissions import user_has_role
 from apps.core.roles import DEPO, PLANLAMA, URETIM
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
+from apps.inventory import picking
 from apps.inventory import services as inventory
 from apps.inventory.models import Lot, StockBalance, StockMovement
 from apps.inventory.services import format_quantity, lot_payload, quantize
@@ -89,8 +90,6 @@ PICKABLE_STATUSES = (
     Status.IN_PRODUCTION,
 )
 BATCHABLE_STATUSES = (Status.MATERIAL_READY, Status.IN_PRODUCTION)
-# Hazırlanan miktar ihtiyacın en çok bu katı olabilir (ambalaj yuvarlaması için pay).
-MAX_PICK_FACTOR = Decimal(2)
 PCT_STEP = Decimal("0.01")
 HUNDRED = Decimal(100)
 
@@ -161,7 +160,7 @@ def _require_status(order: ProductionOrder, allowed: Sequence[str], code: str, w
 
 
 def default_production_location(equipment: Equipment) -> Location | None:
-    """Tankın deposundaki ilk aktif üretim (`PRODUCTION`) lokasyonu."""
+    """Tankın deposundaki ilk aktif üretim (`PRODUCTION`) lokasyonu; dolum hattı başları hariç."""
     if equipment.location is None:
         return None
     return (
@@ -170,6 +169,7 @@ def default_production_location(equipment: Equipment) -> Location | None:
             location_type=Location.Type.PRODUCTION,
             is_active=True,
         )
+        .exclude(equipment__equipment_type=Equipment.Type.FILLING_LINE)
         .order_by("code")
         .first()
     )
@@ -479,34 +479,7 @@ def start_material_prep(actor: User | None, order: ProductionOrder) -> Productio
 
 def picked_quantity(requirement: ProductionRequirement) -> Decimal:
     """İhtiyaç için hazırlanmış (iade edilmemiş) toplam miktar."""
-    total = requirement.picks.filter(returned_at__isnull=True).aggregate(t=Sum("quantity"))["t"]
-    return total or Decimal(0)
-
-
-def _pick_source(
-    lot: Lot, quantity: Decimal, exclude: Location, from_location: Location | None
-) -> Location:
-    if from_location is not None:
-        if from_location.pk == exclude.pk:
-            raise BusinessRuleError(
-                "same_location", "Malzeme zaten üretim lokasyonunda; başka lokasyondan hazırlanır."
-            )
-        return from_location
-    balances = list(
-        StockBalance.objects.filter(lot=lot, quantity__gt=0)
-        .exclude(location=exclude)
-        .exclude(location__location_type=Location.Type.QUARANTINE)
-        .select_related("location")
-        .order_by("-quantity", "location__code")
-    )
-    if not balances:
-        raise BusinessRuleError(
-            "lot_not_in_stock", f"Lot {lot.lot_no} için hazırlanacak stok bulunamadı."
-        )
-    enough = [b for b in balances if b.quantity >= quantity]
-    # Yeterli stok tek lokasyondaysa orası; değilse en çok stoklu lokasyon (yetersizse
-    # post_movement negatif stok hatası verir).
-    return (enough or balances)[0].location
+    return picking.picked_total(requirement.picks.all())
 
 
 @transaction.atomic
@@ -520,7 +493,7 @@ def pick_material(
     note: str = "",
 ) -> MaterialPick:
     """Depo ihtiyaç için lot hazırlar (rol: depo): stok kaynak lokasyondan emrin üretim
-    lokasyonuna transfer edilir.
+    lokasyonuna transfer edilir (ortak hazırlama servisi `inventory.picking`).
 
     Yalnızca serbest ve SKT'si geçmemiş lot seçilir; lot ihtiyacın malzemesinden olmalıdır.
     Kaynak verilmezse lotun karantina dışı, yeterli stoklu lokasyonu seçilir. Hazırlanan toplam
@@ -530,8 +503,10 @@ def pick_material(
     actor = _actor(actor)
     order = _lock_order(order)
     _require_status(order, PICKABLE_STATUSES, "order_not_pickable", "malzeme hazırlanamaz")
-    requirement = ProductionRequirement.objects.select_for_update(of=("self",)).get(
-        pk=requirement.pk
+    requirement = (
+        ProductionRequirement.objects.select_for_update(of=("self",))
+        .select_related("material__base_unit")
+        .get(pk=requirement.pk)
     )
     if requirement.order_id != order.pk:
         raise BusinessRuleError("requirement_not_in_order", "İhtiyaç satırı bu emre ait değil.")
@@ -544,51 +519,33 @@ def pick_material(
             "rework_lot_not_picked",
             "Yeniden işlenen lot hazırlanmaz; tartımda bulunduğu yerden düşülür.",
         )
-    lot = Lot.objects.select_related("material__base_unit").get(pk=lot.pk)
-    if lot.material_id != requirement.material_id:
-        raise BusinessRuleError(
-            "lot_material_mismatch",
-            f"Lot {lot.lot_no} {lot.material.code} malzemesine ait; bu satır "
-            f"{requirement.material.code} istiyor.",
-        )
-    inventory.assert_lot_usable(lot)
-    quantity = quantize(quantity)
-    if quantity <= 0:
-        raise BusinessRuleError("invalid_quantity", "Miktar sıfırdan büyük olmalıdır.")
-    limit = requirement.required_quantity * MAX_PICK_FACTOR
-    if picked_quantity(requirement) + quantity > limit:
-        unit = requirement.material.base_unit.code
-        raise BusinessRuleError(
-            "pick_exceeds_requirement",
-            f"{requirement.material.code} için en çok {format_quantity(limit)} {unit} "
-            "hazırlanabilir (ihtiyacın iki katı).",
-        )
-    source = _pick_source(lot, quantity, order.production_location, from_location)
     if order.status == Status.APPROVED:
         order = transition_status(
             order, Status.MATERIAL_PREP, actor, machine=production_order_states
         )
-    out, _into = inventory.transfer(
+    result = picking.pick_lot(
         actor,
-        lot,
-        source,
-        order.production_location,
-        quantity,
-        source=order,
+        lot=lot,
+        material=requirement.material,
+        quantity=quantity,
+        required_quantity=requirement.required_quantity,
+        already_picked=picked_quantity(requirement),
+        to_location=order.production_location,
+        document=order,
+        from_location=from_location,
         note=note or f"Hazırlama {order.number}",
     )
-    assert out.transfer_group is not None
     return save_with_audit(
         MaterialPick(
             order=order,
             requirement=requirement,
             lot=lot,
-            quantity=quantity,
-            from_location=source,
-            to_location=order.production_location,
+            quantity=result.quantity,
+            from_location=result.from_location,
+            to_location=result.to_location,
             picked_by=actor,
             picked_at=timezone.now(),
-            transfer_group=out.transfer_group,
+            transfer_group=result.transfer_group,
         ),
         actor,
     )
@@ -637,21 +594,15 @@ def cancel_order(actor: User | None, order: ProductionOrder, reason: str) -> Pro
     production_order_states.assert_can_transition(order.status, Status.CANCELLED)
     if not reason.strip():
         raise BusinessRuleError("cancel_reason_required", "İptal nedeni girilmelidir.")
-    now = timezone.now()
-    for pick in order.picks.filter(returned_at__isnull=True).select_related(
-        "lot", "from_location", "to_location"
-    ):
-        inventory.transfer(
-            actor,
-            pick.lot,
-            pick.to_location,
-            pick.from_location,
-            pick.quantity,
-            source=order,
-            note=f"İptal iadesi {order.number}",
-        )
-        pick.returned_at = now
-        save_with_audit(pick, actor, note="Emir iptali: malzeme geri transfer edildi")
+    picking.return_picks(
+        actor,
+        order.picks.filter(returned_at__isnull=True).select_related(
+            "lot__material", "from_location", "to_location"
+        ),
+        document=order,
+        note=f"İptal iadesi {order.number}",
+        audit_note="Emir iptali: malzeme geri transfer edildi",
+    )
     return cancel_document(order, actor, reason=reason, machine=production_order_states)
 
 

@@ -13,7 +13,16 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from apps.core import event_names as ev
-from apps.core.roles import DEPO, LABORATUVAR, PLANLAMA, SATIN_ALMA, URETIM, YONETIM
+from apps.core.roles import (
+    DEPO,
+    DOLUM,
+    LABORATUVAR,
+    PLANLAMA,
+    SATIN_ALMA,
+    SEVKIYAT,
+    URETIM,
+    YONETIM,
+)
 
 Payload = Mapping[str, Any]
 Subject = Mapping[str, Any]
@@ -76,13 +85,32 @@ class CancelTasksRule:
 Rule = TaskRule | NotifyRule | CancelTasksRule
 
 
-def _sample_at(*stages: str) -> Callable[[Payload], list[Subject]]:
-    """Numune olayının kendisi (numune görevi), aşama uyuyorsa."""
+def _sample_at(*stages: str, skip_finished: bool = False) -> Callable[[Payload], list[Subject]]:
+    """Numune olayının kendisi (numune görevi), aşama uyuyorsa. `skip_finished`: mamul numunesi
+    atlanır (dolum partisi bitince "Mamul kontrolü" görevi açılır)."""
 
     def subjects(payload: Payload) -> list[Subject]:
-        return [payload] if payload.get("stage") in stages else []
+        if payload.get("stage") not in stages:
+            return []
+        if skip_finished and payload.get("material_type") == "FINISHED":
+            return []
+        return [payload]
 
     return subjects
+
+
+def _output_lot(payload: Payload) -> list[Subject]:
+    """Dolum partisinin lotu (mamul kontrolü görevi lota bağlanır)."""
+    lot = payload.get("output_lot")
+    if not lot:
+        return []
+    return [
+        {
+            **lot,
+            "order_number": payload.get("order_number", ""),
+            "sample_number": payload.get("sample_number", ""),
+        }
+    ]
 
 
 def _rework_lot(payload: Payload) -> list[Subject]:
@@ -176,7 +204,7 @@ RULES: tuple[Rule, ...] = (
         role=LABORATUVAR,
         title="Numune analizi: {lot_no}",
         description="{material_code} {material_name} — numune {number}",
-        subjects=_sample_at("IN_PROCESS", "FINAL"),
+        subjects=_sample_at("IN_PROCESS", "FINAL", skip_finished=True),
         close_on=(CloseOn(ev.SAMPLE_DECIDED), CloseOn(ev.SAMPLE_CANCELLED)),
     ),
     TaskRule(
@@ -237,6 +265,70 @@ RULES: tuple[Rule, ...] = (
         event=ev.PRODUCTION_ORDER_CANCELLED,
         notify_roles=(PLANLAMA,),
         title="Üretim emri iptal edildi: {number}",
+        body="Emre bağlı açık görevler iptal edildi.",
+    ),
+    # Faz 2, Adım 2.2: dolum.
+    TaskRule(
+        code="packaging_prep",
+        event=ev.FILLING_ORDER_APPROVED,
+        role=DEPO,
+        title="Ambalaj malzemesi hazırla: {number}",
+        description="Dolum emri {number} ({product_code}) onaylandı; ambalaj malzemelerini dolum "
+        "hattına hazırlayın.",
+        close_on=(CloseOn(ev.FILLING_ORDER_MATERIAL_READY),),
+    ),
+    TaskRule(
+        code="start_filling",
+        event=ev.FILLING_ORDER_MATERIAL_READY,
+        role=DOLUM,
+        title="Dolumu başlat: {number}",
+        description="Dolum emri {number} için ambalaj malzemesi hazır.",
+        close_on=(CloseOn(ev.FILLING_RUN_STARTED, lambda payload: payload.get("order")),),
+    ),
+    TaskRule(
+        code="finished_qc",
+        event=ev.FILLING_RUN_COMPLETED,
+        role=LABORATUVAR,
+        title="Mamul kontrolü: {lot_no}",
+        description="{material_code} {material_name} — dolum emri {order_number}, numune "
+        "{sample_number}",
+        subjects=_output_lot,
+        close_on=(CloseOn(ev.SAMPLE_DECIDED, lambda payload: payload.get("lot")),),
+    ),
+    NotifyRule(
+        code="filling_bulk_variance",
+        event=ev.FILLING_BULK_VARIANCE,
+        roles=(PLANLAMA, YONETIM),
+        level="WARNING",
+        title="Dolum bulk farkı: {number}",
+        body=(
+            "Dolum lotu {lot_no} ({product_code}, {good_units} adet): teorik "
+            "{theoretical_quantity}, gerçek {actual_quantity} (%{variance_pct}, eşik "
+            "%{threshold_pct})."
+        ),
+    ),
+    NotifyRule(
+        code="finished_lot_released",
+        event=ev.LOT_RELEASED,
+        roles=(SEVKIYAT, PLANLAMA),
+        title="Sevke hazır: {lot_no}",
+        body="{material_code} {material_name}",
+        when=lambda payload: payload.get("material_type") == "FINISHED",
+    ),
+    NotifyRule(
+        code="finished_lot_rejected",
+        event=ev.LOT_REJECTED,
+        roles=(PLANLAMA, DOLUM),
+        level="WARNING",
+        title="Mamul lot reddedildi: {lot_no}",
+        body="{material_code} {material_name}. Dolum emri analiz bekliyor. {note}",
+        when=lambda payload: payload.get("material_type") == "FINISHED",
+    ),
+    CancelTasksRule(
+        code="filling_order_cancelled",
+        event=ev.FILLING_ORDER_CANCELLED,
+        notify_roles=(PLANLAMA,),
+        title="Dolum emri iptal edildi: {number}",
         body="Emre bağlı açık görevler iptal edildi.",
     ),
     NotifyRule(

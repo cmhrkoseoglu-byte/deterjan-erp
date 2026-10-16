@@ -33,7 +33,8 @@ def test_seed_demo_adds_approved_sample_specifications(roles):
         "KOKU",
     }
     # Tekrar çalıştırmak yeni sürüm açmaz.
-    assert Specification.objects.count() == 16
+    # 14 giriş + 2 bulk son kontrol + 2 mamul son kontrol (seed_filling_demo).
+    assert Specification.objects.count() == 18
     assert not Specification.objects.exclude(status="APPROVED").exists()
 
 

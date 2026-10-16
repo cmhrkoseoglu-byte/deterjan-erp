@@ -424,6 +424,79 @@ bağlanır ve numune karar verilince ya da iptal edilince kapanır; `conditional
 (yönetim), `rework_order` (planlama; yeniden işleme emri onaylanınca kapanır), `in_process_out_of_spec`
 (bildirim). Görev başlığı lot numarasını, açıklaması numune numarasını taşır.
 
+## 2026-10-15 — Dolum ve ambalaj (Faz 2, Adım 2.2)
+
+CUMHUR'un 2026-10-15'te onayladığı plan varsayılanları:
+
+1. **Bulk hazırlanmaz, tanktan tüketilir.** Bulk lot depo hazırlamasına girmez; dolumcu tank lotunu okutur,
+   tüketim lotun durduğu yerden (`TANK`) düşülür. Bir partide birden çok bulk lot tüketilebilir.
+2. **Ambalaj tüketimi bitişte hesaplanır.** Parti bitince her ambalaj satırı için
+   `(sağlam adet + mamul firesi) × adet başı miktar` hat başından düşülür (adet birimlerinde yukarı
+   yuvarlanır); önce partide okutulan lotlar, sonra hat başındaki diğer lotlar SKT sırasıyla. Yetmezse
+   `packaging_short`. Ambalaj firesi ayrıca kayıtla düşülür.
+3. **Mamul SKT'si = dolum tarihi + mamulün raf ömrü** (`shelf_life_days`).
+4. **Kullanılmayan ambalaj hat başında kalır**; depo stok transfer ekranıyla geri alır (Faz 1 kuralıyla aynı).
+   İptal edilen emirde hazırlanan ambalaj kendiliğinden geri transfer edilir.
+
+Diğer ayrıntılar:
+
+- **Ortak hazırlama servisi**: Faz 1'deki `MaterialPick` deseni `inventory.picking` servisine ve soyut
+  `inventory.PickRecord` modeline çıkarıldı (`pick_lot`, `return_picks`, `picked_total`). Üretim ve dolum
+  aynı kuralları kullanır: lot serbest ve SKT'si geçmemiş olmalı, hazırlanan miktar fire payı dahil ihtiyacın
+  iki katını aşamaz (`pick_exceeds_requirement`).
+- **Ambalaj reçetesi** (`PackagingSpec`): mamul başına sürümlü (Taslak → Onaylı → Eski sürüm); tek onaylı
+  sürüm (veritabanı kısıtı), yenisi onaylanınca eskisi eski sürüm olur. Onaylı sürüm değiştirilemez, kopyayla
+  yeni taslak açılır; taslakta satır kaldırılabilir (denetim günlüğüne yazılır). Mamulün temel birimi adet
+  türünde olmalı (`finished_unit_not_count`); dolum miktarı bulkun temel birimine çevrilebilmeli
+  (kg ↔ lt için yoğunluk). Satır malzemesi `PACKAGING` olmalı.
+- **Dolum emri** (`DO-`): açılırken mamulün onaylı ambalaj reçetesi sabitlenir; taslak güncellenince yeniden
+  sabitlenir, onayda reçete hâlâ onaylı olmalı (`packaging_spec_not_approved`). Onayda ihtiyaç
+  `planlanan adet × adet başı × (1 + fire payı)` olarak hesaplanır (adet birimleri yukarı yuvarlanır).
+  "Ambalaj hazır" için her satır fire payı **hariç** ihtiyaç kadar hazırlanmış olmalı (`material_not_ready`).
+  `planned_units` tam sayıdır. Dolum hattı `FILLING_LINE` türünde ve hat başı lokasyonu `PRODUCTION`
+  türünde olmalı; mamul deposu `STORAGE` türünde.
+- **Dolum partisi** (`FillingRun`): başlarken `D-YYMMDD-NNN` lotu karantinada açılır (D-2); emir başına tek
+  açık parti. Bitişte toplam dolan adet (sağlam + mamul firesi) `PRODUCTION_OUTPUT` ile mamul deposuna
+  girer, mamul firesi aynı anda `SCRAP` ile düşülür; böylece depoda sağlam adet kalır. Mamul lotu karantinada
+  olduğu için sevk edilemez; serbest bırakılınca yer değiştirmez. Bitişte mamul lotuna `FINAL` numune açılır
+  (`Sample.Origin.FILLING`). Kaydı olmayan parti gerekçeyle iptal edilir (`run_has_records`).
+- **Bulk farkı**: teorik = `sağlam adet × dolum miktarı` (bulkun temel biriminde); gerçek = tüketilen bulk +
+  bulk firesi. Fark yüzdesi `(gerçek − teorik) / teorik`, eşik `FILL_VARIANCE_THRESHOLD_PCT` (varsayılan
+  1,5). Mutlak fark eşiği aşarsa `filling.bulk_variance`.
+- **Fire** (`ScrapRecord`): bulk ve ambalaj firesi lotla ve hemen `SCRAP` hareketiyle; mamul firesi tam adet,
+  bitişte düşülür. "Diğer" nedeni açıklama ister (`scrap_note_required`).
+- **Emir kapanışı**: "Dolumu bitir" emri "Analiz bekliyor"a alır; partilerin tüm mamul lotları serbest
+  kalınca (`lot.released` dinleyicisi) emir tamamlanır. Reddedilen mamul lotu emri analiz bekliyorda bırakır,
+  planlama ve dolum bildirim alır.
+- **Rapor**: tamamlanan partilerden; ambalaj teorik = sağlam adet × adet başı, gerçek = tüketim + fire,
+  fark fire payını aşarsa işaretlenir.
+- **Yetki**: ambalaj reçetesi ve emir yazma/onay/iptal `planlama`; ambalaj hazırlama ve "Ambalaj hazır"
+  `depo`; parti, tüketim, okutma, fire, bitiş ve "Dolumu bitir" `dolum`; okuma her giriş yapmış kullanıcıya
+  açık. Menüde "Dolum" artık `depo`'ya da görünür (ambalaj hazırlama sekmesi).
+- **Okutma**: lot numarası ya da lot etiketi içeriği (`LOT:<lot_no>`) kabul edilir. Okutulan lot reçetedeki
+  malzemelerden değilse `lot_material_mismatch`; hat başında olmayan ambalaj lotu `lot_not_at_line`.
+  Ortak `ScanInput` bileşeni ve koli etiketi basımı Adım 2.3 PR'ıyla (#9) bağlandı.
+- **Üretim lokasyonu varsayılanı**: `production.default_production_location` dolum hattı başı lokasyonlarını
+  atlar (demo verisinde DOLUM-1, URETIM-1'den önce sıralanıyordu).
+- **Mamul spesifikasyonu (D-7)**: `seed_filling_demo` (seed_demo sonunda) mamullere `FINAL` spesifikasyon
+  yazar: görünüş, dolum miktarı (dolum ±%1,5, ml), sızdırmazlık, etiket.
+
+### Dolum olay sözleşmesi (iş akışı tablosuna ek)
+
+| Olay | Payload |
+|---|---|
+| `filling_order.approved`, `.material_ready`, `.cancelled`, `.completed` | `transition_status` payload'ı (onayda ek olarak `product_code`) |
+| `filling_run.started` | `model, id, lot_no, order: {model, id, number}, order_number` |
+| `filling_run.completed` | yukarıdakiler + `output_lot` (`lot_payload` + `material_type`), `good_units`, `scrapped_units`, `sample_number` |
+| `filling.bulk_variance` | `model: filling.fillingorder, id, number, lot_no, product_code, good_units, theoretical_quantity, actual_quantity, variance_pct, threshold_pct` (sayılar Türkçe biçimli metin) |
+
+İş akışı kuralları: `packaging_prep` (depo, "Ambalaj malzemesi hazırla: {number}", ambalaj hazır olunca
+kapanır), `start_filling` (dolum, "Dolumu başlat: {number}", parti başlayınca kapanır), `finished_qc`
+(laboratuvar, "Mamul kontrolü: {lot}", mamul lotuna bağlı, numune karar verilince kapanır; bulkun
+`batch_sample_analysis` görevi mamul numunesi için açılmaz), `filling_bulk_variance` (planlama, yönetim;
+uyarı), `finished_lot_released` (sevkiyat, planlama: "Sevke hazır: {lot}"), `finished_lot_rejected`
+(planlama, dolum), `filling_order_cancelled` (açık görevleri iptal eder, planlamaya bildirim).
+
 ## 2026-10-15 — Etiket, barkod ve ekler (Faz 2, Adım 2.3 ve 2.4)
 
 - **Karar D-6 (CUMHUR kararı, "Malzemeye göre")**: mamul koli etiketi, malzemenin GTIN'i varsa GS1-128
@@ -463,6 +536,8 @@ bağlanır ve numune karar verilince ya da iptal edilince kapanır; `conditional
   yapar, kaldırılan eki yalnızca admin görür. Yoruma ek yalnızca yorumun yazarı ekler. Ekleme ve
   kaldırma, bağlı kaydın denetim günlüğüne yazılır. Üretimde dosyalar `media` volume'ünde
   (`docker-compose.prod.yml`), nginx yükleme sınırı 25 MB.
-- **Dolum tableti** (Adım 2.2, paralel iş): okutma alanı ve koli etiketi yazdırma, 2.2 ile 2.3'ten hangisi
-  ikinci birleşirse onun tarafından dolum ekranına bağlanır. Kullanılacak bileşenler: `ScanInput`
-  (`expect="lot"`, `expectedMaterial`) ve `LotLabelButton` / `LabelPrintModal` (`kind=case`).
+- **Dolum tableti** (Adım 2.2 ile birleştirme): ambalaj hazırlama, bulk tüketimi, ambalaj lotu okutma ve
+  fire lotu `ScanInput` kullanır. Beklenen malzeme: hazırlamada satırın malzemesi, bulkta partinin bulk
+  ürünü, ambalaj okutmada ambalaj reçetesindeki kalemlerden biri (birden çok malzeme kabul edilir).
+  Parti ekranında "Koli etiketi" düğmesi mamul lotunun koli etiketini önce seçili açar; GS1 ya da firma
+  içi olduğu partideki `finished_product_gtin` ile gösterilir.
