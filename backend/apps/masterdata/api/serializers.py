@@ -187,7 +187,7 @@ class SupplierSerializer(serializers.ModelSerializer):
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
-        fields = PARTNER_FIELDS
+        fields = [*PARTNER_FIELDS, "min_remaining_shelf_life_days"]
         read_only_fields = AUDIT_FIELDS
         extra_kwargs = NO_UNIQUE_VALIDATOR
 

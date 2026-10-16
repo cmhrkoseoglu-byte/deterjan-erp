@@ -11,7 +11,7 @@ from django.db.models import DecimalField, F, OuterRef, Q, QuerySet, Subquery, S
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from apps.inventory.models import Lot, LotLink, StockBalance
+from apps.inventory.models import Lot, LotLink, StockBalance, StockReservation
 from apps.masterdata.models import Location, Material
 
 ZERO = Value(Decimal(0), output_field=DecimalField(max_digits=18, decimal_places=4))
@@ -21,10 +21,30 @@ MAX_TRACE_DEPTH = 25
 UNUSABLE_STATUSES = (Lot.Status.REJECTED, Lot.Status.BLOCKED)
 
 
+def _reserved_subquery() -> Coalesce:
+    reserved = (
+        StockReservation.objects.filter(
+            lot=OuterRef("lot"),
+            location=OuterRef("location"),
+            status=StockReservation.Status.ACTIVE,
+        )
+        .values("lot")
+        .annotate(total=Sum("quantity"))
+        .values("total")
+    )
+    return Coalesce(Subquery(reserved), ZERO)
+
+
 def balances() -> QuerySet[StockBalance]:
-    """Sıfırdan büyük bakiyeler (malzeme, lot, lokasyon ilişkileriyle)."""
-    return StockBalance.objects.filter(quantity__gt=0).select_related(
-        "material__base_unit", "lot", "location__warehouse"
+    """Sıfırdan büyük bakiyeler (malzeme, lot, lokasyon ilişkileriyle).
+
+    Açıklamalar: `reserved_quantity` (aktif rezervasyonlar) ve `available_quantity`
+    (bakiye − rezerve), temel birimde."""
+    return (
+        StockBalance.objects.filter(quantity__gt=0)
+        .select_related("material__base_unit", "lot", "location__warehouse")
+        .annotate(reserved_quantity=_reserved_subquery())
+        .annotate(available_quantity=F("quantity") - F("reserved_quantity"))
     )
 
 
@@ -41,13 +61,15 @@ def stock_by_location(location: Location) -> QuerySet[StockBalance]:
 def available_lots(
     material: Material, fefo: bool = True, *, today: date | None = None
 ) -> QuerySet[StockBalance]:
-    """Üretimde tüketilebilir stok: yalnızca serbest (RELEASED), SKT'si geçmemiş lotların
-    pozitif bakiyeleri. `fefo=True`: SKT'si en yakın önce (SKT'siz en sonda), sonra en eski lot."""
+    """Kullanılabilir stok: yalnızca serbest (RELEASED), SKT'si geçmemiş lotların rezerve
+    edilmemiş miktarı pozitif bakiyeleri (`available_quantity` = bakiye − aktif rezervasyonlar).
+    `fefo=True`: SKT'si en yakın önce (SKT'siz en sonda), sonra en eski lot."""
     today = today or timezone.localdate()
     queryset = (
         balances()
         .filter(material=material, lot__status=Lot.Status.RELEASED)
         .filter(Q(lot__expiry_date__isnull=True) | Q(lot__expiry_date__gte=today))
+        .filter(available_quantity__gt=0)  # type: ignore[misc]
     )
     if fefo:
         return queryset.order_by(

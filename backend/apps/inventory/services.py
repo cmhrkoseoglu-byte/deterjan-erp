@@ -38,6 +38,7 @@ from apps.inventory.models import (
     StockAdjustmentLine,
     StockBalance,
     StockMovement,
+    StockReservation,
 )
 from apps.inventory.state import goods_receipt_states, lot_states, stock_adjustment_states
 from apps.masterdata import services as masterdata
@@ -68,6 +69,17 @@ OUTBOUND_TYPES = frozenset(
 # Kural 4: bu hareketler yalnızca serbest ve SKT'si geçmemiş lottan yapılır. Transfer, fire ve
 # düzeltme her durumdaki lota yapılabilir (karantinadaki lot depo içinde taşınabilir).
 USABLE_LOT_ONLY_TYPES = frozenset({MovementType.ISSUE_PRODUCTION, MovementType.SHIPMENT})
+# Rezerve stok bu çıkışlarla eritilemez (Faz 3): bakiye aktif rezervasyonların altına düşemez.
+# Sayım düzeltmesi ve ters kayıt engellenmez (sayım gerçeği yansıtır). Sevkiyat önce
+# `consume_reservation` çağırır, sonra hareketi yazar.
+RESERVATION_GUARDED_TYPES = frozenset(
+    {
+        MovementType.ISSUE_PRODUCTION,
+        MovementType.TRANSFER_OUT,
+        MovementType.SCRAP,
+        MovementType.SHIPMENT,
+    }
+)
 
 LOT_DECISION_ROLES = (LABORATUVAR,)
 # Lot numarası önekleri (Karar D-2): satın alma H, üretim B, dolum D.
@@ -235,6 +247,17 @@ def post_movement(
             f"{format_quantity(balance.quantity)} {unit} var, "
             f"{format_quantity(-quantity)} {unit} isteniyor.",
         )
+    if quantity < 0 and movement_type in RESERVATION_GUARDED_TYPES:
+        reserved = reserved_quantity(lot, location)
+        if new_quantity < reserved:
+            unit = material.base_unit.code
+            raise BusinessRuleError(
+                "reserved_stock",
+                f"Bu stok rezerve: {material.code} lot {lot.lot_no}, {location.code} "
+                f"lokasyonunda {format_quantity(balance.quantity)} {unit} var, "
+                f"{format_quantity(reserved)} {unit} siparişlere ayrılmış. Önce rezervasyonu "
+                "bırakın.",
+            )
     balance.quantity = new_quantity
     balance.save(update_fields=["quantity", "updated_at"])
     return StockMovement.objects.create(
@@ -295,6 +318,158 @@ def transfer(
         transfer_group=group,
     )
     return out, into
+
+
+# --- rezervasyon (Faz 3, Adım 3.1) ----------------------------------------------------------
+
+
+def reserved_quantity(lot: Lot, location: Location) -> Decimal:
+    """Lotun lokasyondaki aktif rezervasyonlarının toplamı (temel birimde)."""
+    total = StockReservation.objects.filter(
+        lot=lot, location=location, status=StockReservation.Status.ACTIVE
+    ).aggregate(t=models.Sum("quantity"))["t"]
+    return total or Decimal(0)
+
+
+def _source_ref(source: models.Model) -> dict[str, Any]:
+    return {
+        "source_content_type": ContentType.objects.get_for_model(source),
+        "source_object_id": source.pk,
+    }
+
+
+def reservations_for(source: models.Model) -> models.QuerySet[StockReservation]:
+    """Belgenin (ör. sipariş satırı) tüm rezervasyonları, oluşturma sırasıyla."""
+    return StockReservation.objects.filter(**_source_ref(source)).select_related(
+        "lot", "location", "material__base_unit"
+    )
+
+
+@transaction.atomic
+def reserve(
+    actor: User | None,
+    *,
+    lot: Lot,
+    location: Location,
+    quantity: Decimal,
+    source: models.Model,
+    document_number: str = "",
+    note: str = "",
+) -> StockReservation:
+    """Lotun lokasyondaki kullanılabilir stoğundan `source` belgesi için miktar ayırır.
+
+    Yalnızca serbest, SKT'si geçmemiş lot ve karantina dışı lokasyon. Bakiye satırı kilitlenir;
+    miktar kullanılabilir stoğu (bakiye − aktif rezervasyonlar) aşarsa
+    `BusinessRuleError("insufficient_available")`. Stok hareketi yazılmaz. `document_number`:
+    listelerde görünen belge no (verilmezse kaynağın `number` alanı).
+    """
+    quantity = quantize(quantity)
+    if quantity <= 0:
+        raise BusinessRuleError("invalid_quantity", "Miktar sıfırdan büyük olmalıdır.")
+    locked = Lot.objects.select_for_update().select_related("material__base_unit").get(pk=lot.pk)
+    assert_lot_usable(locked)
+    if location.location_type == Location.Type.QUARANTINE:
+        raise BusinessRuleError(
+            "quarantine_location", "Karantina lokasyonundaki stok rezerve edilemez."
+        )
+    material = locked.material
+    balance = _lock_balance(material, locked, location)
+    available = balance.quantity - reserved_quantity(locked, location)
+    if quantity > available:
+        unit = material.base_unit.code
+        raise BusinessRuleError(
+            "insufficient_available",
+            f"Lot {locked.lot_no} {location.code} lokasyonunda kullanılabilir "
+            f"{format_quantity(max(available, Decimal(0)))} {unit} var, "
+            f"{format_quantity(quantity)} {unit} rezerve edilemez.",
+        )
+    reservation = StockReservation(
+        material=material,
+        lot=locked,
+        location=location,
+        quantity=quantity,
+        note=note,
+        document_number=document_number or str(getattr(source, "number", "") or ""),
+        **_source_ref(source),
+    )
+    return save_with_audit(reservation, actor, note=note)
+
+
+def _close_reservation(
+    actor: User | None, reservation: StockReservation, status: str, note: str
+) -> StockReservation:
+    locked = StockReservation.objects.select_for_update().get(pk=reservation.pk)
+    if locked.status != StockReservation.Status.ACTIVE:
+        raise BusinessRuleError("reservation_not_active", "Rezervasyon aktif değil.")
+    from_status = locked.status
+    locked.status = status
+    locked.closed_at = timezone.now()
+    locked.updated_by = _actor(actor)
+    locked.save(update_fields=["status", "closed_at", "updated_by", "updated_at"])
+    log_change(
+        _actor(actor),
+        locked,
+        AuditLog.Action.STATUS_CHANGE,
+        {"status": [from_status, status]},
+        note,
+    )
+    return locked
+
+
+@transaction.atomic
+def release_reservation(
+    actor: User | None, reservation: StockReservation, note: str = ""
+) -> StockReservation:
+    """Aktif rezervasyonu bırakır (`RELEASED`); stok yeniden kullanılabilir olur."""
+    return _close_reservation(actor, reservation, StockReservation.Status.RELEASED, note)
+
+
+@transaction.atomic
+def consume_reservation(
+    actor: User | None,
+    reservation: StockReservation,
+    quantity: Decimal | None = None,
+    note: str = "",
+) -> StockReservation:
+    """Rezervasyonu kullanır (`CONSUMED`); sevkiyat çıkış hareketini yazmadan önce çağırır.
+
+    `quantity` rezervasyondan azsa rezervasyon bölünür: kullanılan kısım `CONSUMED` yeni kayıt
+    olur (dönen kayıt), kalan aktif kalır. Rezervasyondan fazlası kullanılamaz.
+    """
+    locked = StockReservation.objects.select_for_update().get(pk=reservation.pk)
+    if locked.status != StockReservation.Status.ACTIVE:
+        raise BusinessRuleError("reservation_not_active", "Rezervasyon aktif değil.")
+    quantity = locked.quantity if quantity is None else quantize(quantity)
+    if quantity <= 0 or quantity > locked.quantity:
+        raise BusinessRuleError(
+            "invalid_quantity",
+            f"Kullanılan miktar 0 ile {format_quantity(locked.quantity)} arasında olmalıdır.",
+        )
+    if quantity == locked.quantity:
+        return _close_reservation(actor, locked, StockReservation.Status.CONSUMED, note)
+    before = snapshot(locked)
+    locked.quantity -= quantity
+    locked.updated_by = _actor(actor)
+    locked.save(update_fields=["quantity", "updated_by", "updated_at"])
+    log_change(
+        _actor(actor),
+        locked,
+        AuditLog.Action.UPDATE,
+        {"quantity": [str(before.get("quantity")), str(locked.quantity)]},
+        note,
+    )
+    consumed = StockReservation(
+        material_id=locked.material_id,
+        lot_id=locked.lot_id,
+        location_id=locked.location_id,
+        quantity=quantity,
+        source_content_type_id=locked.source_content_type_id,
+        source_object_id=locked.source_object_id,
+        document_number=locked.document_number,
+        note=note,
+    )
+    save_with_audit(consumed, actor, note=note)
+    return _close_reservation(actor, consumed, StockReservation.Status.CONSUMED, note)
 
 
 @transaction.atomic

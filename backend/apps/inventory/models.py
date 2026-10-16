@@ -514,3 +514,65 @@ class PickRecord(BaseModel):
 
     class Meta:
         abstract = True
+
+
+class StockReservation(BaseModel):
+    """Stok rezervasyonu (Faz 3, Adım 3.1): bir belgenin (satışta sipariş satırı) bir lot ve
+    lokasyondaki stoktan ayırdığı miktar (temel birimde).
+
+    Rezervasyon stok hareketi değildir; kullanılabilir stok = bakiye − aktif rezervasyonlar.
+    Kaynak belge genel bağla tutulur (stok hareketindeki gibi), böylece inventory satış modülüne
+    bağımlı olmaz. Yazma yalnızca `inventory.services.reserve / release_reservation /
+    consume_reservation` ile.
+    """
+
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Aktif"
+        CONSUMED = "CONSUMED", "Kullanıldı"
+        RELEASED = "RELEASED", "Bırakıldı"
+
+    material = models.ForeignKey(
+        Material, verbose_name="malzeme", on_delete=models.PROTECT, related_name="+"
+    )
+    lot = models.ForeignKey(
+        Lot, verbose_name="lot", on_delete=models.PROTECT, related_name="reservations"
+    )
+    location = models.ForeignKey(
+        Location, verbose_name="lokasyon", on_delete=models.PROTECT, related_name="+"
+    )
+    quantity = models.DecimalField("miktar (temel birim)", max_digits=18, decimal_places=4)
+    status = models.CharField(
+        "durum",
+        max_length=16,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        db_index=True,
+        editable=False,
+    )
+    source_content_type = models.ForeignKey(
+        ContentType, verbose_name="kaynak belge türü", on_delete=models.PROTECT, related_name="+"
+    )
+    source_object_id = models.BigIntegerField("kaynak belge no")
+    source = GenericForeignKey("source_content_type", "source_object_id")
+    document_number = models.CharField("belge no", max_length=32, blank=True, db_index=True)
+    note = models.TextField("not", blank=True)
+    closed_at = models.DateTimeField("kapanma zamanı", null=True, blank=True, editable=False)
+
+    class Meta:
+        verbose_name = "stok rezervasyonu"
+        verbose_name_plural = "stok rezervasyonları"
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["source_content_type", "source_object_id"]),
+            models.Index(fields=["lot", "location", "status"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(quantity__gt=0),
+                name="inventory_reservation_quantity_positive",
+                violation_error_message="Rezervasyon miktarı sıfırdan büyük olmalıdır.",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.document_number or self.source_object_id}: {self.lot} {self.quantity}"
