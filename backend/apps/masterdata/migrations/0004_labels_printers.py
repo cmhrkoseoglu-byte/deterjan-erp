@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("masterdata", "0002_standard_units"),
+        ("masterdata", "0003_customer_min_shelf_life"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

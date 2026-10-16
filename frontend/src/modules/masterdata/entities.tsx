@@ -343,7 +343,16 @@ export const customerConfig: EntityConfig<Partner> = {
   writeRoles: WRITE,
   importKind: "customers",
   columns: partnerColumns,
-  fields: partnerFields,
+  fields: [
+    ...partnerFields,
+    {
+      // Karar D-11: altındaki lot bu müşteriye rezerve edilmez ve sevk edilmez.
+      name: "min_remaining_shelf_life_days",
+      label: "Asgari kalan raf ömrü (gün)",
+      type: "integer",
+      description: "Boş bırakılırsa şart yok (zincir marketler genelde 180 gün ister)",
+    },
+  ],
 };
 
 export const printerConfig: EntityConfig<Printer> = {

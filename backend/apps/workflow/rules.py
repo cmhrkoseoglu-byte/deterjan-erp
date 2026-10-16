@@ -151,6 +151,31 @@ def _below_min_body(payload: Payload) -> str:
     return "\n".join(lines)
 
 
+def _shortage_body(payload: Payload) -> str:
+    lines = [
+        f"{line.get('product_code', '')} {line.get('product_name', '')}: "
+        f"{line.get('quantity', '')} {line.get('unit', '')}"
+        for line in payload.get("lines", [])
+    ]
+    head = f"{payload.get('customer_name', '')} siparişinde stok yetmedi."
+    if payload.get("reason"):
+        head = f"{head} {payload['reason']}."
+    return "\n".join([head, *lines])
+
+
+def _reserved_expiring_body(payload: Payload) -> str:
+    lots = payload.get("lots", [])
+    lines = [
+        f"{lot.get('lot_no', '')} — {lot.get('material_code', '')} "
+        f"(SKT {lot.get('expiry_date', '')}), rezerve {lot.get('reserved_quantity', '')} "
+        f"{lot.get('unit', '')}: {', '.join(lot.get('orders', []))}"
+        for lot in lots[:20]
+    ]
+    if len(lots) > 20:
+        lines.append(f"… ve {len(lots) - 20} lot daha")
+    return "\n".join(lines)
+
+
 RULES: tuple[Rule, ...] = (
     # Faz 2: mal kabul ve şarj bitişinde quality numune açar; görev numuneye bağlıdır ve numune
     # karara bağlanınca (ya da iptal edilince) kapanır.
@@ -348,6 +373,39 @@ RULES: tuple[Rule, ...] = (
         title="Minimum stok altındaki malzemeler",
         body=_below_min_body,
         when=lambda payload: bool(payload.get("materials")),
+    ),
+    # Faz 3, Adım 3.1: satış siparişi. "Sevkiyat planla" görevi sevkiyat planlanınca (Adım 3.2)
+    # ya da sipariş kapanınca kapanır; eksik görevi eksik tamamen rezerve edilince kapanır.
+    TaskRule(
+        code="plan_shipment",
+        event=ev.SALES_ORDER_CONFIRMED,
+        role=SEVKIYAT,
+        title="Sevkiyat planla: {number}",
+        description="{customer_name} siparişi onaylandı.",
+        close_on=(CloseOn(ev.SALES_ORDER_CLOSED),),
+    ),
+    TaskRule(
+        code="sales_shortage",
+        event=ev.SALES_ORDER_SHORTAGE,
+        role=PLANLAMA,
+        title="Eksik ürün için üretim/dolum planla: {number}",
+        description=_shortage_body,
+        close_on=(CloseOn(ev.SALES_ORDER_FULLY_RESERVED), CloseOn(ev.SALES_ORDER_CLOSED)),
+    ),
+    CancelTasksRule(
+        code="sales_order_cancelled",
+        event=ev.SALES_ORDER_CANCELLED,
+        title="Satış siparişi iptal edildi: {number}",
+        body="Siparişe bağlı açık görevler iptal edildi.",
+    ),
+    NotifyRule(
+        code="reserved_lots_expiring",
+        event=ev.RESERVED_LOTS_EXPIRING,
+        roles=(SEVKIYAT, PLANLAMA),
+        level="WARNING",
+        title="Rezerve lotların SKT'si {days} gün içinde doluyor",
+        body=_reserved_expiring_body,
+        when=lambda payload: bool(payload.get("lots")),
     ),
 )
 

@@ -289,6 +289,12 @@ class Supplier(BusinessPartner):
 
 
 class Customer(BusinessPartner):
+    # Karar D-11: lotun teslimde kalan raf ömrü en az bu kadar gün olmalı; boş = şart yok.
+    # Altındaki lot bu müşteriye rezerve edilmez ve toplamada engellenir.
+    min_remaining_shelf_life_days = models.PositiveIntegerField(
+        "asgari kalan raf ömrü (gün)", null=True, blank=True
+    )
+
     class Meta(BusinessPartner.Meta):
         verbose_name = "müşteri"
         verbose_name_plural = "müşteriler"

@@ -244,6 +244,13 @@ class StockBalanceSerializer(serializers.ModelSerializer):
     location_name = serializers.CharField(source="location.name", read_only=True)
     location_type = serializers.CharField(source="location.location_type", read_only=True)
     warehouse_code = serializers.CharField(source="location.warehouse.code", read_only=True)
+    # `selectors.balances()` açıklamaları (Faz 3): aktif rezervasyonlar ve kullanılabilir miktar.
+    reserved_quantity = serializers.DecimalField(
+        max_digits=18, decimal_places=4, read_only=True, default=None, allow_null=True
+    )
+    available_quantity = serializers.DecimalField(
+        max_digits=18, decimal_places=4, read_only=True, default=None, allow_null=True
+    )
 
     class Meta:
         model = StockBalance
@@ -264,6 +271,8 @@ class StockBalanceSerializer(serializers.ModelSerializer):
             "location_type",
             "warehouse_code",
             "quantity",
+            "reserved_quantity",
+            "available_quantity",
             "unit",
         ]
         read_only_fields = fields

@@ -106,6 +106,9 @@ export interface StockBalance {
   location_type: string;
   warehouse_code: string;
   quantity: string;
+  /** Aktif rezervasyonlar (Faz 3); `available_quantity` = bakiye − rezerve. */
+  reserved_quantity?: string | null;
+  available_quantity?: string | null;
   unit: string;
 }
 

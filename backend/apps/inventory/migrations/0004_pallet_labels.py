@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("inventory", "0002_immutable_ledger_triggers"),
+        ("inventory", "0003_stock_reservation"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
