@@ -149,9 +149,11 @@ def lot_trace(lot: Lot, direction: Literal["backward", "forward"]) -> dict[str, 
     - `backward`: lotun üretiminde kullanılan girdi lotlar ve onların girdileri (geri izleme).
     - `forward`: lotun kullanıldığı çıktı lotlar ve onların çıktıları (ileri izleme).
 
-    Dönüş: `{**lot, "quantity": None, "children": [{**lot, "quantity", "children": [...]}, ...]}`.
-    `quantity`, girdi lottan kullanılan miktardır (temel birimde); aynı girdi-çıktı çifti için
-    birden çok bağ (ör. iki aşamada eklenen su) toplanır.
+    Dönüş: `{**lot, "quantity": None, "quantity_unit": None, "children": [{**lot, "quantity",
+    "quantity_unit", "children": [...]}, ...]}`. `quantity`, girdi lottan kullanılan miktardır;
+    birimi `quantity_unit` (girdi lotun temel birimi). İleri izlemede düğümün kendi birimi (`unit`,
+    ör. mamulde ADET) ile aynı olmayabilir. Aynı girdi-çıktı çifti için birden çok bağ (ör. iki
+    aşamada eklenen su) toplanır.
     """
     if direction not in ("backward", "forward"):
         raise ValueError("direction backward ya da forward olmalıdır.")
@@ -170,20 +172,31 @@ def lot_trace(lot: Lot, direction: Literal["backward", "forward"]) -> dict[str, 
         lots[target_lot.pk] = target_lot
         edges[source_lot.pk][target_lot.pk] += link.quantity
 
-    def build(lot_id: int, quantity: Decimal | None, seen: frozenset[int]) -> dict[str, Any]:
-        node = {**_lot_node(lots.get(lot_id, lot)), "quantity": quantity, "children": []}
+    def build(
+        lot_id: int, quantity: Decimal | None, quantity_unit: str | None, seen: frozenset[int]
+    ) -> dict[str, Any]:
+        node = {
+            **_lot_node(lots.get(lot_id, lot)),
+            "quantity": quantity,
+            "quantity_unit": quantity_unit,
+            "children": [],
+        }
         if len(seen) >= MAX_TRACE_DEPTH:
             return node
         for target_id, used in sorted(edges.get(lot_id, {}).items()):
             if target_id in seen:
                 continue
-            node["children"].append(build(target_id, used, seen | {target_id}))
+            # Bağ miktarı girdi (parent) lotun temel birimindedir: geri izlemede hedef düğüm,
+            # ileri izlemede kaynak düğüm girdidir.
+            input_lot = lots[target_id] if direction == "backward" else lots[lot_id]
+            unit = input_lot.material.base_unit.code
+            node["children"].append(build(target_id, used, unit, seen | {target_id}))
         node["children"].sort(key=lambda child: (child["material_code"], child["lot_no"]))
         return node
 
     lot = Lot.objects.select_related("material__base_unit").get(pk=lot.pk)
     lots[lot.pk] = lot
-    return build(lot.pk, None, frozenset({lot.pk}))
+    return build(lot.pk, None, None, frozenset({lot.pk}))
 
 
 def lot_trace_backward(lot: Lot) -> dict[str, Any]:

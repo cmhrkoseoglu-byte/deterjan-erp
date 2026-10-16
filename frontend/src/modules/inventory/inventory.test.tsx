@@ -101,6 +101,7 @@ function trace(): TraceNode {
     unit: "KG",
     expiry_date: null,
     quantity: id === 7 ? null : "250.0000",
+    quantity_unit: id === 7 ? null : "KG",
     children,
   });
   return node(7, "H-261015-001", [node(20, "B-261016-001", [node(30, "D-261017-001")])]);
