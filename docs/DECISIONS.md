@@ -993,3 +993,55 @@ API karşılıkları: `/api/v1/maintenance/downtime-summary/`, `/work-orders/?st
 İş akışı kuralları: `maintenance_work_order_<rol>` (iş emrinin sorumlu rolüne görev; `open_task=False` olan
 tek adımlı temizlik kaydında görev açılmaz; tamamlanınca ya da iptalde kapanır), `equipment_down` (planlama ve
 yönetime uyarı), `equipment_up` (planlamaya bilgi), `maintenance_overdue` (yönetime uyarı).
+
+## 2026-10-16 — İSG ve çevre (Faz 4, Adım 4.5)
+
+Plan: `/mnt/project-files/faz4-maintenance-hse/plan.md`. Kararlar:
+
+- **Tehlike bilgisi**: malzeme kartında GHS piktogramları (sınıf olarak da kullanılır), uyarı kelimesi
+  (Tehlike / Dikkat; piktogram varsa zorunlu) ve H/P/EUH ifadeleri. İfade listesi SEA Türkçe metinleriyle
+  58 kayıtla gelir; yönetim ve laboratuvar ekler, düzeltir, pasife alır. Tehlike bilgisini yönetim ve
+  laboratuvar girer. Kayıt `Material.is_hazardous` bayrağını piktogram olup olmamasına göre günceller; bayrak
+  ana veri formundan elle de işaretlenebilir (tehlike bilgisi girilmeden önce), bilgi kaydedilince ona uyar.
+  Tehlikeli malzemenin lotları stok listesi, lot kartı, tartım ekranında uyarı simgesiyle görünür.
+- **GBF arşivi**: malzeme başına tek geçerli GBF; yeni revizyon öncekini arşive alır, eskisinden eski
+  tarihli revizyon geçerlinin yerine girilemez (`older_revision`), ileri tarihli revizyon ve revizyondan önce
+  biten geçerlilik reddedilir. PDF kayıttan sonra ek olarak yüklenir; dosyasız GBF kaydedilir ama raporda
+  "Dosya yok" görünür. **Eksik/eskimiş GBF raporu** aktif hammaddeleri ve tehlikeli işaretli malzemeleri
+  tarar, sırasıyla: GBF yok, dosya yok, geçerliliği dolmuş, eskimiş (revizyon ayarlardaki aydan, varsayılan
+  36, eski). Excel çıktısı var. GBF'yi yönetim girer; yönetim, depo ve laboratuvar görür.
+- **Depolama limitleri**: lokasyon × tehlike sınıfı için kg limiti (yönetim tanımlar; yönetim ve depo
+  görür). Miktar kg'a çevrilerek (yoğunluk ve dönüşümlerle) toplanır. Piktogramlı bir malzeme limitli bir
+  lokasyona girdiğinde (mal kabul, transfer, iade, üretim çıktısı; her pozitif hareket) işlem commit
+  olduktan sonra limit aşılmışsa depo ve yönetime uyarı bildirimi gider. İşlem engellenmez (planda "uyarı").
+  Lokasyon limit üstündeyken gelen her yeni tehlikeli giriş yeniden uyarır.
+- **Atık kayıtları** (`AT-`, yalnızca yönetim): atık kodu (yıldızlı kod tehlikeli atıktır), tanım, kg,
+  lisanslı firma, teslim tarihi, belge no ve belge eki. İleri tarihli teslim, pasif firma ve teslim gününde
+  lisansı dolmuş firma reddedilir. Hatalı kayıt nedenle iptal edilir.
+- **Olay / kaza kayıtları** (`OL-`): her rol bildirir (ana sayfada düğme); tür, zaman, yer, anlatım,
+  yaralanma, ağırlık. Yönetime inceleme görevi açılır, yaralanma varsa ayrıca uyarı gider. Yönetim inceler
+  (kök neden, düzeltici faaliyet, sorumlu, termin) ve kapatır ya da iptal eder. Yaralanan kişinin
+  mahremiyeti için yönetim dışındaki roller yalnızca kendi bildirdiklerini görür. Durumlar:
+  `OPEN → INVESTIGATING → CLOSED`, `OPEN → CLOSED`, iptal (neden zorunlu).
+
+### İSG okuma API'si (raporlama thread'i, Adım 4.3 için)
+
+| Fonksiyon | Döner |
+|---|---|
+| `hse.selectors.incident_summary(date_from, date_to)` | `IncidentSummary(total, injury_count, open_count, by_type, by_severity)`; satırlar `CountRow(code, label, count)`, tüm seçenekler listelenir; `occurred_at` yerel tarihine göre, iki uç dahil, iptaller hariç; `open_count` aralıktaki açık/incelenen olaylar |
+| `hse.selectors.waste_summary(date_from, date_to)` | `WasteSummaryRow(waste_code, description, is_hazardous, count, quantity_kg)`; `delivered_on`'a göre, iptaller hariç |
+| `hse.selectors.sds_gaps(today=None)` | Sorunlu GBF satırları `SdsStatus(material_id, material_code, material_name, is_hazardous, status MISSING/NO_FILE/EXPIRED/OUTDATED, sds_id, revision_no, revision_date, valid_until, has_file)` |
+| `hse.selectors.storage_utilisation(location=None)` | `StorageUtilisation(limit_id, location_code, location_name, hazard_class, hazard_class_display, limit_kg, quantity_kg, pct, exceeded)`, aktif limitler |
+
+API karşılıkları: `/api/v1/hse/summary/?date_from&date_to` (yönetim), `/sds-gaps/`, `/storage-utilisation/`.
+
+### İSG olay sözleşmesi (iş akışı tablosuna ek)
+
+| Olay | Payload |
+|---|---|
+| `incident.created`, `.investigating`, `.closed`, `.cancelled` | belge payload'ı + `incident_type`, `incident_type_display`, `occurred_at` ("gg.aa.yyyy SS:DD"), `place`, `injury`, `severity` |
+| `waste_record.created`, `.cancelled` | belge payload'ı; `created` ayrıca `waste_code`, `is_hazardous`, `quantity_kg`, `contractor_name` |
+| `hse.storage_limit_exceeded` | `model: "masterdata.location"`, `id`, `repr`, `location_code`, `hazard_class`, `hazard_class_display`, `quantity_kg`, `limit_kg` |
+
+İş akışı kuralları: `incident_review` (yönetime inceleme görevi; kapanınca ya da iptalde kapanır),
+`incident_injury` (yaralanmalı olayda yönetime uyarı), `storage_limit_exceeded` (depo ve yönetime uyarı).
