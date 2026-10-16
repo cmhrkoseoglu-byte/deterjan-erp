@@ -16,6 +16,8 @@ export interface Lot {
   material_name: string;
   material_type: MaterialType;
   material_gtin: string;
+  /** Faz 4 (İSG): malzeme tehlikeli madde. */
+  is_hazardous?: boolean;
   unit: string;
   status: LotStatus;
   status_display: string;
@@ -95,6 +97,7 @@ export interface StockBalance {
   material_code: string;
   material_name: string;
   material_type: MaterialType;
+  is_hazardous?: boolean;
   lot: number;
   lot_no: string;
   lot_status: LotStatus;

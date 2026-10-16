@@ -168,6 +168,7 @@ class RequirementRowSerializer(serializers.Serializer):
         max_digits=6, decimal_places=2, source="requirement.tolerance_pct"
     )
     is_water = serializers.BooleanField(source="requirement.is_water")
+    is_hazardous = serializers.BooleanField(source="requirement.material.is_hazardous")
     is_picked = serializers.BooleanField(source="requirement.is_picked")
     lot = serializers.IntegerField(source="requirement.lot_id", allow_null=True)
     lot_no = serializers.CharField(source="requirement.lot.lot_no", default=None)

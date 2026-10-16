@@ -133,6 +133,8 @@ class Command(BaseCommand):
         call_command("seed_sales_demo", stdout=self.stdout)
         # Standart maliyetler, gider oranları ve lot maliyetleri (Faz 4, Adım 4.1).
         call_command("seed_costing_demo", stdout=self.stdout)
+        # Teraziler, kalibrasyon ve bakım planları (Faz 4, Adım 4.4).
+        call_command("seed_maintenance_demo", stdout=self.stdout)
         self.stdout.write(self.style.SUCCESS("Demo verisi hazır."))
 
 

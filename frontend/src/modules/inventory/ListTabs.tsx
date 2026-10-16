@@ -1,3 +1,4 @@
+import { WithHazard } from "../../components/hazard/HazardIcon";
 import {
   Alert,
   Button,
@@ -209,7 +210,10 @@ export function StockTab() {
         onOpen={(row) => navigate(lotPath(row.lot))}
         columns={[
           { header: it.material, render: (r) => `${r.material_code} - ${r.material_name}` },
-          { header: it.lotNo, render: (r) => r.lot_no },
+          {
+            header: it.lotNo,
+            render: (r) => <WithHazard hazardous={r.is_hazardous}>{r.lot_no}</WithHazard>,
+          },
           { header: it.status, render: (r) => <LotStatusBadge status={r.lot_status} /> },
           { header: it.expiry, render: (r) => <ExpiryText date={r.expiry_date} /> },
           { header: it.location, render: (r) => r.location_code },
@@ -240,7 +244,10 @@ export function StockTab() {
 
 function lotColumns(): Column<Lot>[] {
   return [
-    { header: it.lotNo, render: (r) => r.lot_no },
+    {
+      header: it.lotNo,
+      render: (r) => <WithHazard hazardous={r.is_hazardous}>{r.lot_no}</WithHazard>,
+    },
     { header: it.material, render: (r) => `${r.material_code} - ${r.material_name}` },
     { header: it.status, render: (r) => <LotStatusBadge status={r.status} /> },
     { header: it.source, render: (r) => r.source_display },

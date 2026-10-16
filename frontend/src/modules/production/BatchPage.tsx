@@ -23,6 +23,7 @@ import { IconArrowLeft, IconFlagCheck, IconX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { HazardIcon } from "../../components/hazard/HazardIcon";
 import { getErrorMessage } from "../../api/client";
 import {
   cancelBatch,
@@ -45,6 +46,7 @@ import { ExpiryText, Info, Qty } from "../inventory/shared";
 import { deviationPct, gaugeValue, lineState, remaining } from "./calc";
 import { BATCH_ROLES, LINE_STATE_COLOR, orderPath } from "./config";
 import { BatchStatusBadge, LineStateBadge, ReasonModal } from "./shared";
+import { rememberedScale, ScaleSelect, useScales } from "./ScaleSelect";
 import { pt } from "./strings";
 
 /** Üretim tablet ekranı: reçete sırasıyla tartım, tolerans göstergesi, şarjı bitirme. */
@@ -82,6 +84,7 @@ function Batch({ batch }: { batch: ProductionBatchDetail }) {
   const [selected, setSelected] = useState<number | null>(firstOpen?.requirement ?? null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [scale, setScale] = useState<number | null>(rememberedScale);
   const current = batch.lines.find((line) => line.requirement === selected) ?? null;
 
   const refresh = (saved: ProductionBatchDetail) => {
@@ -193,6 +196,8 @@ function Batch({ batch }: { batch: ProductionBatchDetail }) {
           key={`${current.requirement}-${current.consumed_quantity}`}
           batch={batch}
           line={current}
+          scale={scale}
+          onScaleChange={setScale}
           onSaved={(saved) => {
             refresh(saved);
             const next = saved.lines.find(
@@ -327,12 +332,19 @@ function LineRow({
 function WeighForm({
   batch,
   line,
+  scale,
+  onScaleChange,
   onSaved,
 }: {
   batch: ProductionBatchDetail;
   line: BatchLine;
+  scale: number | null;
+  onScaleChange: (id: number | null) => void;
   onSaved: (batch: ProductionBatchDetail) => void;
 }) {
+  // Su (D-1) sayaçtan okunur; diğer satırlarda tanımlı terazi varsa seçim zorunludur.
+  const scales = useScales();
+  const needsScale = !line.is_water && (scales.data ?? []).length > 0;
   const scanRef = useRef<ScanInputHandle>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
   const toWeigh = remaining(line.planned_quantity, line.consumed_quantity);
@@ -355,6 +367,7 @@ function WeighForm({
         ...(lotId ? { lot: lotId } : { lot_no: lotNo.trim() }),
         quantity: normalizeDecimal(quantity),
         note: note.trim(),
+        ...(needsScale ? { scale } : {}),
       }),
     onSuccess: (saved) => {
       notifications.show({ color: "green", message: pt.weighedOk(line.material_code) });
@@ -367,6 +380,7 @@ function WeighForm({
     },
   });
   const canSubmit =
+    (!needsScale || scale !== null) &&
     (lotId !== null || lotNo.trim() !== "") &&
     quantity.trim() !== "" &&
     (!needsNote || note.trim() !== "");
@@ -378,7 +392,10 @@ function WeighForm({
     <Paper withBorder p="md" radius="md" data-testid="weigh-form">
       <Stack>
         <Group justify="space-between">
-          <Title order={4}>{`${line.material_code} - ${line.material_name}`}</Title>
+          <Group gap="xs">
+            {line.is_hazardous && <HazardIcon size={22} />}
+            <Title order={4}>{`${line.material_code} - ${line.material_name}`}</Title>
+          </Group>
           <Text size="sm">
             {`${pt.planned}: `}
             <Qty value={line.planned_quantity} unit={line.unit} />
@@ -389,6 +406,7 @@ function WeighForm({
             {line.instruction}
           </Alert>
         )}
+        {needsScale && <ScaleSelect value={scale} onChange={onScaleChange} />}
         <Group align="flex-start" grow>
           <ScanInput
             ref={scanRef}

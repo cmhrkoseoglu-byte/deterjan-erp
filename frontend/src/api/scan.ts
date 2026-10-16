@@ -11,6 +11,7 @@ export interface ScanLot {
   material_code: string;
   material_name: string;
   material_type: MaterialType;
+  is_hazardous?: boolean;
   unit: string;
   status: LotStatus;
   status_display: string;
