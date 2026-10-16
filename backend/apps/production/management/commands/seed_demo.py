@@ -137,6 +137,8 @@ class Command(BaseCommand):
         call_command("seed_maintenance_demo", stdout=self.stdout)
         # Tehlike bilgisi, GBF, depolama limitleri, atık ve olay örneği (Faz 4, Adım 4.5).
         call_command("seed_hse_demo", stdout=self.stdout)
+        # Paralel çalışma stok karşılaştırması örneği (Faz 5, Adım 5.6).
+        call_command("seed_golive_demo", stdout=self.stdout)
         self.stdout.write(self.style.SUCCESS("Demo verisi hazır."))
 
 
