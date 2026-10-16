@@ -54,6 +54,7 @@ import {
   SALES_BASE,
   salesOrderPath,
   SHIPMENT_WRITE_ROLES,
+  UNDOABLE_STATUSES,
 } from "./config";
 import { ShipmentStatusBadge } from "./shared";
 import { EditShipmentModal } from "./ShipmentForms";
@@ -294,7 +295,7 @@ function ShipmentView({ shipment }: { shipment: ShipmentDetail }) {
       <Title order={4}>{st.picks}</Title>
       <PicksTable
         picks={shipment.picks}
-        onUndo={picker && shipment.status === "PICKING" ? setUndoing : undefined}
+        onUndo={picker && UNDOABLE_STATUSES.includes(shipment.status) ? setUndoing : undefined}
       />
 
       <ConfirmModal

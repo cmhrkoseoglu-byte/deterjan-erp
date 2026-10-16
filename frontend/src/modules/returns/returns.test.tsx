@@ -225,15 +225,25 @@ describe("iade detayı", () => {
   });
 
   it("sevkiyata bağlı iadenin detayında sevkiyat bağlantısı görünür", async () => {
-    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("laboratuvar"));
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("sevkiyat"));
     vi.mocked(returnsApi.getReturn).mockResolvedValue(
-      doc({ shipment: 70, shipment_number: "SV-2026-00001" }),
+      doc({ status: "RECEIVED", shipment: 70, shipment_number: "SV-2026-00001" }),
     );
     renderApp("/iadeler/4");
     expect(await screen.findByRole("link", { name: "SV-2026-00001" })).toHaveAttribute(
       "href",
       "/sevkiyat/sevkiyatlar/70",
     );
+  });
+
+  it("sevkiyat sayfasına erişemeyen laboratuvar sevkiyat numarasını düz metin görür", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("laboratuvar"));
+    vi.mocked(returnsApi.getReturn).mockResolvedValue(
+      doc({ shipment: 70, shipment_number: "SV-2026-00001" }),
+    );
+    renderApp("/iadeler/4");
+    expect(await screen.findByText("SV-2026-00001")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "SV-2026-00001" })).not.toBeInTheDocument();
   });
 
   it("görev bağlantısı iade sayfasına gider", () => {

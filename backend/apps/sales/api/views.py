@@ -17,7 +17,6 @@ from apps.core.roles import DEPO, PLANLAMA, SEVKIYAT, YONETIM
 from apps.inventory import selectors as inventory_selectors
 from apps.inventory.api.serializers import CancelSerializer
 from apps.inventory.models import Lot
-from apps.masterdata.models import Location
 from apps.sales import selectors, services
 from apps.sales.api import serializers as s
 from apps.sales.models import SalesOrder, Shipment, ShipmentPick
@@ -202,7 +201,8 @@ class SalesOrderViewSet(
     )
     @action(detail=True, methods=["get"], filter_backends=[], pagination_class=None)
     def candidates(self, request: Request, pk: str | None = None) -> Response:
-        """Satıra rezerve edilebilecek stok (serbest, SKT'si geçmemiş, karantina dışı), FEFO
+        """Satıra rezerve edilebilecek stok (serbest, SKT'si geçmemiş, karantina ve sevk alanı
+        dışı), FEFO
         sırasıyla; müşterinin raf ömrü şartını karşılamayanlar `meets_shelf_life=false`."""
         order = self.get_object()
         line_id = request.query_params.get("line", "")
@@ -212,7 +212,7 @@ class SalesOrderViewSet(
         limit = services.min_expiry_date(order.customer, services.shelf_life_reference_date(order))
         rows = list(
             inventory_selectors.available_lots(line.product).exclude(
-                location__location_type=Location.Type.QUARANTINE
+                location__location_type__in=services.UNRESERVABLE_LOCATION_TYPES
             )
         )
         for row in rows:
@@ -226,7 +226,8 @@ class SalesOrderViewSet(
 
 def resolve_lot(shipment: Shipment, data: dict[str, Any]) -> Lot:
     """Okutulan lotu bulur: lot kimliği ya da lot no / lot etiketi (`LOT:<lot_no>`). Aynı numara
-    birden çok malzemede varsa sevkiyatın ürünlerindeki lot seçilir."""
+    birden çok malzemede varsa sevkiyatın ürünlerindeki lot seçilir; sevkiyatın birden çok
+    ürününde aynı numara varsa okutma lot kimliğiyle yapılmalıdır (`ambiguous_lot`)."""
     if data.get("lot"):
         lot = Lot.objects.filter(pk=data["lot"]).first()
         label = str(data["lot"])
@@ -237,7 +238,13 @@ def resolve_lot(shipment: Shipment, data: dict[str, Any]) -> Lot:
             lot_no = lot_no[4:]
         lots = Lot.objects.filter(lot_no=lot_no)
         products = shipment.lines.values_list("order_line__product_id", flat=True)
-        lot = lots.filter(material_id__in=list(products)).first() or lots.first()
+        matches = list(lots.filter(material_id__in=list(products))[:2])
+        if len(matches) > 1:
+            raise BusinessRuleError(
+                "ambiguous_lot",
+                f"{label} numarası sevkiyattaki birden çok üründe var; lotu listeden seçin.",
+            )
+        lot = matches[0] if matches else lots.first()
     if lot is None:
         raise BusinessRuleError("lot_not_found", f"{label} lotu bulunamadı.")
     return lot

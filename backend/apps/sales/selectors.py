@@ -28,7 +28,7 @@ from apps.inventory import selectors as inventory_selectors
 from apps.inventory.models import StockReservation
 from apps.inventory.services import format_quantity
 from apps.masterdata import services as masterdata
-from apps.masterdata.models import Customer, Location, Material, UnitOfMeasure
+from apps.masterdata.models import Customer, Material, UnitOfMeasure
 from apps.sales.models import SalesOrder, SalesOrderLine, Shipment, ShipmentLine, ShipmentPick
 
 EXPIRY_WARNING_DAYS = 30
@@ -225,13 +225,15 @@ def shipment_picks(shipment: Shipment) -> QuerySet[ShipmentPick]:
 
 def pick_suggestions(shipment: Shipment) -> list[dict[str, Any]]:
     """Toplama tableti için satır başına öneri: önce satırın rezerve lotları (SKT sırasıyla),
-    sonra rezervesiz stok (FEFO). Müşterinin asgari raf ömrünü karşılamayan lot
-    `meets_shelf_life=false` ile işaretlenir (okutulamaz)."""
+    sonra rezervesiz stok (FEFO). Karantina ve sevk alanlarındaki stok önerilmez. SKT'si geçmiş
+    ya da müşterinin asgari raf ömrünü karşılamayan lot `meets_shelf_life=false` ile işaretlenir
+    (okutulamaz)."""
     from apps.sales import services  # döngüsel import olmasın (services selectors'ı kullanır)
 
     order = shipment.sales_order
     limit = services.min_expiry_date(order.customer, services.shelf_life_reference_date(order))
-    loading_id = shipment.loading_location_id
+    today = timezone.localdate()
+    staging = services.UNRESERVABLE_LOCATION_TYPES
     result = []
     for line in shipment_lines(shipment):
         order_line = line.order_line
@@ -240,7 +242,7 @@ def pick_suggestions(shipment: Shipment) -> list[dict[str, Any]]:
             StockReservation.objects.filter(
                 sales_order_line=order_line, status=StockReservation.Status.ACTIVE
             )
-            .exclude(location_id=loading_id)
+            .exclude(location__location_type__in=staging)
             .select_related("lot", "location")
             .order_by("lot__expiry_date", "lot__lot_no")
         )
@@ -256,10 +258,8 @@ def pick_suggestions(shipment: Shipment) -> list[dict[str, Any]]:
             }
             for r in reserved
         ]
-        free = (
-            inventory_selectors.available_lots(order_line.product)
-            .exclude(location_id=loading_id)
-            .exclude(location__location_type=Location.Type.QUARANTINE)
+        free = inventory_selectors.available_lots(order_line.product).exclude(
+            location__location_type__in=staging
         )
         rows += [
             {
@@ -275,7 +275,9 @@ def pick_suggestions(shipment: Shipment) -> list[dict[str, Any]]:
         ]
         for row in rows:
             expiry = row["expiry_date"]
-            row["meets_shelf_life"] = limit is None or expiry is None or expiry >= limit
+            row["meets_shelf_life"] = expiry is None or (
+                expiry >= today and (limit is None or expiry >= limit)
+            )
         result.append(
             {
                 "line": line.pk,
@@ -333,11 +335,18 @@ def waybill_data(shipment: Shipment) -> dict[str, Any]:
                 "loose_units": rest,
             }
         )
-    total = sum((line["quantity"] for line in lines), Decimal(0))
+    # Farklı birimler toplanmaz: satırlar tek birimdeyse toplam o birimle, değilse boş.
+    units = {line["unit"] for line in lines}
+    total_unit = units.pop() if len(units) == 1 else None
+    total = (
+        sum((line["quantity"] for line in lines), Decimal(0)) if total_unit or not lines else None
+    )
     return {
         "number": shipment.number,
         "status": shipment.status,
-        "date": (shipment.dispatched_at.date() if shipment.dispatched_at else None)
+        "date": (
+            timezone.localtime(shipment.dispatched_at).date() if shipment.dispatched_at else None
+        )
         or shipment.planned_date,
         "dispatched_at": shipment.dispatched_at,
         "company": {
@@ -362,17 +371,20 @@ def waybill_data(shipment: Shipment) -> dict[str, Any]:
         "carrier": shipment.carrier,
         "lines": lines,
         "total_quantity": total,
+        "total_unit": total_unit or "",
         "total_cases": sum(line["cases"] or 0 for line in lines),
     }
 
 
 def customer_shipped_lots(customer: Customer | int) -> QuerySet[ShipmentPick]:
-    """Müşteriye sevk edilen lotlar (sevk edilmiş toplama kayıtları), yeniden eskiye."""
+    """Müşteriye sevk edilen lotlar (sevk edilmiş toplama kayıtları), yeniden eskiye. Sevk
+    hareketi ters kayıtla geri alınmış toplama sayılmaz."""
     return (
         ShipmentPick.objects.filter(
             line__shipment__sales_order__customer=customer,
             line__shipment__status=Shipment.Status.DISPATCHED,
             movement__isnull=False,
+            movement__reversed_by__isnull=True,
         )
         .select_related(
             "lot", "line__shipment", "line__order_line__order", "line__order_line__product"
@@ -382,9 +394,12 @@ def customer_shipped_lots(customer: Customer | int) -> QuerySet[ShipmentPick]:
 
 
 def shipped_by_shipment_lot(shipment: Shipment) -> dict[int, Decimal]:
-    """Sevkiyatta lot bazında sevk edilen miktar (iade kontrolü için)."""
+    """Sevkiyatta lot bazında net sevk edilen miktar (iade kontrolü için). Ters kayıtla geri
+    alınan sevk hareketi sayılmaz (izlenebilirlikteki net sevk ile aynı)."""
     rows = (
-        ShipmentPick.objects.filter(line__shipment=shipment, movement__isnull=False)
+        ShipmentPick.objects.filter(
+            line__shipment=shipment, movement__isnull=False, movement__reversed_by__isnull=True
+        )
         .values("lot_id")
         .annotate(total=Sum("quantity"))
     )

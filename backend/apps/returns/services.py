@@ -130,6 +130,9 @@ def _check_against_shipment(
     shipment = customer_return.shipment
     if shipment is None:
         return
+    # Aynı sevkiyata bağlı iadeler sırayla denetlensin: eşzamanlı iki teslim alma birbirinin
+    # kaydedilmemiş miktarını görmeden sınırı aşmasın.
+    list(Shipment.objects.select_for_update().filter(pk=shipment.pk).values_list("pk"))
     shipped = sales_selectors.shipped_by_shipment_lot(shipment)
     returned = dict(
         CustomerReturnLine.objects.filter(customer_return__shipment=shipment)

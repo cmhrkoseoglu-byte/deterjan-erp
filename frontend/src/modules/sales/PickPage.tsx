@@ -173,7 +173,10 @@ function Picking({ shipment }: { shipment: ShipmentDetail }) {
           shipment={shipment}
           row={current}
           onPicked={(next) => {
-            const open = next.find((row) => remainingOf(row) > 0);
+            // Eksik kalan satırda kalınır; satır tamamlanınca sıradaki açık satıra geçilir.
+            const same = next.find((row) => row.line === current.line);
+            const open =
+              same && remainingOf(same) > 0 ? same : next.find((row) => remainingOf(row) > 0);
             if (open) setSelected(open.line);
           }}
         />
@@ -270,15 +273,20 @@ function LineCard({
   );
 }
 
-/** Okutulan lot için önerilen miktar: satırın kalanı, lotun öneri satırlarındaki miktarla sınırlı. */
+/**
+ * Okutulan lot için önerilen miktar: satırın kalanı, lotun öneri satırlarındaki miktarla sınırlı.
+ * Rezerve lot tüm lokasyonlardaki rezervasyonlarından toplanır (toplam); rezervesiz lot ise tek
+ * lokasyondan alınır (backend `_free_stock_location`), bu yüzden en çok stoklu lokasyon esas alınır.
+ */
 function defaultQuantity(row: PickSuggestion, lotId: number): string {
   const remaining = remainingOf(row);
   if (remaining <= 0) return "";
   const own = row.suggestions.filter((item) => item.lot === lotId);
+  if (own.length === 0) return trimDecimal(String(remaining));
   const reserved = own.filter((item) => item.reserved);
-  const pool = reserved.length ? reserved : own;
-  if (pool.length === 0) return trimDecimal(String(remaining));
-  const available = pool.reduce((sum, item) => sum + Number(item.quantity), 0);
+  const available = reserved.length
+    ? reserved.reduce((sum, item) => sum + Number(item.quantity), 0)
+    : Math.max(...own.map((item) => Number(item.quantity)));
   return trimDecimal(String(Math.min(remaining, available)));
 }
 
@@ -299,6 +307,9 @@ function PickForm({
   const [quantity, setQuantity] = useState("");
   const [reasonOpen, setReasonOpen] = useState(false);
   const [reason, setReason] = useState("");
+  // İstek sürerken ikinci Enter ya da tıklama aynı toplamayı tekrar göndermesin. `isPending` bir
+  // sonraki render'a kadar güncellenmediğinden ref ile hemen kilitlenir.
+  const submitting = useRef(false);
 
   const pick = useMutation({
     mutationFn: (withReason: string) =>
@@ -330,7 +341,16 @@ function PickForm({
       setReasonOpen(false);
       scanRef.current?.showError(getErrorMessage(err));
     },
+    onSettled: () => {
+      submitting.current = false;
+    },
   });
+
+  function submit(withReason: string) {
+    if (submitting.current || pick.isPending) return;
+    submitting.current = true;
+    pick.mutate(withReason);
+  }
 
   function choose(id: number, lotNo: string) {
     setLot({ id, lot_no: lotNo });
@@ -371,7 +391,7 @@ function PickForm({
             value={quantity}
             onChange={(event) => setQuantity(event.currentTarget.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && canSubmit) pick.mutate("");
+              if (event.key === "Enter" && canSubmit) submit("");
             }}
           />
         </Group>
@@ -442,7 +462,7 @@ function PickForm({
             size="lg"
             disabled={!canSubmit}
             loading={pick.isPending && !reasonOpen}
-            onClick={() => pick.mutate("")}
+            onClick={() => submit("")}
           >
             {st.pick}
           </Button>
@@ -476,7 +496,7 @@ function PickForm({
               color="orange"
               disabled={!reason.trim()}
               loading={pick.isPending}
-              onClick={() => pick.mutate(reason.trim())}
+              onClick={() => submit(reason.trim())}
             >
               {st.pickWithReason}
             </Button>

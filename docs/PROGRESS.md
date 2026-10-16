@@ -396,6 +396,25 @@ D-10 (her sevkiyat tek siparişe bağlı), D-11 (müşteri bazında asgari kalan
   siparişin sevkiyatları; depoya Toplama sekmesi ve toplama tableti (satır başına kalan, rezerve lot önce
   sonra FEFO önerisi, raf ömrü uyarısı, `ScanInput` ile okutma, farklı lotta gerekçe, geri alma, "Yükleme
   tamam"); müşteri kartında sevk edilen lotlar; iade formunda sevkiyat seçimi.
+- İnceleme düzeltmeleri (PR #13, kurallar DECISIONS.md "İnceleme sonrası kurallar"): kod incelemesinde
+  testle doğrulanan 20 hata ve düzeltmelerin bağımsız denetiminde bulunan 5 sorun (çok satırlı sipariş
+  onayıyla okutma arasında birim satırı kilitlenmesi, iptalde eski lot durumu, sipariş ekranında sevk
+  alanı rezervasyonunda "Bırak", eksik aday listesi ve kilit sırası testleri) düzeltildi; her düzeltmenin
+  testi düzeltmeden önceki kodda kırılıyor. Backend `pytest` 846 test geçti; yeni testler: sevk alanındaki
+  stok rezerve edilmez ve önerilmez, ikinci rampa başka rampanın okuttuğu mala dokunmaz, sevk alanı
+  rezervasyonu siparişten bırakılmaz, aynı lottan iki okutma rezervasyonu aşarsa sevk reddedilir, okutma
+  eksiği kapatınca eksik görevi kapanır, yüklendikten sonra okutma geri alınıp kalan sevk edilir, okutma
+  kalmayınca sevk reddedilir, okutma sipariş ve lotu kilitler (sipariş → lot → bakiye sırası, yalnızca lot
+  satırı), sevk alanındaki stok aday listesinde yok, sipariş rezervasyonu lokasyon türünü taşır, SKT'si
+  geçmiş rezerve lot öneride işaretlenir, irsaliye tarihi yerel ve karışık birimler toplanmaz, ters
+  kayıtla geri alınan sevk iade edilemez ve müşteri kartında görünmez, iade kabulü sevkiyatı kilitler,
+  plaka / şoför / taşıyıcı uzunluğu 400 döner, iki üründe aynı lot no `ambiguous_lot`, demo verisi sevk
+  edilemeyen siparişe sevkiyat açmaz; uçtan uca test iade dönen mamulün varsayılan olarak mamul deposuna
+  (sevk alanına değil) döndüğünü doğrular. Frontend `npm test` 173 test: tablette çift Enter (aynı anda
+  basılsa da) tek okutma gönderir, sipariş ekranı sevk alanı rezervasyonunda "Bırak" göstermez, bir sayfa
+  yüklenemezse sayfalayıcı kalır, eksik satırda seçim kalır, varsayılan miktar tek lokasyonun serbest
+  stoğu, yüklenen sevkiyatta depo okutmayı geri alır, müşteri kartında sevk edilen lotlar sayfalı,
+  laboratuvar iadede sevkiyat numarasını bağlantısız görür.
 
 ### Faz 3 kabul kriterleri (tamamı)
 

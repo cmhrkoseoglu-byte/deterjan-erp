@@ -77,6 +77,9 @@ TEXT_FIELDS = frozenset({"delivery_address", "customer_po_no", "notes", "currenc
 RESERVABLE_STATUSES = (Status.CONFIRMED, Status.PARTIALLY_SHIPPED)
 ShipmentStatus = Shipment.Status
 OPEN_SHIPMENT_STATUSES = (ShipmentStatus.PLANNED, ShipmentStatus.PICKING, ShipmentStatus.LOADED)
+# Karantina stoğu kullanılamaz; sevk alanındaki stok başka bir sevkiyata okutulmuş maldır.
+# Bu lokasyonlardaki stok siparişe rezerve edilmez ve toplamada kaynak olarak seçilmez.
+UNRESERVABLE_LOCATION_TYPES = (Location.Type.QUARANTINE, Location.Type.SHIPPING)
 SHIPMENT_FIELDS = (
     "planned_date",
     "loading_location",
@@ -405,7 +408,7 @@ def _reserve_line_fefo(actor: User | None, order: SalesOrder, line: SalesOrderLi
         return ZERO
     limit = min_expiry_date(order.customer, shelf_life_reference_date(order))
     candidates = inventory_selectors.available_lots(line.product).exclude(
-        location__location_type=Location.Type.QUARANTINE
+        location__location_type__in=UNRESERVABLE_LOCATION_TYPES
     )
     if limit is not None:
         candidates = candidates.exclude(lot__expiry_date__lt=limit)
@@ -477,6 +480,11 @@ def reserve_lot(
     error = shelf_life_error(lot, order)
     if error is not None:
         raise error
+    if location.location_type in UNRESERVABLE_LOCATION_TYPES:
+        raise BusinessRuleError(
+            "invalid_reservation_location",
+            f"{location.code} lokasyonundaki stok rezerve edilemez (karantina ya da sevk alanı).",
+        )
     quantity = quantize(quantity)
     missing = shortage_quantity(line)
     if quantity > missing:
@@ -514,6 +522,11 @@ def release_line_reservation(
         )
     order = _lock_order(line.order)
     _require_status(order, RESERVABLE_STATUSES, "order_not_reservable", "rezervasyon bırakılamaz")
+    if reservation.location.location_type == Location.Type.SHIPPING:
+        raise BusinessRuleError(
+            "reservation_on_loading",
+            "Sevk alanındaki rezervasyon okutulmuş mala aittir; sevkiyatta okutmayı geri alın.",
+        )
     return inventory.release_reservation(actor, reservation, note)
 
 
@@ -796,7 +809,7 @@ def _line_reservations(
         queryset = queryset.filter(lot=lot)
     if location is not None:
         queryset = queryset.filter(location=location)
-    return list(queryset.order_by("created_at", "id"))
+    return list(queryset.select_related("lot", "location").order_by("created_at", "id"))
 
 
 def _take(
@@ -863,13 +876,13 @@ def _move_to_loading(
     return save_with_audit(pick, actor)
 
 
-def _free_stock_location(lot: Lot, quantity: Decimal, exclude: Location) -> Location:
-    """Lotun rezervesiz stoğunun yettiği karantina dışı lokasyon (en çok stoklu önce)."""
+def _free_stock_location(lot: Lot, quantity: Decimal) -> Location:
+    """Lotun rezervesiz stoğunun yettiği depo lokasyonu (en çok stoklu önce). Karantina ve sevk
+    alanları (okutulmuş, başka sevkiyata ayrılmış mal) hariç."""
     rows = (
         inventory_selectors.available_lots(lot.material)
         .filter(lot=lot)
-        .exclude(location=exclude)
-        .exclude(location__location_type=Location.Type.QUARANTINE)
+        .exclude(location__location_type__in=UNRESERVABLE_LOCATION_TYPES)
     )
     best = max(rows, key=lambda r: r.available_quantity, default=None)  # type: ignore[attr-defined]
     available = best.available_quantity if best is not None else ZERO  # type: ignore[attr-defined]
@@ -927,17 +940,27 @@ def pick_lot(
         "shipment_not_picking",
         "lot okutulamaz",
     )
-    order = shipment.sales_order
-    lot = Lot.objects.select_related("material__base_unit").get(pk=lot.pk)
+    # Kilit sırası: sevkiyat → sipariş → lot → bakiye (rezervasyon ve stok hareketiyle aynı).
+    order = _lock_order(shipment.sales_order)
+    lot = (
+        Lot.objects.select_for_update(of=("self",))
+        .select_related("material__base_unit")
+        .get(pk=lot.pk)
+    )
     line = _pick_line(shipment, lot)
     inventory.assert_lot_usable(lot)
     error = shelf_life_error(lot, order)
     if error is not None:
         raise error
-    loading = shipment.loading_location
-    reservations = _line_reservations(line.order_line)
-    own = [r for r in reservations if r.lot_id == lot.pk and r.location_id != loading.pk]
-    others = [r for r in reservations if r.lot_id != lot.pk and r.location_id != loading.pk]
+    had_shortage = any(shortage_quantity(other) > 0 for other in order.lines.all())
+    # Sevk alanlarındaki rezervasyonlar okutulmuş maldır (bu ya da başka sevkiyat); dokunulmaz.
+    reservations = [
+        r
+        for r in _line_reservations(line.order_line)
+        if r.location.location_type != Location.Type.SHIPPING
+    ]
+    own = [r for r in reservations if r.lot_id == lot.pk]
+    others = [r for r in reservations if r.lot_id != lot.pk]
     own_total = sum((r.quantity for r in own), ZERO)
     remaining = remaining_to_pick(line)
     if quantity is None:
@@ -979,8 +1002,10 @@ def pick_lot(
             _take(
                 actor, by_expiry, overflow, f"Farklı lot okutuldu {shipment.number}", consume=False
             )
-        source = _free_stock_location(lot, extra, loading)
+        source = _free_stock_location(lot, extra)
         picks.append(_move_to_loading(actor, shipment, line, lot, source, extra, reason))
+        if had_shortage and all(shortage_quantity(other) == 0 for other in order.lines.all()):
+            events.publish(ev.SALES_ORDER_FULLY_RESERVED, _order_payload(order), actor)
     if shipment.status == ShipmentStatus.PLANNED:
         transition_status(
             shipment,
@@ -1029,14 +1054,31 @@ def _return_pick(actor: User | None, shipment: Shipment, pick: ShipmentPick, not
         )
 
 
+def _lock_lots(lot_ids: Iterable[int]) -> None:
+    """Lot satırlarını kimlik sırasıyla kilitler; bakiye ve rezervasyon kilitlerinden önce
+    (rezervasyon ve stok hareketi de lot → bakiye sırasıyla kilitler)."""
+    list(
+        Lot.objects.select_for_update(of=("self",))
+        .filter(pk__in=set(lot_ids))
+        .order_by("pk")
+        .values_list("pk", flat=True)
+    )
+
+
 @transaction.atomic
 def undo_pick(actor: User | None, pick: ShipmentPick, note: str = "") -> ShipmentPick:
-    """Yanlış okutmayı geri alır (rol: depo; yalnızca toplama sürerken): lot geldiği yere döner."""
+    """Yanlış okutmayı geri alır (rol: depo; toplama sürerken ya da yüklemeden sonra, sevkten
+    önce): lot geldiği yere döner. Yüklenmiş sevkiyatta durum Yüklendi kalır."""
     _require_roles(actor, PICK_ROLES, "Toplamayı yalnızca depo geri alır.")
     shipment = _lock_shipment(pick.line.shipment)
     _require_shipment_status(
-        shipment, (ShipmentStatus.PICKING,), "shipment_not_picking", "okutma geri alınamaz"
+        shipment,
+        (ShipmentStatus.PICKING, ShipmentStatus.LOADED),
+        "shipment_not_picking",
+        "okutma geri alınamaz",
     )
+    _lock_order(shipment.sales_order)
+    _lock_lots([pick.lot_id])
     pick = ShipmentPick.objects.select_related(
         "lot__material__base_unit", "from_location", "line__order_line"
     ).get(pk=pick.pk)
@@ -1055,14 +1097,21 @@ def active_picks(shipment: Shipment) -> list[ShipmentPick]:
     )
 
 
-def _assert_picks_shippable(shipment: Shipment, picks: Sequence[ShipmentPick]) -> None:
+def _assert_picks_shippable(shipment: Shipment, picks: Sequence[ShipmentPick], hint: str) -> None:
+    """Her okutulan lot kullanılabilir olmalı ve satır + lot başına okutulan toplam, sevk
+    alanında o satıra ayrılmış rezervasyonla karşılanmalı. `hint` hatada ne yapılacağını söyler."""
+    needed: dict[tuple[int, int], tuple[ShipmentPick, Decimal]] = {}
     for pick in picks:
         error = inventory.lot_usable_error(pick.lot)
         if error is not None:
             raise BusinessRuleError(
                 "picked_lot_unusable",
-                f"{error.message} Okutmayı geri alıp başka lot toplayın.",
+                f"{error.message} {hint}",
             )
+        key = (pick.line.order_line_id, pick.lot_id)
+        first, total = needed.get(key, (pick, ZERO))
+        needed[key] = (first, total + pick.quantity)
+    for pick, total in needed.values():
         reserved = sum(
             (
                 r.quantity
@@ -1072,11 +1121,10 @@ def _assert_picks_shippable(shipment: Shipment, picks: Sequence[ShipmentPick]) -
             ),
             ZERO,
         )
-        if reserved < pick.quantity:
+        if reserved < total:
             raise BusinessRuleError(
                 "picked_lot_unreserved",
-                f"Lot {pick.lot.lot_no} sevk alanında bu siparişe rezerve değil. Okutmayı geri "
-                "alıp yeniden okutun.",
+                f"Lot {pick.lot.lot_no} sevk alanında bu siparişe rezerve değil. {hint}",
             )
 
 
@@ -1091,7 +1139,7 @@ def mark_loaded(actor: User | None, shipment: Shipment, note: str = "") -> Shipm
     picks = active_picks(shipment)
     if not picks:
         raise BusinessRuleError("nothing_picked", "Hiç lot okutulmadan yükleme onaylanamaz.")
-    _assert_picks_shippable(shipment, picks)
+    _assert_picks_shippable(shipment, picks, "Okutmayı geri alıp yeniden toplayın.")
     shipment.loaded_at = timezone.now()
     shipment.loaded_by = actor
     shipment.save(update_fields=["loaded_at", "loaded_by"])
@@ -1133,18 +1181,28 @@ def dispatch_shipment(actor: User | None, shipment: Shipment, note: str = "") ->
         )
     order = _lock_order(shipment.sales_order)
     picks = active_picks(shipment)
-    _assert_picks_shippable(shipment, picks)
+    if not picks:
+        raise BusinessRuleError("nothing_picked", "Okutulmuş lot kalmadı; sevk onaylanamaz.")
+    _lock_lots(pick.lot_id for pick in picks)
+    picks = active_picks(shipment)  # kilitten sonra güncel lot durumuyla
+    hint = "Depo okutmayı geri alsın; eksik kalan miktar yeni sevkiyatla gönderilir."
+    _assert_picks_shippable(shipment, picks, hint)
     loading = shipment.loading_location
     message = f"Sevkiyat {shipment.number}"
     lots: list[dict[str, Any]] = []
     for pick in picks:
-        _take(
+        taken = _take(
             actor,
             _line_reservations(pick.line.order_line, lot=pick.lot, location=loading),
             pick.quantity,
             message,
             consume=True,
         )
+        if sum((part for _, part in taken), ZERO) != pick.quantity:
+            raise BusinessRuleError(
+                "picked_lot_unreserved",
+                f"Lot {pick.lot.lot_no} sevk alanında bu siparişe rezerve değil. {hint}",
+            )
         pick.movement = inventory.post_movement(
             actor,
             pick.lot.material,
@@ -1184,6 +1242,8 @@ def cancel_shipment(actor: User | None, shipment: Shipment, reason: str) -> Ship
     shipment_states.assert_can_transition(shipment.status, ShipmentStatus.CANCELLED)
     if not reason.strip():
         raise BusinessRuleError("cancel_reason_required", "İptal nedeni girilmelidir.")
-    for pick in active_picks(shipment):
+    _lock_order(shipment.sales_order)
+    _lock_lots(pick.lot_id for pick in active_picks(shipment))
+    for pick in active_picks(shipment):  # kilitten sonra güncel lot durumuyla
         _return_pick(actor, shipment, pick, f"Sevkiyat iptali {shipment.number}")
     return cancel_document(shipment, actor, reason=reason, machine=shipment_states)

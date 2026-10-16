@@ -367,7 +367,13 @@ def reserve(
     quantity = quantize(quantity)
     if quantity <= 0:
         raise BusinessRuleError("invalid_quantity", "Miktar sıfırdan büyük olmalıdır.")
-    locked = Lot.objects.select_for_update().select_related("material__base_unit").get(pk=lot.pk)
+    # Yalnızca lot satırı kilitlenir (malzeme ve birim satırları değil): ortak birim satırı
+    # (ör. ADET) farklı lotları rezerve eden işlemleri birbirine kilitlemesin.
+    locked = (
+        Lot.objects.select_for_update(of=("self",))
+        .select_related("material__base_unit")
+        .get(pk=lot.pk)
+    )
     assert_lot_usable(locked)
     if location.location_type == Location.Type.QUARANTINE:
         raise BusinessRuleError(
@@ -677,7 +683,7 @@ def lot_payload(lot: Lot, **extra: Any) -> dict[str, Any]:
 
 def _set_lot_status(actor: User | None, lot: Lot, to_status: str, note: str) -> Lot:
     actor = _actor(actor)
-    lot = Lot.objects.select_for_update().select_related("material").get(pk=lot.pk)
+    lot = Lot.objects.select_for_update(of=("self",)).select_related("material").get(pk=lot.pk)
     from_status = lot.status
     lot_states.assert_can_transition(from_status, to_status)
     lot.status = to_status

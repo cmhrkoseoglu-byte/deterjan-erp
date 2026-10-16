@@ -1,7 +1,7 @@
 // /api/v1/sales/* uç noktaları. Miktarlar metin olarak gelir ("720.0000"); `base_quantity` ve
 // rezervasyon miktarları mamulün temel biriminde (ADET).
 import { api } from "./client";
-import type { ListParams } from "./masterdata";
+import type { ListParams, LocationType } from "./masterdata";
 import type { Paginated } from "./types";
 
 export type SalesOrderStatus =
@@ -66,6 +66,8 @@ export interface Reservation {
   expiry_date: string | null;
   location: number;
   location_code: string;
+  /** Sevk alanındaki (SHIPPING) rezervasyon okutulmuş maldır; siparişten bırakılamaz. */
+  location_type: LocationType;
   quantity: string;
   unit: string;
   status: ReservationStatus;
@@ -358,9 +360,12 @@ export function waybillPdfUrl(id: number): string {
   return `/api/v1${SHIPMENTS}/${id}/waybill.pdf`;
 }
 
-export async function listShippedLots(customer: number): Promise<Paginated<ShippedLot>> {
+export const SHIPPED_LOTS_PAGE_SIZE = 50;
+
+/** Müşteriye sevk edilen lotlar, sayfa sayfa (sayfa başına `SHIPPED_LOTS_PAGE_SIZE` kayıt). */
+export async function listShippedLots(customer: number, page = 1): Promise<Paginated<ShippedLot>> {
   const { data } = await api.get<Paginated<ShippedLot>>("/sales/shipped-lots/", {
-    params: { customer, page_size: 200 },
+    params: { customer, page, page_size: SHIPPED_LOTS_PAGE_SIZE },
   });
   return data;
 }

@@ -841,7 +841,7 @@ function ReservationTable({
               <Table.Td>{st.reservationStatus[row.status]}</Table.Td>
               {onRelease && (
                 <Table.Td>
-                  {row.status === "ACTIVE" && (
+                  {row.status === "ACTIVE" && row.location_type !== "SHIPPING" && (
                     <Button
                       size="compact-xs"
                       color="red"

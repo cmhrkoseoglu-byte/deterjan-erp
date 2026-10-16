@@ -264,11 +264,13 @@ def test_goods_receipt_to_shipment_waybill_trace_and_return(staff, commit):
         returns.receive_return(staff[DEPO], document)
     assert current_balance(finished, quarantine) == D("12")
     with commit():
-        pass_sample(
-            staff[LABORATUVAR],
-            open_sample_for(finished, "RETURN"),
-            release_location=line.finished_store,
-        )
+        # Varsayılan serbest bırakma lokasyonu: lotun son girdiği depo yeri (sevk alanı değil).
+        pass_sample(staff[LABORATUVAR], open_sample_for(finished, "RETURN"))
+    assert current_balance(finished, quarantine) == D("0")
+    assert current_balance(finished, dock) == D("0")
+    assert current_balance(finished, line.finished_store) == D("412")
+    finished.refresh_from_db()
+    assert finished.status == Lot.Status.RELEASED
     assert document.lines.get().disposition == CustomerReturnLine.Disposition.RESTOCK
     assert traceability.returned_by_lot([finished.pk]) == {finished.pk: D("12")}
     assert_stock_invariants()

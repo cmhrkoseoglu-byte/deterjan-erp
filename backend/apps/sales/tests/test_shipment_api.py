@@ -214,3 +214,74 @@ def test_shipped_lots_require_customer_and_role(client_for: Client) -> None:
 
 def test_anonymous_gets_401(api_client: APIClient) -> None:
     assert api_client.get(URL).status_code in (401, 403)
+
+
+def test_vehicle_fields_are_length_checked(
+    client_for: Client, seller: User, dock: Location
+) -> None:
+    sevkiyat = client_for("sevkiyat")
+    product = finished_product()
+    finished_lot(product, "10")
+    order = confirmed_order(seller, [(product, "5", "ADET")])
+
+    response = sevkiyat.post(
+        URL,
+        {**plan_body(order), "vehicle_plate": "3" * 21, "driver_name": "A" * 101},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert set(response.json()["errors"]) >= {"vehicle_plate", "driver_name"}
+    response = sevkiyat.post(URL, {**plan_body(order), "carrier": "T" * 101}, format="json")
+    assert response.status_code == 400
+    assert "carrier" in response.json()["errors"]
+
+
+def test_lot_no_shared_by_two_products_must_be_picked_from_list(
+    client_for: Client, seller: User, dock: Location
+) -> None:
+    from apps.inventory.models import Lot
+
+    depo = client_for("depo")
+    first, second = finished_product(), finished_product()
+    lot_a = finished_lot(first, "10")
+    lot_b = finished_lot(second, "10")
+    Lot.objects.filter(pk__in=[lot_a.pk, lot_b.pk]).update(lot_no="ORTAK-1")
+    order = confirmed_order(seller, [(first, "5", "ADET"), (second, "5", "ADET")])
+    shipment = services.plan_shipment(seller, order, {"planned_date": timezone.localdate()})
+
+    scanned = depo.post(f"{URL}{shipment.pk}/pick/", {"lot_no": "ORTAK-1"}, format="json")
+    assert scanned.status_code == 400
+    assert scanned.json()["code"] == "ambiguous_lot"
+    picked = depo.post(f"{URL}{shipment.pk}/pick/", {"lot": lot_b.pk}, format="json")
+    assert picked.status_code == 200, picked.json()
+
+
+def test_dock_stock_is_not_a_reservation_candidate(
+    client_for: Client, seller: User, dock: Location
+) -> None:
+    sevkiyat = client_for("sevkiyat")
+    product = finished_product()
+    finished_lot(product, "50", location=dock)
+    order = confirmed_order(seller, [(product, "10", "ADET")])
+    line = order.lines.get()
+
+    response = sevkiyat.get(f"/api/v1/sales/orders/{order.pk}/candidates/?line={line.pk}")
+    assert response.status_code == 200
+    assert response.json() == []
+    stock = finished_lot(product, "20")
+    response = sevkiyat.get(f"/api/v1/sales/orders/{order.pk}/candidates/?line={line.pk}")
+    assert [row["lot"] for row in response.json()] == [stock.pk]
+
+
+def test_order_shows_reservation_location_type(
+    client_for: Client, make_user: Callable[..., User], seller: User, dock: Location
+) -> None:
+    product = finished_product()
+    lot = finished_lot(product, "10")
+    order = confirmed_order(seller, [(product, "10", "ADET")])
+    shipment = services.plan_shipment(seller, order, {"planned_date": timezone.localdate()})
+    services.pick_lot(make_user("depo"), shipment, lot)
+
+    data = client_for("sevkiyat").get(f"/api/v1/sales/orders/{order.pk}/").json()
+    active = [r for r in data["reservations"] if r["status"] == "ACTIVE"]
+    assert [(r["location_code"], r["location_type"]) for r in active] == [("SEVK", "SHIPPING")]

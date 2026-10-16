@@ -70,11 +70,13 @@ function HeaderFields({
       />
       <TextInput
         label={st.vehiclePlate}
+        maxLength={20}
         value={value.vehicle_plate}
         onChange={(event) => onChange({ vehicle_plate: event.currentTarget.value })}
       />
       <TextInput
         label={st.driverName}
+        maxLength={100}
         value={value.driver_name}
         onChange={(event) => onChange({ driver_name: event.currentTarget.value })}
       />
@@ -90,6 +92,7 @@ function HeaderFields({
       />
       <TextInput
         label={st.carrier}
+        maxLength={100}
         value={value.carrier}
         onChange={(event) => onChange({ carrier: event.currentTarget.value })}
       />

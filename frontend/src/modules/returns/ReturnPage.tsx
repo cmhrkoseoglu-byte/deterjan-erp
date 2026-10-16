@@ -48,6 +48,7 @@ import {
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
 import { formatDate, formatDateTime } from "../../i18n/format";
+import { MENU } from "../../layout/menu";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
@@ -87,6 +88,9 @@ interface HeaderDraft {
   quarantine_location: string | null;
   note: string;
 }
+
+/** Sevkiyat detayını açabilen roller: sevkiyat menüsünün rolleri (routes.tsx `salesPage`). */
+const SHIPMENT_VIEW_ROLES = MENU.find((item) => item.key === "sales")!.roles;
 
 let lineSeq = 0;
 const newKey = () => `n${++lineSeq}`;
@@ -327,6 +331,7 @@ function ReturnForm({ doc }: { doc: CustomerReturnDetail | null }) {
   const canReceive = hasAnyRole(user, RETURN_RECEIVE_ROLES) && doc?.status === "DRAFT";
   const canCancel = hasAnyRole(user, RETURN_EDIT_ROLES) && doc?.status === "DRAFT";
   const canScrap = hasAnyRole(user, RETURN_SCRAP_ROLES) && doc?.status === "RECEIVED";
+  const canOpenShipment = hasAnyRole(user, SHIPMENT_VIEW_ROLES);
   const [{ header, lines }, setDraft] = useState(() => toDraft(doc));
   const [error, setError] = useState("");
   const [confirmReceive, setConfirmReceive] = useState(false);
@@ -502,9 +507,13 @@ function ReturnForm({ doc }: { doc: CustomerReturnDetail | null }) {
               </Info>
               {doc.shipment && (
                 <Info label={rt.shipment}>
-                  <Anchor component={Link} to={shipmentPath(doc.shipment)} size="sm">
-                    {doc.shipment_number}
-                  </Anchor>
+                  {canOpenShipment ? (
+                    <Anchor component={Link} to={shipmentPath(doc.shipment)} size="sm">
+                      {doc.shipment_number}
+                    </Anchor>
+                  ) : (
+                    <Text size="sm">{doc.shipment_number}</Text>
+                  )}
                 </Info>
               )}
               <Info label={rt.returnDate}>

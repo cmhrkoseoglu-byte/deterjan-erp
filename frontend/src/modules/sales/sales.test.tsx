@@ -96,6 +96,7 @@ function detail(overrides: Partial<SalesOrderDetail> = {}): SalesOrderDetail {
         expiry_date: "2028-10-16",
         location: 9,
         location_code: "MAMUL-DEPO",
+        location_type: "STORAGE",
         quantity: "700.0000",
         unit: "ADET",
         status: "ACTIVE",
@@ -165,6 +166,26 @@ describe("satış siparişleri", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Eksikleri rezerve et" }));
     await waitFor(() => expect(salesApi.reserveShortages).toHaveBeenCalledWith(7));
+  });
+
+  it("sevk alanındaki (okutulmuş) rezervasyon siparişten bırakılamaz", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("sevkiyat"));
+    const base = detail().reservations[0];
+    vi.mocked(salesApi.getSalesOrder).mockResolvedValue(
+      detail({
+        reservations: [
+          base,
+          { ...base, id: 52, location: 12, location_code: "SEVK", location_type: "SHIPPING" },
+        ],
+      }),
+    );
+    renderApp("/sevkiyat/siparisler/7");
+
+    const table = await screen.findByTestId("reservations");
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(within(rows[0]).getByRole("button", { name: "Bırak" })).toBeInTheDocument();
+    expect(rows[1]).toHaveTextContent("SEVK");
+    expect(within(rows[1]).queryByRole("button", { name: "Bırak" })).toBeNull();
   });
 
   it("satıra elle lot seçilir; raf ömrü yetersiz lot seçilemez", async () => {

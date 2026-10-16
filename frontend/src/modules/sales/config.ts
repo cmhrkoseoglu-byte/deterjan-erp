@@ -38,6 +38,8 @@ export const SHIPMENT_STATUS_COLOR: Record<ShipmentStatus, string> = {
 
 /** Lot okutulabilen sevkiyat durumları. */
 export const PICKABLE_STATUSES: ShipmentStatus[] = ["PLANNED", "PICKING"];
+/** Okutmanın geri alınabildiği durumlar (sevkten önce; yüklemeden sonra da). */
+export const UNDOABLE_STATUSES: ShipmentStatus[] = ["PICKING", "LOADED"];
 /** Sevk edilmemiş, iptal edilebilen ve başlığı düzenlenebilen durumlar. */
 export const OPEN_SHIPMENT_STATUSES: ShipmentStatus[] = ["PLANNED", "PICKING", "LOADED"];
 /** Sevkiyat planlanabilen sipariş durumları. */

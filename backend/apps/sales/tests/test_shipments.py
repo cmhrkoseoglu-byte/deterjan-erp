@@ -490,3 +490,266 @@ def test_shipment_state_machine() -> None:
     for source in shipment_states.states:
         for target in shipment_states.states:
             assert shipment_states.can_transition(source, target) == ((source, target) in allowed)
+
+
+# --- sevk alanları, toplanan miktar ve kenar durumları ---------------------------------------
+
+
+def test_stock_at_shipping_location_is_not_reserved_or_suggested(
+    seller: User, picker: User, dock: Location
+) -> None:
+    """Sevk alanındaki stok başka sevkiyatın okutulmuş malıdır: FEFO, elle rezervasyon, aday
+    listesi ve toplama önerisi onu kullanmaz."""
+    product = finished_product()
+    staged = finished_lot(product, "50", location=dock)
+    order = confirmed_order(seller, [(product, "10", "ADET")])
+    line = order.lines.get()
+    assert reservations(order) == []
+    assert services.shortage_quantity(line) == D("10")
+    with pytest.raises(BusinessRuleError) as exc:
+        services.reserve_lot(seller, line, lot=staged, location=dock, quantity=D("10"))
+    assert exc.value.code == "invalid_reservation_location"
+
+    stock = finished_lot(product, "20")
+    shipment = plan(seller, order)
+    [row] = selectors.pick_suggestions(shipment)
+    assert [s["lot"] for s in row["suggestions"]] == [stock.pk]
+
+
+def test_pick_does_not_touch_another_docks_picked_stock(
+    seller: User, picker: User, dock: Location
+) -> None:
+    product = finished_product()
+    second_dock = shipping_location(code="SEVK-2")
+    first = finished_lot(product, "60", expiry_date=today() + timedelta(days=400))
+    other = finished_lot(product, "40", expiry_date=today() + timedelta(days=500))
+    order = confirmed_order(seller, [(product, "100", "ADET")])
+    line = order.lines.get()
+    s1 = services.plan_shipment(
+        seller, order, {"planned_date": today()}, [{"order_line": line, "quantity": "60"}]
+    )
+    s2 = services.plan_shipment(
+        seller,
+        order,
+        {"planned_date": today(), "loading_location": second_dock},
+        [{"order_line": line, "quantity": "40"}],
+    )
+    services.pick_lot(picker, s1, first)
+
+    # İkinci rampa ilk sevkiyatın okuttuğu lotu "rezerve" saymaz: farklı lot gerekçesi ister.
+    with pytest.raises(BusinessRuleError) as exc:
+        services.pick_lot(picker, s2, first)
+    assert exc.value.code == "lot_not_reserved"
+    suggestions = selectors.pick_suggestions(s2)[0]["suggestions"]
+    assert [(s["lot"], s["reserved"]) for s in suggestions] == [(other.pk, True)]
+    services.pick_lot(picker, s2, other)
+
+    assert current_balance(first, dock) == D("60")
+    assert current_balance(other, second_dock) == D("40")
+    services.mark_loaded(picker, s1)
+    services.mark_loaded(picker, s2)
+
+
+def test_dock_reservation_cannot_be_released_from_the_order(
+    seller: User, picker: User, dock: Location
+) -> None:
+    product = finished_product()
+    lot = finished_lot(product, "100")
+    order = confirmed_order(seller, [(product, "10", "ADET")])
+    shipment = plan(seller, order)
+    services.pick_lot(picker, shipment, lot, D("5"))
+    services.pick_lot(picker, shipment, lot, D("5"))
+    staged = StockReservation.objects.filter(location=dock, status="ACTIVE").first()
+    assert staged is not None
+
+    with pytest.raises(BusinessRuleError) as exc:
+        services.release_line_reservation(seller, staged)
+    assert exc.value.code == "reservation_on_loading"
+
+
+def test_dispatch_needs_dock_reservation_for_all_picks_of_a_lot(
+    seller: User, picker: User, dock: Location
+) -> None:
+    """Aynı lottan iki okutma tek rezervasyon havuzunu paylaşır; havuz okutulan toplamdan az
+    kalırsa yükleme ve sevk reddedilir (sevk edilen = CONSUMED rezervasyon)."""
+    product = finished_product()
+    lot = finished_lot(product, "100")
+    order = confirmed_order(seller, [(product, "10", "ADET")])
+    shipment = plan(seller, order, **VEHICLE)
+    services.pick_lot(picker, shipment, lot, D("5"))
+    services.pick_lot(picker, shipment, lot, D("5"))
+    services.mark_loaded(picker, shipment)
+    # Havuzdan 5 kaybolur (ör. eski yoldan bırakılmış rezervasyon).
+    staged = StockReservation.objects.filter(location=dock, status="ACTIVE").first()
+    assert staged is not None
+    inventory.release_reservation(seller, staged, "test")
+
+    with pytest.raises(BusinessRuleError) as exc:
+        services.dispatch_shipment(seller, shipment)
+    assert exc.value.code == "picked_lot_unreserved"
+    assert not StockMovement.objects.filter(movement_type=StockMovement.Type.SHIPMENT).exists()
+
+
+def test_picking_that_covers_shortage_closes_shortage_task(
+    seller: User, picker: User, dock: Location, commit: Commit
+) -> None:
+    product = finished_product()
+    with commit():
+        order = confirmed_order(seller, [(product, "30", "ADET")])
+    task = Task.objects.get(rule_code="sales_shortage")
+    lot = finished_lot(product, "40")
+    shipment = plan(seller, order)
+
+    with commit():
+        services.pick_lot(picker, shipment, lot)
+
+    task.refresh_from_db()
+    assert task.status == Task.Status.DONE
+
+
+def test_undo_pick_after_loading_lets_rest_ship(
+    seller: User, picker: User, dock: Location, commit: Commit
+) -> None:
+    product = finished_product()
+    bad = finished_lot(product, "10", expiry_date=today() + timedelta(days=100))
+    good = finished_lot(product, "10", expiry_date=today() + timedelta(days=200))
+    order = confirmed_order(seller, [(product, "20", "ADET")])
+    shipment = plan(seller, order, **VEHICLE)
+    [bad_pick] = services.pick_lot(picker, shipment, bad)
+    services.pick_lot(picker, shipment, good)
+    services.mark_loaded(picker, shipment)
+    admin = User.objects.create_superuser("yonetici", password="x")
+    with commit():
+        inventory.block_lot(admin, bad, "Şikâyet")
+    with pytest.raises(BusinessRuleError) as exc:
+        services.dispatch_shipment(seller, shipment)
+    assert exc.value.code == "picked_lot_unusable"
+
+    services.undo_pick(picker, bad_pick)
+    shipment.refresh_from_db()
+    assert shipment.status == Status.LOADED
+    services.dispatch_shipment(seller, shipment)
+
+    order.refresh_from_db()
+    assert order.status == SalesOrder.Status.PARTIALLY_SHIPPED
+    assert services.shipped_quantity(order.lines.get()) == D("10")
+    assert current_balance(bad, dock) == 0
+
+
+def test_dispatch_without_active_picks_is_refused(
+    seller: User, picker: User, dock: Location
+) -> None:
+    product = finished_product()
+    lot = finished_lot(product, "10")
+    order = confirmed_order(seller, [(product, "10", "ADET")])
+    shipment = plan(seller, order, **VEHICLE)
+    [pick] = services.pick_lot(picker, shipment, lot)
+    services.mark_loaded(picker, shipment)
+    services.undo_pick(picker, pick)
+
+    with pytest.raises(BusinessRuleError) as exc:
+        services.dispatch_shipment(seller, shipment)
+    assert exc.value.code == "nothing_picked"
+    services.cancel_shipment(seller, shipment, "Lot kalmadı")
+
+
+def test_pick_locks_order_and_lot_before_balances(
+    seller: User, picker: User, dock: Location
+) -> None:
+    """Kilit sırası sevkiyat → sipariş → lot → bakiye/rezervasyon; lot kilidi yalnızca lot
+    satırını kilitler (malzeme ve ortak birim satırını değil)."""
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    product = finished_product()
+    lot = finished_lot(product, "10")
+    order = confirmed_order(seller, [(product, "10", "ADET")])
+    shipment = plan(seller, order)
+    with CaptureQueriesContext(connection) as queries:
+        services.pick_lot(picker, shipment, lot)
+    locked = [q["sql"] for q in queries.captured_queries if "FOR UPDATE" in q["sql"]]
+
+    def first(table: str) -> int:
+        return next(i for i, sql in enumerate(locked) if f'FROM "{table}"' in sql)
+
+    assert first("sales_shipment") < first("sales_salesorder") < first("inventory_lot")
+    assert first("inventory_lot") < first("inventory_stockreservation")
+    assert first("inventory_lot") < first("inventory_stockbalance")
+    lot_locks = [sql for sql in locked if 'FROM "inventory_lot"' in sql]
+    assert all('FOR UPDATE OF "inventory_lot"' in sql for sql in lot_locks)
+
+
+def test_suggestions_mark_expired_reserved_lot(seller: User, picker: User, dock: Location) -> None:
+    product = finished_product()
+    lot = finished_lot(product, "10", expiry_date=today() + timedelta(days=5))
+    order = confirmed_order(seller, [(product, "10", "ADET")])
+    Lot.objects.filter(pk=lot.pk).update(expiry_date=today() - timedelta(days=1))
+    shipment = plan(seller, order)
+
+    [row] = selectors.pick_suggestions(shipment)
+    assert [(s["lot"], s["reserved"], s["meets_shelf_life"]) for s in row["suggestions"]] == [
+        (lot.pk, True, False)
+    ]
+
+
+def test_waybill_uses_local_date_and_does_not_add_mixed_units(
+    seller: User, picker: User, dock: Location
+) -> None:
+    from datetime import UTC, datetime
+
+    from apps.masterdata.models import Material
+    from apps.masterdata.tests.factories import MaterialFactory, unit
+    from apps.sales.waybill import waybill_pdf
+
+    product = finished_product()
+    bulk = MaterialFactory.create(material_type=Material.Type.FINISHED, base_unit=unit("KG"))
+    finished_lot(product, "24")
+    finished_lot(bulk, "50")
+    order = confirmed_order(seller, [(product, "24", "ADET"), (bulk, "20", "KG")])
+    shipment = plan(seller, order, **VEHICLE)
+    for reservation in services.active_reservations(order):
+        services.pick_lot(picker, shipment, reservation.lot)
+    services.mark_loaded(picker, shipment)
+    services.dispatch_shipment(seller, shipment)
+    # 16 Ekim 22:30 UTC = 17 Ekim 01:30 İstanbul.
+    Shipment.objects.filter(pk=shipment.pk).update(
+        dispatched_at=datetime(2026, 10, 16, 22, 30, tzinfo=UTC)
+    )
+    shipment.refresh_from_db()
+
+    data = selectors.waybill_data(shipment)
+    assert data["date"].isoformat() == "2026-10-17"
+    assert (data["total_quantity"], data["total_unit"]) == (None, "")
+    assert waybill_pdf(shipment).startswith(b"%PDF")
+
+    single = selectors.waybill_data(
+        Shipment.objects.get(pk=plan_single(seller, picker, product).pk)
+    )
+    assert (single["total_quantity"], single["total_unit"]) == (D("12"), "ADET")
+
+
+def plan_single(seller: User, picker: User, product: Any) -> Shipment:
+    lot = finished_lot(product, "12")
+    order = confirmed_order(seller, [(product, "12", "ADET")])
+    shipment = plan(seller, order)
+    services.pick_lot(picker, shipment, lot)
+    return shipment
+
+
+def test_reversed_shipment_movement_is_not_counted_as_shipped(
+    seller: User, picker: User, dock: Location
+) -> None:
+    product = finished_product()
+    lot = finished_lot(product, "30")
+    order = confirmed_order(seller, [(product, "30", "ADET")])
+    shipment = plan(seller, order, **VEHICLE)
+    services.pick_lot(picker, shipment, lot)
+    services.mark_loaded(picker, shipment)
+    services.dispatch_shipment(seller, shipment)
+    assert selectors.shipped_by_shipment_lot(shipment) == {lot.pk: D("30")}
+    movement = StockMovement.objects.get(movement_type=StockMovement.Type.SHIPMENT)
+
+    inventory.reverse_movement(picker, movement, "Yanlış sevk kaydı")
+
+    assert selectors.shipped_by_shipment_lot(shipment) == {}
+    assert list(selectors.customer_shipped_lots(order.customer)) == []

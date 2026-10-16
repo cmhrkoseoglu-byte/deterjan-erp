@@ -154,7 +154,11 @@ def seed_shipments(
         return
     today = timezone.localdate()
     demo1 = SalesOrder.objects.filter(customer_po_no="DEMO-1").first()
-    if demo1 is not None and not demo1.shipments.exists():
+    if (
+        demo1 is not None
+        and demo1.status in services.RESERVABLE_STATUSES
+        and not demo1.shipments.exists()
+    ):
         shipment = services.plan_shipment(
             seller, demo1, {"planned_date": today + timedelta(days=1), **VEHICLE}
         )

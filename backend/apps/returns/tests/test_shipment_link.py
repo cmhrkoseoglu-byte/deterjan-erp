@@ -146,3 +146,32 @@ def test_return_needs_dispatched_shipment(shipper: User) -> None:
             [{"product": product, "lot": lot, "quantity": D(1), "unit": unit("ADET")}],
         )
     assert exc.value.code == "shipment_not_dispatched"
+
+
+def test_receive_locks_shipment_so_parallel_returns_are_checked_in_turn(
+    shipper: User, dispatched: Shipment
+) -> None:
+    """Aynı sevkiyata bağlı iki taslak aynı anda teslim alınırsa ikincisi birincinin miktarını
+    görsün diye sınır denetimi sevkiyat satırını kilitler."""
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    draft = make_return(shipper, dispatched, "30")
+    with CaptureQueriesContext(connection) as queries:
+        services.receive_return(shipper, draft)
+    assert any(
+        'FROM "sales_shipment"' in q["sql"] and "FOR UPDATE" in q["sql"]
+        for q in queries.captured_queries
+    )
+
+
+def test_reversed_shipment_cannot_be_returned(shipper: User, dispatched: Shipment) -> None:
+    from apps.inventory import services as inventory
+    from apps.inventory.models import StockMovement
+
+    movement = StockMovement.objects.get(movement_type=StockMovement.Type.SHIPMENT)
+    inventory.reverse_movement(shipper, movement, "Yanlış sevk kaydı")
+
+    with pytest.raises(BusinessRuleError) as exc:
+        make_return(shipper, dispatched, "1")
+    assert exc.value.code == "lot_not_in_shipment"

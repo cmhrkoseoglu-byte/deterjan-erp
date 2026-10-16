@@ -122,7 +122,11 @@ def waybill_pdf(shipment: Shipment) -> bytes:
             "Toplam",
             "",
             "",
-            format_quantity(data["total_quantity"]),
+            (
+                f"{format_quantity(data['total_quantity'])} {data['total_unit']}"
+                if data["total_quantity"] is not None
+                else ""
+            ),
             str(data["total_cases"]) if data["total_cases"] else "",
         ]
     )

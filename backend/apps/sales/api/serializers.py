@@ -138,6 +138,10 @@ class ReservationSerializer(serializers.ModelSerializer):
     lot_no = serializers.CharField(source="lot.lot_no", read_only=True)
     expiry_date = serializers.DateField(source="lot.expiry_date", read_only=True)
     location_code = serializers.CharField(source="location.code", read_only=True)
+    # Sevk alanındaki (SHIPPING) rezervasyon okutulmuş maldır; siparişten bırakılamaz.
+    location_type = serializers.ChoiceField(
+        source="location.location_type", choices=Location.Type.choices, read_only=True
+    )
     unit = serializers.CharField(source="material.base_unit.code", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     created_by_name = UserNameField(source="created_by")
@@ -153,6 +157,7 @@ class ReservationSerializer(serializers.ModelSerializer):
             "expiry_date",
             "location",
             "location_code",
+            "location_type",
             "quantity",
             "unit",
             "status",
@@ -181,13 +186,17 @@ class ShipmentSerializer(serializers.ModelSerializer):
         queryset=Location.objects.all(), required=False
     )
     loading_location_code = serializers.CharField(source="loading_location.code", read_only=True)
-    vehicle_plate = serializers.CharField(required=False, allow_blank=True, default="")
-    driver_name = serializers.CharField(required=False, allow_blank=True, default="")
+    vehicle_plate = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=20
+    )
+    driver_name = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=100
+    )
     driver_id_no = serializers.CharField(
         required=False, allow_blank=True, default="", write_only=True
     )
     driver_id_no_masked = serializers.SerializerMethodField()
-    carrier = serializers.CharField(required=False, allow_blank=True, default="")
+    carrier = serializers.CharField(required=False, allow_blank=True, default="", max_length=100)
     notes = serializers.CharField(required=False, allow_blank=True, default="")
     loaded_by_name = UserNameField(source="loaded_by")
     dispatched_by_name = UserNameField(source="dispatched_by")
@@ -513,7 +522,8 @@ class WaybillSerializer(serializers.Serializer):
     driver_id_no = serializers.SerializerMethodField()
     carrier = serializers.CharField()
     lines = WaybillLineSerializer(many=True)
-    total_quantity = _quantity()
+    total_quantity = _quantity(allow_null=True)
+    total_unit = serializers.CharField()
     total_cases = serializers.IntegerField()
 
     def get_driver_id_no(self, data: dict[str, Any]) -> str:

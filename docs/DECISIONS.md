@@ -697,8 +697,9 @@ Plan CUMHUR tarafından onaylandı (karar kartı, 2026-10-16). Kararlar ve sözl
 - **Okutma malı sevk alanına taşır**: sevkiyatın sevk alanı (`loading_location`, varsayılan ilk aktif
   `SHIPPING` lokasyonu; yalnızca Planlandı'da değişir). Okutmada satırın o lottaki rezervasyonu bırakılır
   (gerekirse kısmen), lot `TRANSFER` ile sevk alanına taşınır ve orada aynı sipariş satırına yeniden
-  rezerve edilir (Adım 3.1 rezervasyon sözleşmesi). Okutma geri alınırsa (yalnızca Toplanıyor'da) lot
-  geldiği yere döner ve kullanılabilirse yeniden rezerve edilir; iptalde tüm okutmalar geri döner.
+  rezerve edilir (Adım 3.1 rezervasyon sözleşmesi). Okutma geri alınırsa (Toplanıyor ya da Yüklendi'de,
+  sevkten önce) lot geldiği yere döner ve kullanılabilirse yeniden rezerve edilir; iptalde tüm okutmalar
+  geri döner.
 - **Okutma kuralları**: lot serbest ve SKT'si geçmemiş olmalı (`assert_lot_usable`), müşterinin asgari
   raf ömrünü karşılamalı (D-11, `shelf_life_error`), satırın kalanını aşamaz (`pick_exceeds_line`).
   Miktar verilmezse satırın kalanı (lot rezerveyse rezerve miktar kadar) alınır. Satırın başka lotlarda
@@ -708,7 +709,9 @@ Plan CUMHUR tarafından onaylandı (karar kartı, 2026-10-16). Kararlar ve sözl
   `post_movement(-miktar, SHIPMENT, kaynak=sevkiyat)` sevk alanından çıkar; sipariş Kısmen sevk edildi /
   Sevk edildi olur. Plaka ve şoför adı sevk onayında zorunludur (`vehicle_required`). Okutulduktan sonra
   lot kullanılamaz hale gelirse (bloke, red, karantina) sevk reddedilir (`picked_lot_unusable`,
-  `picked_lot_unreserved`); depo okutmayı geri alır.
+  `picked_lot_unreserved`); depo okutmayı geri alır. Yüklendi'de geri alınan okutmada sevkiyat Yüklendi
+  kalır, kalanlar sevk edilir ve eksik miktar yeni sevkiyatla gider; okutma kalmadıysa sevk reddedilir
+  (`nothing_picked`) ve sevkiyat iptal edilir.
 - **Eksik yükleme**: satır eksik toplanmışsa da yüklenebilir; eksik kalan miktar siparişte yeniden
   planlanabilir görünür. Satırın sevk edilen miktarı `CONSUMED` rezervasyonların toplamıdır ve sevkiyat
   okutmalarının toplamına eşittir.
@@ -734,6 +737,37 @@ Plan CUMHUR tarafından onaylandı (karar kartı, 2026-10-16). Kararlar ve sözl
   sevkiyatları; depoya "Toplama" sekmesi ve toplama tableti (satır başına kalan, rezerve lotlar önce sonra
   FEFO önerisi, raf ömrü uyarısı, `ScanInput` ile lot okutma, farklı lotta gerekçe, "Yükleme tamam");
   müşteri kartında sevk edilen lotlar; iade formunda sevkiyat seçimi.
+
+### İnceleme sonrası kurallar (2026-10-16, PR #13)
+
+Kod incelemesinde bulunan hatalar düzeltilirken netleşen kurallar:
+
+- **Sevk alanı yalnızca ara duraktır.** `SHIPPING` lokasyonundaki stok bir sevkiyata okutulmuş maldır:
+  FEFO rezervasyonu, elle rezervasyon (`invalid_reservation_location`), rezerve edilebilir stok listesi,
+  toplama önerisi ve okutmada kaynak lokasyon seçimi karantina ile birlikte sevk alanlarını da dışarıda
+  bırakır (`sales.services.UNRESERVABLE_LOCATION_TYPES`). Birden çok rampa olduğunda bir sevkiyatın
+  okutması başka rampadaki okutulmuş mala dokunmaz. QC serbest bırakmada varsayılan lokasyon da sevk
+  alanı olmaz (iade dönen mamul son girdiği depo yerine döner).
+- **Sevk alanındaki rezervasyon siparişten elle bırakılmaz** (`reservation_on_loading`); okutma geri
+  alınır. Sipariş ekranı bu satırlarda "Bırak" göstermez (rezervasyon `location_type` alanı taşır).
+- **Sevk edilen = okutulan.** Yükleme ve sevk onayı satır + lot başına okutulan toplamı sevk alanındaki
+  rezervasyonla karşılaştırır; sevkte kullanılan (`CONSUMED`) miktar okutulandan az kalırsa işlem geri
+  alınır (`picked_lot_unreserved`).
+- **Okutma eksiği kapatırsa** (rezervesiz stoktan toplanıp siparişte eksik kalmazsa)
+  `sales_order.fully_reserved` yayınlanır; planlamanın eksik görevi kapanır.
+- **Aynı lot no sevkiyatın birden çok ürününde varsa** okutma reddedilir (`ambiguous_lot`); lot listeden
+  seçilir.
+- **İrsaliye** tarihi sevk anının yerel (İstanbul) tarihidir; satırlar farklı birimdeyse toplam miktar
+  yazılmaz, tek birimdeyse birimle yazılır (`total_unit`). Plaka 20, şoför adı ve taşıyıcı 100 karakteri
+  aşamaz (400).
+- **İade sınırı net sevke göre**: ters kayıtla geri alınan sevk hareketi sevk edilmiş sayılmaz (iade
+  kontrolü ve müşteri kartı, izlenebilirlikle aynı). İade kabulünde sevkiyat satırı kilitlenir; aynı
+  sevkiyata eşzamanlı iki kabul birlikte sınırı aşamaz.
+- **Kilit sırası** (eşzamanlı işlemlerde kilitlenme olmasın): sevkiyat → sipariş → lot → bakiye /
+  rezervasyon. Okutma, geri alma, sevk ve iptal bu sırayla kilitler; rezervasyon ve stok hareketi zaten
+  lot → bakiye sırasıyla kilitler. Lot kilidi yalnızca lot satırını kilitler (`select_for_update(of=
+  ("self",))`): rezervasyon, lot durumu değişikliği ve numune açmada malzeme ve ortak birim (ör. ADET)
+  satırları kilitlenmez, farklı ürünlerin lotlarıyla çalışan işlemler birbirini beklemez.
 
 ### Sevkiyat olay sözleşmesi (iş akışı tablosuna ek)
 

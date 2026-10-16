@@ -3,6 +3,7 @@ import {
   Anchor,
   Group,
   Loader,
+  Pagination,
   Paper,
   SimpleGrid,
   Stack,
@@ -11,11 +12,12 @@ import {
   Title,
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import { getRecord, type Partner } from "../../api/masterdata";
-import { listSalesOrders, listShippedLots } from "../../api/sales";
+import { listSalesOrders, listShippedLots, SHIPPED_LOTS_PAGE_SIZE } from "../../api/sales";
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
 import { formatDateTime, formatNumber } from "../../i18n/format";
@@ -97,18 +99,25 @@ export function CustomerPage() {
         error={orders.error}
         onOpen={(order) => navigate(salesOrderPath(order.id))}
       />
-      {showLots && <ShippedLots customerId={customerId} />}
+      {showLots && <ShippedLots key={customerId} customerId={customerId} />}
     </Stack>
   );
 }
 
 /** Müşteriye sevk edilen lotlar (geri çağırmada kime ne gittiği). */
 function ShippedLots({ customerId }: { customerId: number }) {
+  const [page, setPage] = useState(1);
   const query = useQuery({
-    queryKey: ["sales", "shipped-lots", customerId],
-    queryFn: () => listShippedLots(customerId),
+    queryKey: ["sales", "shipped-lots", customerId, page],
+    queryFn: () => listShippedLots(customerId, page),
+    placeholderData: keepPreviousData,
   });
   const rows = query.data?.results ?? [];
+  // Son bilinen kayıt sayısı: bir sayfa yüklenemezse sayfalayıcı kaybolmasın, geri dönülebilsin.
+  const [lastCount, setLastCount] = useState(0);
+  const count = query.data?.count;
+  if (count !== undefined && count !== lastCount) setLastCount(count);
+  const pages = Math.max(1, Math.ceil((count ?? lastCount) / SHIPPED_LOTS_PAGE_SIZE));
   return (
     <Stack gap="xs">
       <Title order={4}>{st.shippedLots}</Title>
@@ -163,6 +172,7 @@ function ShippedLots({ customerId }: { customerId: number }) {
           </Table>
         </Table.ScrollContainer>
       )}
+      {pages > 1 && <Pagination value={page} onChange={setPage} total={pages} />}
     </Stack>
   );
 }
