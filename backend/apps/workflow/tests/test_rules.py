@@ -568,7 +568,7 @@ def test_filling_order_cancelled_cancels_its_tasks(fire, staff):
 
 
 def test_every_rule_row_is_covered():
-    """Faz 1'in 9 satırı + bulk lot reddi + 2 günlük kontrol + Faz 2 kalite ve dolum + Faz 3 iade kuralları."""
+    """Faz 1 ve 2 kuralları + bulk lot reddi + 2 günlük kontrol + Faz 3 iade kuralları."""
     assert [rule.code for rule in rules.RULES] == [
         "incoming_qc",
         "lot_rejected",
