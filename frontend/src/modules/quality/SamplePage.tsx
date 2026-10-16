@@ -560,6 +560,8 @@ function DecisionModal({
     (value) => value !== "REWORK" || sample.material_type === "BULK" || sample.stage === "RETURN",
   );
   const hasOutOfSpec = sample.out_of_spec_tests.length > 0;
+  // Sunucu zorunlu testlerin hepsi girilmeden hiçbir kararı kabul etmez (mandatory_tests_missing).
+  const testsMissing = sample.missing_tests.length > 0;
   const [decision, setDecision] = useState<DecisionType>(
     hasOutOfSpec ? (inProcess ? "REJECT" : "CONDITIONAL_RELEASE") : "RELEASE",
   );
@@ -591,9 +593,9 @@ function DecisionModal({
   return (
     <Modal opened onClose={onClose} title={`${qt.decisionTitle}: ${sample.lot_no}`}>
       <Stack>
-        {sample.missing_tests.length > 0 && (
+        {testsMissing && (
           <Alert color="yellow" variant="light">
-            {qt.missing(sample.missing_tests.join(", "))}
+            {qt.decisionBlockedMissing(sample.missing_tests.join(", "))}
           </Alert>
         )}
         {hasOutOfSpec && (
@@ -604,6 +606,7 @@ function DecisionModal({
         <SegmentedControl
           aria-label={qt.decisionLabel}
           fullWidth
+          disabled={testsMissing}
           value={decision}
           onChange={(value) => setDecision(value as DecisionType)}
           data={options.map((value) => ({
@@ -648,7 +651,7 @@ function DecisionModal({
             {ct.cancel}
           </Button>
           <Button
-            disabled={reasonRequired && !reason.trim()}
+            disabled={testsMissing || (reasonRequired && !reason.trim())}
             loading={mutation.isPending}
             onClick={() => mutation.mutate()}
           >

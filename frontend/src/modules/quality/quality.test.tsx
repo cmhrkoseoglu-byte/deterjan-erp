@@ -361,17 +361,33 @@ describe("numune", () => {
     );
   });
 
+  it("zorunlu test eksikken karar seçilemez ve gönderilemez", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("laboratuvar"));
+    renderApp("/kalite/numuneler/31");
+    await user.click(await screen.findByRole("button", { name: "Karar ver" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(
+        "Zorunlu testlerin sonucu girilmeden karar verilemez. Eksik: PH, GORUNUS",
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("radio", { name: "Serbest bırak" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Karar ver" })).toBeDisabled();
+  });
+
   it("karar hatasını pencerede gösterir", async () => {
     const user = userEvent.setup();
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("laboratuvar"));
+    vi.mocked(qualityApi.getSample).mockResolvedValue(detail({ missing_tests: [] }));
     vi.mocked(qualityApi.decide).mockRejectedValue(
-      httpError(400, { code: "mandatory_tests_missing", detail: "Zorunlu testler eksik: PH." }),
+      httpError(400, { code: "lot_already_decided", detail: "Lot serbest; karar verilemez." }),
     );
     renderApp("/kalite/numuneler/31");
     await user.click(await screen.findByRole("button", { name: "Karar ver" }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Karar ver" }));
-    expect(await within(dialog).findByText("Zorunlu testler eksik: PH.")).toBeInTheDocument();
+    expect(await within(dialog).findByText("Lot serbest; karar verilemez.")).toBeInTheDocument();
   });
 
   it("serbest bırakılan numunede analiz sertifikası bağlantısı vardır", async () => {
