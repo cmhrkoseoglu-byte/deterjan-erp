@@ -258,11 +258,50 @@ Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrınt
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | dolum testleri `invariants` fixture'ı ya da `assert_stock_invariants()` ile biter |
 | Okutma bileşeni tüm tablet ekranlarında | Adım 2.3 | Dolum tabletleri şimdilik düz okutma alanı kullanır; ortak `ScanInput` Adım 2.3 PR'ıyla bağlanır |
 
-## Faz 3 — Satış, sevkiyat ve izlenebilirlik
+## Faz 3 — Satış siparişi, sevkiyat ve izlenebilirlik
+
+Plan dosyası: `docs/plan/FAZ-3-satis-sevkiyat.md`. Kararlar D-9 (fiyat bu sistemde, fatura muhasebede),
+D-10 (her sevkiyat tek siparişe bağlı), D-11 (müşteri bazında asgari kalan raf ömrü) `docs/DECISIONS.md`'de.
+
+### Adım 3.1 doğrulaması (satış siparişi ve rezervasyon)
+
+- Backend: `pytest` 713 test geçti (sales: 45, inventory rezervasyon: 9); `ruff check`, `ruff format
+  --check`, `mypy` temiz; OpenAPI şeması uyarısız; `makemigrations --check` temiz. Stoka dokunan satış
+  testleri `invariants` fixture'ı ile `assert_stock_invariants()` çağırır.
+- Rezervasyon (`apps/inventory/tests/test_reservations.py`): kullanılabilir = bakiye − aktif rezervasyon;
+  aynı stok iki kez rezerve edilemez; karantina, SKT'si geçmiş lot ve karantina lokasyonu rezerve edilmez;
+  rezerve stok üretime çıkış, transfer, fire ve sevkiyatla eritilemez, sayım düzeltmesi engellenmez;
+  bırakma; tam ve kısmi kullanma (bölme); toplama önerileri rezerve stoğu atlar.
+- Satış servisleri (`apps/sales/tests/test_services.py`): adet / koli / palet çevrimi; yalnızca mamul;
+  taslakta satır eşitleme ve onaydan sonra kilit; para birimi bazında toplam (D-9); onayda FEFO
+  rezervasyonu ve sevkiyata görev; rezerve stoğun başka siparişe ayrılmaması; eksikte planlamaya görev ve
+  tamamlanınca görevin kapanması; D-11 raf ömrü (istenen teslim tarihine göre); elle lot seçimi ve bırakma;
+  iptal ve kapanışta rezervasyonların bırakılması; bloke edilen lotun rezervasyonlarının bırakılıp eksiğin
+  yeniden açılması; rezerve lotların SKT uyarısı; durum makinesinin izinli ve yasak geçişleri.
+- API (`test_api.py`): oluştur, onayla, listele (durum, müşteri, eksik filtresi), aday lotlar
+  (`meets_shelf_life`), elle rezervasyon, bırakma, eksikleri rezerve etme, iptal; planlama ve depo yalnızca
+  okur (yazmada 403), ilgisiz roller 403, giriş yapmamış 401/403; stok `available` ucunda rezerve miktar.
+- Üretim ve dolum toplama testleri değişmeden geçti (`available_lots` artık rezerve stoğu düşer).
+- Demo verisi: `seed_sales_demo` (seed_demo sonunda) iki müşteri (zincir market 180 gün), mamul açılış
+  stoku ve iki sipariş (biri onaylı ve FEFO rezervasyonlu, 120 günlük lot raf ömrü şartı yüzünden atlanır;
+  biri taslak) yazar (`apps/sales/tests/test_seed_demo.py`).
+- Frontend: `npm test` 121 test (sevkiyat: 8), `lint`, `format:check`, `typecheck`, `build` temiz. Ekranlar:
+  Sevkiyat menüsünde satış siparişleri listesi (durum, eksik filtresi), sipariş oluşturma / düzenleme,
+  sipariş detayı (satır başına rezerve, sevk, eksik; toplam; rezervasyonlar; lot seçme ve bırakma;
+  "Eksikleri rezerve et"; kayıt paneli), müşteriler ve müşteri kartı (asgari raf ömrü, sipariş geçmişi).
+  Ana verilerdeki müşteri formunda asgari kalan raf ömrü alanı.
+
+### Faz 3 kabul kriterleri (Adım 3.1'e düşenler)
+
+| Kriter | Durum | Kanıt |
+|---|---|---|
+| Rezerve stok başka siparişe ayrılamıyor; `available` hesabı doğru | ✓ | `test_reserved_stock_is_not_given_to_another_order`, `test_reserved_stock_cannot_be_reserved_twice`, API `test_stock_balances_show_reserved_quantity` |
+| Raf ömrü yetersiz lot (müşteri şartı) rezerve edilmiyor | ✓ (rezervasyon) | `test_shelf_life_requirement_skips_short_lots`; toplamada engel Adım 3.2 |
+| Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | sales testleri `invariants` fixture'ı, rezervasyon testleri `assert_stock_invariants()` |
 
 ### Adım 3.3 ve 3.4 doğrulaması (iade, izlenebilirlik, geri çağırma)
 
-- Backend: `pytest` 696 test geçti (returns + traceability: 37); `ruff check`, `ruff format --check`,
+- Backend: `pytest` 751 test geçti (returns + traceability: 38; satış siparişi PR #11 ile birlikte); `ruff check`, `ruff format --check`,
   `mypy` temiz; `makemigrations --check` temiz. Stoka dokunan iade testleri `assert_stock_invariants()` ile
   biter.
 - İade servis testleri (`apps/returns/tests/test_services.py`): durum makinesinin izinli ve yasak
@@ -275,7 +314,7 @@ Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrınt
   çağırma özeti, Excel ve PDF; yetkisiz rol 403.
 - Performans: 5 seviyeli, 10.050 hareketli veride geri çağırma simülasyonu yerel çalıştırmada 0,3–0,42 sn
   (hedef < 1 sn).
-- Frontend: `npm test` 125 test (iade 7, izlenebilirlik 5), `lint`, `format:check`, `typecheck`, `build`
+- Frontend: `npm test` 133 test (iade 7, izlenebilirlik 5), `lint`, `format:check`, `typecheck`, `build`
   temiz. Ekranlar: İadeler (liste, oluştur, kabul, imha, kayıt paneli), İzlenebilirlik (geri / ileri izleme
   ağacı, geri çağırma simülasyonu, Excel/PDF). Numune ekranı iade numunesinde "Yeniden işleme" kararını
   gösterir.
@@ -287,4 +326,5 @@ Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrınt
 | İade karantinaya giriyor ve QC kararıyla yönleniyor | ✓ | `apps/returns/tests/test_services.py` (serbest / red / yeniden işleme) |
 | Hammadde lotunun ileri izlemesi doğru müşteri ve miktarları veriyor; geri izleme tedarikçiye iniyor | Kısmen | Miktarlar ve tedarikçi `apps/traceability/tests/test_selectors.py`; müşteri ayağı Adım 3.2 ile |
 | Geri çağırma simülasyonu 10.000 hareketlik veride 1 sn altında | ✓ | `test_recall_performance_on_deep_wide_data` (10.050 hareket, ~0,4 sn) |
+| İade blokajı rezervasyonu bırakır, eksik yeniden açılır | ✓ | `test_return_hold_releases_reservations_and_reopens_shortage` |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | iade testleri `invariants` fixture'ı ile biter |

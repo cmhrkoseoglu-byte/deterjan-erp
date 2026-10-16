@@ -8,7 +8,7 @@ from django.core.exceptions import PermissionDenied
 
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import User
-from apps.inventory.models import Lot, StockMovement
+from apps.inventory.models import Lot, StockMovement, StockReservation
 from apps.inventory.services import current_balance
 from apps.inventory.tests.factories import stocked_lot, storage_location
 from apps.masterdata.tests.factories import MaterialFactory, unit
@@ -18,6 +18,8 @@ from apps.quality.testing import pass_sample
 from apps.returns import services
 from apps.returns.models import CustomerReturn, CustomerReturnLine
 from apps.returns.tests.factories import Setup, draft_return, shipped_lot
+from apps.sales import services as sales
+from apps.sales.tests.factories import draft_order
 from apps.workflow.models import Task
 
 D = Decimal
@@ -282,3 +284,22 @@ def test_return_sample_falls_back_to_final_spec(
     sample = line_of(document).sample
     assert sample is not None
     assert sample.specification_id == spec.pk
+
+
+def test_return_hold_releases_reservations_and_reopens_shortage(
+    shipper: User, planner: User, setup: Setup, commit: Commit
+) -> None:
+    with commit():
+        order = draft_order(shipper, [(setup.product, "50", "ADET")], customer=setup.customer)
+        sales.confirm_order(shipper, order)
+    reservation = StockReservation.objects.get(lot=setup.lot)
+    assert reservation.status == StockReservation.Status.ACTIVE
+    assert not Task.objects.filter(rule_code="sales_shortage").exists()
+
+    document = received(shipper, setup, commit)
+
+    reservation.refresh_from_db()
+    assert reservation.status == StockReservation.Status.RELEASED
+    assert line_of(document).lot.status == Lot.Status.BLOCKED
+    task = Task.objects.get(rule_code="sales_shortage")
+    assert task.status == Task.Status.OPEN

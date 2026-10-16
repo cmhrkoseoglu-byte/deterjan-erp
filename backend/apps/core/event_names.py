@@ -62,6 +62,15 @@ FILLING_RUN_STARTED = "filling_run.started"
 FILLING_RUN_COMPLETED = "filling_run.completed"
 FILLING_BULK_VARIANCE = "filling.bulk_variance"
 
+# sales (Faz 3, Adım 3.1). Sipariş olayları durum makinesinden (`sales_order.<durum>`); payload'da
+# `customer_code`, `customer_name`. `sales_order.shortage` payload'ında `lines` (eksik ürünler) ve
+# `reason`; `lot.expiring` günlük kontrolde SKT'si yaklaşan **rezerve** lotlar (`days`, `lots`).
+SALES_ORDER_CONFIRMED = "sales_order.confirmed"
+SALES_ORDER_CANCELLED = "sales_order.cancelled"
+SALES_ORDER_CLOSED = "sales_order.closed"
+SALES_ORDER_SHORTAGE = "sales_order.shortage"
+SALES_ORDER_FULLY_RESERVED = "sales_order.fully_reserved"
+RESERVED_LOTS_EXPIRING = "lot.expiring"
 # returns (Faz 3, Adım 3.3). Belge olayları durum makinesinden (`customer_return.<durum>`);
 # payload'da `customer_code`, `customer_name`, `lots` (lot sözlükleri, `disposition` ile).
 # `customer_return.scrap_required`: imha kararı verilen satır var (depoya görev).

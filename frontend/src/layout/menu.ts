@@ -88,7 +88,8 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.sales,
     path: "/sevkiyat",
     icon: IconTruckDelivery,
-    roles: ["sevkiyat", "yonetim"],
+    // Planlama ve depo siparişleri ve rezervasyonları görür (yazma sevkiyat ve yönetimde).
+    roles: ["sevkiyat", "yonetim", "planlama", "depo"],
     phase: 3,
   },
   {

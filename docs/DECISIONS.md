@@ -497,6 +497,75 @@ kapanır), `start_filling` (dolum, "Dolumu başlat: {number}", parti başlayınc
 uyarı), `finished_lot_released` (sevkiyat, planlama: "Sevke hazır: {lot}"), `finished_lot_rejected`
 (planlama, dolum), `filling_order_cancelled` (açık görevleri iptal eder, planlamaya bildirim).
 
+## 2026-10-16 — Satış siparişi ve rezervasyon (Faz 3, Adım 3.1)
+
+Plan CUMHUR tarafından onaylandı (karar kartı, 2026-10-16). Kararlar:
+
+- **Karar D-9 "Fiyat burada"** (CUMHUR kararı): sipariş satırına isteğe bağlı birim fiyat ve para birimi
+  (TRY / EUR / USD) girilir; sipariş toplamı para birimi bazında 2 ondalıkla gösterilir. Fatura muhasebe
+  programında kesilir. Fiyat girilen satırda para birimi zorunludur.
+- **Karar D-11 "Müşteri bazında"** (CUMHUR kararı): `Customer.min_remaining_shelf_life_days` (boş = şart
+  yok). Lotun SKT'si, ölçüm günü + bu gün sayısından önceyse lot o müşteriye rezerve edilmez. Ölçüm günü
+  istenen teslim tarihi (bugünden sonraysa), yoksa bugündür. SKT'siz lot şartı karşılar. Toplamadaki engel
+  (Adım 3.2) aynı kontrolü kullanır: `sales.services.shelf_life_error(lot, order)`.
+- **Rezervasyon inventory modülündedir** (`inventory.StockReservation`), çünkü kullanılabilir stok hesabı
+  (`inventory.selectors.available_lots`) onu düşmek zorundadır ve inventory satışa bağımlı olamaz. Kaynak
+  belge genel bağla tutulur (stok hareketindeki gibi); satışta kaynak sipariş satırıdır
+  (`SalesOrderLine.reservations`).
+- **Onayda otomatik FEFO rezervasyonu** (öneri değil): sipariş onaylanınca her satırın eksik miktarı
+  serbest, SKT'si geçmemiş, karantina dışı stoktan SKT'si en yakın lottan başlayarak rezerve edilir.
+  Kullanıcı rezervasyon ekranında bir lotu bırakıp elle başka lot seçebilir (satırın eksiği kadar).
+- **Eksik**: rezerve edilemeyen miktar için `sales_order.shortage` → planlamaya görev "Eksik ürün için
+  üretim/dolum planla". "Eksikleri rezerve et" yeni serbest stoğu FEFO ile ekler; eksik kalmazsa
+  `sales_order.fully_reserved` görevi kapatır. Elle bırakma eksik olayı yayınlamaz.
+- **Rezerve stok eritilemez**: üretime çıkış, transfer çıkışı, fire ve sevkiyat bakiyeyi aktif
+  rezervasyonların altına indiremez (`reserved_stock`). Sayım düzeltmesi ve ters kayıt engellenmez (sayım
+  gerçeği yansıtır). Stok listelerinde `reserved_quantity` ve `available_quantity` görünür.
+- **Rezerve lot serbest durumdan çıkarsa** (bloke, red; iade ile karantinaya dönerse `lot.quarantine`):
+  siparişlerdeki aktif rezervasyonları bırakılır ve etkilenen siparişler için `sales_order.shortage`
+  nedeniyle yeniden yayınlanır (planlamaya görev). Lot yeniden serbest kalınca rezervasyon kendiliğinden
+  geri gelmez; "Eksikleri rezerve et" ile yapılır.
+- **Durumlar**: Taslak → Onaylandı → Kısmen sevk edildi → Sevk edildi → Kapandı, + İptal. Satırlar yalnızca
+  taslakta değişir (taslak satır silinebilir, denetimli). İptal yalnızca taslak ve onaylı siparişte
+  (sevk başlamamış); kapanış yalnızca kısmen sevk edilmiş ya da sevk edilmiş siparişte, kalan aktif
+  rezervasyonları bırakır. Onaylı ve hiç sevk edilmemiş sipariş kapatılmaz, iptal edilir.
+- **Yetki**: sipariş yazma, onay, iptal, kapanış ve rezervasyon `sevkiyat` ve `yonetim`; okuma ayrıca
+  `planlama` ve `depo`. Menüde "Sevkiyat" bu dört role görünür.
+
+### Rezervasyon sözleşmesi (sevkiyat thread'i, Adım 3.2 için)
+
+| İşlem | Servis | Not |
+|---|---|---|
+| Rezerve et | `inventory.services.reserve(actor, lot=, location=, quantity=, source=line, document_number=order.number)` | Satışta `sales.services.reserve_lot` (satır eksiği ve D-11 kontrolüyle) |
+| Bırak | `inventory.services.release_reservation(actor, reservation, note)` | Satışta `sales.services.release_line_reservation` |
+| Kullan (sevk) | `inventory.services.consume_reservation(actor, reservation, quantity=None, note)` | Miktar rezervasyondan azsa bölünür: kullanılan kısım yeni `CONSUMED` kayıt, kalan aktif kalır |
+
+- Sevkiyat çıkışı sırası: önce `consume_reservation`, sonra `post_movement(..., "SHIPMENT", ...)`. Aksi
+  halde çıkış rezerve stoğa çarpar (`reserved_stock`).
+- Rezervasyondan farklı lot okutulursa: eski rezervasyon (gerekirse kısmen) bırakılır, okutulan lot için
+  `reserve` + `consume_reservation` yapılır. Böylece her sevk edilen miktar bir `CONSUMED` rezervasyondur.
+- Satırın sevk edilen miktarı şimdilik `CONSUMED` rezervasyonların toplamıdır
+  (`sales.selectors.lines_with_quantities().shipped_quantity`, `sales.services.shipped_quantity`); Adım
+  3.2 sevkiyat satırlarından hesaplamaya geçebilir, sözleşme aynı kalırsa iki toplam eşittir.
+- Rezervasyon bir lokasyondaki stoğa bağlıdır. Rezerve stok sevk lokasyonuna taşınacaksa önce bırakılır,
+  transfer edilir, hedef lokasyonda yeniden rezerve edilir.
+- Sipariş durumunu `PARTIALLY_SHIPPED` / `SHIPPED` yapmak sevkiyatın işidir (`transition_status`,
+  `sales_order_states`); kapanış `sales.services.close_order`.
+
+### Satış olay sözleşmesi (iş akışı tablosuna ek)
+
+| Olay | Payload |
+|---|---|
+| `sales_order.confirmed` | `transition_status` payload'ı + `customer_code`, `customer_name` |
+| `sales_order.cancelled`, `.closed` | `transition_status` payload'ı |
+| `sales_order.shortage` | `model: sales.salesorder, id, number, customer_code, customer_name, reason, lines: [{line_no, product_code, product_name, quantity, unit}]` |
+| `sales_order.fully_reserved` | `model, id, number, customer_code, customer_name` |
+| `lot.expiring` | günlük kontrolde: `days` (30), `lots: [{model: inventory.lot, id, lot_no, material_code, material_name, expiry_date, unit, reserved_quantity, orders: [SS-...]}]`; yalnızca aktif rezervasyonu olan lotlar |
+
+İş akışı kuralları: `plan_shipment` (sevkiyat, "Sevkiyat planla: {number}"; sipariş kapanınca kapanır,
+Adım 3.2 `shipment.planned` kapanışını ekler), `sales_shortage` (planlama, eksik ürün listesiyle; tamamen
+rezerve edilince ya da sipariş kapanınca kapanır, açık görev varken yenisi açılmaz),
+`sales_order_cancelled` (açık görevleri iptal eder), `reserved_lots_expiring` (sevkiyat, planlama; uyarı).
 ## 2026-10-16 — İade (Faz 3, Adım 3.3)
 
 CUMHUR'un 2026-10-16'da onayladığı plan ve kararı:
@@ -527,8 +596,10 @@ Ayrıntılar:
 - **Yetki**: iade açma / düzenleme / iptal `sevkiyat`; kabul `sevkiyat` ve `depo`; imha `depo` ve
   `sevkiyat`; okuma her giriş yapmış kullanıcıya açık. Menüde "İadeler" spesifikasyondaki sevkiyat ve
   laboratuvarın yanında `depo` (kabul, imha) ve `yonetim`e de görünür.
-- **Rezervasyonlar**: iade kabulü rezervasyonu olan bir lotu bloke edebilir. Lot `RELEASED` dışına
-  çıkınca rezervasyonun ne olacağını Adım 3.1 (satış) belirler; hangi PR ikinci gelirse bağlar.
+- **Rezervasyonlar**: iade kabulünde serbest lot bloke edilir ve `lot.blocked` yayınlanır; satış modülü
+  (Adım 3.1) bu olayla lotun siparişlerdeki aktif rezervasyonlarını bırakır ve eksiği yeniden açar
+  (`test_return_hold_releases_reservations_and_reopens_shortage`). Lot iade yüzünden karantinaya
+  alınmaz, bu yüzden satıştaki `lot.quarantine` dinleyicisi iade için tetiklenmez.
 - **Sevkiyata bağ** (Adım 3.2'ye sözleşme): `CustomerReturn` şimdilik sevkiyatsız. Sevkiyat modülü
   `CustomerReturn.shipment` (opsiyonel FK) alanını ve "iade miktarı o sevkiyatta o lottan sevk edilenden
   fazla olamaz" kuralını ekler.

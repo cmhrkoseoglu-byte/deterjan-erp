@@ -19,6 +19,7 @@ export const RECORD_ROUTES: Record<string, (id: number) => string> = {
   "quality.sample": (id) => `/kalite/numuneler/${id}`,
   "returns.customerreturn": (id) => `/iadeler/${id}`,
   "quality.specification": (id) => `/kalite/spesifikasyonlar/${id}`,
+  "sales.salesorder": (id) => `/sevkiyat/siparisler/${id}`,
 };
 
 /** Kaydın detay sayfası; sayfası henüz yoksa null. */
