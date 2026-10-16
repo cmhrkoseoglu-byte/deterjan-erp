@@ -96,10 +96,10 @@ class Migration(migrations.Migration):
             name="exchange_rate",
             field=models.DecimalField(
                 blank=True,
-                decimal_places=4,
+                decimal_places=6,
                 max_digits=18,
                 null=True,
-                verbose_name="kur",
+                verbose_name="kur (TL)",
             ),
         ),
         migrations.AddField(

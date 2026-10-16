@@ -401,7 +401,7 @@ class ReceiptLinePriceSerializer(serializers.Serializer):
     )
     currency = serializers.ChoiceField(choices=Currency.choices, required=False)
     exchange_rate = serializers.DecimalField(
-        max_digits=18, decimal_places=4, allow_null=True, required=False
+        max_digits=18, decimal_places=6, allow_null=True, required=False
     )
 
 

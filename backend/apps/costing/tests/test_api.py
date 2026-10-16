@@ -203,7 +203,7 @@ def test_receipt_costs_endpoint_for_price_roles(client_for, staff, role):
     assert response.status_code == 200, response.json()
     body = response.json()
     assert body["lines"][0]["currency"] == "EUR"
-    assert body["lines"][0]["exchange_rate"] == "35.0000"
+    assert body["lines"][0]["exchange_rate"] == "35.000000"
     assert body["extra_costs"][0]["amount"] == "50.00"
     response = client.post(
         f"/api/v1/inventory/goods-receipts/{receipt.pk}/costs/",

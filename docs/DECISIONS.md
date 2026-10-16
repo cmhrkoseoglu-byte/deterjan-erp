@@ -825,6 +825,10 @@ Plan: `/mnt/project-files/faz4-costing/plan.md` (karar kartıyla onaya sunuldu).
   Kayıttan önce doldurulursa maliyet `goods_receipt.posted` ile hesaplanır; kayıttan sonra fiyat değişirse
   `set_receipt_costs` kullanılır (olay ve yeniden hesap onun içindedir). `Lot.unit_cost` ve
   `Lot.cost_is_estimated` yalnızca `inventory.services.set_lot_cost` ile yazılır (costing çağırır).
+- **Alanlar iki PR'da aynı tanımlı**: `currency` (TRY / EUR / USD, varsayılan TRY) ve `exchange_rate`
+  (`DecimalField(18, 6)`, "kur (TL)", siparişteki kurla aynı hassasiyet). TL satırda kur kayıtta boşaltılır
+  (siparişten 1 gelse de); maliyet hesabında boş kur 1 sayılır. İkinci birleşen PR bu iki alanı kendi
+  migration'ından çıkarır.
 
 ### Maliyet okuma API'si (raporlama thread'i, Adım 4.3 için)
 

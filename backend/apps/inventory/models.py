@@ -378,7 +378,7 @@ class GoodsReceiptLine(BaseModel):
     )
     # 1 birim yabancı para = kaç TL; TL satırda boştur.
     exchange_rate = models.DecimalField(
-        "kur", null=True, blank=True, max_digits=18, decimal_places=4
+        "kur (TL)", null=True, blank=True, max_digits=18, decimal_places=6
     )
     # Kaydedilince dolar.
     base_quantity = models.DecimalField(
