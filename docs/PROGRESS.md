@@ -292,6 +292,7 @@ Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrınt
 - Satışla birleştirme (PR #11 sonrası): göçler `masterdata/0004_labels_printers` ve
   `inventory/0004_pallet_labels` olarak yeniden numaralandı (satışın 0003'lerinden sonra). `pytest` 749,
   `npm test` 136 test geçti; `makemigrations --check` temiz.
+- İade ve izlenebilirlikle birleştirme (PR #12 sonrası): çakışmasız; `pytest` 787, `npm test` 148 test geçti.
 
 
 ## Faz 3 — Satış siparişi, sevkiyat ve izlenebilirlik
