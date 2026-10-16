@@ -183,6 +183,8 @@ SPECTACULAR_SETTINGS = {
         "PurchaseRequestStatusEnum": "apps.purchasing.models.PurchaseRequest.Status",
         "PurchaseRequestSourceEnum": "apps.purchasing.models.PurchaseRequest.Source",
         "LotSourceEnum": "apps.inventory.models.Lot.Source",
+        "HazardStatementKindEnum": "apps.hse.models.HazardStatement.Kind",
+        "HazardClassEnum": "apps.hse.models.HazardClass",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],

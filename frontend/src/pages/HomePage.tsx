@@ -22,6 +22,7 @@ import { useAuth } from "../auth/AuthContext";
 import { displayName } from "../auth/roles";
 import { formatDate, formatDateTime, formatElapsed } from "../i18n/format";
 import { tr } from "../i18n/tr";
+import { BreakdownButton } from "../modules/maintenance/BreakdownButton";
 import { workflowKeys } from "../workflow/queryKeys";
 import { usePollInterval } from "../workflow/realtimeContext";
 import { recordPath } from "../workflow/recordLinks";
@@ -213,10 +214,14 @@ export function HomePage() {
 
   return (
     <Stack gap="lg">
-      <div>
-        <Title order={2}>{user ? tr.home.greeting(displayName(user)) : tr.home.tasksTitle}</Title>
-        <Text c="dimmed">{formatDate(new Date())}</Text>
-      </div>
+      <Group justify="space-between" align="flex-start">
+        <div>
+          <Title order={2}>{user ? tr.home.greeting(displayName(user)) : tr.home.tasksTitle}</Title>
+          <Text c="dimmed">{formatDate(new Date())}</Text>
+        </div>
+        {/* Arıza bildirimi her rolde açıktır (backend: tüm roller). */}
+        <BreakdownButton />
+      </Group>
       <Group justify="space-between">
         <Title order={3}>
           {tr.home.tasksTitle}

@@ -17,6 +17,8 @@ import { FillingOrderPage } from "./modules/filling/OrderPage";
 import { FillingPrepPage } from "./modules/filling/PrepPage";
 import { RunPage } from "./modules/filling/RunPage";
 import { SpecPage } from "./modules/filling/SpecPage";
+import { MaintenancePage } from "./modules/maintenance/MaintenancePage";
+import { WorkOrderPage } from "./modules/maintenance/WorkOrderPage";
 import { MasterDataPage } from "./modules/masterdata/MasterDataPage";
 import { QualityPage } from "./modules/quality/QualityPage";
 import { SamplePage } from "./modules/quality/SamplePage";
@@ -68,6 +70,10 @@ function returnsPage(page: ReactNode) {
 
 function costingPage(page: ReactNode) {
   return <RequireRole roles={menuRoles("costing")}>{page}</RequireRole>;
+}
+
+function maintenancePage(page: ReactNode) {
+  return <RequireRole roles={menuRoles("maintenance")}>{page}</RequireRole>;
 }
 
 function qualityPage(page: ReactNode) {
@@ -147,6 +153,10 @@ const pageRoutes: RouteObject[] = [
   // Maliyet: yalnızca yönetim (ve admin); tutarlar backend'de de yalnızca bu rollere döner.
   { path: "maliyet/lotlar/:lotId", element: costingPage(<LotCostPage />) },
   { path: "maliyet/:tab?", element: costingPage(<CostingPage />) },
+  // Bakım: üretim, dolum, laboratuvar ve yönetim plan ve iş emri açar; iş emrini sorumlu birim
+  // yürütür; planlama duruşları görür ve girer. Arıza bildirimi her rolde (ana sayfa).
+  { path: "bakim/is-emirleri/:workOrderId", element: maintenancePage(<WorkOrderPage />) },
+  { path: "bakim/:tab?", element: maintenancePage(<MaintenancePage />) },
 ];
 const IMPLEMENTED = new Set([
   "masterdata",
@@ -160,6 +170,7 @@ const IMPLEMENTED = new Set([
   "traceability",
   "costing",
   "purchasing",
+  "maintenance",
 ]);
 
 // Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar rol korumalı bir yer tutucuya gider.

@@ -634,6 +634,32 @@ RULES: tuple[Rule, ...] = (
         title="Süresi geçmiş bakım: {count} plan",
         body=_overdue_plans_body,
     ),
+    # Faz 4 (İSG): olay kaydı yönetime inceleme görevi açar; kapanınca ya da iptalde kapanır.
+    TaskRule(
+        code="incident_review",
+        event=ev.INCIDENT_CREATED,
+        role=YONETIM,
+        title="Olay kaydı: {number} — {incident_type_display}",
+        description="{place}, {occurred_at}.",
+        close_on=(CloseOn(ev.INCIDENT_CLOSED), CloseOn(ev.INCIDENT_CANCELLED)),
+    ),
+    NotifyRule(
+        code="incident_injury",
+        event=ev.INCIDENT_CREATED,
+        roles=(YONETIM,),
+        level="WARNING",
+        title="Yaralanmalı olay: {number}",
+        body="{incident_type_display}, {place}, {occurred_at}.",
+        when=lambda payload: payload.get("injury") is True,
+    ),
+    NotifyRule(
+        code="storage_limit_exceeded",
+        event=ev.STORAGE_LIMIT_EXCEEDED,
+        roles=(DEPO, YONETIM),
+        level="WARNING",
+        title="Depolama limiti aşıldı: {location_code} — {hazard_class_display}",
+        body="{quantity_kg} kg / limit {limit_kg} kg",
+    ),
 )
 
 

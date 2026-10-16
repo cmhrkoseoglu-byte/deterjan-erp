@@ -18,6 +18,7 @@ describe("visibleMenu", () => {
       "sales",
       "returns",
       "purchasing",
+      "hse",
     ]);
   });
 
@@ -48,6 +49,7 @@ describe("visibleMenu", () => {
       "sales",
       "returns",
       "purchasing",
+      "hse",
     ]);
   });
 
@@ -61,6 +63,16 @@ describe("visibleMenu", () => {
     expect(keys(userWith(["yonetim"]))).toContain("costing");
     for (const role of ["depo", "planlama", "satin_alma", "uretim", "dolum"] as Role[]) {
       expect(keys(userWith([role]))).not.toContain("costing");
+    }
+  });
+
+  it("bakımı üretim, dolum, laboratuvar, planlama ve yönetim görür; İSG herkese açıktır", () => {
+    for (const role of ["uretim", "dolum", "laboratuvar", "planlama", "yonetim"] as Role[]) {
+      expect(keys(userWith([role]))).toContain("maintenance");
+    }
+    for (const role of ["depo", "sevkiyat", "satin_alma"] as Role[]) {
+      expect(keys(userWith([role]))).not.toContain("maintenance");
+      expect(keys(userWith([role]))).toContain("hse");
     }
   });
 
