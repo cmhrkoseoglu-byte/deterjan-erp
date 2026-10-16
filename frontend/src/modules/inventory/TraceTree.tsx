@@ -32,7 +32,7 @@ function TraceBranch({ node, depth }: { node: TraceNode; depth: number }) {
         </Text>
         {node.quantity !== null && (
           <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-            {`${formatNumber(node.quantity)} ${node.unit}`}
+            {`${formatNumber(node.quantity)} ${node.quantity_unit ?? node.unit}`}
           </Text>
         )}
         <LotStatusBadge status={node.status} />

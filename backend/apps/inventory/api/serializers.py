@@ -181,6 +181,7 @@ class TraceNodeSerializer(serializers.Serializer):
     unit = serializers.CharField()
     expiry_date = serializers.DateField(allow_null=True)
     quantity = serializers.DecimalField(max_digits=18, decimal_places=4, allow_null=True)
+    quantity_unit = serializers.CharField(allow_null=True)
     children = serializers.ListField(child=serializers.DictField())
 
     def to_representation(self, instance: dict[str, Any]) -> dict[str, Any]:

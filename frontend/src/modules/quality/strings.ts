@@ -87,6 +87,8 @@ export const qt = {
   history: (n: number) => `${n} eski sonuç`,
   saved: (test: string) => `${test} sonucu kaydedildi.`,
   missing: (tests: string) => `Eksik zorunlu test: ${tests}`,
+  decisionBlockedMissing: (tests: string) =>
+    `Zorunlu testlerin sonucu girilmeden karar verilemez. Eksik: ${tests}`,
   outOfSpecList: (tests: string) => `Spesifikasyon dışı: ${tests}`,
   decide: "Karar ver",
   decisionTitle: "Kalite kararı",

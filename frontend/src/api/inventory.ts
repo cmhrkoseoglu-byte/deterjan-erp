@@ -63,7 +63,9 @@ export interface TraceNode {
   material_type: MaterialType;
   unit: string;
   expiry_date: string | null;
+  /** Girdi lottan kullanılan miktar; birimi `quantity_unit` (girdi lotun temel birimi). */
   quantity: string | null;
+  quantity_unit: string | null;
   children: TraceNode[];
 }
 

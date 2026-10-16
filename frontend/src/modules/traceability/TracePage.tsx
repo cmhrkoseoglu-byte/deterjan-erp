@@ -169,7 +169,7 @@ function NodeRow({
         <Text size="sm">{`${node.material_code} - ${node.material_name}`}</Text>
         {node.quantity !== null && (
           <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-            <Qty value={node.quantity} unit={node.unit} />
+            <Qty value={node.quantity} unit={node.quantity_unit ?? node.unit} />
           </Text>
         )}
         <LotStatusBadge status={node.status} />

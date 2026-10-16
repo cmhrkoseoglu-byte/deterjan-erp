@@ -264,7 +264,10 @@ export interface PickSuggestionRow {
   expiry_date: string | null;
   location: number;
   location_code: string;
+  /** Toplanabilir miktar: satırın rezervasyonu + aynı yerdeki rezervesiz stok. */
   quantity: string;
+  /** Bu satıra rezerve kısım (rezervasyon yoksa 0). */
+  reserved_quantity: string;
   reserved: boolean;
   meets_shelf_life: boolean;
 }

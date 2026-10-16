@@ -312,6 +312,7 @@ function OrderForm({ doc }: { doc: PurchaseOrderDetail | null }) {
 
   const title = doc ? pt.orderTitle(doc.number) : pt.orderNew;
   const pending = doc?.status === "PENDING_APPROVAL";
+  const notYetOrdered = doc?.status === "DRAFT" || pending;
   const canApprove = !!doc && doc.can_approve && (doc.status === "DRAFT" || pending);
   const needsManagement = !!doc && writer && doc.status === "DRAFT" && !doc.can_approve;
   const receivable =
@@ -679,8 +680,15 @@ function OrderForm({ doc }: { doc: PurchaseOrderDetail | null }) {
                     <Table.Td ta="right">
                       <Qty value={line.received_quantity} unit={line.base_unit_code} />
                     </Table.Td>
-                    <Table.Td ta="right">
-                      <Qty value={line.pending_quantity} unit={line.base_unit_code} />
+                    <Table.Td ta="right" data-testid={`pending-${line.id}`}>
+                      {/* Onaydan önce teslim beklenmez; "0" yerine boş gösterilir. */}
+                      {notYetOrdered ? (
+                        <Text span size="sm" c="dimmed">
+                          —
+                        </Text>
+                      ) : (
+                        <Qty value={line.pending_quantity} unit={line.base_unit_code} />
+                      )}
                     </Table.Td>
                     <Table.Td>{(line.request_numbers ?? []).join(", ")}</Table.Td>
                   </Table.Tr>

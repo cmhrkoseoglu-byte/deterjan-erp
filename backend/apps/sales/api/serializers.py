@@ -462,6 +462,7 @@ class PickSuggestionRowSerializer(serializers.Serializer):
     location = serializers.IntegerField()
     location_code = serializers.CharField()
     quantity = _quantity()
+    reserved_quantity = _quantity()
     reserved = serializers.BooleanField()
     meets_shelf_life = serializers.BooleanField()
 

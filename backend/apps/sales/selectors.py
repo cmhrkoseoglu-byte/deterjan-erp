@@ -225,7 +225,9 @@ def shipment_picks(shipment: Shipment) -> QuerySet[ShipmentPick]:
 
 def pick_suggestions(shipment: Shipment) -> list[dict[str, Any]]:
     """Toplama tableti için satır başına öneri: önce satırın rezerve lotları (SKT sırasıyla),
-    sonra rezervesiz stok (FEFO). Karantina ve sevk alanlarındaki stok önerilmez. SKT'si geçmiş
+    sonra rezervesiz stok (FEFO). Her lot ve lokasyon bir kez listelenir: `quantity` toplanabilir
+    miktar (satırın rezervasyonu + rezervesiz stok), `reserved_quantity` bu satıra rezerve kısım.
+    Karantina ve sevk alanlarındaki stok önerilmez. SKT'si geçmiş
     ya da müşterinin asgari raf ömrünü karşılamayan lot `meets_shelf_life=false` ile işaretlenir
     (okutulamaz)."""
     from apps.sales import services  # döngüsel import olmasın (services selectors'ı kullanır)
@@ -246,33 +248,45 @@ def pick_suggestions(shipment: Shipment) -> list[dict[str, Any]]:
             .select_related("lot", "location")
             .order_by("lot__expiry_date", "lot__lot_no")
         )
-        rows: list[dict[str, Any]] = [
-            {
-                "lot": r.lot_id,
-                "lot_no": r.lot.lot_no,
-                "expiry_date": r.lot.expiry_date,
-                "location": r.location_id,
-                "location_code": r.location.code,
-                "quantity": r.quantity,
-                "reserved": True,
-            }
-            for r in reserved
-        ]
+        # Lot ve lokasyon başına tek satır: satırın rezervasyonları ile aynı yerdeki rezervesiz
+        # stok birleşir (önce aynı lot iki kez, "rezerve" ve "serbest" olarak listeleniyordu).
+        by_key: dict[tuple[int, int], dict[str, Any]] = {}
+        for r in reserved:
+            row = by_key.setdefault(
+                (r.lot_id, r.location_id),
+                {
+                    "lot": r.lot_id,
+                    "lot_no": r.lot.lot_no,
+                    "expiry_date": r.lot.expiry_date,
+                    "location": r.location_id,
+                    "location_code": r.location.code,
+                    "quantity": Decimal(0),
+                    "reserved_quantity": Decimal(0),
+                    "reserved": True,
+                },
+            )
+            row["quantity"] += r.quantity
+            row["reserved_quantity"] += r.quantity
         free = inventory_selectors.available_lots(order_line.product).exclude(
             location__location_type__in=staging
         )
-        rows += [
-            {
+        for b in free:
+            available = b.available_quantity  # type: ignore[attr-defined]
+            key = (b.lot_id, b.location_id)
+            if key in by_key:
+                by_key[key]["quantity"] += available
+                continue
+            by_key[key] = {
                 "lot": b.lot_id,
                 "lot_no": b.lot.lot_no,
                 "expiry_date": b.lot.expiry_date,
                 "location": b.location_id,
                 "location_code": b.location.code,
-                "quantity": b.available_quantity,  # type: ignore[attr-defined]
+                "quantity": available,
+                "reserved_quantity": Decimal(0),
                 "reserved": False,
             }
-            for b in free
-        ]
+        rows = list(by_key.values())  # rezerve satırlar önce, sonra FEFO (ekleme sırası)
         for row in rows:
             expiry = row["expiry_date"]
             row["meets_shelf_life"] = expiry is None or (

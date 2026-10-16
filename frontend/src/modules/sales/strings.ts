@@ -160,7 +160,7 @@ export const st = {
   pickedOk: (lot: string) => `${lot} toplandı.`,
   fefo: "Öneri (rezerve lotlar önce, sonra FEFO)",
   noSuggestion: "Bu satır için uygun stok yok.",
-  reservedBadge: "Rezerve",
+  reservedBadge: (quantity: string) => `Rezerve ${quantity}`,
   done: "Tamam",
   otherLotTitle: "Rezervasyondan farklı lot",
   otherLotIntro: (lot: string) =>
