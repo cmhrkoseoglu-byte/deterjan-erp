@@ -50,7 +50,28 @@ export const tr = {
     maintenance: "Bakım",
     hse: "İSG ve çevre",
     reporting: "Panolar ve raporlar",
+    golive: "Canlıya geçiş",
+    help: "Yardım",
     adminPanel: "Yönetim paneli",
+  },
+  help: {
+    mine: "Rolünüzün kılavuzları",
+    others: "Diğer kılavuzlar",
+    yourRole: "Rolünüz için",
+  },
+  problemReport: {
+    button: "Sorun bildir",
+    title: "Sorun bildir",
+    intro:
+      "Ne yapmaya çalışırken ne oldu? Bildiriminiz sistem yöneticisine görev olarak gider; yanıtı Görevlerim ve bildirimlerden takip edebilirsiniz.",
+    description: "Açıklama",
+    placeholder: "Örnek: Dolum hattı 2'de koli etiketi yazdırılamıyor, hata mesajı çıkmadı.",
+    attach: "Ekran görüntüsünü ekle",
+    screenshot: "Ekran görüntüsü",
+    noScreenshot: "Ekran görüntüsü alınamadı; yalnızca açıklama gönderilecek.",
+    cancel: "Vazgeç",
+    send: "Gönder",
+    sent: (number: string) => `Bildiriminiz alındı (${number}). Sistem yöneticisi inceleyecek.`,
   },
   home: {
     greeting: (name: string) => `Merhaba, ${name}`,

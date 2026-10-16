@@ -1092,3 +1092,57 @@ API karşılıkları: `/api/v1/hse/summary/?date_from&date_to` (yönetim), `/sds
 
 İş akışı kuralları: `incident_review` (yönetime inceleme görevi; kapanınca ya da iptalde kapanır),
 `incident_injury` (yaralanmalı olayda yönetime uyarı), `storage_limit_exceeded` (depo ve yönetime uyarı).
+
+## 2026-10-16 — Geçiş ve eğitim (Faz 5, Adım 5.6)
+
+Plan thread'de CUMHUR'un onayıyla ("Onayla"). Kararlar:
+
+- **İçe aktarmalar**: ana veri içe aktarmasına depo, lokasyon, ekipman ve birim dönüşümü eklendi
+  (`masterdata.importers`, rol planlama). Dönüşümün anahtarı malzeme + birimdir (kodu yok); diğerleri
+  koda göre günceller ya da açar. Sıra: depo → lokasyon → ekipman (tankın lokasyonu önce açılmış olmalı).
+  **Reçete içe aktarma** (`recipes.importers`, rol planlama ve laboratuvar): her satır bir bileşen, aynı
+  reçete kodlu satırlar tek sürüm; reçete yoksa açılır, her reçeteye yeni **taslak** sürüm açılır (onaylı
+  sürüm üretmez; onayı laboratuvar verir). Taslak sürümü olan reçete dosyada varsa satır reddedilir
+  (tekrar yükleme çift sürüm açmasın diye). Proses adımları elle girilir. Doğrulama servis fonksiyonlarıyla
+  geri alınan bir işlemde yapılır; önizleme ile aktarma aynı kuralları uygular. **Açık sipariş aktarımı
+  yok**; canlıya geçişte elle girilir. Kategoriler az olduğu için elle girilir.
+- **Canlı başlangıç tarihi** (`inventory.InventorySettings.go_live_date`): yönetim ve admin girer
+  (`PUT /api/v1/golive/go-live/`). O günden itibaren (Türkiye saatiyle) `post_opening_balance` ve açılış
+  stoku içe aktarma `opening_closed` ile reddedilir; farklar sayım düzeltmesiyle girilir. Tarih kaldırılır ya
+  da ileri alınırsa yükleme yeniden açılır (denetim kaydıyla).
+- **Hazırlık kontrol listesi** (`golive.selectors.readiness`, yönetim/planlama/depo): her rolde kullanıcı,
+  malzeme türleri, tedarikçi, müşteri, depo, lokasyon türleri (depolama, karantina, üretim, sevkiyat),
+  tank ve dolum hattı (eksikse kırmızı), terazi ve yazıcı (eksikse sarı), yarı mamullerin onaylı reçetesi,
+  mamullerin onaylı ambalaj reçetesi, kontrol edilen malzemelerin onaylı spesifikasyonu (sarı), açılış
+  stoku ve canlı tarihi.
+- **Paralel çalışma stok karşılaştırması** (`golive.StockComparison`, `SK-`; depo ve yönetim açar,
+  planlama da görür): Excel stok listesi (malzeme kodu, miktar; isteğe bağlı lot no, lokasyon kodu, birim)
+  seçilen günün **sonundaki** sistem stoğuyla karşılaştırılır; geçmiş gün stoğu hareket defterinden
+  hesaplanır, ileri tarih reddedilir. Düzey dosyadan çıkar: lot no tüm satırlarda doluysa lot, lokasyon tüm
+  satırlarda doluysa lokasyon bazında, karışıksa bir alt düzeye (malzeme toplamı) iner. Aynı anahtar
+  birden çok satırdaysa toplanır; miktar temel birime çevrilir. Varsayılan olarak sistemde stoğu olup
+  dosyada olmayan malzemeler de "Excel'de yok" farkı olarak listelenir; "yalnızca dosyadaki malzemeler"
+  seçilebilir. Fark = sistem − Excel. Kayıt ve satırları değişmez; her hafta yeni karşılaştırma açılır;
+  Excel çıktısı farklı satırları önce ve kırmızı verir. Önerilen bitiş: iki hafta üst üste açıklanmamış fark
+  kalmazsa yönetim Excel'i bırakır (kılavuzda öneri; sistem zorlamaz).
+- **Sorun bildir** (`golive.ProblemReport`, `SB-`): üst çubukta her ekranda; açıklama zorunlu, sayfa
+  adresi, başlık, tarayıcı ve ekran boyutu kendiliğinden eklenir. Ekran görüntüsü tarayıcıda alınır
+  (html2canvas-pro; pencere açılmadan önce, kullanıcı çıkarabilir), JPEG/PNG/WEBP, en çok 8 MB. Görüntü
+  genel ek tablosunda değil kayıtta tutulur ve yalnızca bildirene ve admin'e verilir (ekranda maliyet
+  gibi kısıtlı bilgi olabilir). Liste kişiye kendi bildirimlerini, admin'e hepsini döner. Olay
+  `problem_report.created` → iş akışı kuralı `problem_reported` admin rolüne görev açar; admin kayıt
+  sayfasında yorumla yanıtlar ve görevi tamamlar.
+- **Kılavuzlar**: rol bazında Markdown kılavuzlar `frontend/src/modules/help/guides/`, ekran görüntüleri
+  `frontend/public/kilavuz/` (demo verisinden `scripts/kilavuz-ekran-goruntuleri.mjs` üretir). Uygulamada
+  **Yardım** menüsü (herkese açık) kullanıcının rol kılavuzunu önce açar; sayım günü planı "Canlıya geçiş ve
+  sayım günü" kılavuzudur.
+- **Menü**: "Canlıya geçiş" yönetim, planlama ve depoya (admin her yerde); "Sorun bildirimleri" sekmesi
+  yalnızca admin'e.
+
+### Geçiş olay sözleşmesi (iş akışı tablosuna ek)
+
+| Olay | Payload |
+|---|---|
+| `problem_report.created` | `model: "golive.problemreport"`, `id`, `number`, `summary` (ilk 120 karakter), `reporter`, `page_url`, `page_title` |
+
+İş akışı kuralı: `problem_reported` (admin rolüne "Sorun bildirimi: SB-…" görevi; admin tamamlayınca kapanır).

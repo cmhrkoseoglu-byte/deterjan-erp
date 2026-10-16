@@ -24,7 +24,17 @@ from apps.core.exceptions import BusinessRuleError
 from apps.core.models import MasterDataModel, User
 from apps.masterdata import services
 from apps.masterdata.fields import normalize_code
-from apps.masterdata.models import Customer, Material, MaterialCategory, Supplier, UnitOfMeasure
+from apps.masterdata.models import (
+    Customer,
+    Equipment,
+    Location,
+    Material,
+    MaterialCategory,
+    MaterialUnitConversion,
+    Supplier,
+    UnitOfMeasure,
+    Warehouse,
+)
 
 MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_ROWS = 5000
@@ -151,10 +161,12 @@ class ImportSpec:
     title: str
     model: type[MasterDataModel]
     columns: tuple[Column, ...]
+    # Mevcut kaydı bulan alanlar. Çoğu kayıtta kod; dönüşümde malzeme + birim.
+    key_fields: tuple[str, ...] = ("code",)
 
     @property
-    def key_column(self) -> Column:
-        return self.columns[0]
+    def key_columns(self) -> tuple[Column, ...]:
+        return tuple(c for c in self.columns if c.field in self.key_fields)
 
 
 _PARTNER_COLUMNS = (
@@ -240,6 +252,113 @@ SPECS: dict[str, ImportSpec] = {
             if c.field == "code"
             else c
             for c in _PARTNER_COLUMNS
+        ),
+    ),
+    # Geçiş (Faz 5, Adım 5.6): depo → lokasyon → ekipman sırasıyla yüklenir.
+    "warehouses": ImportSpec(
+        kind="warehouses",
+        title="Depolar",
+        model=Warehouse,
+        columns=(
+            Column("Kod", "code", parse_code, required=True, example="HMD", help="Benzersiz"),
+            Column("Ad", "name", parse_text, required=True, example="Hammadde deposu"),
+        ),
+    ),
+    "locations": ImportSpec(
+        kind="locations",
+        title="Lokasyonlar",
+        model=Location,
+        columns=(
+            Column(
+                "Kod",
+                "code",
+                parse_code,
+                required=True,
+                example="A-01",
+                help="Tüm depolarda benzersiz (barkodla okutulur)",
+            ),
+            Column("Ad", "name", parse_text, required=True, example="A blok 1. raf"),
+            Column(
+                "Depo kodu",
+                "warehouse",
+                code_lookup_parser(Warehouse, "Depo"),
+                required=True,
+                example="HMD",
+                help="Önce depoları yükleyin",
+            ),
+            Column(
+                "Tür",
+                "location_type",
+                choice_parser(Location.Type, {"Raf": "STORAGE", "Depo": "STORAGE"}),
+                required=True,
+                example="Depolama",
+                help="Depolama, Karantina, Üretim, Sevkiyat, Tank",
+            ),
+        ),
+    ),
+    "equipment": ImportSpec(
+        kind="equipment",
+        title="Ekipmanlar",
+        model=Equipment,
+        columns=(
+            Column("Kod", "code", parse_code, required=True, example="T-01", help="Benzersiz"),
+            Column("Ad", "name", parse_text, required=True, example="Karıştırma tankı 1"),
+            Column(
+                "Tür",
+                "equipment_type",
+                choice_parser(
+                    Equipment.Type,
+                    {"Tank": "MIXING_TANK", "Hat": "FILLING_LINE", "Kantar": "SCALE"},
+                ),
+                required=True,
+                example="Karıştırma tankı",
+                help="Karıştırma tankı, Stok tankı, Dolum hattı, Terazi, Diğer",
+            ),
+            Column("Kapasite", "capacity", parse_decimal, example=5000),
+            Column(
+                "Kapasite birimi",
+                "capacity_unit",
+                code_lookup_parser(UnitOfMeasure, "Birim"),
+                example="KG",
+                help="Kapasite girildiyse zorunlu",
+            ),
+            Column(
+                "Lokasyon kodu",
+                "location",
+                code_lookup_parser(Location, "Lokasyon"),
+                example="TANK-01",
+                help="Tanklar için zorunlu (önce lokasyonları yükleyin)",
+            ),
+        ),
+    ),
+    "conversions": ImportSpec(
+        kind="conversions",
+        title="Birim dönüşümleri",
+        model=MaterialUnitConversion,
+        key_fields=("material", "unit"),
+        columns=(
+            Column(
+                "Malzeme kodu",
+                "material",
+                code_lookup_parser(Material, "Malzeme"),
+                required=True,
+                example="MM-SIVI-1L",
+            ),
+            Column(
+                "Birim",
+                "unit",
+                code_lookup_parser(UnitOfMeasure, "Birim"),
+                required=True,
+                example="KOLI",
+            ),
+            Column(
+                "Temel birim karşılığı",
+                "factor_to_base",
+                parse_decimal,
+                required=True,
+                example=12,
+                help="1 birim kaç temel birim eder (1 KOLI = 12 ADET)",
+            ),
         ),
     ),
 }
@@ -348,20 +467,14 @@ def _validation_messages(exc: ValidationError, spec: ImportSpec) -> list[dict[st
     return errors
 
 
-def _check_row(
-    spec: ImportSpec, row_no: int, cells: dict[str, Any], seen: dict[str, int]
-) -> RowResult:
-    key = spec.key_column
-    code = parse_code(cells.get(key.field))
-    existing = spec.model._default_manager.filter(**{"code": code}).first() if code else None
-    result = RowResult(row=row_no, code=code, action="update" if existing else "create")
+def _key_label(value: Any) -> str:
+    return str(getattr(value, "code", value))
 
-    if code and code in seen:
-        result.errors.append(
-            {"column": key.header, "message": f"Kod dosyada tekrar ediyor (satır {seen[code]})."}
-        )
-    elif code:
-        seen[code] = row_no
+
+def _check_row(
+    spec: ImportSpec, row_no: int, cells: dict[str, Any], seen: dict[tuple[Any, ...], int]
+) -> RowResult:
+    result = RowResult(row=row_no, code="", action="create")
 
     for column in spec.columns:
         raw = cells.get(column.field)
@@ -373,12 +486,28 @@ def _check_row(
             result.data[column.field] = column.parse(raw)
         except CellError as exc:
             result.errors.append({"column": column.header, "message": str(exc)})
+
+    existing = None
+    keys = tuple(result.data.get(name) for name in spec.key_fields)
+    if all(value not in (None, "") for value in keys):
+        result.code = " / ".join(_key_label(value) for value in keys)
+        lookup = dict(zip(spec.key_fields, keys, strict=True))
+        existing = spec.model._default_manager.filter(**lookup).first()
+        result.action = "update" if existing else "create"
+        pks = tuple(getattr(value, "pk", value) for value in keys)
+        if pks in seen:
+            header = spec.key_columns[0].header
+            message = f"Kayıt dosyada tekrar ediyor (satır {seen[pks]})."
+            result.errors.append({"column": header, "message": message})
+        else:
+            seen[pks] = row_no
     if result.errors:
         return result
 
     if existing is not None:
         instance = existing
-        result.data.pop("code", None)
+        for name in spec.key_fields:
+            result.data.pop(name, None)
         for name, value in result.data.items():
             setattr(instance, name, value)
     else:
@@ -393,42 +522,55 @@ def _check_row(
     return result
 
 
-def _build_report(spec: ImportSpec, upload: IO[bytes], filename: str) -> ImportReport:
+def read_table(
+    upload: IO[bytes], filename: str, spec_columns: Iterable[Column]
+) -> tuple[list[tuple[int, dict[str, Any]]], list[str]]:
+    """Dosyayı okur, başlıkları sütun tanımlarıyla eşler; boş satırları atlar.
+
+    Döner: (`(excel satır no, {alan: ham hücre})` listesi, dosya hataları). Başka modüllerin
+    içe aktarmaları (ör. reçeteler) da bunu kullanır.
+    """
     table = _read_rows(upload, filename)
-    report = ImportReport(kind=spec.kind, rows=[])
     if not table:
-        report.file_errors.append("Dosya boş.")
-        return report
+        return [], ["Dosya boş."]
     positions: dict[str, int] = {}
     for index, header in enumerate(table[0]):
         positions.setdefault(_header_key(header), index)
     columns: dict[str, int] = {}
-    for column in spec.columns:
+    errors: list[str] = []
+    for column in spec_columns:
         position = positions.get(_header_key(column.header))
         if position is None:
             if column.required:
-                report.file_errors.append(f"“{column.header}” sütunu bulunamadı.")
+                errors.append(f"“{column.header}” sütunu bulunamadı.")
             continue
         columns[column.field] = position
-    if report.file_errors:
-        return report
+    if errors:
+        return [], errors
 
-    body = table[1:]
     data_rows = [
         (FIRST_DATA_ROW + offset, row)
-        for offset, row in enumerate(body)
+        for offset, row in enumerate(table[1:])
         if any(_text(cell) for cell in row)
     ]
     if len(data_rows) > MAX_ROWS:
-        report.file_errors.append(f"En fazla {MAX_ROWS} satır aktarılabilir.")
-        return report
+        return [], [f"En fazla {MAX_ROWS} satır aktarılabilir."]
     if not data_rows:
-        report.file_errors.append("Dosyada veri satırı yok.")
-        return report
+        return [], ["Dosyada veri satırı yok."]
+    return [
+        (
+            row_no,
+            {name: row[index] if index < len(row) else None for name, index in columns.items()},
+        )
+        for row_no, row in data_rows
+    ], []
 
-    seen: dict[str, int] = {}
-    for row_no, row in data_rows:
-        cells = {name: row[index] if index < len(row) else None for name, index in columns.items()}
+
+def _build_report(spec: ImportSpec, upload: IO[bytes], filename: str) -> ImportReport:
+    rows, file_errors = read_table(upload, filename, spec.columns)
+    report = ImportReport(kind=spec.kind, rows=[], file_errors=file_errors)
+    seen: dict[tuple[Any, ...], int] = {}
+    for row_no, cells in rows:
         report.rows.append(_check_row(spec, row_no, cells, seen))
     return report
 
@@ -478,37 +620,53 @@ class ImportHasErrors(BusinessRuleError):
 def build_template(kind: str) -> bytes:
     """İndirilebilir .xlsx şablonu: başlık + örnek satır, ikinci sayfada sütun açıklamaları."""
     spec = get_spec(kind)
+    notes = (
+        "Kodu sistemde olan satır kaydı günceller, olmayan yeni kayıt açar.",
+        "Güncellemede boş bırakılan isteğe bağlı hücre mevcut değeri değiştirmez.",
+        "Örnek satırı silip kendi verinizi girin. Hatalı satır varsa hiçbiri aktarılmaz.",
+    )
+    return build_template_for(spec.title, spec.columns, notes)
+
+
+def build_template_for(
+    title: str,
+    columns: Iterable[Column],
+    notes: Iterable[str],
+    examples: Iterable[Iterable[Any]] | None = None,
+) -> bytes:
+    """Şablon kitabı: ilk sayfada başlık (zorunlular sarı) + örnek satır(lar), ikinci sayfada
+    sütun açıklamaları ve notlar. `examples` verilmezse sütunların `example` değeri kullanılır."""
+    columns = tuple(columns)
     workbook = Workbook()
     sheet = workbook.active
     assert sheet is not None
-    sheet.title = spec.title
+    sheet.title = title[:31]
     header_font = Font(bold=True)
     required_fill = PatternFill("solid", fgColor="FFF2CC")
-    for index, column in enumerate(spec.columns, start=1):
+    rows = [list(row) for row in examples] if examples else [[c.example for c in columns]]
+    for index, column in enumerate(columns, start=1):
         cell = sheet.cell(row=1, column=index, value=column.header)
         cell.font = header_font
         if column.required:
             cell.fill = required_fill
-        sheet.cell(row=2, column=index, value=column.example)
-        letter = cell.column_letter
-        sheet.column_dimensions[letter].width = max(14, len(column.header) + 4)
+        sheet.column_dimensions[cell.column_letter].width = max(14, len(column.header) + 4)
+    for row in rows:
+        sheet.append(row)
     sheet.freeze_panes = "A2"
 
-    notes = workbook.create_sheet("Açıklama")
+    sheet_notes = workbook.create_sheet("Açıklama")
     _write_rows(
-        notes,
+        sheet_notes,
         [
             ("Sütun", "Zorunlu", "Açıklama"),
-            *((c.header, "Evet" if c.required else "", c.help) for c in spec.columns),
+            *((c.header, "Evet" if c.required else "", c.help) for c in columns),
             (),
-            ("Kodu sistemde olan satır kaydı günceller, olmayan yeni kayıt açar.",),
-            ("Güncellemede boş bırakılan isteğe bağlı hücre mevcut değeri değiştirmez.",),
-            ("Örnek satırı silip kendi verinizi girin. Hatalı satır varsa hiçbiri aktarılmaz.",),
+            *((note,) for note in notes),
         ],
     )
-    notes.column_dimensions["A"].width = 26
-    notes.column_dimensions["C"].width = 60
-    for cell in notes[1]:
+    sheet_notes.column_dimensions["A"].width = 26
+    sheet_notes.column_dimensions["C"].width = 60
+    for cell in sheet_notes[1]:
         cell.font = header_font
 
     buffer = io.BytesIO()
