@@ -233,8 +233,11 @@ SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_HTTPONLY = False
 
-# Demo kullanıcı şifresi (yalnızca create_demo_users komutu, yalnızca DEBUG ortamında)
+# Demo kullanıcı şifresi (yalnızca create_demo_users komutu, geliştirme ya da eğitim ortamında)
 DEMO_USER_PASSWORD = env("DEMO_USER_PASSWORD", default="")
+# Eğitim ortamı: canlı ayarlarla çalışır ama demo kullanıcı/veri yüklenebilir ve arayüz her ekranda
+# "Eğitim ortamı" şeridi gösterir. Gerçek veri girilen sunucuda kapalıdır (docs/EGITIM-ORTAMI.md).
+TRAINING_MODE = env.bool("TRAINING_MODE", default=False)
 
 # Üretim: verim (çıktı / şarj miktarı) bu yüzdenin altındaysa `production.low_yield` olayı.
 PRODUCTION_LOW_YIELD_THRESHOLD_PCT = env("PRODUCTION_LOW_YIELD_THRESHOLD_PCT", default="97")

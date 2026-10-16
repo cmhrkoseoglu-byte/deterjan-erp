@@ -5,17 +5,17 @@ spesifikasyonu yazar ve onaylar (pH, viskozite, yoğunluk, aktif madde, görün�
 Laboratuvar değerleri sonradan spesifikasyon ekranında yeni sürümle düzenler. Tekrar
 çalıştırılabilir: onaylı sürümü olan malzeme + aşama atlanır. `seed_demo` sonunda çağrılır.
 
-Yalnızca geliştirme ortamında (DEBUG=True) çalışır; onay demo `laboratuvar` kullanıcısıyla.
+Yalnızca geliştirme ortamında (DEBUG ya da eğitim) çalışır; onay demo `laboratuvar` kullanıcısıyla.
 """
 
 from decimal import Decimal
 from typing import Any
 
-from django.conf import settings
 from django.core.management import call_command
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from apps.core.demo import require_demo_allowed
 from apps.core.models import User
 from apps.core.roles import LABORATUVAR
 from apps.masterdata.models import Material
@@ -77,12 +77,11 @@ FINAL_DEFAULT: list[Line] = [
 class Command(BaseCommand):
     help = (
         "Örnek kalite spesifikasyonları: giriş kontrollü hammaddelere giriş, bulk ürünlere son "
-        "kontrol spesifikasyonu (onaylı). Yalnızca geliştirme ortamında (DEBUG=True)."
+        "kontrol spesifikasyonu (onaylı). Yalnızca geliştirme ortamında (DEBUG ya da eğitim)."
     )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        if not settings.DEBUG:
-            raise CommandError("Demo verisi yalnızca geliştirme ortamında (DEBUG=True) yüklenir.")
+        require_demo_allowed()
         if not User.objects.filter(username=LABORATUVAR).exists():
             call_command("create_demo_users", stdout=self.stdout)
         lab = User.objects.get(username=LABORATUVAR)

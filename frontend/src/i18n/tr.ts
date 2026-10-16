@@ -26,6 +26,9 @@ export const tr = {
     otpSubmit: "Doğrula",
     otpBack: "Farklı kullanıcıyla giriş yap",
   },
+  site: {
+    trainingBanner: "EĞİTİM ORTAMI · Buradaki kayıtlar örnektir, gerçek veri girmeyin.",
+  },
   layout: {
     notifications: "Bildirimler",
     liveOffline: "Anlık bağlantı yok; bildirimler 30 sn'de bir yenileniyor.",

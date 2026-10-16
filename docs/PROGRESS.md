@@ -614,3 +614,15 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
 | Satın alma onay görevinde tutar binlik ayırıcısız | Düzeltildi: `core.formatting.format_money` (görev, limit mesajı, denetim notu, PDF) | `apps/core/tests/test_formatting.py`, `test_submit_for_approval_opens_management_task_and_return_to_draft` |
 | Onay bekleyen siparişte "Bekleyen 0 KG" | Düzeltildi: onaydan önce bekleyen sütunu boş (—) | `purchasing.test.tsx` |
 | Açılış stoku şablonundaki örnek satır demo kodlarıyla eşleşmiyor | Kusur değil: şablon örneği gerçek fabrika verisi içindir; önizleme bilinmeyen kodu doğru biçimde gösteriyor | — |
+
+## 2026-10-16 — Kullanıcılara açılış: bulutta eğitim ortamı
+
+- `TRAINING_MODE` (eğitim ortamı): demo komutları canlı ayarlarla çalışır, arayüzde turuncu şerit,
+  zayıf demo şifresiyle açılmaz. `scripts/egitim-kur.sh` boş Ubuntu 24.04 sunucuya tek komutla kurar
+  (Docker, ufw, Let's Encrypt + yenileme, demo veri, sağlık kontrolü). Kılavuz `docs/EGITIM-ORTAMI.md`.
+- Kanıt: `apps/core/tests/test_site_info.py` (uç nokta, zayıf/örnek şifre reddi), `test_commands.py`
+  (eğitimde demo kullanıcı açılır, canlıda `seed_demo` reddedilir), `TrainingBanner.test.tsx`.
+  Prova: `config.settings.prod` + `TRAINING_MODE=true` ile boş veritabanında `migrate`,
+  `create_demo_users`, `seed_demo` (iki kez), `check --deploy` uyarısız; `TRAINING_MODE=false` ile
+  `seed_demo` reddedildi.
+- Kalan: sunucuyu CUMHUR açar, betik çalışınca link `https://<ip>.sslip.io`.

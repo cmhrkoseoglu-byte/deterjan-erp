@@ -6,11 +6,11 @@ import io
 from decimal import Decimal
 from typing import Any
 
-from django.conf import settings
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from django.utils import timezone
 from openpyxl import Workbook
 
+from apps.core.demo import require_demo_allowed
 from apps.core.models import User
 from apps.core.roles import DEPO
 from apps.golive import selectors, services
@@ -22,8 +22,7 @@ class Command(BaseCommand):
     help = "Canlıya geçiş demo verisi: örnek stok karşılaştırması."
 
     def handle(self, *args: Any, **options: Any) -> None:
-        if not settings.DEBUG:
-            raise CommandError("Demo verisi yalnızca geliştirme ortamında (DEBUG=True) yüklenir.")
+        require_demo_allowed()
         today = timezone.localdate()
         if StockComparison.objects.filter(as_of_date=today).exists():
             self.stdout.write("Bugün için stok karşılaştırması zaten var.")

@@ -6,11 +6,11 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
-from django.conf import settings
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.demo import require_demo_allowed
 from apps.core.models import User
 from apps.core.roles import DEPO, LABORATUVAR, YONETIM
 from apps.hse import services
@@ -127,10 +127,12 @@ def seed(write: Any = print) -> None:
 
 
 class Command(BaseCommand):
-    help = "İSG demo verisi: tehlike bilgisi, GBF, depolama limitleri, atık. Yalnızca DEBUG=True."
+    help = (
+        "İSG demo verisi: tehlike bilgisi, GBF, depolama limitleri, atık."
+        " Yalnızca DEBUG ya da eğitim."
+    )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        if not settings.DEBUG:
-            raise CommandError("Demo verisi yalnızca geliştirme ortamında (DEBUG=True) yüklenir.")
+        require_demo_allowed()
         with transaction.atomic():
             seed(self.stdout.write)

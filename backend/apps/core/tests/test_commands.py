@@ -24,6 +24,25 @@ def test_create_demo_users_only_in_debug(settings):
     assert not User.objects.exists()
 
 
+def test_create_demo_users_allowed_in_training_mode(settings):
+    settings.DEBUG = False
+    settings.TRAINING_MODE = True
+    settings.DEMO_USER_PASSWORD = "Egitim.2026x"
+
+    call_command("create_demo_users")
+
+    assert User.objects.count() == len(ALL_ROLES)
+
+
+def test_seed_demo_refused_on_live_server(settings):
+    settings.DEBUG = False
+    settings.TRAINING_MODE = False
+
+    with pytest.raises(CommandError, match="eğitim ortamında"):
+        call_command("seed_demo")
+    assert not User.objects.exists()
+
+
 def test_create_demo_users_requires_password(settings):
     settings.DEBUG = True
     settings.DEMO_USER_PASSWORD = ""

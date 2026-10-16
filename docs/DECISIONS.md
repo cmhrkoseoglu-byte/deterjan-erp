@@ -1273,3 +1273,15 @@ Plan thread'de CUMHUR'un onayıyla ("Onayla"). Kararlar:
 | `problem_report.created` | `model: "golive.problemreport"`, `id`, `number`, `summary` (ilk 120 karakter), `reporter`, `page_url`, `page_title` |
 
 İş akışı kuralı: `problem_reported` (admin rolüne "Sorun bildirimi: SB-…" görevi; admin tamamlayınca kapanır).
+
+## 2026-10-16 — Kullanıcılara açılış: bulutta eğitim ortamı
+
+- **Karar (CUMHUR, "Bulutta eğitim"):** fabrika sunucusu (D-20) hazır olana kadar kullanıcılar bir bulut
+  sunucusunda **yalnızca demo veriyle** sistemi dener. Gerçek veri ve canlı kullanım fabrika sunucusunda
+  başlar; eğitim kayıtları taşınmaz. Kişisel veri olmadığından sunucu konumu KVKK açısından serbesttir.
+- **Plan onayı (CUMHUR, "Onayla"):** `TRAINING_MODE=true` canlı ayarlarla (`config.settings.prod`) çalışır,
+  demo kullanıcı ve demo veri komutlarına izin verir (`apps.core.demo.require_demo_allowed`), arayüz her
+  ekranda "EĞİTİM ORTAMI" şeridi gösterir (`GET /api/v1/site/`, giriş gerektirmez). Demo şifresi zorunlu,
+  en az 10 karakter, örnek şifre olamaz. Ortak demo hesapları yüzünden eğitim ortamında 2FA kapalı
+  (`OTP_REQUIRED_ROLES=`). Kurulum `scripts/egitim-kur.sh` (adres `<ip>.sslip.io`, Let's Encrypt),
+  ayrıntı `docs/EGITIM-ORTAMI.md`.

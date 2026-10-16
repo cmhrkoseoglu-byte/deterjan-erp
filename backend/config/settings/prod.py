@@ -28,6 +28,17 @@ if not CSRF_TRUSTED_ORIGINS or any(  # noqa: F405
         "DJANGO_CSRF_TRUSTED_ORIGINS üretimde https:// ile başlayan adresler."
     )
 
+# Eğitim ortamı internete açık bir sunucuda çalışır: demo hesapların şifresi örnek değer olamaz.
+_EXAMPLE_DEMO_PASSWORDS = {"Demo.12345"}
+if TRAINING_MODE and (  # noqa: F405
+    len(DEMO_USER_PASSWORD) < 10  # noqa: F405
+    or DEMO_USER_PASSWORD in _EXAMPLE_DEMO_PASSWORDS  # noqa: F405
+):
+    raise ImproperlyConfigured(
+        "Eğitim ortamında (TRAINING_MODE=true) DEMO_USER_PASSWORD en az 10 karakter olmalı ve "
+        "örnek şifre (Demo.12345) kullanılamaz."
+    )
+
 # --- HTTPS ve çerezler -------------------------------------------------------------------------
 # TLS nginx'te sonlanır; nginx `X-Forwarded-Proto` başlığını kendisi yazar (istemcininkini ezer).
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

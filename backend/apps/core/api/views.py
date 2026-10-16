@@ -1,5 +1,6 @@
 from typing import Any
 
+from django.conf import settings
 from django.contrib.auth import password_validation
 from django.db.models import Exists, OuterRef, QuerySet
 from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
@@ -38,6 +39,7 @@ from apps.core.api.serializers import (
     PasswordConfirmSerializer,
     RecoveryCodesSerializer,
     SecurityStatusSerializer,
+    SiteInfoSerializer,
     UserSerializer,
 )
 from apps.core.attachments import INLINE_TYPES
@@ -116,6 +118,17 @@ class HealthView(APIView):
         return Response(
             body, status=status.HTTP_200_OK if healthy else status.HTTP_503_SERVICE_UNAVAILABLE
         )
+
+
+class SiteInfoView(APIView):
+    """Ortam bilgisi (giriş gerektirmez): SPA eğitim ortamı şeridini buna göre gösterir."""
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+
+    @extend_schema(responses={200: SiteInfoSerializer})
+    def get(self, request: Request) -> Response:
+        return Response({"training_mode": bool(settings.TRAINING_MODE)})
 
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")
