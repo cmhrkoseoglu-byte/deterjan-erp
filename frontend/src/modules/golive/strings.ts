@@ -20,7 +20,7 @@ export const gt = {
   openingClosed: "Açılış stoku yüklemesi kapandı.",
   guide: "Sayım günü planı",
   guideText:
-    "Sayım günü: depo sayımı yapılır, açılış stoku Excel'den yüklenir (Depo ve stok > Sayım düzeltme > Açılış stoku içe aktar), canlı başlangıç tarihi girilir ve ertesi gün tüm işlemler sistemden yapılır. Ayrıntılı plan Yardım sayfasında.",
+    "Sayım günü: depo sayımı yapılır, açılış stoku Excel'den yüklenir (Depo ve stok > Stok sorgu > Açılış stoku içe aktar), canlı başlangıç tarihi girilir ve ertesi gün tüm işlemler sistemden yapılır. Ayrıntılı plan Yardım sayfasında.",
   newComparison: "Yeni karşılaştırma",
   comparisonIntro:
     "Paralel çalışma döneminde her hafta Excel'deki stok listesini yükleyin. Sistem, seçilen günün sonundaki bakiyeyle karşılaştırır. Lot no ya da lokasyon tüm satırlarda doluysa o düzeyde karşılaştırılır.",

@@ -549,6 +549,12 @@ entegratörü), D-20 (yerel sunucu) `docs/DECISIONS.md`'de.
   Excel çıktısı, hazırlık listesi, sorun bildirimi görevi ve görünürlüğü, her uç noktada yasak rol),
   `apps/recipes/tests/test_importers.py`, `apps/masterdata/tests/test_importers.py` (yeni türler),
   `test_opening_closes_on_go_live_date`. Frontend: `golive.test.tsx`, `RecipeImport.test.tsx`, menü testi.
+- Sonuç: backend `pytest` 1067 test yeşil, `ruff check`, `ruff format --check`, `mypy` temiz,
+  `makemigrations --check` değişiklik yok. Frontend `npm test` 238 test, lint, biçim, tip denetimi ve
+  derleme temiz.
+- Kılavuzlar: 11 kılavuz (genel, 9 rol, sayım günü) ve demo verisinden alınmış 45 ekran görüntüsü
+  (`frontend/public/kilavuz/`). Görüntüler `scripts/kilavuz-ekran-goruntuleri.mjs` ile yeniden üretilir
+  (servisler ve demo verisi ayaktayken; eksik örnek kayıtları API üzerinden açar, hiçbir şey silmez).
 - Prova (demo verisi, ayrı veritabanı, gerçek HTTP API üzerinden): hazırlık listesi → depo, lokasyon,
   ekipman içe aktarma (önizle + aktar) → reçete içe aktarma (tekrar yükleme taslak var diye reddedildi) →
   açılış stoku → sayım listesiyle lot + lokasyon düzeyinde karşılaştırma → depo canlı tarihini giremedi

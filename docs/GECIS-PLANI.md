@@ -29,7 +29,7 @@ başlamadan önce fabrikanın hazırlaması gerekenleri ve araçların nasıl de
 |---|---|---|
 | Malzeme, dönüşüm, tedarikçi, müşteri, depo, lokasyon, ekipman yükleme | Ana veriler > ilgili sekme > Excel'den içe aktar | planlama |
 | Reçete yükleme (taslak sürüm) | Reçeteler > Excel'den içe aktar | planlama, laboratuvar |
-| Açılış stoku | Depo ve stok > Sayım düzeltme > Açılış stoku içe aktar | depo |
+| Açılış stoku | Depo ve stok > Stok sorgu > Açılış stoku içe aktar | depo |
 | Hazırlık listesi, canlı başlangıç tarihi | Canlıya geçiş > Hazırlık | yönetim (tarih), planlama ve depo görür |
 | Haftalık stok karşılaştırması | Canlıya geçiş > Stok karşılaştırma | depo, yönetim (planlama görür) |
 | Sorun bildirimi | Üst çubuk > Sorun bildir; admin: Canlıya geçiş > Sorun bildirimleri | herkes |

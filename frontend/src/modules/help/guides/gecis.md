@@ -26,13 +26,13 @@ Hazırlığın nerede olduğunu **Canlıya geçiş > Hazırlık** ekranı göste
 
 1. **İşlemleri durdurun.** Belirlenen saatte mal kabul, üretime çıkış, dolum ve sevkiyat durur. Bu saatten sonra gelen mal ertesi güne kadar sayılmadan bir kenarda bekler.
 2. **Sayın.** Ekipler lokasyon lokasyon sayar. Her satıra malzeme kodu, lot no, lokasyon kodu, miktar ve varsa SKT yazılır. Lot no'su olmayan eski stok için ACILIS-LAS gibi bir lot no verilir.
-3. **Sayım listesini hazırlayın.** Depo, **Depo ve stok > Sayım düzeltme > Açılış stoku içe aktar** ekranından şablonu indirir ve sayım sonucunu şablona geçirir. Laboratuvar onayı beklenen lotlar için **Durum** sütununa Karantina yazılır; diğerleri Serbest olur.
+3. **Sayım listesini hazırlayın.** Depo, **Depo ve stok > Stok sorgu > Açılış stoku içe aktar** ekranından şablonu indirir ve sayım sonucunu şablona geçirir. Laboratuvar onayı beklenen lotlar için **Durum** sütununa Karantina yazılır; diğerleri Serbest olur.
 4. **Yükleyin.** Aynı ekranda dosyayı seçip **Önizle**. Hata listesindeki satırları düzeltip tekrar önizleyin. Hata kalmayınca **Aktar**.
 5. **Kontrol edin.** Sayım listesini **Canlıya geçiş > Stok karşılaştırma > Yeni karşılaştırma** ile yükleyin. Sonuç "Fark yok" olmalı. Fark varsa yükleme ya da liste düzeltilir.
 6. **Etiketleyin.** Rafta etiketi olmayan lotlar için lot sayfasındaki **Etiket yazdır** ile lot etiketi basılıp yapıştırılır.
 7. **Canlı tarihini girin.** Yönetim, **Canlıya geçiş > Hazırlık > Canlı başlangıç tarihi** alanına ertesi iş gününü yazıp **Kaydet**'e basar. O günden itibaren açılış stoku yüklenemez; sonradan çıkan farklar **Sayım düzeltme** ile, gerekçesiyle girilir.
 
-![Açılış stoku içe aktarma: önizleme](/kilavuz/gecis-acilis.jpg)
+![Açılış stoku önizlemesi: hatalı satırlar kırmızı yazılır, hata kalmayınca Aktar açılır](/kilavuz/gecis-acilis.jpg)
 
 ## 3. İlk gün
 
