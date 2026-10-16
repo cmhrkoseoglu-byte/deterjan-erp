@@ -47,7 +47,9 @@ Tek Django projesi, her iş alanı ayrı bir Django uygulaması (`backend/apps/<
 | `workflow` | Olay → görev/bildirim kuralları, görev, bildirim, kayda bağlı yorum | 1 |
 | `quality` | Test tanımı, spesifikasyon, numune, sonuç, onay/red, analiz sertifikası | 2 |
 | `filling` | Ambalaj reçetesi, dolum emri, dolum lotu, fire, etiket/barkod | 2 |
-| `sales` | Müşteri siparişi, sevkiyat, irsaliye, iade, izlenebilirlik raporu | 3 |
+| `sales` | Müşteri siparişi, sevkiyat, irsaliye | 3 |
+| `returns` | Müşteri iadesi (karantina, iade numunesi, QC kararına göre yönlendirme) | 3 |
+| `traceability` | Geri / ileri izleme raporu, geri çağırma simülasyonu (Excel/PDF) | 3 |
 | `purchasing` | Satın alma talebi/siparişi | 4 |
 | `costing` | Malzeme maliyeti, şarj ve ürün maliyeti | 4 |
 | `maintenance` | Ekipman bakım planı, iş emri, duruş | 4 |
@@ -61,7 +63,7 @@ Tek Django projesi, her iş alanı ayrı bir Django uygulaması (`backend/apps/<
   `inventory.services.post_movement(...)` çağırır; `StockMovement.objects.create` yazmaz.
 - Modüller arası "bir şey oldu" bildirimi **olay** ile yapılır (`core.events.publish`). `workflow` modülü
   olayları dinler; üretim modülü depoya görev açmayı bilmez.
-- Döngüsel import yasak. Bağımlılık yönü: `core ← masterdata ← recipes/inventory ← production ← quality/filling ← sales`.
+- Döngüsel import yasak. Bağımlılık yönü: `core ← masterdata ← recipes/inventory ← production ← quality/filling ← sales/returns ← traceability`.
   `workflow` herkesi dinleyebilir, kimse `workflow`'a doğrudan bağımlı olmaz (sadece olay).
 
 ### Katmanlar (her modülde)

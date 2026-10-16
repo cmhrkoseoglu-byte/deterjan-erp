@@ -21,6 +21,9 @@ import { MasterDataPage } from "./modules/masterdata/MasterDataPage";
 import { QualityPage } from "./modules/quality/QualityPage";
 import { SamplePage } from "./modules/quality/SamplePage";
 import { SpecificationPage } from "./modules/quality/SpecificationPage";
+import { ReturnPage } from "./modules/returns/ReturnPage";
+import { ReturnsPage } from "./modules/returns/ReturnsPage";
+import { TracePage } from "./modules/traceability/TracePage";
 import { RecipeListPage } from "./modules/recipes/RecipeListPage";
 import { RecipePage } from "./modules/recipes/RecipePage";
 import { VersionPage } from "./modules/recipes/VersionPage";
@@ -51,6 +54,10 @@ function fillingPage(page: ReactNode) {
 
 function salesPage(page: ReactNode) {
   return <RequireRole roles={menuRoles("sales")}>{page}</RequireRole>;
+}
+
+function returnsPage(page: ReactNode) {
+  return <RequireRole roles={menuRoles("returns")}>{page}</RequireRole>;
 }
 
 function qualityPage(page: ReactNode) {
@@ -94,6 +101,18 @@ const pageRoutes: RouteObject[] = [
   { path: "sevkiyat/siparisler/:orderId", element: salesPage(<SalesOrderPage />) },
   { path: "sevkiyat/musteriler/:customerId", element: salesPage(<CustomerPage />) },
   { path: "sevkiyat/:tab?", element: salesPage(<SalesPage />) },
+  // İadeler: sevkiyat açar, sevkiyat ya da depo teslim alır, depo imha eder; laboratuvar izler.
+  { path: "iadeler", element: returnsPage(<ReturnsPage />) },
+  { path: "iadeler/:returnId", element: returnsPage(<ReturnPage />) },
+  // İzlenebilirlik ve geri çağırma: laboratuvar ve yönetim.
+  {
+    path: "izlenebilirlik/:tab?",
+    element: (
+      <RequireRole roles={menuRoles("traceability")}>
+        <TracePage />
+      </RequireRole>
+    ),
+  },
 ];
 const IMPLEMENTED = new Set([
   "masterdata",
@@ -103,6 +122,8 @@ const IMPLEMENTED = new Set([
   "quality",
   "filling",
   "sales",
+  "returns",
+  "traceability",
 ]);
 
 // Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar rol korumalı bir yer tutucuya gider.

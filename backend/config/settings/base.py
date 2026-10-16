@@ -38,6 +38,8 @@ INSTALLED_APPS = [
     "apps.quality",
     "apps.filling",
     "apps.sales",
+    "apps.returns",
+    "apps.traceability",
     "apps.workflow",
 ]
 
@@ -171,6 +173,8 @@ SPECTACULAR_SETTINGS = {
         "SalesOrderStatusEnum": "apps.sales.models.SalesOrder.Status",
         "CurrencyEnum": "apps.sales.models.Currency",
         "StockReservationStatusEnum": "apps.inventory.models.StockReservation.Status",
+        "CustomerReturnStatusEnum": "apps.returns.models.CustomerReturn.Status",
+        "ReturnDispositionEnum": "apps.returns.models.CustomerReturnLine.Disposition",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],

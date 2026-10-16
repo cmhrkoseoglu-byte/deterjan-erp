@@ -43,7 +43,7 @@ export const APPROVAL_COLOR: Record<ApprovalStatus, string> = {
   REFUSED: "red",
 };
 
-export const STAGES: SampleStage[] = ["INCOMING", "IN_PROCESS", "FINAL"];
+export const STAGES: SampleStage[] = ["INCOMING", "IN_PROCESS", "FINAL", "RETURN"];
 /** Kararla lotu serbest bırakan / reddeden / yeniden işlemeye ayıran kararlar. */
 export const DECISIONS: DecisionType[] = ["RELEASE", "CONDITIONAL_RELEASE", "REWORK", "REJECT"];
 /** Şarj sırası (ara) kontrolde yalnızca uygun / uygun değil kaydedilir; lot değişmez. */

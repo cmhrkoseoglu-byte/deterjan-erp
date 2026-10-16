@@ -557,7 +557,7 @@ function DecisionModal({
 }) {
   const inProcess = sample.stage === "IN_PROCESS";
   const options = (inProcess ? IN_PROCESS_DECISIONS : DECISIONS).filter(
-    (value) => value !== "REWORK" || sample.material_type === "BULK",
+    (value) => value !== "REWORK" || sample.material_type === "BULK" || sample.stage === "RETURN",
   );
   const hasOutOfSpec = sample.out_of_spec_tests.length > 0;
   const [decision, setDecision] = useState<DecisionType>(
@@ -613,7 +613,11 @@ function DecisionModal({
           }))}
         />
         <Text size="sm" c="dimmed">
-          {inProcess ? qt.inProcessHint : qt.decisionHint[decision]}
+          {inProcess
+            ? qt.inProcessHint
+            : decision === "REWORK" && sample.stage === "RETURN"
+              ? qt.returnReworkHint
+              : qt.decisionHint[decision]}
         </Text>
         {releasing && (
           <Select
