@@ -67,11 +67,14 @@ OUTBOUND_TYPES = frozenset(
         MovementType.TRANSFER_OUT,
         MovementType.SCRAP,
         MovementType.SHIPMENT,
+        MovementType.ISSUE_MAINTENANCE,
     }
 )
 # Kural 4: bu hareketler yalnızca serbest ve SKT'si geçmemiş lottan yapılır. Transfer, fire ve
 # düzeltme her durumdaki lota yapılabilir (karantinadaki lot depo içinde taşınabilir).
-USABLE_LOT_ONLY_TYPES = frozenset({MovementType.ISSUE_PRODUCTION, MovementType.SHIPMENT})
+USABLE_LOT_ONLY_TYPES = frozenset(
+    {MovementType.ISSUE_PRODUCTION, MovementType.SHIPMENT, MovementType.ISSUE_MAINTENANCE}
+)
 # Rezerve stok bu çıkışlarla eritilemez (Faz 3): bakiye aktif rezervasyonların altına düşemez.
 # Sayım düzeltmesi ve ters kayıt engellenmez (sayım gerçeği yansıtır). Sevkiyat önce
 # `consume_reservation` çağırır, sonra hareketi yazar.
@@ -81,6 +84,7 @@ RESERVATION_GUARDED_TYPES = frozenset(
         MovementType.TRANSFER_OUT,
         MovementType.SCRAP,
         MovementType.SHIPMENT,
+        MovementType.ISSUE_MAINTENANCE,
     }
 )
 
@@ -183,6 +187,20 @@ def current_balance(lot: Lot, location: Location) -> Decimal:
     return value if value is not None else Decimal(0)
 
 
+# Stok hareketi kancaları (Faz 4, İSG): başka bir modül her hareketten sonra, aynı transaction
+# içinde çağrılır (ör. tehlikeli madde depolama limiti denetimi). inventory o modülü import etmez.
+MovementHook = Callable[[User | None, StockMovement], None]
+_movement_hooks: list[MovementHook] = []
+
+
+def register_movement_hook(hook: MovementHook) -> MovementHook:
+    """Kancayı kaydeder (dekoratör olarak da kullanılır). Kanca `post_movement` her hareketi
+    yazdıktan sonra `hook(actor, movement)` olarak çağrılır; ağır iş için `on_commit` kullanmalı."""
+    if hook not in _movement_hooks:
+        _movement_hooks.append(hook)
+    return hook
+
+
 @transaction.atomic
 def post_movement(
     actor: User | None,
@@ -263,7 +281,7 @@ def post_movement(
             )
     balance.quantity = new_quantity
     balance.save(update_fields=["quantity", "updated_at"])
-    return StockMovement.objects.create(
+    movement = StockMovement.objects.create(
         movement_type=movement_type,
         material=material,
         lot=lot,
@@ -275,6 +293,9 @@ def post_movement(
         created_by=_actor(actor),
         **_source_fields(source),
     )
+    for hook in _movement_hooks:
+        hook(actor, movement)
+    return movement
 
 
 @transaction.atomic

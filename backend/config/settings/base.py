@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     "apps.traceability",
     "apps.costing",
     "apps.purchasing",
+    "apps.maintenance",
+    "apps.hse",
     "apps.workflow",
 ]
 

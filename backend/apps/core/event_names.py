@@ -106,3 +106,26 @@ PURCHASE_ORDER_SENT = "purchase_order.sent"
 PURCHASE_ORDER_PARTIALLY_RECEIVED = "purchase_order.partially_received"
 PURCHASE_ORDER_RECEIVED = "purchase_order.received"
 PURCHASE_ORDER_CANCELLED = "purchase_order.cancelled"
+
+# maintenance (Faz 4, Adım 4.4). İş emri olayları durum makinesinden
+# (`maintenance_work_order.<durum>`); payload'da `equipment_code`, `equipment_name`, `title`,
+# `kind`, `source`, `responsible_role`, `due_date`, `open_task` (False: tek adımda girilen kayıt).
+# Duruş olaylarında `equipment_code`, `equipment_name`, `reason`, `reason_display`, `started_at`,
+# `ended_at`, `minutes`, `note`. `maintenance.overdue`: günlük kontrolde süresi geçmiş planlar.
+MAINTENANCE_WORK_ORDER_CREATED = "maintenance_work_order.created"
+MAINTENANCE_WORK_ORDER_IN_PROGRESS = "maintenance_work_order.in_progress"
+MAINTENANCE_WORK_ORDER_COMPLETED = "maintenance_work_order.completed"
+MAINTENANCE_WORK_ORDER_CANCELLED = "maintenance_work_order.cancelled"
+DOWNTIME_STARTED = "downtime.started"
+DOWNTIME_ENDED = "downtime.ended"
+MAINTENANCE_OVERDUE = "maintenance.overdue"
+
+# hse (Faz 4, Adım 4.5). Olay kaydı olayları durum makinesinden (`incident.<durum>`); payload'da
+# `incident_type`, `incident_type_display`, `occurred_at`, `place`, `injury`, `severity`.
+# `hse.storage_limit_exceeded`: lokasyonda tehlike sınıfı limiti aşıldı (`location_code`,
+# `hazard_class`, `hazard_class_display`, `quantity_kg`, `limit_kg`).
+INCIDENT_CREATED = "incident.created"
+INCIDENT_INVESTIGATING = "incident.investigating"
+INCIDENT_CLOSED = "incident.closed"
+INCIDENT_CANCELLED = "incident.cancelled"
+STORAGE_LIMIT_EXCEEDED = "hse.storage_limit_exceeded"

@@ -447,3 +447,35 @@ def send_to_printer(
     if description:
         note += f" — {description}"
     log_change(actor, target or printer, AuditLog.Action.CUSTOM, {}, note)
+
+
+# --- ekipman kullanım kancaları (Faz 4, bakım) -------------------------------------------------
+
+# Ekipman kullanım amaçları. Üretim ve dolum ekipmanı kullanmadan önce `check_equipment` çağırır;
+# bakım modülü kurallarını (`register_equipment_guard`) buraya kaydeder, alt modüller onu import
+# etmez (satın almanın mal kabul kancasıyla aynı yöntem).
+EQUIPMENT_ASSIGN = "assign"  # emre atama / emir onayı
+EQUIPMENT_START = "start"  # şarj ya da dolum partisi başlatma (`product` verilir)
+EQUIPMENT_WEIGH = "weigh"  # terazide tartım
+
+EquipmentGuard = Callable[[Equipment, str, Mapping[str, Any]], list[str]]
+_equipment_guards: list[EquipmentGuard] = []
+
+
+def register_equipment_guard(guard: EquipmentGuard) -> EquipmentGuard:
+    """Kancayı kaydeder (dekoratör olarak da kullanılır). `guard(equipment, use, context)` engel
+    için `BusinessRuleError` fırlatır, uyarı metinlerini liste olarak döner."""
+    if guard not in _equipment_guards:
+        _equipment_guards.append(guard)
+    return guard
+
+
+def check_equipment(equipment: Equipment, use: str, **context: Any) -> list[str]:
+    """Ekipmanın bu amaçla kullanılabildiğini kayıtlı kancalarla denetler; uyarıları döner.
+
+    Engelde kancanın `BusinessRuleError`'ı (ör. `equipment_down`, `cleaning_required`,
+    `calibration_overdue`) çağırana geçer."""
+    warnings: list[str] = []
+    for guard in _equipment_guards:
+        warnings.extend(guard(equipment, use, context))
+    return warnings

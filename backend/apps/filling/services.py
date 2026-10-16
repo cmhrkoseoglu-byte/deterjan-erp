@@ -449,6 +449,8 @@ def _prepare_order(order: FillingOrder) -> None:
         )
     order.packaging_spec = spec
     _validate_filling_line(order.filling_line)
+    # Faz 4: açık duruştaki hat emre atanamaz (bakım kancası).
+    masterdata.check_equipment(order.filling_line, masterdata.EQUIPMENT_ASSIGN)
     location = order.output_location
     if location.location_type != Location.Type.STORAGE or not location.is_active:
         raise BusinessRuleError(
@@ -525,6 +527,7 @@ def approve_order(actor: User | None, order: FillingOrder, note: str = "") -> Fi
             "güncelleyip yeni sürümü sabitleyin.",
         )
     _validate_filling_line(order.filling_line)
+    masterdata.check_equipment(order.filling_line, masterdata.EQUIPMENT_ASSIGN)
     for requirement in build_requirements(order):
         save_with_audit(requirement, actor)
     order.approved_by = actor
@@ -703,6 +706,9 @@ def start_run(actor: User | None, order: FillingOrder) -> FillingRun:
         raise BusinessRuleError(
             "run_in_progress", f"{order.number} emrinde devam eden bir dolum partisi var."
         )
+    masterdata.check_equipment(
+        order.filling_line, masterdata.EQUIPMENT_START, product=order.finished_product
+    )
     today = timezone.localdate()
     lot = inventory.create_lot(
         actor,

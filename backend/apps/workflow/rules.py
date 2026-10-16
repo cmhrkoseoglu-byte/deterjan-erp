@@ -230,6 +230,25 @@ def _reserved_expiring_body(payload: Payload) -> str:
     return "\n".join(lines)
 
 
+def _work_order_for(role: str) -> Callable[[Payload], list[Subject]]:
+    """Bakım iş emri görevi yalnızca sorumlu rolüne ve görev isteyen kayıtlarda açılır."""
+
+    def subjects(payload: Payload) -> list[Subject]:
+        if payload.get("responsible_role") != role or not payload.get("open_task", True):
+            return []
+        return [payload]
+
+    return subjects
+
+
+def _overdue_plans_body(payload: Payload) -> str:
+    rows = []
+    for plan in payload.get("plans", [])[:20]:
+        due = plan.get("next_due_date") or f"{plan.get('runs_done')} çalışma"
+        rows.append(f"{plan.get('equipment_code', '')} {plan.get('title', '')}: {due}")
+    return "\n".join(rows)
+
+
 RULES: tuple[Rule, ...] = (
     # Faz 2: mal kabul ve şarj bitişinde quality numune açar; görev numuneye bağlıdır ve numune
     # karara bağlanınca (ya da iptal edilince) kapanır.
@@ -575,6 +594,45 @@ RULES: tuple[Rule, ...] = (
         event=ev.PURCHASE_ORDER_CANCELLED,
         title="Satın alma siparişi iptal edildi: {number}",
         body="Siparişe bağlı açık görevler iptal edildi.",
+    ),
+    # Faz 4 (bakım): iş emri sorumlu role görev açar, tamamlanınca ya da iptalde kapanır.
+    *(
+        TaskRule(
+            code=f"maintenance_work_order_{role}",
+            event=ev.MAINTENANCE_WORK_ORDER_CREATED,
+            role=role,
+            title="Bakım iş emri: {number} — {equipment_code} {title}",
+            description="{kind_display}, termin {due_date}.",
+            subjects=_work_order_for(role),
+            close_on=(
+                CloseOn(ev.MAINTENANCE_WORK_ORDER_COMPLETED),
+                CloseOn(ev.MAINTENANCE_WORK_ORDER_CANCELLED),
+            ),
+        )
+        for role in (URETIM, DOLUM, LABORATUVAR, PLANLAMA, YONETIM)
+    ),
+    NotifyRule(
+        code="equipment_down",
+        event=ev.DOWNTIME_STARTED,
+        roles=(PLANLAMA, YONETIM),
+        level="WARNING",
+        title="Ekipman durdu: {equipment_code} ({reason_display})",
+        body="{equipment_name}, {started_at}. {note}",
+    ),
+    NotifyRule(
+        code="equipment_up",
+        event=ev.DOWNTIME_ENDED,
+        roles=(PLANLAMA,),
+        title="Ekipman yeniden çalışıyor: {equipment_code}",
+        body="{equipment_name}, duruş {started_at} – {ended_at} ({minutes} dk).",
+    ),
+    NotifyRule(
+        code="maintenance_overdue",
+        event=ev.MAINTENANCE_OVERDUE,
+        roles=(YONETIM,),
+        level="WARNING",
+        title="Süresi geçmiş bakım: {count} plan",
+        body=_overdue_plans_body,
     ),
 )
 

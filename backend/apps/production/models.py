@@ -358,6 +358,16 @@ class BatchConsumption(BaseModel):
         User, verbose_name="tartan", on_delete=models.PROTECT, null=True, related_name="+"
     )
     weighed_at = models.DateTimeField("tartım zamanı")
+    # Faz 4 (bakım): kullanılan terazi; kalibrasyonu geçmiş terazi seçilemez. Su (D-1) sayaçtan
+    # okunur, terazisi boştur.
+    scale = models.ForeignKey(
+        Equipment,
+        verbose_name="terazi",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
     deviation_pct = models.DecimalField("sapma (%)", max_digits=8, decimal_places=2)
     deviation_note = models.TextField("sapma notu", blank=True)
     movement = models.OneToOneField(

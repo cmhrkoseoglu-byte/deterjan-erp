@@ -148,6 +148,7 @@ class StockMovement(ImmutableModel):
         TRANSFER_IN = "TRANSFER_IN", "Transfer girişi"
         ADJUSTMENT = "ADJUSTMENT", "Sayım düzeltme"
         SCRAP = "SCRAP", "Fire / imha"
+        ISSUE_MAINTENANCE = "ISSUE_MAINTENANCE", "Bakım sarfı"
         SHIPMENT = "SHIPMENT", "Sevkiyat"
         RETURN = "RETURN", "İade"
         REVERSAL = "REVERSAL", "Ters kayıt"
