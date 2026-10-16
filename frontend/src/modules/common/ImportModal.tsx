@@ -15,7 +15,6 @@ import {
 import { notifications } from "@mantine/notifications";
 import { IconDownload, IconFileSpreadsheet } from "@tabler/icons-react";
 import { useMutation } from "@tanstack/react-query";
-import axios from "axios";
 import { useEffect, useState } from "react";
 import { getErrorMessage } from "../../api/client";
 import {
@@ -24,6 +23,7 @@ import {
   type ImportKind,
   type ImportReport,
 } from "../../api/masterdata";
+import { reportFromError } from "./importReport";
 import { ct } from "./strings";
 
 interface Props {
@@ -36,15 +36,6 @@ interface Props {
   upload?: (file: File, confirm: boolean) => Promise<ImportReport>;
   templateUrl?: string;
   intro?: string;
-}
-
-/** 400 `import_has_errors` yanıtındaki raporu çıkarır. */
-function reportFromError(error: unknown): ImportReport | null {
-  if (axios.isAxiosError(error)) {
-    const data = error.response?.data as { report?: ImportReport } | undefined;
-    return data?.report ?? null;
-  }
-  return null;
 }
 
 /** Excel / CSV içe aktarma: dosya seç → önizle (satır hataları) → aktar. */
@@ -148,7 +139,7 @@ export function ImportModal({
   );
 }
 
-function ReportView({ report, hasErrors }: { report: ImportReport; hasErrors: boolean }) {
+export function ReportView({ report, hasErrors }: { report: ImportReport; hasErrors: boolean }) {
   return (
     <Stack gap="xs">
       {report.file_errors.length > 0 ? (

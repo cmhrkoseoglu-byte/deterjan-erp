@@ -795,3 +795,25 @@ def test_opening_balance_rules(depo):
     assert exc.value.code == "invalid_quantity"
     assert StockBalance.objects.filter(lot__lot_no="Y").count() == 0
     assert not LotLink.objects.exists()
+
+
+def test_opening_closes_on_go_live_date(depo):
+    material = MaterialFactory()
+    today = timezone.localdate()
+    services.set_go_live_date(depo, today + timedelta(days=1))
+    assert services.opening_is_open()
+    services.post_opening_balance(
+        depo, material=material, lot_no="A-1", location=storage_location(), quantity=D("5")
+    )
+
+    services.set_go_live_date(depo, today)
+    assert not services.opening_is_open()
+    with pytest.raises(BusinessRuleError) as exc:
+        services.post_opening_balance(
+            depo, material=material, lot_no="A-2", location=storage_location(), quantity=D("5")
+        )
+    assert exc.value.code == "opening_closed"
+    assert AuditLog.objects.filter(note="Canlı başlangıç tarihi").count() == 2
+
+    services.set_go_live_date(depo, None)
+    assert services.opening_is_open()

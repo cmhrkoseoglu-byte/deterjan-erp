@@ -18,6 +18,7 @@ import { useAuth } from "../auth/AuthContext";
 import { SECURITY_PATH } from "../auth/paths";
 import { displayName } from "../auth/roles";
 import { tr } from "../i18n/tr";
+import { ProblemReportButton } from "../components/problem/ProblemReportButton";
 import { NotificationBell } from "../workflow/NotificationBell";
 import { RealtimeProvider } from "../workflow/realtime";
 import { visibleMenu } from "./menu";
@@ -63,6 +64,7 @@ export function AppLayout() {
               </Link>
             </Group>
             <Group gap="sm" wrap="nowrap">
+              <ProblemReportButton />
               <NotificationBell />
               <Menu position="bottom-end" width={240}>
                 <Menu.Target>

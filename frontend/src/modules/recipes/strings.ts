@@ -1,6 +1,9 @@
 export const rt = {
   title: "Reçeteler",
   newRecipe: "Yeni reçete",
+  importTitle: "Reçeteler: Excel'den içe aktar",
+  importIntro:
+    "Her satır bir bileşendir; aynı reçete kodlu satırlar tek sürüm olur. Her reçete için yeni bir taslak sürüm açılır, onayı laboratuvar verir. Proses adımlarını reçete ekranından girin.",
   recipe: "Reçete",
   product: "Ürün (dökme)",
   notes: "Notlar",

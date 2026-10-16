@@ -540,6 +540,7 @@ Faz dosyası: `docs/plan/FAZ-5-entegrasyon-canli.md`. Kararlar D-16 … D-20 (DE
 |---|---|---|
 | 5.4 Canlı ortam | Kod tamam (2026-10-16), sunucuya kurulum bekliyor | Üretim compose, nginx HTTPS + güvenlik başlıkları, üretim ayarları, `docs/KURULUM.md`, `docs/CANLI-KONTROL-LISTESI.md` |
 | 5.5 Yedek, izleme, güvenlik | Kod tamam (2026-10-16), sunucuya kurulum bekliyor | Gece yedeği + ayrı konum kopyası + haftalık otomatik geri yükleme testi; `ops` izleme ve uyarılar; kilit, hareketsizlik süresi, 2FA, şifre politikası; CI gizli bilgi ve bağımlılık taraması; `docs/KVKK.md` |
+| 5.6 Geçiş ve eğitim | Araçlar tamam (2026-10-16, PR #18), sayım günü bekliyor | Excel içe aktarmalar, Canlıya geçiş ekranı, stok karşılaştırması, Sorun bildir, kılavuzlar; `docs/GECIS-PLANI.md` |
 
 ### Adım 5.4 ve 5.5 doğrulaması (canlı ortam ve güvenlik)
 
@@ -570,3 +571,31 @@ Faz dosyası: `docs/plan/FAZ-5-entegrasyon-canli.md`. Kararlar D-16 … D-20 (DE
 |---|---|---|
 | Canlı ortam HTTPS, güvenlik başlıkları ve `DEBUG=False` ile çalışıyor; güvenlik kontrol listesi tamam | Sandbox'ta ✓; gerçek sunucuda kontrol listesi kurulumda işaretlenecek | `scripts/prod_smoke_test.sh`, CI `prod` işi, `docs/CANLI-KONTROL-LISTESI.md` |
 | Yedekten geri yükleme testi başarılı ve otomatik | ✓ (her pazar 04:00 + CI) | `backup/restore-test.sh`, duman testindeki geri yükleme adımı, `ops` izleme kontrolü |
+
+### Adım 5.6 doğrulaması (geçiş ve eğitim)
+
+- İçe aktarmalar: ana verilere depo, lokasyon, ekipman, birim dönüşümü; reçeteler (taslak sürüm).
+  Canlı başlangıç tarihi açılış stokunu kapatır. Yeni uygulama `apps/golive`: hazırlık listesi, paralel
+  çalışma stok karşılaştırması (`SK-`), "Sorun bildir" (`SB-`, admin görevi). Ekranlar: Canlıya geçiş
+  (`/gecis`), Yardım (`/yardim`, rol kılavuzları ve sayım günü planı), üst çubukta Sorun bildir.
+  Hazırlanacaklar listesi `docs/GECIS-PLANI.md`.
+- Testler: `apps/golive/tests` (servis ve API: düzeyler, birim dönüşümü, gün sonu stoğu, hatalı satır,
+  Excel çıktısı, hazırlık listesi, sorun bildirimi görevi ve görünürlüğü, her uç noktada yasak rol),
+  `apps/recipes/tests/test_importers.py`, `apps/masterdata/tests/test_importers.py` (yeni türler),
+  `test_opening_closes_on_go_live_date`. Frontend: `golive.test.tsx`, `RecipeImport.test.tsx`, menü testi.
+- Sonuç: backend `pytest` 1067 test yeşil, `ruff check`, `ruff format --check`, `mypy` temiz,
+  `makemigrations --check` değişiklik yok. Frontend `npm test` 238 test, lint, biçim, tip denetimi ve
+  derleme temiz.
+- Kılavuzlar: 11 kılavuz (genel, 9 rol, sayım günü) ve demo verisinden alınmış 45 ekran görüntüsü
+  (`frontend/public/kilavuz/`). Görüntüler `scripts/kilavuz-ekran-goruntuleri.mjs` ile yeniden üretilir
+  (servisler ve demo verisi ayaktayken; eksik örnek kayıtları API üzerinden açar, hiçbir şey silmez).
+- Prova (demo verisi, ayrı veritabanı, gerçek HTTP API üzerinden): hazırlık listesi → depo, lokasyon,
+  ekipman içe aktarma (önizle + aktar) → reçete içe aktarma (tekrar yükleme taslak var diye reddedildi) →
+  açılış stoku → sayım listesiyle lot + lokasyon düzeyinde karşılaştırma → depo canlı tarihini giremedi
+  (403), yönetim girdi → açılış yüklemesi `opening_closed` ile kapandı → haftalık malzeme düzeyinde
+  karşılaştırma ve Excel çıktısı → üretim rolü karşılaştırmaya giremedi (403) → dolum "Sorun bildir"
+  gönderdi, admin'e görev açıldı, başka kullanıcı bildirimi ve görüntüyü göremedi (404), admin açtı.
+
+| Faz 5 kabul kriteri (Adım 5.6'ya düşen) | Durum | Kanıt |
+|---|---|---|
+| Açılış stoku yüklendi, paralel çalışma dönemi karşılaştırması tutarlı | Araçlar hazır; gerçek veriyle sayım gününde | Araç: açılış içe aktarma + `create_stock_comparison` testleri ve prova. Gerçek sayım ve 2–4 haftalık karşılaştırma fabrika verisiyle yapılacak. |

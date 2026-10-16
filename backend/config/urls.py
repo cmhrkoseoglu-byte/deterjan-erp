@@ -26,6 +26,7 @@ urlpatterns = [
     path("api/v1/hse/", include("apps.hse.api.urls")),
     path("api/v1/reporting/", include("apps.reporting.api.urls")),
     path("api/v1/ops/", include("apps.ops.api.urls")),
+    path("api/v1/golive/", include("apps.golive.api.urls")),
     path("api/v1/workflow/", include("apps.workflow.api.urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerSplitView.as_view(url_name="schema"), name="api-docs"),

@@ -11,4 +11,8 @@ router.register("versions", views.RecipeVersionViewSet, basename="version")
 router.register("lines", views.RecipeLineViewSet, basename="line")
 router.register("steps", views.RecipeStepViewSet, basename="step")
 
-urlpatterns = [path("", include(router.urls))]
+urlpatterns = [
+    path("import/template/", views.RecipeImportTemplateView.as_view(), name="import-template"),
+    path("import/", views.RecipeImportView.as_view(), name="import"),
+    path("", include(router.urls)),
+]

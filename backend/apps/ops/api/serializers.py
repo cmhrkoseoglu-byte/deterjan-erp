@@ -34,7 +34,7 @@ class BackupRunSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class CheckSerializer(serializers.Serializer):
+class OpsCheckSerializer(serializers.Serializer):
     check = serializers.CharField()
     label = serializers.CharField()  # type: ignore[assignment]
     status = serializers.CharField(help_text="ok, error ya da unknown")
@@ -51,7 +51,7 @@ class DiskSerializer(serializers.Serializer):
 
 
 class SystemStatusSerializer(serializers.Serializer):
-    checks = CheckSerializer(many=True)
+    checks = OpsCheckSerializer(many=True)
     disks = DiskSerializer(many=True)
     load_15 = serializers.FloatField(allow_null=True)
     cpu_count = serializers.IntegerField(allow_null=True)

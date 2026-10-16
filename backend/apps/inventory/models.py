@@ -661,3 +661,22 @@ class StockReservation(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.document_number or self.source_object_id}: {self.lot} {self.quantity}"
+
+
+class InventorySettings(BaseModel):
+    """Tek satırlık stok ayarı (Faz 5, Adım 5.6). Canlı başlangıç tarihinden itibaren açılış
+    stoku yüklenemez; farklar sayım düzeltmesiyle girilir."""
+
+    go_live_date = models.DateField(
+        "canlı başlangıç tarihi",
+        null=True,
+        blank=True,
+        help_text="Bu tarihten itibaren açılış stoku yükleme kapanır.",
+    )
+
+    class Meta:
+        verbose_name = "stok ayarı"
+        verbose_name_plural = "stok ayarları"
+
+    def __str__(self) -> str:
+        return "Stok ayarları"

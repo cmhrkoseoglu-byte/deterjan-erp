@@ -146,6 +146,7 @@ export const conversionConfig: EntityConfig<Conversion & { code?: string; name?:
   title: "Birim dönüşümleri",
   singular: "Birim dönüşümü",
   writeRoles: WRITE,
+  importKind: "conversions",
   columns: [
     { key: "material", label: "Malzeme", render: (row) => row.material_code },
     {
@@ -225,6 +226,7 @@ export const warehouseConfig: EntityConfig<Warehouse> = {
   title: "Depolar",
   singular: "Depo",
   writeRoles: WRITE,
+  importKind: "warehouses",
   columns: [codeColumn, nameColumn],
   fields: [code, name],
 };
@@ -234,6 +236,7 @@ export const locationConfig: EntityConfig<Location> = {
   title: "Lokasyonlar",
   singular: "Lokasyon",
   writeRoles: WRITE,
+  importKind: "locations",
   columns: [
     codeColumn,
     nameColumn,
@@ -269,6 +272,7 @@ export const equipmentConfig: EntityConfig<Equipment> = {
   title: "Ekipmanlar",
   singular: "Ekipman",
   writeRoles: WRITE,
+  importKind: "equipment",
   columns: [
     codeColumn,
     nameColumn,

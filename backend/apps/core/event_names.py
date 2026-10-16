@@ -143,3 +143,7 @@ REPORT_JOB_FAILED = "report_job.failed"
 # tekrarlanmaz; sorun geçince bir kez `ops.recovered`.
 OPS_ALERT = "ops.alert"
 OPS_RECOVERED = "ops.recovered"
+
+# golive (Faz 5, Adım 5.6). Kullanıcı "Sorun bildir" ile sorun bildirdi; admin rolüne görev açılır.
+# Payload: `{"model": "golive.problemreport", "id", "number", "summary", "reporter", "page_url"}`.
+PROBLEM_REPORTED = "problem_report.created"

@@ -709,6 +709,15 @@ RULES: tuple[Rule, ...] = (
         title="Sistem normale döndü: {title}",
         body="{detail}",
     ),
+    # Canlıya geçiş (Faz 5, Adım 5.6): "Sorun bildir" admin rolüne görev açar; admin görevi
+    # tamamlayınca kapanır.
+    TaskRule(
+        code="problem_reported",
+        event=ev.PROBLEM_REPORTED,
+        role=ADMIN,
+        title="Sorun bildirimi: {number}",
+        description="{reporter}: {summary} — sayfa: {page_title} {page_url}",
+    ),
 )
 
 

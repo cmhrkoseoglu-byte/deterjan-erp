@@ -1,17 +1,23 @@
 from typing import Any
 
 from django.db.models import Max, Prefetch, QuerySet
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.core.permissions import HasRole
 from apps.core.roles import LABORATUVAR, PLANLAMA
+from apps.masterdata.api import serializers as md
 from apps.masterdata.api.views import READ_ACTIONS, MasterDataViewSet
-from apps.recipes import services
+from apps.masterdata.importers import ImportHasErrors
+from apps.recipes import importers, services
 from apps.recipes.api import serializers as s
 from apps.recipes.models import Recipe, RecipeLine, RecipeStep, RecipeVersion
 
@@ -282,3 +288,52 @@ class RecipeStepViewSet(_DraftItemViewSet):
 
     def perform_destroy(self, instance: RecipeStep) -> None:
         services.remove_step(self.request.user, instance)  # type: ignore[arg-type]
+
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+class RecipeImportView(APIView):
+    """Reçete içe aktarma (Excel / CSV). `confirm=false` önizleme, `confirm=true` aktarır; her
+    reçeteye yeni taslak sürüm açılır. Hatalı satır varsa hiçbir reçete yazılmaz."""
+
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [HasRole(*RECIPE_WRITE_ROLES)]
+
+    @extend_schema(
+        request={"multipart/form-data": md.ImportUploadSerializer},
+        responses={
+            200: md.ImportReportSerializer,
+            400: OpenApiResponse(description="import_has_errors (gövdede `report`)"),
+        },
+    )
+    def post(self, request: Request) -> Response:
+        upload = md.ImportUploadSerializer(data=request.data)
+        upload.is_valid(raise_exception=True)
+        file = upload.validated_data["file"]
+        if upload.validated_data["confirm"]:
+            try:
+                report = importers.run_import(
+                    request.user,  # type: ignore[arg-type]
+                    file,
+                    file.name,
+                )
+            except ImportHasErrors as exc:
+                report_body = {**exc.report.as_dict(), "imported": False}
+                body = {"code": exc.code, "detail": exc.message, "report": report_body}
+                return Response(body, status=status.HTTP_400_BAD_REQUEST)
+            return Response({**report.as_dict(), "imported": True})
+        report = importers.preview_import(file, file.name)
+        return Response({**report.as_dict(), "imported": False})
+
+
+class RecipeImportTemplateView(APIView):
+    """Reçete içe aktarma şablonu (.xlsx)."""
+
+    permission_classes = [HasRole(*RECIPE_WRITE_ROLES)]
+
+    @extend_schema(responses={(200, XLSX): OpenApiTypes.BINARY})
+    def get(self, request: Request) -> HttpResponse:
+        response = HttpResponse(importers.build_template(), content_type=XLSX)
+        response["Content-Disposition"] = 'attachment; filename="sablon-receteler.xlsx"'
+        return response
