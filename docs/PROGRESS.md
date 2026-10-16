@@ -565,3 +565,18 @@ entegratörü), D-20 (yerel sunucu) `docs/DECISIONS.md`'de.
 | Faz 5 kabul kriteri (Adım 5.6'ya düşen) | Durum | Kanıt |
 |---|---|---|
 | Açılış stoku yüklendi, paralel çalışma dönemi karşılaştırması tutarlı | Araçlar hazır; gerçek veriyle sayım gününde | Araç: açılış içe aktarma + `create_stock_comparison` testleri ve prova. Gerçek sayım ve 2–4 haftalık karşılaştırma fabrika verisiyle yapılacak. |
+
+### Önceki fazlardan kalan kusurlar (kılavuz ekran görüntülerinde bulunanlar)
+
+Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bulunan 8 kusur:
+
+| Kusur | Sonuç | Kanıt |
+|---|---|---|
+| İleri izlemede dökmeden mamule geçen miktar ADET yazıyor (KG olmalı) | Düzeltildi: soy ağacı düğümü `quantity_unit` (girdi lotun birimi) taşır, ekranlar onu gösterir | `test_lot_trace_quantity_unit_is_input_lot_unit`, `traceability.test.tsx` |
+| Sevkiyat toplama önerisinde aynı lot iki kez (rezerve + rezervesiz) | Düzeltildi: lot ve lokasyon başına tek satır, `reserved_quantity` etikette | `test_suggestions_list_partly_reserved_lot_once`, `shipments.test.tsx` |
+| Zorunlu test eksikken "Serbest bırak" seçilebiliyor | Düzeltildi: sunucu bu durumda hiçbir kararı kabul etmediği için karar penceresi kilitli, eksik testler yazılı | `quality.test.tsx` |
+| Durum etiketleri kesiliyor ("DOLU…", "ŞART…", "ONAY BEKLİ…") | Düzeltildi: tema düzeyinde etiket tam genişlikte kalır | `theme.test.tsx` |
+| Tam tartılan satırın çubuğu %83–85'te | Düzeltildi: plan miktarı tam çubuk; fazlası renkle | `production.test.tsx` (`gaugeValue`) |
+| Satın alma onay görevinde tutar binlik ayırıcısız | Düzeltildi: `core.formatting.format_money` (görev, limit mesajı, denetim notu, PDF) | `apps/core/tests/test_formatting.py`, `test_submit_for_approval_opens_management_task_and_return_to_draft` |
+| Onay bekleyen siparişte "Bekleyen 0 KG" | Düzeltildi: onaydan önce bekleyen sütunu boş (—) | `purchasing.test.tsx` |
+| Açılış stoku şablonundaki örnek satır demo kodlarıyla eşleşmiyor | Kusur değil: şablon örneği gerçek fabrika verisi içindir; önizleme bilinmeyen kodu doğru biçimde gösteriyor | — |
