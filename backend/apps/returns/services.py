@@ -13,12 +13,14 @@ Kurallar:
 - Her satır sonuçlanınca iade kapanır (`CLOSED`). Teslim alınan iade iptal edilmez.
 """
 
+from collections import defaultdict
 from collections.abc import Iterable, Mapping
+from decimal import Decimal
 from typing import Any
 
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Sum
 from django.utils import timezone
 
 from apps.core import event_names as ev
@@ -31,19 +33,21 @@ from apps.core.roles import DEPO, SEVKIYAT
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
 from apps.inventory import services as inventory
 from apps.inventory.models import Lot, StockMovement
-from apps.inventory.services import lot_payload, quantize
+from apps.inventory.services import format_quantity, lot_payload, quantize
 from apps.masterdata import services as masterdata
 from apps.masterdata.models import Location, Material
 from apps.quality import services as quality
 from apps.quality.models import QualityDecision, Sample, SampleStage
 from apps.returns.models import CustomerReturn, CustomerReturnLine
 from apps.returns.state import customer_return_states
+from apps.sales import selectors as sales_selectors
+from apps.sales.models import Shipment
 
 EDIT_ROLES = (SEVKIYAT,)
 RECEIVE_ROLES = (SEVKIYAT, DEPO)
 SCRAP_ROLES = (DEPO, SEVKIYAT)
 
-RETURN_FIELDS = ("customer", "return_date", "reason", "quarantine_location", "note")
+RETURN_FIELDS = ("customer", "shipment", "return_date", "reason", "quarantine_location", "note")
 LINE_FIELDS = ("product", "lot", "quantity", "unit")
 
 Disposition = CustomerReturnLine.Disposition
@@ -104,6 +108,55 @@ def _validate_header(customer_return: CustomerReturn) -> None:
     customer_return.reason = (customer_return.reason or "").strip()
     if not customer_return.reason:
         raise BusinessRuleError("reason_required", "İade nedeni girilmelidir.")
+    shipment = customer_return.shipment
+    if shipment is not None:
+        if shipment.status != Shipment.Status.DISPATCHED:
+            raise BusinessRuleError(
+                "shipment_not_dispatched",
+                f"{shipment.number} sevk edilmemiş; iade yalnızca sevk edilmiş sevkiyata bağlanır.",
+            )
+        if shipment.sales_order.customer_id != customer_return.customer_id:
+            raise BusinessRuleError(
+                "shipment_customer_mismatch",
+                f"{shipment.number} başka bir müşterinin sevkiyatı.",
+            )
+
+
+def _check_against_shipment(
+    customer_return: CustomerReturn, lines: Iterable[CustomerReturnLine]
+) -> None:
+    """Sevkiyata bağlı iadede her lotun iade miktarı, o sevkiyatta o lottan sevk edilenden
+    (aynı sevkiyata bağlı diğer iadeler düşülerek) fazla olamaz."""
+    shipment = customer_return.shipment
+    if shipment is None:
+        return
+    shipped = sales_selectors.shipped_by_shipment_lot(shipment)
+    returned = dict(
+        CustomerReturnLine.objects.filter(customer_return__shipment=shipment)
+        .exclude(customer_return=customer_return)
+        .exclude(customer_return__status=CustomerReturn.Status.CANCELLED)
+        .values("lot_id")
+        .annotate(total=Sum("base_quantity"))
+        .values_list("lot_id", "total")
+    )
+    wanted: dict[int, Decimal] = defaultdict(Decimal)
+    for line in lines:
+        wanted[line.lot_id] += quantize(
+            masterdata.to_base_quantity(line.product, line.quantity, line.unit)
+        )
+        if line.lot_id not in shipped:
+            raise BusinessRuleError(
+                "lot_not_in_shipment",
+                f"Lot {line.lot.lot_no} {shipment.number} sevkiyatında sevk edilmedi.",
+            )
+        limit = shipped[line.lot_id] - (returned.get(line.lot_id) or Decimal(0))
+        if wanted[line.lot_id] > limit:
+            unit = line.product.base_unit.code
+            raise BusinessRuleError(
+                "return_exceeds_shipped",
+                f"Lot {line.lot.lot_no}: {shipment.number} ile {format_quantity(limit)} {unit} "
+                "iade edilebilir (sevk edilen, önceki iadeler düşülerek).",
+            )
 
 
 def _validate_line(line: CustomerReturnLine) -> None:
@@ -167,6 +220,7 @@ def _sync_lines(
             f"Satır {line.line_no} kaldırıldı (taslak)",
         )
         line.delete()
+    _check_against_shipment(customer_return, pending)
     for line in pending:
         save_with_audit(line, actor)
 
@@ -280,6 +334,7 @@ def receive_return(actor: User | None, customer_return: CustomerReturn) -> Custo
     )
     if not lines:
         raise BusinessRuleError("document_empty", "Satırı olmayan iade teslim alınamaz.")
+    _check_against_shipment(customer_return, lines)
     location = customer_return.quarantine_location
     scrap_needed = False
     for line in lines:

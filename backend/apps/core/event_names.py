@@ -78,3 +78,12 @@ CUSTOMER_RETURN_RECEIVED = "customer_return.received"
 CUSTOMER_RETURN_CLOSED = "customer_return.closed"
 CUSTOMER_RETURN_CANCELLED = "customer_return.cancelled"
 CUSTOMER_RETURN_SCRAP_REQUIRED = "customer_return.scrap_required"
+# sales — sevkiyat (Faz 3, Adım 3.2). Durum olayları makineden (`shipment.<durum>`); payload'da
+# `order` (sipariş özeti), `customer_code`, `customer_name`; `shipment.planned` ayrıca
+# `order_fully_planned` (sipariş satırlarının tamamı açık ya da sevk edilmiş sevkiyatlarda mı).
+# `shipment.dispatched` ayrıca `order_created_by_id` ve `lots`.
+SHIPMENT_PLANNED = "shipment.planned"
+SHIPMENT_PICKING = "shipment.picking"
+SHIPMENT_LOADED = "shipment.loaded"
+SHIPMENT_DISPATCHED = "shipment.dispatched"
+SHIPMENT_CANCELLED = "shipment.cancelled"

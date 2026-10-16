@@ -195,6 +195,12 @@ PRODUCTION_LOW_YIELD_THRESHOLD_PCT = env("PRODUCTION_LOW_YIELD_THRESHOLD_PCT", d
 # `filling.bulk_variance` olayı (planlama ve yönetime uyarı).
 FILL_VARIANCE_THRESHOLD_PCT = env("FILL_VARIANCE_THRESHOLD_PCT", default="1.5")
 
+# Firma bilgileri: irsaliye ve analiz sertifikası başlığı.
+COMPANY_NAME = env("COMPANY_NAME", default="")
+COMPANY_ADDRESS = env("COMPANY_ADDRESS", default="")
+COMPANY_TAX_OFFICE = env("COMPANY_TAX_OFFICE", default="")
+COMPANY_TAX_NO = env("COMPANY_TAX_NO", default="")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

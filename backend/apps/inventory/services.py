@@ -416,12 +416,61 @@ def _close_reservation(
     return locked
 
 
+def _split_reservation(
+    actor: User | None,
+    reservation: StockReservation,
+    status: str,
+    quantity: Decimal | None,
+    note: str,
+) -> StockReservation:
+    """Aktif rezervasyonun `quantity` kadarını `status` durumuna kapatır. Miktar rezervasyondan
+    azsa rezervasyon bölünür: kapanan kısım yeni kayıt olur (dönen kayıt), kalan aktif kalır."""
+    locked = StockReservation.objects.select_for_update().get(pk=reservation.pk)
+    if locked.status != StockReservation.Status.ACTIVE:
+        raise BusinessRuleError("reservation_not_active", "Rezervasyon aktif değil.")
+    quantity = locked.quantity if quantity is None else quantize(quantity)
+    if quantity <= 0 or quantity > locked.quantity:
+        raise BusinessRuleError(
+            "invalid_quantity",
+            f"Miktar 0 ile {format_quantity(locked.quantity)} arasında olmalıdır.",
+        )
+    if quantity == locked.quantity:
+        return _close_reservation(actor, locked, status, note)
+    before = snapshot(locked)
+    locked.quantity -= quantity
+    locked.updated_by = _actor(actor)
+    locked.save(update_fields=["quantity", "updated_by", "updated_at"])
+    log_change(
+        _actor(actor),
+        locked,
+        AuditLog.Action.UPDATE,
+        {"quantity": [str(before.get("quantity")), str(locked.quantity)]},
+        note,
+    )
+    part = StockReservation(
+        material_id=locked.material_id,
+        lot_id=locked.lot_id,
+        location_id=locked.location_id,
+        quantity=quantity,
+        source_content_type_id=locked.source_content_type_id,
+        source_object_id=locked.source_object_id,
+        document_number=locked.document_number,
+        note=note,
+    )
+    save_with_audit(part, actor, note=note)
+    return _close_reservation(actor, part, status, note)
+
+
 @transaction.atomic
 def release_reservation(
-    actor: User | None, reservation: StockReservation, note: str = ""
+    actor: User | None,
+    reservation: StockReservation,
+    note: str = "",
+    quantity: Decimal | None = None,
 ) -> StockReservation:
-    """Aktif rezervasyonu bırakır (`RELEASED`); stok yeniden kullanılabilir olur."""
-    return _close_reservation(actor, reservation, StockReservation.Status.RELEASED, note)
+    """Aktif rezervasyonu bırakır (`RELEASED`); stok yeniden kullanılabilir olur. `quantity`
+    rezervasyondan azsa yalnızca o kadarı bırakılır (bölünür), kalan aktif kalır."""
+    return _split_reservation(actor, reservation, StockReservation.Status.RELEASED, quantity, note)
 
 
 @transaction.atomic
@@ -436,40 +485,7 @@ def consume_reservation(
     `quantity` rezervasyondan azsa rezervasyon bölünür: kullanılan kısım `CONSUMED` yeni kayıt
     olur (dönen kayıt), kalan aktif kalır. Rezervasyondan fazlası kullanılamaz.
     """
-    locked = StockReservation.objects.select_for_update().get(pk=reservation.pk)
-    if locked.status != StockReservation.Status.ACTIVE:
-        raise BusinessRuleError("reservation_not_active", "Rezervasyon aktif değil.")
-    quantity = locked.quantity if quantity is None else quantize(quantity)
-    if quantity <= 0 or quantity > locked.quantity:
-        raise BusinessRuleError(
-            "invalid_quantity",
-            f"Kullanılan miktar 0 ile {format_quantity(locked.quantity)} arasında olmalıdır.",
-        )
-    if quantity == locked.quantity:
-        return _close_reservation(actor, locked, StockReservation.Status.CONSUMED, note)
-    before = snapshot(locked)
-    locked.quantity -= quantity
-    locked.updated_by = _actor(actor)
-    locked.save(update_fields=["quantity", "updated_by", "updated_at"])
-    log_change(
-        _actor(actor),
-        locked,
-        AuditLog.Action.UPDATE,
-        {"quantity": [str(before.get("quantity")), str(locked.quantity)]},
-        note,
-    )
-    consumed = StockReservation(
-        material_id=locked.material_id,
-        lot_id=locked.lot_id,
-        location_id=locked.location_id,
-        quantity=quantity,
-        source_content_type_id=locked.source_content_type_id,
-        source_object_id=locked.source_object_id,
-        document_number=locked.document_number,
-        note=note,
-    )
-    save_with_audit(consumed, actor, note=note)
-    return _close_reservation(actor, consumed, StockReservation.Status.CONSUMED, note)
+    return _split_reservation(actor, reservation, StockReservation.Status.CONSUMED, quantity, note)
 
 
 @transaction.atomic

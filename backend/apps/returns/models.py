@@ -13,6 +13,7 @@ from apps.core.models import BaseModel, DocumentModel, User
 from apps.inventory.models import Lot, StockMovement
 from apps.masterdata.models import Customer, Location, Material, UnitOfMeasure
 from apps.quality.models import Sample
+from apps.sales.models import Shipment
 
 
 class CustomerReturn(DocumentModel):
@@ -26,6 +27,16 @@ class CustomerReturn(DocumentModel):
 
     customer = models.ForeignKey(
         Customer, verbose_name="müşteri", on_delete=models.PROTECT, related_name="returns"
+    )
+    # Adım 3.2: iade edilen sevkiyat (isteğe bağlı). Verilirse satırlar o sevkiyatta sevk
+    # edilen lot ve miktarla sınırlıdır.
+    shipment = models.ForeignKey(
+        Shipment,
+        verbose_name="sevkiyat",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="returns",
     )
     return_date = models.DateField("iade tarihi")
     reason = models.TextField("iade nedeni")

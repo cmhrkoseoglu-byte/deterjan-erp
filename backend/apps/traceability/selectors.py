@@ -11,8 +11,8 @@
 
 Müşteri halkası: sevkiyat `SHIPMENT` hareketiyle stoktan çıkar; hareket belge numarasını
 (`SV-...`) ve kaynak belgeyi taşır. Sevkiyat satırları `shipment_rows` ile bu hareketlerden
-okunur; müşteri alanlarını sevkiyat modülü (Faz 3, Adım 3.2) `_customers_for` içinde doldurur
-(sözleşme: docs/DECISIONS.md "İzlenebilirlik: müşteri halkası").
+okunur; müşteri alanları hareketin kaynağı olan sevkiyattan (`sales.Shipment` → sipariş →
+müşteri) tek sorguyla doldurulur (`_customers_for`).
 
 Tüm miktarlar lotun malzemesinin temel birimindedir. Sorgu sayısı lot sayısından bağımsızdır
 (özyinelemeli CTE + toplu sorgular).
@@ -28,6 +28,7 @@ from django.db.models import Min, Sum
 
 from apps.inventory.models import GoodsReceiptLine, Lot, StockBalance, StockMovement
 from apps.inventory.selectors import lot_trace_backward, lot_trace_forward
+from apps.sales.models import Shipment
 
 MovementType = StockMovement.Type
 ZERO = Decimal(0)
@@ -135,15 +136,32 @@ def returned_by_lot(lot_ids: Iterable[int]) -> dict[int, Decimal]:
     return {row["lot_id"]: row["total"] for row in rows}
 
 
+SHIPMENT_MODEL = "sales.shipment"
+
+
 def _customers_for(rows: list[dict[str, Any]]) -> None:
     """Sevkiyat satırlarına müşteri alanlarını (`customer_id`, `customer_code`,
-    `customer_name`) yazar. Sevkiyat modülü (Adım 3.2) gelene kadar müşteri bilinmez; Adım 3.2
-    bu fonksiyonu sevkiyat belgesinden (`source_model`, `source_id`) müşteriyi okuyacak şekilde
-    doldurur."""
+    `customer_name`) ve sipariş numarasını (`order_number`) yazar: hareketin kaynağı sevkiyat
+    belgesidir (`source_model` = `sales.shipment`). Kaynağı sevkiyat olmayan satırda boş kalır."""
+    ids = {row["source_id"] for row in rows if row["source_model"] == SHIPMENT_MODEL}
+    shipments = {
+        row["id"]: row
+        for row in Shipment.objects.filter(pk__in=ids).values(
+            "id",
+            "sales_order__number",
+            "sales_order__customer_id",
+            "sales_order__customer__code",
+            "sales_order__customer__name",
+        )
+    }
     for row in rows:
-        row.setdefault("customer_id", None)
-        row.setdefault("customer_code", None)
-        row.setdefault("customer_name", None)
+        shipment = (
+            shipments.get(row["source_id"]) if row["source_model"] == SHIPMENT_MODEL else None
+        )
+        row["customer_id"] = shipment["sales_order__customer_id"] if shipment else None
+        row["customer_code"] = shipment["sales_order__customer__code"] if shipment else None
+        row["customer_name"] = shipment["sales_order__customer__name"] if shipment else None
+        row["order_number"] = shipment["sales_order__number"] if shipment else None
 
 
 def shipment_rows(lot_ids: Iterable[int]) -> list[dict[str, Any]]:

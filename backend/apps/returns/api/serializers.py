@@ -5,6 +5,7 @@ from apps.inventory.models import Lot
 from apps.masterdata.models import Customer, Location, Material, UnitOfMeasure
 from apps.returns.models import CustomerReturn, CustomerReturnLine
 from apps.returns.state import customer_return_states
+from apps.sales.models import Shipment
 
 
 class CustomerReturnLineSerializer(serializers.ModelSerializer):
@@ -87,6 +88,15 @@ class CustomerReturnSerializer(serializers.ModelSerializer):
     quarantine_location_code = serializers.CharField(
         source="quarantine_location.code", read_only=True
     )
+    shipment = serializers.PrimaryKeyRelatedField(
+        queryset=Shipment.objects.select_related("sales_order"),
+        required=False,
+        allow_null=True,
+        default=None,
+    )
+    shipment_number = serializers.CharField(
+        source="shipment.number", read_only=True, default=None, allow_null=True
+    )
     line_count = serializers.IntegerField(read_only=True, default=None)
 
     class Meta:
@@ -96,6 +106,8 @@ class CustomerReturnSerializer(serializers.ModelSerializer):
             "customer",
             "customer_code",
             "customer_name",
+            "shipment",
+            "shipment_number",
             "return_date",
             "reason",
             "quarantine_location",

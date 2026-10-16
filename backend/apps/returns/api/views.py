@@ -28,7 +28,7 @@ class CustomerReturnFilter(django_filters.FilterSet):
 
     class Meta:
         model = CustomerReturn
-        fields = ["customer"]
+        fields = ["customer", "shipment"]
 
 
 class CustomerReturnViewSet(DocumentViewSet):
@@ -46,7 +46,7 @@ class CustomerReturnViewSet(DocumentViewSet):
 
     def get_queryset(self) -> QuerySet[CustomerReturn]:
         queryset = CustomerReturn.objects.select_related(
-            "customer", "quarantine_location", "received_by", "created_by"
+            "customer", "quarantine_location", "received_by", "created_by", "shipment"
         ).annotate(line_count=Count("lines", distinct=True))
         if self.action != "list":
             queryset = queryset.prefetch_related(

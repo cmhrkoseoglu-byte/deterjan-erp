@@ -7,5 +7,15 @@ app_name = "sales"
 
 router = SimpleRouter()
 router.register("orders", views.SalesOrderViewSet, basename="order")
+router.register("shipments", views.ShipmentViewSet, basename="shipment")
+router.register("shipped-lots", views.ShippedLotViewSet, basename="shipped-lot")
 
-urlpatterns = [path("", include(router.urls))]
+urlpatterns = [
+    # Spesifikasyondaki yol (sonda eğik çizgi yok): /api/v1/sales/shipments/{id}/waybill.pdf
+    path(
+        "shipments/<int:pk>/waybill.pdf",
+        views.ShipmentViewSet.as_view({"get": "waybill_pdf"}),
+        name="shipment-waybill-pdf-file",
+    ),
+    path("", include(router.urls)),
+]

@@ -22,6 +22,7 @@ class ShipmentRowSerializer(serializers.Serializer):
     customer_id = serializers.IntegerField(allow_null=True)
     customer_code = serializers.CharField(allow_null=True)
     customer_name = serializers.CharField(allow_null=True)
+    order_number = serializers.CharField(allow_null=True)
 
 
 class BackwardNodeSerializer(TraceNodeSerializer):

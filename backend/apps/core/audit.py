@@ -33,6 +33,19 @@ def _serialize(value: Any) -> Any:
     return value
 
 
+def mask_identifier(value: str | None, visible: int = 4) -> str:
+    """Kimlik numarası gibi kişisel veriyi maskeler (KVKK): `12345678901` → `*******8901`."""
+    if not value:
+        return ""
+    keep = value[-visible:] if len(value) > visible else ""
+    return "*" * (len(value) - len(keep)) + keep
+
+
+def _masked_fields(instance: models.Model) -> tuple[str, ...]:
+    """Modelin `AUDIT_MASKED_FIELDS` alanları: günlüğe maskeli yazılır."""
+    return tuple(getattr(type(instance), "AUDIT_MASKED_FIELDS", ()))
+
+
 def _tracked_fields(
     instance: models.Model, exclude: frozenset[str] = EXCLUDED_FIELDS
 ) -> list[models.Field]:
@@ -63,7 +76,12 @@ def _value(field: models.Field, instance: models.Model) -> Any:
 
 def snapshot(instance: models.Model) -> dict[str, Any]:
     """İzlenen alanların anlık değerleri, JSON'a yazılabilir biçimde (FK'lar kimlik olarak)."""
-    return {field.name: _serialize(_value(field, instance)) for field in _tracked_fields(instance)}
+    masked = _masked_fields(instance)
+    values = {}
+    for field in _tracked_fields(instance):
+        value = _value(field, instance)
+        values[field.name] = mask_identifier(value) if field.name in masked else _serialize(value)
+    return values
 
 
 def diff(
@@ -79,15 +97,22 @@ def diff(
     maskelenerek yazılır (bkz. `core.signals`).
     """
     changes: dict[str, list[Any]] = {}
+    masked = _masked_fields(instance_after)
+
+    def out(field: models.Field, value: Any) -> Any:
+        if field.name in masked:
+            return mask_identifier(value) if value else value
+        return _serialize(value)
+
     for field in _tracked_fields(instance_after, exclude):
         new = _value(field, instance_after)
         if instance_before is None:
             if new not in (None, ""):
-                changes[field.name] = [None, _serialize(new)]
+                changes[field.name] = [None, out(field, new)]
             continue
         old = _value(field, instance_before)
         if old != new:
-            changes[field.name] = [_serialize(old), _serialize(new)]
+            changes[field.name] = [out(field, old), out(field, new)]
     return changes
 
 
