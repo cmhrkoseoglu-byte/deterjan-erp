@@ -160,7 +160,7 @@ def _validate_plan(plan: MaintenancePlan) -> None:
         raise BusinessRuleError(
             "invalid_interval", "Periyot gün ya da çalışma sayısı olarak girilmelidir."
         )
-    if (plan.interval_days or 1) <= 0 or (plan.interval_runs or 1) <= 0:
+    if any(value is not None and value <= 0 for value in (plan.interval_days, plan.interval_runs)):
         raise BusinessRuleError("invalid_interval", "Periyot sıfırdan büyük olmalıdır.")
     if plan.kind == MaintenanceKind.CALIBRATION:
         if equipment.equipment_type != Equipment.Type.SCALE:
