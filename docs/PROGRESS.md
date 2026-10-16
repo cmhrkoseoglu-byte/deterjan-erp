@@ -298,3 +298,33 @@ D-10 (her sevkiyat tek siparişe bağlı), D-11 (müşteri bazında asgari kalan
 | Rezerve stok başka siparişe ayrılamıyor; `available` hesabı doğru | ✓ | `test_reserved_stock_is_not_given_to_another_order`, `test_reserved_stock_cannot_be_reserved_twice`, API `test_stock_balances_show_reserved_quantity` |
 | Raf ömrü yetersiz lot (müşteri şartı) rezerve edilmiyor | ✓ (rezervasyon) | `test_shelf_life_requirement_skips_short_lots`; toplamada engel Adım 3.2 |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | sales testleri `invariants` fixture'ı, rezervasyon testleri `assert_stock_invariants()` |
+
+### Adım 3.3 ve 3.4 doğrulaması (iade, izlenebilirlik, geri çağırma)
+
+- Backend: `pytest` 751 test geçti (returns + traceability: 38; satış siparişi PR #11 ile birlikte); `ruff check`, `ruff format --check`,
+  `mypy` temiz; `makemigrations --check` temiz. Stoka dokunan iade testleri `assert_stock_invariants()` ile
+  biter.
+- İade servis testleri (`apps/returns/tests/test_services.py`): durum makinesinin izinli ve yasak
+  geçişleri; kabulde `RETURN` hareketi, lotun bloke edilmesi ve iade numunesi; serbest bırakma →
+  yeniden sevke uygun ve mamul deposuna dönüş; red → imha görevi, `SCRAP` hareketi ve iadenin
+  sonuçlanması; `REWORK` → planlama görevi; `FINAL` spesifikasyona düşme; `REWORK`un iade dışında hâlâ
+  yalnızca bulk lota verilmesi; yetkisiz roller.
+- İzlenebilirlik testleri (`apps/traceability/tests`): geri izleme tedarikçi, tedarikçi lot no ve mal
+  kabul belgesine iner; ileri izleme stok, sevk (ters kayıt düşülmüş) ve iade miktarlarını verir; geri
+  çağırma özeti, Excel ve PDF; yetkisiz rol 403.
+- Performans: 5 seviyeli, 10.050 hareketli veride geri çağırma simülasyonu yerel çalıştırmada 0,3–0,42 sn
+  (hedef < 1 sn).
+- Frontend: `npm test` 133 test (iade 7, izlenebilirlik 5), `lint`, `format:check`, `typecheck`, `build`
+  temiz. Ekranlar: İadeler (liste, oluştur, kabul, imha, kayıt paneli), İzlenebilirlik (geri / ileri izleme
+  ağacı, geri çağırma simülasyonu, Excel/PDF). Numune ekranı iade numunesinde "Yeniden işleme" kararını
+  gösterir.
+
+### Faz 3 kabul kriterleri (Adım 3.3 ve 3.4'e düşenler)
+
+| Kriter | Durum | Kanıt |
+|---|---|---|
+| İade karantinaya giriyor ve QC kararıyla yönleniyor | ✓ | `apps/returns/tests/test_services.py` (serbest / red / yeniden işleme) |
+| Hammadde lotunun ileri izlemesi doğru müşteri ve miktarları veriyor; geri izleme tedarikçiye iniyor | Kısmen | Miktarlar ve tedarikçi `apps/traceability/tests/test_selectors.py`; müşteri ayağı Adım 3.2 ile |
+| Geri çağırma simülasyonu 10.000 hareketlik veride 1 sn altında | ✓ | `test_recall_performance_on_deep_wide_data` (10.050 hareket, ~0,4 sn) |
+| İade blokajı rezervasyonu bırakır, eksik yeniden açılır | ✓ | `test_return_hold_releases_reservations_and_reopens_shortage` |
+| Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | iade testleri `invariants` fixture'ı ile biter |

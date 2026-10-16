@@ -43,6 +43,8 @@ export const tr = {
     quality: "Kalite kontrol",
     filling: "Dolum",
     sales: "Sevkiyat",
+    returns: "İadeler",
+    traceability: "İzlenebilirlik",
     purchasing: "Satın alma",
     reporting: "Raporlar",
     adminPanel: "Yönetim paneli",

@@ -33,7 +33,7 @@ from apps.core.services import (
     transition_status,
 )
 from apps.inventory import services as inventory
-from apps.inventory.models import GoodsReceiptLine, Lot
+from apps.inventory.models import GoodsReceiptLine, Lot, StockMovement
 from apps.inventory.services import lot_payload
 from apps.inventory.state import lot_states
 from apps.masterdata import services as masterdata
@@ -382,10 +382,14 @@ def remove_spec_line(actor: User | None, line: SpecificationLine) -> None:
 
 
 def approved_specification(material: Material, stage: str) -> Specification | None:
-    """Malzeme ve aşamanın onaylı spesifikasyon sürümü (yoksa None)."""
-    return Specification.objects.filter(
+    """Malzeme ve aşamanın onaylı spesifikasyon sürümü (yoksa None). İade numunesinde iade
+    spesifikasyonu yoksa son kontrol spesifikasyonu kullanılır (Faz 3, Adım 3.3)."""
+    spec = Specification.objects.filter(
         material=material, sample_stage=stage, status=Specification.Status.APPROVED
     ).first()
+    if spec is None and stage == SampleStage.RETURN:
+        return approved_specification(material, SampleStage.FINAL)
+    return spec
 
 
 # --- numune ----------------------------------------------------------------------------------
@@ -704,13 +708,23 @@ def out_of_spec_results(sample: Sample) -> list[TestResult]:
 
 def default_release_location(lot: Lot) -> Location | None:
     """Serbest bırakılan lotun karantinadan taşınacağı varsayılan lokasyon: lotu oluşturan mal
-    kabulün depo lokasyonu (varsa)."""
+    kabulün depo lokasyonu; yoksa (ör. iade edilen mamul) lotun en son girdiği karantina dışı
+    aktif lokasyon."""
     line = (
         GoodsReceiptLine.objects.filter(created_lot=lot)
         .select_related("receipt__storage_location")
         .first()
     )
-    return line.receipt.storage_location if line is not None else None
+    if line is not None and line.receipt.storage_location is not None:
+        return line.receipt.storage_location
+    movement = (
+        StockMovement.objects.filter(lot=lot, quantity__gt=0, location__is_active=True)
+        .exclude(location__location_type=Location.Type.QUARANTINE)
+        .select_related("location")
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    return movement.location if movement is not None else None
 
 
 def _apply_to_lot(actor: User | None, sample: Sample, decision: QualityDecision, note: str) -> None:
@@ -756,9 +770,14 @@ def _validate_decision(sample: Sample, decision: str, reason: str) -> None:
                 "lot_already_decided",
                 f"Lot {lot.lot_no} {lot_states.label(lot.status).lower()}; karar verilemez.",
             )
-        if decision == Decision.REWORK and lot.material.material_type != Material.Type.BULK:
+        if (
+            decision == Decision.REWORK
+            and lot.material.material_type != Material.Type.BULK
+            and sample.stage != SampleStage.RETURN
+        ):
             raise BusinessRuleError(
-                "rework_not_allowed", "Yeniden işleme kararı yalnızca dökme (bulk) lota verilir."
+                "rework_not_allowed",
+                "Yeniden işleme kararı yalnızca dökme (bulk) lota ya da iade numunesine verilir.",
             )
     out = out_of_spec_results(sample)
     if decision == Decision.RELEASE and out:
@@ -786,7 +805,7 @@ def decide(
     - Zorunlu testlerin hepsi girilmiş olmalı; spesifikasyon dışı sonuç varken `RELEASE` olmaz.
     - `RELEASE`: lot serbest; karantinadaki stoku `release_location`'a (verilmezse mal kabulün
       depo lokasyonuna) taşınır. `REJECT`: lot reddedilir.
-    - `REWORK` (yalnızca bulk): lot bloke olur; planlamaya "Yeniden işleme emri aç" görevi düşer.
+    - `REWORK` (bulk lot ya da iade numunesi): lot bloke olur; planlamaya görev düşer.
     - `CONDITIONAL_RELEASE`: numune yönetim onayına gider; lot onay gelince serbest olur.
     - Şarj sırası numunesinde lot değişmez; karar yalnızca uygun / uygun değildir.
     `RELEASE` dışındaki kararlarda gerekçe zorunludur. Olay: `sample.decided` (şartlı kabulde

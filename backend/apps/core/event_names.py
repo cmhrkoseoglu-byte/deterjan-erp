@@ -71,3 +71,10 @@ SALES_ORDER_CLOSED = "sales_order.closed"
 SALES_ORDER_SHORTAGE = "sales_order.shortage"
 SALES_ORDER_FULLY_RESERVED = "sales_order.fully_reserved"
 RESERVED_LOTS_EXPIRING = "lot.expiring"
+# returns (Faz 3, Adım 3.3). Belge olayları durum makinesinden (`customer_return.<durum>`);
+# payload'da `customer_code`, `customer_name`, `lots` (lot sözlükleri, `disposition` ile).
+# `customer_return.scrap_required`: imha kararı verilen satır var (depoya görev).
+CUSTOMER_RETURN_RECEIVED = "customer_return.received"
+CUSTOMER_RETURN_CLOSED = "customer_return.closed"
+CUSTOMER_RETURN_CANCELLED = "customer_return.cancelled"
+CUSTOMER_RETURN_SCRAP_REQUIRED = "customer_return.scrap_required"

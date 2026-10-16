@@ -17,6 +17,7 @@ export const RECORD_ROUTES: Record<string, (id: number) => string> = {
   "filling.fillingrun": (id) => `/dolum/partiler/${id}`,
   "filling.packagingspec": (id) => `/dolum/ambalaj-receteleri/${id}`,
   "quality.sample": (id) => `/kalite/numuneler/${id}`,
+  "returns.customerreturn": (id) => `/iadeler/${id}`,
   "quality.specification": (id) => `/kalite/spesifikasyonlar/${id}`,
   "sales.salesorder": (id) => `/sevkiyat/siparisler/${id}`,
 };
