@@ -12,6 +12,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from apps.core.formatting import format_money
 from apps.inventory.services import format_quantity
 from apps.purchasing import selectors
 from apps.purchasing.models import PurchaseOrder
@@ -25,8 +26,7 @@ def _date(value: Any) -> str:
 
 
 def _money(value: Any) -> str:
-    text = f"{value:,.2f}"
-    return text.replace(",", "X").replace(".", ",").replace("X", ".")
+    return format_money(value)
 
 
 def _price(value: Any) -> str:
