@@ -486,3 +486,28 @@ limiti), D-14 (tank temizliği), D-15 (kg başı genel gider) `docs/DECISIONS.md
 | Minimum stok ve açık emir ihtiyacından satın alma talebi önerisi | ✓ | `test_suggestions_from_min_stock_and_open_production_orders` (öneri ve 07:00'de otomatik talep), API `test_supplier_performance_and_suggestions_api` |
 | Siparişe bağlı mal kabul bekleyen miktarı doğru düşürüyor | ✓ | `test_receipt_from_order_decreases_pending_quantity` (kısmi ve tam teslim, durum PARTIALLY_RECEIVED → RECEIVED, fiyat ve kur siparişten) |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | stoka dokunan satın alma testleri `invariants` fixture'ı ile biter |
+
+### Adım 4.4 ve 4.5 doğrulaması (bakım, İSG ve çevre)
+
+- Yeni uygulamalar `apps/maintenance` (bakım planı, `BK-` iş emri, duruş, temizlik kaydı, kalibrasyon,
+  temizliksiz geçiş kuralları, yedek parça sarfı) ve `apps/hse` (tehlike bilgisi ve H/P ifadeleri, GBF arşivi
+  ve eksik GBF raporu, depolama limitleri, `AT-` atık kaydı, `OL-` olay/kaza kaydı). Üretim ve dolum bakımı
+  `masterdata.check_equipment` kancasıyla, İSG stok hareketlerini `inventory.register_movement_hook` ile
+  kullanır (DECISIONS.md).
+- Backend: `pytest` 994 test yeşil (bakımda 51, İSG'de 36 yeni test), `ruff check`, `ruff format --check`,
+  `mypy` temiz, `makemigrations --check` değişiklik yok. Frontend: `npm test` 219 test (bakım 14, İSG 13),
+  `lint`, `format:check`, `typecheck`, `build` temiz.
+- Ekranlar: Bakım menüsü `/bakim` (iş emirleri, planlar, duruşlar, kalibrasyon, temizliksiz geçişler, ayarlar)
+  ve iş emri sayfası; ana sayfada "Arıza bildir"; tartım ekranında terazi seçimi ve kalibrasyon uyarısı;
+  şarj başlatmada tank temizlik kontrolü ve "Temizlik kaydı gir". İSG menüsü `/isg` (olaylar, tehlike
+  bilgileri, H/P ifadeleri, GBF arşivi ve eksik GBF raporu Excel'i, depolama limitleri, atık, özet, ayarlar),
+  olay sayfası, malzeme listesinde "Tehlike bilgisi"; tehlikeli lotlarda uyarı simgesi.
+- Demo verisi: `seed_maintenance_demo` (iki terazi, biri kalibrasyonu 3 gün içinde dolan; tank ve hat
+  planları; bir temizliksiz geçiş) ve `seed_hse_demo` (LAS, NaOH, alkol, koruyucu tehlike bilgisi; GBF'ler,
+  biri eskimiş biri eksik; hammadde deposu limitleri; atık teslimi; ramak kala bildirimi), `seed_demo` sonunda.
+
+| Faz 4 kabul kriteri | Durum | Kanıt |
+|---|---|---|
+| Kalibrasyonu geçmiş terazi kuralı çalışıyor | ✓ | `test_overdue_calibration_blocks_weighing`, `test_due_soon_calibration_warns_but_allows`, `test_scale_required_when_scales_exist`, `test_failed_calibration_puts_scale_down` |
+| Temizliği yapılmamış tank kuralı çalışıyor | ✓ | `test_product_change_requires_cleaning`, `test_same_product_needs_no_cleaning`, `test_changeover_rule_allows_switch_without_cleaning`, API `test_cleaning_check_and_record` |
+| Stok değişmezleri tüm yeni testlerde geçiyor (bakım, İSG) | ✓ | yedek parça sarfı ve depolama limiti testleri `invariants` fixture'ı ile biter |

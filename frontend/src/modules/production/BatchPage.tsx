@@ -46,7 +46,8 @@ import { ExpiryText, Info, Qty } from "../inventory/shared";
 import { deviationPct, gaugeValue, lineState, remaining } from "./calc";
 import { BATCH_ROLES, LINE_STATE_COLOR, orderPath } from "./config";
 import { BatchStatusBadge, LineStateBadge, ReasonModal } from "./shared";
-import { rememberedScale, ScaleSelect, useScales } from "./ScaleSelect";
+import { ScaleSelect } from "./ScaleSelect";
+import { rememberedScale, useScales } from "./scales";
 import { pt } from "./strings";
 
 /** Üretim tablet ekranı: reçete sırasıyla tartım, tolerans göstergesi, şarjı bitirme. */

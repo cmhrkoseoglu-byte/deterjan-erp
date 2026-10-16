@@ -24,6 +24,9 @@ export const RECORD_ROUTES: Record<string, (id: number) => string> = {
   "purchasing.purchaserequest": () => "/satin-alma/talepler",
   "sales.shipment": (id) => `/sevkiyat/sevkiyatlar/${id}`,
   "maintenance.maintenanceworkorder": (id) => `/bakim/is-emirleri/${id}`,
+  "hse.incident": (id) => `/isg/olaylar/${id}`,
+  "hse.wasterecord": () => "/isg/atik",
+  "hse.safetydatasheet": () => "/isg/gbf",
 };
 
 /** Kaydın detay sayfası; sayfası henüz yoksa null. */

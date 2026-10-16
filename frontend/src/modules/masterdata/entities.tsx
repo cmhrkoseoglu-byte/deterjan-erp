@@ -14,6 +14,7 @@ import type { Role } from "../../api/types";
 import { formatNumber } from "../../i18n/format";
 import type { EntityConfig } from "../common/CrudPage";
 import type { FieldDef } from "../common/forms";
+import { MaterialHazardAction } from "../hse/MaterialHazardModal";
 import { LocationLabelAction, PrinterTestAction } from "./LabelTools";
 
 // Ana verileri planlama yazar (admin her yere erişir); birimleri yalnızca admin.
@@ -135,6 +136,8 @@ export const materialConfig: EntityConfig<Material> = {
     { name: "storage_notes", label: "Depolama notu", type: "textarea" },
   ],
   defaults: { requires_incoming_qc: true, material_type: "RAW" },
+  // Tehlike bilgisi (GHS piktogramı, H/P ifadeleri): herkes görür, yönetim ve laboratuvar düzenler.
+  rowActions: (row) => <MaterialHazardAction row={row} />,
   filters: selectFilter("Tür", "material_type", MATERIAL_TYPES),
 };
 

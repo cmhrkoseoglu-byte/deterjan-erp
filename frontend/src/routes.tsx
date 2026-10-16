@@ -17,6 +17,8 @@ import { FillingOrderPage } from "./modules/filling/OrderPage";
 import { FillingPrepPage } from "./modules/filling/PrepPage";
 import { RunPage } from "./modules/filling/RunPage";
 import { SpecPage } from "./modules/filling/SpecPage";
+import { HsePage } from "./modules/hse/HsePage";
+import { IncidentPage } from "./modules/hse/IncidentPage";
 import { MaintenancePage } from "./modules/maintenance/MaintenancePage";
 import { WorkOrderPage } from "./modules/maintenance/WorkOrderPage";
 import { MasterDataPage } from "./modules/masterdata/MasterDataPage";
@@ -74,6 +76,10 @@ function costingPage(page: ReactNode) {
 
 function maintenancePage(page: ReactNode) {
   return <RequireRole roles={menuRoles("maintenance")}>{page}</RequireRole>;
+}
+
+function hsePage(page: ReactNode) {
+  return <RequireRole roles={menuRoles("hse")}>{page}</RequireRole>;
 }
 
 function qualityPage(page: ReactNode) {
@@ -157,6 +163,10 @@ const pageRoutes: RouteObject[] = [
   // yürütür; planlama duruşları görür ve girer. Arıza bildirimi her rolde (ana sayfa).
   { path: "bakim/is-emirleri/:workOrderId", element: maintenancePage(<WorkOrderPage />) },
   { path: "bakim/:tab?", element: maintenancePage(<MaintenancePage />) },
+  // İSG: olay bildirimi herkese; GBF depo ve laboratuvara, depolama limitleri depoya da açık;
+  // atık, olay incelemesi ve ayarlar yönetimde. Sekmeler rolle daralır.
+  { path: "isg/olaylar/:incidentId", element: hsePage(<IncidentPage />) },
+  { path: "isg/:tab?", element: hsePage(<HsePage />) },
 ];
 const IMPLEMENTED = new Set([
   "masterdata",
@@ -171,6 +181,7 @@ const IMPLEMENTED = new Set([
   "costing",
   "purchasing",
   "maintenance",
+  "hse",
 ]);
 
 // Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar rol korumalı bir yer tutucuya gider.

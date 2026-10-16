@@ -1022,7 +1022,7 @@ Plan: `/mnt/project-files/faz4-maintenance-hse/plan.md`. Kararlar:
   yaralanma, ağırlık. Yönetime inceleme görevi açılır, yaralanma varsa ayrıca uyarı gider. Yönetim inceler
   (kök neden, düzeltici faaliyet, sorumlu, termin) ve kapatır ya da iptal eder. Yaralanan kişinin
   mahremiyeti için yönetim dışındaki roller yalnızca kendi bildirdiklerini görür. Durumlar:
-  `OPEN → INVESTIGATING → CLOSED`, `OPEN → CLOSED`, iptal (neden zorunlu).
+  `OPEN → INVESTIGATING → CLOSED`, açık ya da incelenen olay iptal edilebilir (neden zorunlu).
 
 ### İSG okuma API'si (raporlama thread'i, Adım 4.3 için)
 
