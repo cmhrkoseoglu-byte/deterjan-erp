@@ -427,3 +427,39 @@ D-10 (her sevkiyat tek siparişe bağlı), D-11 (müşteri bazında asgari kalan
 | Hammadde lotunun ileri izlemesi doğru müşterileri ve miktarları veriyor; geri izleme tedarikçiye iniyor | ✓ | `test_customer_leg_from_shipments`, uçtan uca test (müşteri ve 600 adet), `apps/traceability/tests/test_selectors.py` |
 | Geri çağırma simülasyonu 10.000 hareketlik demo veride 1 sn altında | ✓ | `test_recall_performance_on_deep_wide_data` (10.050 hareket, ~0,4 sn) |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | sevkiyat, iade ve uçtan uca testler `invariants` fixture'ı ile biter |
+
+## Faz 4 — Destek modülleri ve raporlama
+
+Plan dosyası: `docs/plan/FAZ-4-destek-raporlama.md`. Kararlar D-12 (sıra), D-13 (satın alma onay
+limiti), D-14 (tank temizliği), D-15 (kg başı genel gider) `docs/DECISIONS.md`'de.
+
+### Adım 4.1 doğrulaması (maliyet)
+
+- Backend: `pytest` 873 test geçti (costing: 22); `ruff check`, `ruff format --check`, `mypy` temiz;
+  `makemigrations --check` temiz. Stoka dokunan maliyet testleri `invariants` fixture'ı ile
+  `assert_stock_invariants()` çağırır.
+- Elle hesaplanmış örnek (`test_hand_calculated_purchase_bulk_and_finished_lot_cost`): LAS alışı EUR fiyat,
+  kur, nakliye (miktar oranı) ve gümrük (tutar oranı) ile 92.123,61 TL / 2.000 kg = 46,0618; SLES 40,9619;
+  su 0,1829. Bulk 41.903,94 TL / 980 kg = 42,7591 (malzeme + enerji, işçilik, amortisman kalemleri). Mamul
+  37.201,90 TL / 1.000 adet = 37,2019 (bulk, ambalaj, dolum oranları, fire), mamul fire payı 366,12.
+- Kurallar: tahmini maliyet (son alış, sonra standart), bilinmeyen girdinin "eksik" olarak mamule taşınması,
+  yoğunluksuz malzemede genel gider kaleminin eksik işaretlenmesi, kaydedilmiş kabulde fiyat düzeltmesinin
+  yeni sürüm açması, kur ve not kuralları, yeniden hesaplamada not zorunluluğu ve zincirleme, bitmemiş
+  şarjın maliyetlenmemesi, oran geçerlilik tarihi, standart maliyet kuralları, olay başına tek hesap.
+- Raporlar: şarj teorik 39.943,94 TL vs fiili birim 40,7591, fark %2,04; fire 223,80 + 366,12 = 589,92;
+  LAS stok değeri 1.400 × 46,0618 = 64.486,52; Excel çıktıları açılıyor.
+- Yetki: `yonetim` dışındaki tüm roller her maliyet ucunda 403, admin görür, anonim reddedilir
+  (`test_cost_amounts_are_forbidden_to_other_roles`); depo mal kabulde fiyat görmez ve gönderdiği fiyat yok
+  sayılır (`test_receipt_prices_hidden_from_depo_and_ignored_on_write`).
+- Demo verisi: `seed_costing_demo` (seed_demo sonunda) standart maliyetler, altı kg başı oran ve tüm
+  maliyetlenebilir lotların maliyeti (`apps/costing/tests/test_seed_demo.py`).
+- Frontend: `npm test` 181 test (maliyet ve menü testleri dahil), `lint`, `format:check`, `typecheck`,
+  `build` temiz. Ekranlar: Maliyet menüsü (yalnızca yönetim): lot maliyetleri, raporlar (Excel), kg başı
+  oranlar, standart maliyetler; lot maliyet dökümü ve "Yeniden hesapla"; mal kabulde "Fiyat ve masraflar"
+  paneli (satın alma ve yönetim); lot kartında "Maliyet" düğmesi.
+
+| Faz 4 kabul kriteri | Durum | Kanıt |
+|---|---|---|
+| Bulk ve mamul lot maliyeti kalem kalem doğru (elle hesaplanmış örnek) | ✓ | `test_hand_calculated_purchase_bulk_and_finished_lot_cost` |
+| Maliyet tutarları yetkisiz role API'de dönmüyor | ✓ | `test_cost_amounts_are_forbidden_to_other_roles`, `test_receipt_prices_hidden_from_depo_and_ignored_on_write` |
+| Stok değişmezleri yeni testlerde geçiyor (maliyet) | ✓ | costing testleri `invariants` fixture'ı ile biter |

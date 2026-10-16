@@ -52,6 +52,7 @@ import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ct } from "../common/strings";
 import { useOptions } from "../common/useOptions";
 import { CancelModal } from "./CancelModal";
+import { ReceiptCostsPanel } from "./ReceiptCostsPanel";
 import { INVENTORY_BASE, lotPath, receiptPath, STOCK_WRITE_ROLES, today } from "./config";
 import { idOrNull, useLocations } from "./options";
 import { DocStatusBadge, Info, LotStatusBadge, Qty } from "./shared";
@@ -66,7 +67,6 @@ interface LineDraft {
   supplier_lot_no: string;
   manufactured_at: string;
   expiry_date: string;
-  unit_price: string;
 }
 
 interface HeaderDraft {
@@ -90,7 +90,6 @@ function emptyLine(): LineDraft {
     supplier_lot_no: "",
     manufactured_at: "",
     expiry_date: "",
-    unit_price: "",
   };
 }
 
@@ -128,7 +127,6 @@ function toDraft(doc: GoodsReceiptDetail | null): { header: HeaderDraft; lines: 
       supplier_lot_no: line.supplier_lot_no,
       manufactured_at: line.manufactured_at ?? "",
       expiry_date: line.expiry_date ?? "",
-      unit_price: line.unit_price ? trimDecimal(line.unit_price) : "",
     })),
   };
 }
@@ -151,7 +149,6 @@ function toPayload(header: HeaderDraft, lines: LineDraft[]): GoodsReceiptPayload
         supplier_lot_no: line.supplier_lot_no.trim(),
         manufactured_at: line.manufactured_at || null,
         expiry_date: line.expiry_date || null,
-        unit_price: line.unit_price.trim() ? normalizeDecimal(line.unit_price) : null,
       })),
   };
 }
@@ -195,7 +192,12 @@ export function GoodsReceiptPage() {
   return (
     <Grid gutter="lg">
       <Grid.Col span={{ base: 12, lg: doc ? 8 : 12 }}>
-        <ReceiptForm key={doc ? `${doc.id}-${doc.status}` : "new"} doc={doc} />
+        <Stack>
+          <ReceiptForm key={doc ? `${doc.id}-${doc.status}` : "new"} doc={doc} />
+          {doc && doc.extra_costs !== null && doc.status !== "CANCELLED" && (
+            <ReceiptCostsPanel key={`${doc.id}-${doc.status}-costs`} doc={doc} />
+          )}
+        </Stack>
       </Grid.Col>
       {doc && (
         <Grid.Col span={{ base: 12, lg: 4 }}>
@@ -532,14 +534,6 @@ function ReceiptForm({ doc }: { doc: GoodsReceiptDetail | null }) {
                     value={line.supplier_lot_no}
                     onChange={(event) =>
                       setLine(line.key, { supplier_lot_no: event.currentTarget.value })
-                    }
-                  />
-                  <TextInput
-                    label={it.unitPrice}
-                    inputMode="decimal"
-                    value={line.unit_price}
-                    onChange={(event) =>
-                      setLine(line.key, { unit_price: event.currentTarget.value })
                     }
                   />
                   <TextInput

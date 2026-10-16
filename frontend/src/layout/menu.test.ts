@@ -55,6 +55,13 @@ describe("visibleMenu", () => {
     expect(keys(userWith([], { is_superuser: true }))).toEqual(all);
   });
 
+  it("maliyeti yalnızca yönetim (ve admin) görür", () => {
+    expect(keys(userWith(["yonetim"]))).toContain("costing");
+    for (const role of ["depo", "planlama", "satin_alma", "uretim", "dolum"] as Role[]) {
+      expect(keys(userWith([role]))).not.toContain("costing");
+    }
+  });
+
   it("yönetim paneli yalnızca admin içindir", () => {
     expect(keys(userWith(["yonetim"]))).not.toContain("admin");
   });

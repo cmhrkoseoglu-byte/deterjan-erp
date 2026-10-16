@@ -140,7 +140,10 @@ export interface GoodsReceiptLine {
   supplier_lot_no: string;
   manufactured_at: string | null;
   expiry_date: string | null;
-  unit_price: string | null;
+  /** Fiyat alanları yalnızca satin_alma, yonetim ve admin rolüne döner. */
+  unit_price?: string | null;
+  currency?: Currency;
+  exchange_rate?: string | null;
   base_quantity?: string | null;
   base_unit_code?: string;
   created_lot?: number | null;
@@ -160,8 +163,33 @@ export interface GoodsReceipt extends DocumentBase {
   storage_location_code: string | null;
 }
 
+export type Currency = "TRY" | "EUR" | "USD";
+export type ExtraCostKind = "FREIGHT" | "CUSTOMS" | "OTHER";
+export type ExtraCostAllocation = "QUANTITY" | "VALUE";
+
+export interface ReceiptExtraCost {
+  id?: number;
+  kind: ExtraCostKind;
+  description: string;
+  amount: string;
+  allocation: ExtraCostAllocation;
+}
+
 export interface GoodsReceiptDetail extends GoodsReceipt {
   lines: GoodsReceiptLine[];
+  /** Fiyat yetkisi olmayan role `null`. */
+  extra_costs: ReceiptExtraCost[] | null;
+}
+
+export interface ReceiptCostsPayload {
+  lines: {
+    id: number;
+    unit_price: string | null;
+    currency: Currency;
+    exchange_rate: string | null;
+  }[];
+  extra_costs: ReceiptExtraCost[];
+  note: string;
 }
 
 export interface GoodsReceiptPayload {
@@ -303,6 +331,18 @@ export async function saveGoodsReceipt(
 
 export async function postGoodsReceipt(id: number): Promise<GoodsReceiptDetail> {
   const { data } = await api.post<GoodsReceiptDetail>(`/inventory/goods-receipts/${id}/post/`);
+  return data;
+}
+
+/** Fiyat, kur ve ek masraf (satin_alma, yonetim). Kaydedilmiş mal kabulde not zorunlu. */
+export async function setReceiptCosts(
+  id: number,
+  payload: ReceiptCostsPayload,
+): Promise<GoodsReceiptDetail> {
+  const { data } = await api.post<GoodsReceiptDetail>(
+    `/inventory/goods-receipts/${id}/costs/`,
+    payload,
+  );
   return data;
 }
 

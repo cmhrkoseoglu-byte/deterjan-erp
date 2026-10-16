@@ -420,7 +420,10 @@ class GoodsReceiptFilter(django_filters.FilterSet):
 
 
 class GoodsReceiptViewSet(DocumentViewSet):
-    """Mal kabul. Satırlar iç içe yazılır; `post` lotları açıp stoka alır."""
+    """Mal kabul. Satırlar iç içe yazılır; `post` lotları açıp stoka alır. Fiyat, kur ve ek
+    masraf yalnızca satin_alma, yonetim ve admin rolüne görünür; `costs` ile girilir."""
+
+    action_roles = {"costs": s.RECEIPT_PRICE_ROLES}
 
     serializer_class = s.GoodsReceiptSerializer
     detail_serializer = s.GoodsReceiptDetailSerializer
@@ -440,9 +443,16 @@ class GoodsReceiptViewSet(DocumentViewSet):
                     queryset=GoodsReceiptLine.objects.select_related(
                         "material__base_unit", "unit", "created_lot"
                     ).order_by("line_no"),
-                )
+                ),
+                "extra_costs",
             )
         return queryset
+
+    def _respond(self, document: DocumentModel, code: int = status.HTTP_200_OK) -> Response:
+        # Fiyat alanları isteği yapan role göre gösterilir (bağlam gerekir).
+        fresh = self.get_queryset().get(pk=document.pk)
+        context = self.get_serializer_context()
+        return Response(self.detail_serializer(fresh, context=context).data, status=code)
 
     def create_document(self, data: dict[str, Any], lines: list[dict[str, Any]]) -> Any:
         return services.create_goods_receipt(_user(self.request), data, lines)
@@ -466,6 +476,23 @@ class GoodsReceiptViewSet(DocumentViewSet):
         body.is_valid(raise_exception=True)
         receipt = services.cancel_goods_receipt(
             _user(request), self.get_object(), body.validated_data["reason"]
+        )
+        return self._respond(receipt)
+
+    @extend_schema(request=s.ReceiptCostsSerializer, responses=s.GoodsReceiptDetailSerializer)
+    @action(detail=True, methods=["post"])
+    def costs(self, request: Request, pk: str | None = None) -> Response:
+        """Fiyat, kur ve ek masraf girer (satin_alma, yonetim). Kaydedilmiş mal kabulde not
+        zorunludur; oluşan lotların maliyeti notla yeniden hesaplanır."""
+        body = s.ReceiptCostsSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        receipt = services.set_receipt_costs(
+            _user(request),
+            self.get_object(),
+            lines=data.get("lines", []),
+            extra_costs=data.get("extra_costs"),
+            note=data.get("note", ""),
         )
         return self._respond(receipt)
 
