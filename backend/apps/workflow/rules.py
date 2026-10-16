@@ -14,6 +14,7 @@ from typing import Any
 
 from apps.core import event_names as ev
 from apps.core.roles import (
+    ADMIN,
     DEPO,
     DOLUM,
     LABORATUVAR,
@@ -682,6 +683,15 @@ RULES: tuple[Rule, ...] = (
         body="{error}",
         level="WARNING",
         users=_report_requester,
+    ),
+    # Canlıya geçiş (Faz 5, Adım 5.6): "Sorun bildir" admin rolüne görev açar; admin görevi
+    # tamamlayınca kapanır.
+    TaskRule(
+        code="problem_reported",
+        event=ev.PROBLEM_REPORTED,
+        role=ADMIN,
+        title="Sorun bildirimi: {number}",
+        description="{reporter}: {summary} — sayfa: {page_title} {page_url}",
     ),
 )
 

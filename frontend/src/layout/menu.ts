@@ -7,6 +7,8 @@ import {
   IconListDetails,
   IconArrowBackUp,
   IconFlask,
+  IconHelp,
+  IconRocket,
   IconRoute,
   IconPackages,
   IconBottle,
@@ -156,6 +158,24 @@ export const MENU: readonly MenuItem[] = [
     // Her rolün en az bir panosu ya da raporu var; sekme içerikleri rolle daralır.
     roles: [],
     phase: 4,
+  },
+  {
+    key: "golive",
+    label: tr.menu.golive,
+    path: "/gecis",
+    icon: IconRocket,
+    // Hazırlık listesi ve paralel çalışma stok karşılaştırması (Faz 5, Adım 5.6).
+    roles: ["yonetim", "planlama", "depo"],
+    phase: 5,
+  },
+  {
+    key: "help",
+    label: tr.menu.help,
+    path: "/yardim",
+    icon: IconHelp,
+    // Rol bazında kullanım kılavuzları; herkes kendi rolünün kılavuzunu görür.
+    roles: [],
+    phase: 5,
   },
   {
     key: "admin",

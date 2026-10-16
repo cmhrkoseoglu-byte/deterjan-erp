@@ -10,15 +10,22 @@ import {
   Title,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { IconPlus, IconSearch } from "@tabler/icons-react";
+import { IconFileSpreadsheet, IconPlus, IconSearch } from "@tabler/icons-react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
-import { listRecipes, saveRecipe, type Recipe } from "../../api/recipes";
+import {
+  listRecipes,
+  RECIPE_TEMPLATE_URL,
+  saveRecipe,
+  uploadRecipeImport,
+  type Recipe,
+} from "../../api/recipes";
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
 import { ActiveBadge } from "../common/ActiveBadge";
+import { ImportModal } from "../common/ImportModal";
 import { RecordFormModal } from "../common/RecordFormModal";
 import { ct } from "../common/strings";
 import { RECIPE_WRITE_ROLES, RECIPES_BASE, recipeFields } from "./config";
@@ -35,6 +42,7 @@ export function RecipeListPage() {
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const params = { page, page_size: PAGE_SIZE, search: debounced || undefined };
   const list = useQuery({
@@ -50,9 +58,18 @@ export function RecipeListPage() {
       <Group justify="space-between">
         <Title order={2}>{rt.title}</Title>
         {canWrite && (
-          <Button leftSection={<IconPlus size={16} />} onClick={() => setFormOpen(true)}>
-            {rt.newRecipe}
-          </Button>
+          <Group>
+            <Button
+              variant="default"
+              leftSection={<IconFileSpreadsheet size={16} />}
+              onClick={() => setImportOpen(true)}
+            >
+              {ct.importButton}
+            </Button>
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setFormOpen(true)}>
+              {rt.newRecipe}
+            </Button>
+          </Group>
         )}
       </Group>
       <TextInput
@@ -134,6 +151,15 @@ export function RecipeListPage() {
           void queryClient.invalidateQueries({ queryKey: ["recipes"] });
           navigate(`${RECIPES_BASE}/${recipe.id}`);
         }}
+      />
+      <ImportModal
+        title={rt.importTitle}
+        intro={rt.importIntro}
+        opened={importOpen}
+        templateUrl={RECIPE_TEMPLATE_URL}
+        upload={uploadRecipeImport}
+        onClose={() => setImportOpen(false)}
+        onImported={() => void queryClient.invalidateQueries({ queryKey: ["recipes"] })}
       />
     </Stack>
   );

@@ -1,5 +1,6 @@
 // /api/v1/recipes/* uç noktaları.
 import { api } from "./client";
+import type { ImportReport } from "./masterdata";
 import type { Paginated } from "./types";
 
 export type VersionStatus = "DRAFT" | "APPROVED" | "OBSOLETE";
@@ -204,3 +205,16 @@ export async function updateStep(id: number, payload: StepPayload): Promise<Reci
 export async function removeStep(id: number): Promise<void> {
   await api.delete(`/recipes/steps/${id}/`);
 }
+
+// --- Excel'den içe aktarma (Faz 5, Adım 5.6) ------------------------------------------------
+
+/** Her reçeteye yeni taslak sürüm açar; `confirm=false` önizleme. Hatalıysa 400 + `report`. */
+export async function uploadRecipeImport(file: File, confirm: boolean): Promise<ImportReport> {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("confirm", confirm ? "true" : "false");
+  const { data } = await api.post<ImportReport>("/recipes/import/", body);
+  return data;
+}
+
+export const RECIPE_TEMPLATE_URL = "/api/v1/recipes/import/template/";

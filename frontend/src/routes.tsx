@@ -41,6 +41,10 @@ import { SalesPage } from "./modules/sales/SalesPage";
 import { PurchaseOrderPage } from "./modules/purchasing/OrderPage";
 import { PurchasingPage } from "./modules/purchasing/PurchasingPage";
 import { ShipmentPage } from "./modules/sales/ShipmentPage";
+import { ComparisonPage } from "./modules/golive/ComparisonPage";
+import { GoLivePage } from "./modules/golive/GoLivePage";
+import { ProblemPage } from "./modules/golive/ProblemPage";
+import { HelpPage } from "./modules/help/HelpPage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ModulePlaceholderPage } from "./pages/ModulePlaceholderPage";
@@ -170,6 +174,27 @@ const pageRoutes: RouteObject[] = [
   { path: "isg/:tab?", element: hsePage(<HsePage />) },
   // Panolar ve raporlar: menü herkese açık; panolar ve raporlar rolle daralır (backend listesi).
   { path: "raporlar/:tab?", element: <ReportingPage /> },
+  // Canlıya geçiş: hazırlık ve stok karşılaştırması yönetim, planlama ve depoya; sorun
+  // bildirimini bildiren ve admin açar (backend süzer).
+  {
+    path: "gecis/karsilastirma/:comparisonId",
+    element: (
+      <RequireRole roles={menuRoles("golive")}>
+        <ComparisonPage />
+      </RequireRole>
+    ),
+  },
+  { path: "gecis/sorunlar/:problemId", element: <ProblemPage /> },
+  {
+    path: "gecis/:tab?",
+    element: (
+      <RequireRole roles={menuRoles("golive")}>
+        <GoLivePage />
+      </RequireRole>
+    ),
+  },
+  // Yardım: rol bazında kılavuzlar ve sayım günü planı; herkese açık.
+  { path: "yardim/:guide?", element: <HelpPage /> },
 ];
 const IMPLEMENTED = new Set([
   "masterdata",
@@ -186,6 +211,8 @@ const IMPLEMENTED = new Set([
   "maintenance",
   "hse",
   "reporting",
+  "golive",
+  "help",
 ]);
 
 // Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar rol korumalı bir yer tutucuya gider.

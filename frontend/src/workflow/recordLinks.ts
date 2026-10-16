@@ -5,10 +5,12 @@ import type { RelatedRecord } from "../api/workflow";
  * "Kayda git" bağlantısı buradan çözülür. Her modül kendi detay sayfasını ekler, ör.:
  *
  *   "inventory.lot": (id) => `/depo/lotlar/${id}`,
+  "golive.problemreport": (id) => `/gecis/sorunlar/${id}`,
  *   "production.productionorder": (id) => `/uretim/emirler/${id}`,
  */
 export const RECORD_ROUTES: Record<string, (id: number) => string> = {
   "inventory.lot": (id) => `/depo/lotlar/${id}`,
+  "golive.problemreport": (id) => `/gecis/sorunlar/${id}`,
   "inventory.goodsreceipt": (id) => `/depo/mal-kabul/${id}`,
   "inventory.stockadjustment": (id) => `/depo/sayim/${id}`,
   "production.productionorder": (id) => `/uretim/emirler/${id}`,

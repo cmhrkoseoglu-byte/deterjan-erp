@@ -33,6 +33,7 @@ from apps.inventory.models import (
     GoodsReceipt,
     GoodsReceiptExtraCost,
     GoodsReceiptLine,
+    InventorySettings,
     Lot,
     LotLink,
     LotNumberSequence,
@@ -1370,6 +1371,41 @@ def cancel_stock_adjustment(
 
 
 @transaction.atomic
+def get_inventory_settings() -> InventorySettings:
+    """Tek satırlık stok ayarı (yoksa boş oluşturulur)."""
+    instance = InventorySettings.objects.order_by("pk").first()
+    if instance is None:
+        instance = InventorySettings.objects.create()
+    return instance
+
+
+def opening_is_open(today: date | None = None) -> bool:
+    """Açılış stoku yüklenebilir mi: canlı tarihi girilmemişse ya da henüz gelmemişse."""
+    go_live = get_inventory_settings().go_live_date
+    return go_live is None or (today or timezone.localdate()) < go_live
+
+
+def require_opening_open() -> None:
+    """Canlı başlangıç tarihi geldiyse `opening_closed` (Faz 5, Adım 5.6)."""
+    if not opening_is_open():
+        go_live = get_inventory_settings().go_live_date
+        assert go_live is not None
+        raise BusinessRuleError(
+            "opening_closed",
+            f"Canlı başlangıç tarihi ({go_live:%d.%m.%Y}) geldi; açılış stoku artık yüklenemez. "
+            "Farkları sayım düzeltmesiyle girin.",
+        )
+
+
+@transaction.atomic
+def set_go_live_date(actor: User, go_live_date: date | None) -> InventorySettings:
+    """Canlı başlangıç tarihini girer ya da kaldırır (denetim kaydıyla). Rol kontrolü uç noktada
+    (admin, yönetim). Tarih geçmişe alınırsa açılış yüklemesi hemen kapanır."""
+    instance = InventorySettings.objects.select_for_update().get(pk=get_inventory_settings().pk)
+    instance.go_live_date = go_live_date
+    return save_with_audit(instance, actor, note="Canlı başlangıç tarihi")
+
+
 def post_opening_balance(
     actor: User | None,
     *,
@@ -1388,6 +1424,7 @@ def post_opening_balance(
     Lot yoksa `OPENING` kaynaklı açılır (varsayılan serbest; karantina da seçilebilir). Aynı açılış
     lotu başka lokasyonlara da eklenebilir; başka kaynaktan gelmiş bir lota açılış yapılamaz.
     """
+    require_opening_open()
     _require_active(material, "malzeme")
     _require_active(location, "lokasyon")
     if status not in OPENING_STATUSES:

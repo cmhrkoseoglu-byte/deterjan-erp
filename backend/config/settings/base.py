@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "apps.maintenance",
     "apps.hse",
     "apps.reporting",
+    "apps.golive",
     "apps.workflow",
 ]
 

@@ -180,3 +180,94 @@ def test_material_type_accepts_codes_labels_and_aliases(value, expected):
     parse = importers.SPECS["materials"].columns[2].parse
 
     assert parse(value) == expected
+
+
+# --- Geçiş (Faz 5, Adım 5.6): depo, lokasyon, ekipman, birim dönüşümü --------------------------
+
+
+def test_warehouse_location_equipment_import_in_order(make_user):
+    from apps.masterdata.models import Equipment, Location, Warehouse
+
+    user = make_user("planlama")
+    importers.run_import(
+        user, "warehouses", xlsx([["Kod", "Ad"], ["hmd", "Hammadde deposu"]]), "d.xlsx"
+    )
+    importers.run_import(
+        user,
+        "locations",
+        xlsx(
+            [
+                ["Kod", "Ad", "Depo kodu", "Tür"],
+                ["A-01", "Raf 1", "HMD", "Depolama"],
+                ["TANK-01", "Tank yeri", "HMD", "Tank"],
+            ]
+        ),
+        "l.xlsx",
+    )
+    report = importers.run_import(
+        user,
+        "equipment",
+        xlsx(
+            [
+                ["Kod", "Ad", "Tür", "Kapasite", "Kapasite birimi", "Lokasyon kodu"],
+                ["T-01", "Tank 1", "Karıştırma tankı", "5000", "KG", "TANK-01"],
+                ["H-01", "Hat 1", "Dolum hattı", None, None, None],
+            ]
+        ),
+        "e.xlsx",
+    ).as_dict()
+
+    assert report["to_create"] == 2
+    assert Warehouse.objects.get(code="HMD").name == "Hammadde deposu"
+    assert Location.objects.get(code="TANK-01").location_type == Location.Type.TANK
+    tank = Equipment.objects.get(code="T-01")
+    assert tank.location.code == "TANK-01"
+    assert tank.capacity == Decimal("5000")
+
+
+def test_location_import_rejects_unknown_warehouse_and_tank_without_location():
+    report = importers.preview_import(
+        "locations",
+        xlsx([["Kod", "Ad", "Depo kodu", "Tür"], ["A-01", "Raf", "YOK", "Depolama"]]),
+        "l.xlsx",
+    ).as_dict()
+    assert report["invalid"] == 1
+    assert "Depo bulunamadı" in report["rows"][0]["errors"][0]["message"]
+
+    report = importers.preview_import(
+        "equipment",
+        xlsx([["Kod", "Ad", "Tür"], ["T-09", "Tank", "Karıştırma tankı"]]),
+        "e.xlsx",
+    ).as_dict()
+    assert report["invalid"] == 1
+    assert "lokasyon zorunludur" in report["rows"][0]["errors"][0]["message"]
+
+
+def test_conversion_import_keys_on_material_and_unit(make_user):
+    from apps.masterdata.models import MaterialUnitConversion
+
+    user = make_user("planlama")
+    MaterialFactory(code="MM-1L", base_unit=unit("ADET"))
+    headers = ["Malzeme kodu", "Birim", "Temel birim karşılığı"]
+
+    first = importers.run_import(
+        user, "conversions", xlsx([headers, ["MM-1L", "KOLI", 12]]), "c.xlsx"
+    ).as_dict()
+    second = importers.preview_import(
+        "conversions",
+        xlsx([headers, ["mm-1l", "koli", 6], ["MM-1L", "KOLI", 8]]),
+        "c.xlsx",
+    ).as_dict()
+
+    assert first["rows"][0] == {"row": 2, "code": "MM-1L / KOLI", "action": "create", "errors": []}
+    assert second["rows"][0]["action"] == "update"
+    assert "tekrar" in second["rows"][1]["errors"][0]["message"]
+    importers.run_import(user, "conversions", xlsx([headers, ["MM-1L", "KOLI", 6]]), "c.xlsx")
+    assert MaterialUnitConversion.objects.get().factor_to_base == Decimal("6")
+
+
+@pytest.mark.parametrize("kind", ["warehouses", "locations", "equipment", "conversions"])
+def test_new_kinds_have_templates(kind):
+    workbook = load_workbook(io.BytesIO(importers.build_template(kind)))
+    headers = [cell.value for cell in workbook.worksheets[0][1]]
+    assert headers == [c.header for c in importers.get_spec(kind).columns]

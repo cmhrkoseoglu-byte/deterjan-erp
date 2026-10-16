@@ -163,7 +163,14 @@ export async function setRecordActive<T>(
 
 // --- içe aktarma --------------------------------------------------------------------------
 
-export type ImportKind = "materials" | "suppliers" | "customers";
+export type ImportKind =
+  | "materials"
+  | "suppliers"
+  | "customers"
+  | "warehouses"
+  | "locations"
+  | "equipment"
+  | "conversions";
 
 export interface ImportRow {
   row: number;
@@ -173,7 +180,7 @@ export interface ImportRow {
 }
 
 export interface ImportReport {
-  kind: ImportKind | "opening";
+  kind: ImportKind | "opening" | "recipes" | "stock_comparison";
   total: number;
   valid: number;
   invalid: number;

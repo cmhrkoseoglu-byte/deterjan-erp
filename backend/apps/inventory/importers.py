@@ -251,6 +251,7 @@ def _build(actor: User | None, upload: IO[bytes], filename: str) -> OpeningRepor
 
 def preview_opening(actor: User | None, upload: IO[bytes], filename: str) -> OpeningReport:
     """Dosyayı doğrular ve her satırı geri alınan bir işlemde dener; hiçbir şey yazılmaz."""
+    services.require_opening_open()  # canlı başlangıç tarihi geldiyse dosya hiç okunmaz
     with transaction.atomic():
         report = _build(actor, upload, filename)
         transaction.set_rollback(True)
@@ -260,6 +261,7 @@ def preview_opening(actor: User | None, upload: IO[bytes], filename: str) -> Ope
 def run_opening_import(actor: User | None, upload: IO[bytes], filename: str) -> OpeningReport:
     """Dosyayı tek işlemde aktarır. Hatalı satır varsa `import_has_errors`; hiçbir satır
     yazılmaz."""
+    services.require_opening_open()
     with transaction.atomic():
         report = _build(actor, upload, filename)
         if report.has_errors:

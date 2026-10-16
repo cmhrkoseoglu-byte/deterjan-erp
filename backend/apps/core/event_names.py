@@ -135,3 +135,7 @@ STORAGE_LIMIT_EXCEEDED = "hse.storage_limit_exceeded"
 # "row_count", "requested_by_id", "error"}`; bildirim yalnızca raporu isteyen kişiye gider.
 REPORT_JOB_DONE = "report_job.done"
 REPORT_JOB_FAILED = "report_job.failed"
+
+# golive (Faz 5, Adım 5.6). Kullanıcı "Sorun bildir" ile sorun bildirdi; admin rolüne görev açılır.
+# Payload: `{"model": "golive.problemreport", "id", "number", "summary", "reporter", "page_url"}`.
+PROBLEM_REPORTED = "problem_report.created"

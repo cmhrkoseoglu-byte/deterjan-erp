@@ -20,6 +20,8 @@ describe("visibleMenu", () => {
       "purchasing",
       "hse",
       "reporting",
+      "golive",
+      "help",
     ]);
   });
 
@@ -28,6 +30,12 @@ describe("visibleMenu", () => {
     expect(visible).toContain("quality");
     expect(visible).toContain("inventory");
     expect(visible).not.toContain("sales");
+  });
+
+  it("canlıya geçiş yönetim, planlama ve depoya; yardım herkese açıktır", () => {
+    expect(keys(userWith(["yonetim"]))).toContain("golive");
+    expect(keys(userWith(["dolum"]))).not.toContain("golive");
+    expect(keys(userWith(["dolum"]))).toContain("help");
   });
 
   it("stok sorgu her role açıktır", () => {
@@ -52,6 +60,8 @@ describe("visibleMenu", () => {
       "purchasing",
       "hse",
       "reporting",
+      "golive",
+      "help",
     ]);
   });
 
