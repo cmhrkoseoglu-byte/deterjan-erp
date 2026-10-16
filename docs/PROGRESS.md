@@ -486,3 +486,24 @@ limiti), D-14 (tank temizliği), D-15 (kg başı genel gider) `docs/DECISIONS.md
 | Minimum stok ve açık emir ihtiyacından satın alma talebi önerisi | ✓ | `test_suggestions_from_min_stock_and_open_production_orders` (öneri ve 07:00'de otomatik talep), API `test_supplier_performance_and_suggestions_api` |
 | Siparişe bağlı mal kabul bekleyen miktarı doğru düşürüyor | ✓ | `test_receipt_from_order_decreases_pending_quantity` (kısmi ve tam teslim, durum PARTIALLY_RECEIVED → RECEIVED, fiyat ve kur siparişten) |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | stoka dokunan satın alma testleri `invariants` fixture'ı ile biter |
+
+### Adım 4.3 doğrulaması (raporlama ve panolar)
+
+- Yeni uygulama `apps/reporting`: 5 pano, 7 rapor, Excel/PDF çıktısı, arka plan rapor işi
+  (`ReportJob`, Celery) ve bildirim; ekran "Panolar ve raporlar" (Panolar, Raporlar,
+  İndirmeler), menüde her role açık, içerik rolle daralır.
+- Testler (`apps/reporting/tests`, 39 test): servislerle kurulan gerçek akış (mal kabul → red
+  ve kabul numuneleri → tolerans dışı tartımlı şarj → fireli dolum → sevkiyat) üzerinden rapor
+  değerleri (verim %95, sapma 1, fire %2,5, red oranı %20, zamanında sevk); her pano ve rapor
+  için izinli ve yasak rol (403), anonim 401; tutar sütunlarının depo ve planlamaya ekranda ve
+  Excel'de dönmemesi; arka plan işi, bildirim, yalnızca isteyenin indirmesi, saklama süresi;
+  durum makinesi geçişleri. Frontend: 9 Vitest testi.
+- **Performans**: demo verisi + 10.000'den fazla stok hareketi + 3.000 görevle yönetim panosu
+  0,32 sn, 15 sorgu; diğer panolar 0,03 sn (`test_performance.py`, sınır 2 sn ve 30 sorgu).
+
+### Faz 4 kabul kriterleri (Adım 4.3'e düşenler)
+
+- [x] Yönetim panosu 2 sn altında açılıyor (demo verisiyle) — 0,32 sn.
+- [x] Maliyet tutarları yetkisiz role API'de dönmüyor — rapor ve pano tarafı da test edildi.
+- [x] Stok değişmezleri tüm yeni testlerde geçiyor.
+

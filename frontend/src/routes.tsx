@@ -25,6 +25,7 @@ import { ReturnPage } from "./modules/returns/ReturnPage";
 import { ReturnsPage } from "./modules/returns/ReturnsPage";
 import { TracePage } from "./modules/traceability/TracePage";
 import { CostingPage } from "./modules/costing/CostingPage";
+import { ReportingPage } from "./modules/reporting/ReportingPage";
 import { LotCostPage } from "./modules/costing/LotCostPage";
 import { RecipeListPage } from "./modules/recipes/RecipeListPage";
 import { RecipePage } from "./modules/recipes/RecipePage";
@@ -147,6 +148,8 @@ const pageRoutes: RouteObject[] = [
   // Maliyet: yalnızca yönetim (ve admin); tutarlar backend'de de yalnızca bu rollere döner.
   { path: "maliyet/lotlar/:lotId", element: costingPage(<LotCostPage />) },
   { path: "maliyet/:tab?", element: costingPage(<CostingPage />) },
+  // Panolar ve raporlar: menü herkese açık; panolar ve raporlar rolle daralır (backend listesi).
+  { path: "raporlar/:tab?", element: <ReportingPage /> },
 ];
 const IMPLEMENTED = new Set([
   "masterdata",
@@ -160,6 +163,7 @@ const IMPLEMENTED = new Set([
   "traceability",
   "costing",
   "purchasing",
+  "reporting",
 ]);
 
 // Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar rol korumalı bir yer tutucuya gider.

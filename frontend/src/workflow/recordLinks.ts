@@ -23,6 +23,7 @@ export const RECORD_ROUTES: Record<string, (id: number) => string> = {
   "purchasing.purchaseorder": (id) => `/satin-alma/siparisler/${id}`,
   "purchasing.purchaserequest": () => "/satin-alma/talepler",
   "sales.shipment": (id) => `/sevkiyat/sevkiyatlar/${id}`,
+  "reporting.reportjob": () => "/raporlar/indirmeler",
 };
 
 /** Kaydın detay sayfası; sayfası henüz yoksa null. */

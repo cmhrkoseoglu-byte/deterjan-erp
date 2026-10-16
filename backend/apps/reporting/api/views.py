@@ -227,6 +227,8 @@ class ReportExportView(APIView):
 
 def _own_jobs(request: Request) -> QuerySet[ReportJob]:
     """Kullanıcı yalnızca kendi istediği dosyaları görür (admin dahil)."""
+    if not isinstance(request.user, User):  # şema üretimi (anonim)
+        return ReportJob.objects.none()
     return ReportJob.objects.filter(created_by=_user(request))
 
 

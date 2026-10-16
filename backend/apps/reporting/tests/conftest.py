@@ -99,8 +99,13 @@ def chain(staff: dict[str, User], commit: Callable[[], AbstractContextManager[An
     with commit():
         inventory.post_goods_receipt(staff[DEPO], receipt)
     lines = list(receipt.lines.order_by("id"))
-    lots = {"LAS": lines[0].created_lot, "SLES": lines[1].created_lot, "SU": lines[2].created_lot}
+    lots: dict[str, Any] = {
+        "LAS": lines[0].created_lot,
+        "SLES": lines[1].created_lot,
+        "SU": lines[2].created_lot,
+    }
     rejected = lines[3].created_lot
+    assert rejected is not None
     with commit():
         pass_sample(staff[LABORATUVAR], open_sample_for(lots["LAS"], "INCOMING"))
         pass_sample(staff[LABORATUVAR], open_sample_for(lots["SLES"], "INCOMING"))
@@ -143,11 +148,13 @@ def chain(staff: dict[str, User], commit: Callable[[], AbstractContextManager[An
     with commit():
         fill = filling.create_order(staff[PLANLAMA], filling_order_data(line, 1000))
         filling.approve_order(staff[PLANLAMA], fill)
-        for row in fill.requirements.select_related("material"):
+        for packaging in fill.requirements.select_related("material"):
             key = {"SISE-750": "bottle", "KAPAK-28": "cap", "ETIKET-750": "label"}.get(
-                row.material.code, "case"
+                packaging.material.code, "case"
             )
-            filling.pick_packaging(staff[DEPO], fill, row, line.lots[key], row.required_quantity)
+            filling.pick_packaging(
+                staff[DEPO], fill, packaging, line.lots[key], packaging.required_quantity
+            )
         filling.mark_material_ready(staff[DEPO], fill)
         run = filling.start_run(staff[DOLUM], fill)
         filling.consume_bulk(staff[DOLUM], run, bulk, D("780"))
