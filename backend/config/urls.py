@@ -2,7 +2,7 @@ from django.conf import settings
 from django.contrib import admin
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include, path
-from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerSplitView
 
 # /api/ altında hata sayfaları HTML değil `{"code", "detail"}` JSON'dur (DEBUG=False iken).
 handler404 = "apps.core.api.views.page_not_found"
@@ -25,10 +25,11 @@ urlpatterns = [
     path("api/v1/maintenance/", include("apps.maintenance.api.urls")),
     path("api/v1/hse/", include("apps.hse.api.urls")),
     path("api/v1/reporting/", include("apps.reporting.api.urls")),
+    path("api/v1/ops/", include("apps.ops.api.urls")),
     path("api/v1/golive/", include("apps.golive.api.urls")),
     path("api/v1/workflow/", include("apps.workflow.api.urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="api-docs"),
+    path("api/docs/", SpectacularSwaggerSplitView.as_view(url_name="schema"), name="api-docs"),
 ]
 
 if settings.DEBUG:

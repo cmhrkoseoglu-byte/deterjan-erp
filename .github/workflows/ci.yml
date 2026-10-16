@@ -113,3 +113,67 @@ jobs:
       - name: Kapat
         if: always()
         run: docker compose down -v
+
+  prod:
+    name: Üretim kurulumu duman testi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Sertifika (iç CA + localhost)
+        run: scripts/gen-selfsigned-cert.sh localhost 127.0.0.1
+      - name: .env.prod hazırla (rastgele gizli değerler)
+        run: scripts/init-env-prod.sh localhost
+      - name: Derle ve başlat
+        run: scripts/prod-compose.sh up -d --build --wait --wait-timeout 300
+      - name: Test kullanıcısı
+        run: |
+          SMOKE_PASSWORD="Smoke.$(openssl rand -hex 12)"
+          echo "::add-mask::$SMOKE_PASSWORD"
+          echo "SMOKE_PASSWORD=$SMOKE_PASSWORD" >> "$GITHUB_ENV"
+          # create_demo_users üretimde çalışmaz; admin rolü 2FA ister, bu yüzden "depo" rolü.
+          SMOKE_PASSWORD="$SMOKE_PASSWORD" scripts/prod-compose.sh exec -T -e SMOKE_PASSWORD backend \
+            python manage.py shell -c "import os; from apps.core.models import User; from django.contrib.auth.models import Group; u, _ = User.objects.get_or_create(username='smoke'); u.set_password(os.environ['SMOKE_PASSWORD']); u.save(); u.groups.add(Group.objects.get(name='depo'))"
+      - name: Duman testi (HTTPS, başlıklar, giriş, yedek, geri yükleme testi)
+        run: scripts/prod_smoke_test.sh https://localhost
+      - name: Servis günlükleri
+        if: failure()
+        run: scripts/prod-compose.sh logs --no-color --tail=200
+      - name: Kapat
+        if: always()
+        run: scripts/prod-compose.sh down -v
+
+  security:
+    name: Güvenlik taramaları
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: "8.28.0"
+      GITLEAKS_SHA256: a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # gitleaks tüm geçmişi tarar
+      - name: gitleaks (depo geçmişinde gizli bilgi)
+        run: |
+          curl -sSfL -o /tmp/gitleaks.tgz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tgz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          /tmp/gitleaks git --redact -v --exit-code 1 .
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: pip-audit (backend çalışma bağımlılıkları)
+        run: |
+          python -m venv /tmp/app
+          # Sanal ortamın kendi pip sürümü de denetlenir; güncel pip ile başla.
+          /tmp/app/bin/pip install --quiet --upgrade pip
+          /tmp/app/bin/pip install --quiet ./backend
+          python -m pip install --quiet pip-audit
+          # Uygulamanın kendisi PyPI'da olmadığı için atlanır; yalnızca bağımlılıklar denetlenir.
+          PIPAPI_PYTHON_LOCATION=/tmp/app/bin/python pip-audit --skip-editable --progress-spinner off
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: npm audit (frontend, yalnızca çalışma bağımlılıkları)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high

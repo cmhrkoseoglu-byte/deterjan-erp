@@ -10,6 +10,7 @@ import {
   IconHelp,
   IconRocket,
   IconRoute,
+  IconServer,
   IconPackages,
   IconBottle,
   IconSettings,
@@ -175,6 +176,15 @@ export const MENU: readonly MenuItem[] = [
     icon: IconHelp,
     // Rol bazında kullanım kılavuzları; herkes kendi rolünün kılavuzunu görür.
     roles: [],
+    phase: 5,
+  },
+  {
+    key: "system",
+    label: tr.menu.system,
+    path: "/sistem",
+    icon: IconServer,
+    // Sistem durumu, yedekler, kullanıcı kilidi ve 2FA sıfırlama, saha tableti işareti.
+    roles: ["admin"],
     phase: 5,
   },
   {

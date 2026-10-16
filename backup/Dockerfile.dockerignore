@@ -1,0 +1,3 @@
+# backup/Dockerfile derleme bağlamı: yalnızca betikler girer (rclone şifreleri, yer tutucular girmez).
+*
+!*.sh

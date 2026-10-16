@@ -16,3 +16,5 @@ DEMO_USER_PASSWORD = "Demo.12345"
 INSTALLED_APPS = [*INSTALLED_APPS, "apps.core.tests.testapp"]  # noqa: F405
 # Ekler testlerde geçici klasöre yazılır.
 MEDIA_ROOT = str(Path(tempfile.gettempdir()) / "deterjan-erp-test-media")
+# İki aşamalı doğrulama zorunluluğu testlerde kapalı; ilgili testler kendisi açar.
+OTP_REQUIRED_ROLES = []

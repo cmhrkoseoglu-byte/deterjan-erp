@@ -1247,3 +1247,16 @@ def cancel_shipment(actor: User | None, shipment: Shipment, reason: str) -> Ship
     for pick in active_picks(shipment):  # kilitten sonra güncel lot durumuyla
         _return_pick(actor, shipment, pick, f"Sevkiyat iptali {shipment.number}")
     return cancel_document(shipment, actor, reason=reason, machine=shipment_states)
+
+
+def record_waybill_access(actor: User, shipment: Shipment, *, output: str) -> None:
+    """KVKK erişim kaydı: şoförün açık TC kimlik numarası yalnızca irsaliyede görünür; irsaliyenin
+    her açılışı (PDF ya da dışa aktarım verisi) denetim günlüğüne yazılır. Numara yoksa yazılmaz."""
+    if not shipment.driver_id_no:
+        return
+    log_change(
+        actor,
+        shipment,
+        AuditLog.Action.CUSTOM,
+        note=f"İrsaliye görüntülendi ({output}); şoför TC kimlik numarası içerir",
+    )

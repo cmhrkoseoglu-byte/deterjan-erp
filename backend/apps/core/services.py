@@ -17,7 +17,7 @@ from django.db.models import F
 from django.http import HttpRequest
 from django.utils import timezone
 
-from apps.core import attachments, events
+from apps.core import attachments, events, security
 from apps.core.audit import EXCLUDED_FIELDS, diff, log_change
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import Attachment, AuditLog, DocumentModel, DocumentSequence, User
@@ -285,16 +285,41 @@ def set_user_roles(user: User, roles: Iterable[str], actor: User | None, *, note
         )
 
 
-def login_user(request: HttpRequest, username: str, password: str) -> User:
-    """Kullanıcı adı/şifreyi doğrular ve oturum açar.
+def login_user(request: HttpRequest, username: str, password: str, otp_code: str = "") -> User:
+    """Kullanıcı adı/şifreyi (ve kuruluysa iki aşamalı doğrulama kodunu) doğrular, oturum açar.
 
-    Hatalı bilgi ya da pasif kullanıcıda `BusinessRuleError("invalid_credentials")`.
+    - Hatalı bilgi ya da pasif kullanıcıda `BusinessRuleError("invalid_credentials")`.
+    - Hesap kilitliyse `account_locked` (kullanıcı adı var olmasa da aynı yanıt; `core.security`).
+    - Doğrulayıcı uygulaması kurulu kullanıcıda kod yoksa `otp_required`, hatalıysa `invalid_otp`
+      (hatalı kod başarısız giriş sayılır). Kod yerine kurtarma kodu da girilebilir.
+
     Başarılı ve başarısız denemeler Django'nun giriş sinyalleriyle denetim günlüğüne yazılır
     (`core.signals`); yönetim paneli girişi de aynı yoldan denetlenir.
     """
     user = auth.authenticate(request, username=username, password=password)
     if not isinstance(user, User):
+        if security.is_locked(username):
+            raise BusinessRuleError(
+                "account_locked",
+                "Çok sayıda hatalı deneme nedeniyle hesap "
+                f"{security.lockout_minutes()} dakika kilitlendi. Daha sonra tekrar deneyin "
+                "ya da sistem yöneticisine başvurun.",
+            )
         raise BusinessRuleError("invalid_credentials", "Kullanıcı adı veya şifre hatalı.")
+    if security.otp_enabled(user):
+        if not otp_code.strip():
+            raise BusinessRuleError(
+                "otp_required", "Telefonunuzdaki doğrulayıcı uygulamadaki kodu girin."
+            )
+        if not security.verify_second_factor(user, otp_code):
+            security.report_failed_second_factor(request, username)
+            if security.is_locked(username):
+                raise BusinessRuleError(
+                    "account_locked",
+                    "Çok sayıda hatalı deneme nedeniyle hesap "
+                    f"{security.lockout_minutes()} dakika kilitlendi.",
+                )
+            raise BusinessRuleError("invalid_otp", "Doğrulama kodu hatalı.")
     auth.login(request, user)
     return user
 
@@ -391,3 +416,36 @@ def remove_attachment(actor: User, attachment: Attachment, reason: str = "") -> 
     locked.removed_by = actor
     locked.removal_reason = reason.strip()[:500]
     return save_with_audit(locked, actor, note="Ek kaldırıldı")
+
+
+# --- KVKK saklama süreleri (Faz 5, docs/KVKK.md) -------------------------------------------------
+
+
+def purge_expired_personal_data(now: Any = None) -> dict[str, int]:
+    """Saklama süresi dolan kişisel verileri temizler; her gece Celery Beat çalıştırır.
+
+    - Giriş, çıkış ve başarısız giriş kayıtlarındaki IP adresleri `AUDIT_IP_RETENTION_DAYS`
+      sonra silinir (kaydın kendisi kalır). Denetim kayıtları değiştirilemez kuralının bilinçli ve
+      tek istisnasıdır: yalnızca IP alanı boşaltılır.
+    - Süresi dolmuş oturumlar ve 1 günden eski, kilidi bitmiş giriş sayaçları silinir.
+    """
+    from datetime import timedelta
+
+    from django.contrib.sessions.models import Session
+
+    from apps.core.models import LoginLockout
+
+    now = now or timezone.now()
+    cutoff = now - timedelta(days=int(settings.AUDIT_IP_RETENTION_DAYS))
+    ips = AuditLog.objects.filter(
+        action__in=[AuditLog.Action.LOGIN, AuditLog.Action.LOGOUT, AuditLog.Action.LOGIN_FAILED],
+        timestamp__lt=cutoff,
+        ip_address__isnull=False,
+    ).update(ip_address=None)
+    sessions, _ = Session.objects.filter(expire_date__lt=now).delete()
+    lockouts, _ = (
+        LoginLockout.objects.filter(updated_at__lt=now - timedelta(days=1))
+        .exclude(locked_until__gt=now)
+        .delete()
+    )
+    return {"audit_ips": ips, "sessions": sessions, "lockouts": lockouts}

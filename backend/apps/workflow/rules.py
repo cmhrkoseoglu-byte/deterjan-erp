@@ -693,6 +693,31 @@ RULES: tuple[Rule, ...] = (
         level="WARNING",
         users=_report_requester,
     ),
+    # Faz 5 (Adım 5.5): hesap kilidi ve sistem izleme uyarıları sistem yöneticisine.
+    NotifyRule(
+        code="user_locked",
+        event=ev.USER_LOCKED,
+        roles=(ADMIN,),
+        level="WARNING",
+        title="Hesap kilitlendi: {username}",
+        body="Çok sayıda hatalı giriş denemesi. Kilit {locked_until} saatine kadar ({minutes} dk). "
+        "Gerekirse Sistem > Kullanıcılar ekranından açabilirsiniz.",
+    ),
+    NotifyRule(
+        code="ops_alert",
+        event=ev.OPS_ALERT,
+        roles=(ADMIN,),
+        level="WARNING",
+        title="Sistem uyarısı: {title}",
+        body="{detail}",
+    ),
+    NotifyRule(
+        code="ops_recovered",
+        event=ev.OPS_RECOVERED,
+        roles=(ADMIN,),
+        title="Sistem normale döndü: {title}",
+        body="{detail}",
+    ),
     # Canlıya geçiş (Faz 5, Adım 5.6): "Sorun bildir" admin rolüne görev açar; admin görevi
     # tamamlayınca kapanır.
     TaskRule(

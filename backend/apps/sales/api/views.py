@@ -416,7 +416,9 @@ class ShipmentViewSet(
     @action(detail=True, methods=["get"], filter_backends=[], pagination_class=None)
     def waybill(self, request: Request, pk: str | None = None) -> Response:
         """İrsaliye verisi (dışa aktarım)."""
-        data = selectors.waybill_data(self._waybill_shipment())
+        shipment = self._waybill_shipment()
+        data = selectors.waybill_data(shipment)
+        services.record_waybill_access(request.user, shipment, output="veri")  # type: ignore[arg-type]
         return Response(s.WaybillSerializer(data).data)
 
     # Router dışında, urls.py'de sonda eğik çizgisiz yolla bağlanır (spesifikasyondaki yol).
@@ -425,6 +427,7 @@ class ShipmentViewSet(
         """İrsaliye PDF'i."""
         shipment = self._waybill_shipment()
         response = HttpResponse(waybill_pdf(shipment), content_type="application/pdf")
+        services.record_waybill_access(request.user, shipment, output="PDF")  # type: ignore[arg-type]
         response["Content-Disposition"] = f'inline; filename="irsaliye-{shipment.number}.pdf"'
         return response
 

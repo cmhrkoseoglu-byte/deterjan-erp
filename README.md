@@ -29,6 +29,18 @@ docker compose exec backend python manage.py create_demo_users   # yalnızca gel
 Demo kullanıcı adları rol kodlarıdır (`admin`, `yonetim`, `planlama`, `depo`, `uretim`,
 `laboratuvar`, `dolum`, `sevkiyat`, `satin_alma`); şifre `.env` içindeki `DEMO_USER_PASSWORD`.
 
+## Üretim kurulumu
+
+Fabrika sunucusuna (ya da bulut sunucusuna) HTTPS, yedekleme ve izleme ile kurulum:
+[docs/KURULUM.md](docs/KURULUM.md). Kısaca:
+
+```bash
+scripts/gen-selfsigned-cert.sh erp.firma.local     # ya da firma/Let's Encrypt sertifikası
+scripts/init-env-prod.sh erp.firma.local           # .env.prod (rastgele gizli değerlerle)
+scripts/prod-compose.sh up -d --build --wait       # migrate otomatik çalışır
+scripts/backup.sh --test                           # elle yedek + geri yükleme testi
+```
+
 ## Testler ve kod kalitesi
 
 Backend (konteyner içinde):
@@ -72,12 +84,16 @@ Frontend kancaları için `frontend/node_modules` kurulu olmalı (`cd frontend &
 
 ### Sürekli entegrasyon
 
-`.github/workflows/ci.yml` her pull request'te ve `main`'e her push'ta üç iş çalıştırır:
+`.github/workflows/ci.yml` her pull request'te ve `main`'e her push'ta beş iş çalıştırır:
 
 - **Backend:** PostgreSQL 16 ve Redis servis konteynerleriyle `ruff check`, `ruff format --check`,
   `mypy`, eksik migration kontrolü, `pytest`.
 - **Frontend:** `lint`, `format:check`, `typecheck`, `test`, `build`.
 - **Duman testi:** `docker compose up`, migration ve demo kullanıcılar, ardından `scripts/smoke_test.sh`.
+- **Üretim kurulumu duman testi:** iç CA sertifikası, rastgele `.env.prod`, üretim imajları,
+  `scripts/prod_smoke_test.sh` (HTTPS, güvenlik başlıkları, giriş, yedek ve geri yükleme testi).
+- **Güvenlik taramaları:** gitleaks (tüm git geçmişi), `pip-audit` (backend bağımlılıkları),
+  `npm audit --omit=dev --audit-level=high` (frontend).
 
 `mypy` tüm `apps/` klasörünü denetler; `services.py`, `selectors.py` ve `state.py` dosyalarında tip
 ipucu eksik fonksiyon hata sayılır.

@@ -41,6 +41,8 @@ import { SalesPage } from "./modules/sales/SalesPage";
 import { PurchaseOrderPage } from "./modules/purchasing/OrderPage";
 import { PurchasingPage } from "./modules/purchasing/PurchasingPage";
 import { ShipmentPage } from "./modules/sales/ShipmentPage";
+import { SecurityPage } from "./modules/security/SecurityPage";
+import { SystemPage } from "./modules/system/SystemPage";
 import { ComparisonPage } from "./modules/golive/ComparisonPage";
 import { GoLivePage } from "./modules/golive/GoLivePage";
 import { ProblemPage } from "./modules/golive/ProblemPage";
@@ -50,6 +52,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { ModulePlaceholderPage } from "./pages/ModulePlaceholderPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
+import { RouteErrorPage } from "./pages/RouteErrorPage";
 
 function menuRoles(key: string) {
   return MENU.find((item) => item.key === key)!.roles;
@@ -174,6 +177,15 @@ const pageRoutes: RouteObject[] = [
   { path: "isg/:tab?", element: hsePage(<HsePage />) },
   // Panolar ve raporlar: menü herkese açık; panolar ve raporlar rolle daralır (backend listesi).
   { path: "raporlar/:tab?", element: <ReportingPage /> },
+  // Sistem: yalnızca admin (sistem durumu, yedekler, kullanıcı kilidi/2FA, saha tableti).
+  {
+    path: "sistem/:tab?",
+    element: (
+      <RequireRole roles={menuRoles("system")}>
+        <SystemPage />
+      </RequireRole>
+    ),
+  },
   // Canlıya geçiş: hazırlık ve stok karşılaştırması yönetim, planlama ve depoya; sorun
   // bildirimini bildiren ve admin açar (backend süzer).
   {
@@ -211,6 +223,7 @@ const IMPLEMENTED = new Set([
   "maintenance",
   "hse",
   "reporting",
+  "system",
   "golive",
   "help",
 ]);
@@ -228,15 +241,20 @@ const moduleRoutes: RouteObject[] = MENU.filter(
 }));
 
 export const routes: RouteObject[] = [
-  { path: "/login", element: <LoginPage /> },
+  { path: "/login", element: <LoginPage />, errorElement: <RouteErrorPage /> },
   {
     element: <RequireAuth />,
+    errorElement: <RouteErrorPage />,
     children: [
       {
         element: <AppLayout />,
+        // Sayfa hatası menü ve başlık yerinde kalarak içerik alanında gösterilir.
+        errorElement: <RouteErrorPage />,
         children: [
           { index: true, element: <HomePage /> },
           { path: "bildirimler", element: <NotificationsPage /> },
+          // Güvenlik (şifre, 2FA): her giriş yapmış kullanıcı.
+          { path: "guvenlik", element: <SecurityPage /> },
           ...pageRoutes,
           ...moduleRoutes,
           { path: "*", element: <NotFoundPage /> },

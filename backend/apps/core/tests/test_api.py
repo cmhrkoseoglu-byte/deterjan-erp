@@ -54,6 +54,10 @@ def test_login_success_returns_me_and_audits(make_user):
         "email": "depo1@example.com",
         "roles": ["depo"],
         "is_superuser": False,
+        "otp_enabled": False,
+        "otp_setup_required": False,
+        "field_device": False,
+        "idle_timeout_seconds": 3600,
     }
     entry = AuditLog.objects.get(action=AuditLog.Action.LOGIN)
     assert entry.actor == user

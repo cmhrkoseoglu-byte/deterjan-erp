@@ -1,0 +1,3 @@
+Bu klasör yer tutucudur: BACKUP_OFFSITE_DIR tanımlı değilken /offsite olarak bağlanır.
+Buraya yedek yazılmaz. Dış disk için .env.prod'da BACKUP_OFFSITE_DIR ve
+BACKUP_OFFSITE_ENABLED=true verin (docs/KURULUM.md, "Yedekleme").

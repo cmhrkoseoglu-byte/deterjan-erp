@@ -1,7 +1,9 @@
 from typing import Any
 
-from django.db.models import QuerySet
+from django.contrib.auth import password_validation
+from django.db.models import Exists, OuterRef, QuerySet
 from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views import defaults
 from django.views.csrf import csrf_failure as django_csrf_failure
@@ -18,7 +20,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
-from apps.core import health, ratelimit, services
+from apps.core import health, ratelimit, security, services
 from apps.core.api.filters import AuditLogFilter, UserFilter
 from apps.core.api.serializers import (
     AttachmentQuerySerializer,
@@ -26,14 +28,21 @@ from apps.core.api.serializers import (
     AttachmentSerializer,
     AttachmentUploadSerializer,
     AuditLogSerializer,
+    FieldDeviceSerializer,
     HealthSerializer,
     LoginSerializer,
     MeSerializer,
+    OtpCodeSerializer,
+    OtpSetupSerializer,
+    PasswordChangeSerializer,
+    PasswordConfirmSerializer,
+    RecoveryCodesSerializer,
+    SecurityStatusSerializer,
     UserSerializer,
 )
 from apps.core.attachments import INLINE_TYPES
 from apps.core.authentication import CsrfFailed
-from apps.core.models import Attachment, AuditLog, User
+from apps.core.models import Attachment, AuditLog, LoginLockout, TOTPDevice, User
 from apps.core.permissions import HasRole
 from apps.core.roles import ADMIN, YONETIM
 
@@ -138,8 +147,9 @@ class LoginView(APIView):
             request._request,
             serializer.validated_data["username"],
             serializer.validated_data["password"],
+            serializer.validated_data.get("otp_code", ""),
         )
-        return Response(MeSerializer(user).data)
+        return Response(MeSerializer(user, context={"request": request}).data)
 
 
 class LogoutView(APIView):
@@ -158,8 +168,108 @@ class MeView(generics.RetrieveAPIView):
         return self.request.user  # type: ignore[return-value]
 
 
+def _actor(request: Request) -> User:
+    return request.user  # type: ignore[return-value]
+
+
+class SecurityStatusView(APIView):
+    """Kendi güvenlik durumum: 2FA, kalan kurtarma kodu, saha tableti, şifre kuralları."""
+
+    @extend_schema(responses=SecurityStatusSerializer)
+    def get(self, request: Request) -> Response:
+        user = _actor(request)
+        body = {
+            "otp_enabled": security.otp_enabled(user),
+            "otp_required": security.otp_required_for(user),
+            "recovery_codes_remaining": security.remaining_recovery_codes(user),
+            "field_device": security.is_field_device(request._request),
+            "idle_timeout_seconds": security.idle_timeout_seconds(request._request),
+            "password_help": password_validation.password_validators_help_texts(),
+        }
+        return Response(SecurityStatusSerializer(body).data)
+
+
+class OtpSetupView(APIView):
+    """2FA kurulumunu başlatır: QR kod (SVG) ve elle girilecek anahtar."""
+
+    @extend_schema(request=None, responses=OtpSetupSerializer)
+    def post(self, request: Request) -> Response:
+        setup = security.start_otp_setup(_actor(request))
+        return Response(
+            OtpSetupSerializer(
+                {"secret": setup.secret, "uri": setup.uri, "qr_svg": setup.qr_svg}
+            ).data
+        )
+
+
+class OtpConfirmView(APIView):
+    """Uygulamadaki ilk kodla kurulumu tamamlar; kurtarma kodları yalnızca bu yanıtta görünür."""
+
+    @extend_schema(request=OtpCodeSerializer, responses=RecoveryCodesSerializer)
+    def post(self, request: Request) -> Response:
+        body = OtpCodeSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        codes = security.confirm_otp_setup(_actor(request), body.validated_data["code"])
+        return Response(RecoveryCodesSerializer({"recovery_codes": codes}).data)
+
+
+class OtpRecoveryCodesView(APIView):
+    """Geçerli bir doğrulama koduyla yeni kurtarma kodları (eskiler geçersiz olur)."""
+
+    @extend_schema(request=OtpCodeSerializer, responses=RecoveryCodesSerializer)
+    def post(self, request: Request) -> Response:
+        body = OtpCodeSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        codes = security.regenerate_recovery_codes(_actor(request), body.validated_data["code"])
+        return Response(RecoveryCodesSerializer({"recovery_codes": codes}).data)
+
+
+class OtpDisableView(APIView):
+    """Kendi 2FA'mı kapatırım (şifreyle; zorunlu rolde kapatılamaz)."""
+
+    @extend_schema(request=PasswordConfirmSerializer, responses={204: None})
+    def post(self, request: Request) -> Response:
+        body = PasswordConfirmSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        security.disable_otp(_actor(request), body.validated_data["password"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PasswordChangeView(APIView):
+    """Kendi şifremi değiştiririm. Şifre politikası uygulanır; oturum açık kalır."""
+
+    @extend_schema(request=PasswordChangeSerializer, responses={204: None})
+    def post(self, request: Request) -> Response:
+        body = PasswordChangeSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        security.change_password(
+            request._request,
+            _actor(request),
+            body.validated_data["old_password"],
+            body.validated_data["new_password"],
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class FieldDeviceView(APIView):
+    """Bu tarayıcıyı saha tableti olarak işaretler ya da işareti kaldırır (yalnızca admin).
+    İşaret imzalı bir çerezdir; tablette kim giriş yaparsa yapsın kısa hareketsizlik süresi
+    geçerlidir."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(request=FieldDeviceSerializer, responses=FieldDeviceSerializer)
+    def post(self, request: Request) -> Response:
+        body = FieldDeviceSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        enabled = body.validated_data["enabled"]
+        response = Response(FieldDeviceSerializer({"enabled": enabled}).data)
+        security.set_field_device(_actor(request), response, enabled)
+        return response
+
+
 class UserViewSet(viewsets.ReadOnlyModelViewSet):
-    """Kullanıcı listesi (yalnızca admin)."""
+    """Kullanıcı listesi (yalnızca admin). Kilitli hesabı açma ve 2FA sıfırlama burada."""
 
     serializer_class = UserSerializer
     permission_classes = [HasRole(ADMIN)]
@@ -169,7 +279,27 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ["username"]
 
     def get_queryset(self) -> QuerySet[User]:
-        return User.objects.prefetch_related("groups")
+        locked = LoginLockout.objects.filter(
+            username=OuterRef("username"), locked_until__gt=timezone.now()
+        )
+        otp = TOTPDevice.objects.filter(user=OuterRef("pk"), confirmed_at__isnull=False)
+        return User.objects.prefetch_related("groups").annotate(
+            is_locked_now=Exists(locked), has_otp=Exists(otp)
+        )
+
+    @extend_schema(request=None, responses=UserSerializer)
+    @action(detail=True, methods=["post"])
+    def unlock(self, request: Request, pk: str | None = None) -> Response:
+        user = self.get_object()
+        security.unlock_user(_actor(request), user)
+        return Response(self.get_serializer(self.get_queryset().get(pk=user.pk)).data)
+
+    @extend_schema(request=None, responses=UserSerializer)
+    @action(detail=True, methods=["post"], url_path="reset-otp")
+    def reset_otp(self, request: Request, pk: str | None = None) -> Response:
+        user = self.get_object()
+        security.reset_otp(_actor(request), user)
+        return Response(self.get_serializer(self.get_queryset().get(pk=user.pk)).data)
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):

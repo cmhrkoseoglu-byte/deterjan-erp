@@ -1,0 +1,7 @@
+# nginx/Dockerfile derleme bağlamı (depo kökü): yalnızca frontend kaynağı ve nginx/prod girer.
+*
+!frontend/
+!nginx/prod/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/

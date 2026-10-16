@@ -9,6 +9,10 @@ export function userWith(...roles: Role[]): CurrentUser {
     email: "",
     roles,
     is_superuser: false,
+    otp_enabled: false,
+    otp_setup_required: false,
+    field_device: false,
+    idle_timeout_seconds: 3600,
   };
 }
 

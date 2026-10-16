@@ -534,9 +534,43 @@ limiti), D-14 (tank temizliği), D-15 (kg başı genel gider) `docs/DECISIONS.md
 
 ## Faz 5 — Entegrasyonlar ve canlıya geçiş
 
-Plan dosyası: `docs/plan/FAZ-5-entegrasyon-canli.md`. Kararlar D-16 (önce canlıya geçiş), D-17 (muhasebe
-programı belli değil), D-18 (kartlar bu sistemde açılır), D-19 (e-İrsaliye için mevcut e-Fatura
-entegratörü), D-20 (yerel sunucu) `docs/DECISIONS.md`'de.
+Faz dosyası: `docs/plan/FAZ-5-entegrasyon-canli.md`. Kararlar D-16 … D-20 (DECISIONS.md).
+
+| Adım | Durum | Not |
+|---|---|---|
+| 5.4 Canlı ortam | Kod tamam (2026-10-16), sunucuya kurulum bekliyor | Üretim compose, nginx HTTPS + güvenlik başlıkları, üretim ayarları, `docs/KURULUM.md`, `docs/CANLI-KONTROL-LISTESI.md` |
+| 5.5 Yedek, izleme, güvenlik | Kod tamam (2026-10-16), sunucuya kurulum bekliyor | Gece yedeği + ayrı konum kopyası + haftalık otomatik geri yükleme testi; `ops` izleme ve uyarılar; kilit, hareketsizlik süresi, 2FA, şifre politikası; CI gizli bilgi ve bağımlılık taraması; `docs/KVKK.md` |
+| 5.6 Geçiş ve eğitim | Araçlar tamam (2026-10-16, PR #18), sayım günü bekliyor | Excel içe aktarmalar, Canlıya geçiş ekranı, stok karşılaştırması, Sorun bildir, kılavuzlar; `docs/GECIS-PLANI.md` |
+
+### Adım 5.4 ve 5.5 doğrulaması (canlı ortam ve güvenlik)
+
+- Sandbox'ta üretim kurulumu (`scripts/prod-compose.sh up -d --build --wait`) tüm servisler sağlıklı;
+  `scripts/prod_smoke_test.sh https://localhost` geçti: HTTP→HTTPS 301, TLS 1.0/1.1 reddi, her yanıtta HSTS,
+  CSP, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy; bilinmeyen API adresi JSON 404 (DEBUG
+  kapalı); statik dosyalar nginx'ten; bilinmeyen Host 444; HTTPS üzerinden giriş, Secure/HttpOnly çerezler,
+  WebSocket 101; `check --deploy` uyarısız; yedek alındı (103 tablo), geri yükleme testi geçici veritabanında
+  sayıları tuttu, `/api/v1/ops/health/` tümü `ok`. Aynı test CI'da `prod` işinde çalışır.
+- Hata durumları elle denendi: ayrı konum işaret dosyası yok → yedek `failed`; bozuk `db.dump` → sha256 hatası;
+  manifestte değiştirilmiş sayı → `mismatches` dolu, test başarısız; veritabanı kapalı → Türkçe hata mesajı.
+  Ayrı konum klasörü ve rclone hedefi kopyalanıp doğrulandı; ayrı konumdan geri yükleme testi geçti.
+  `scripts/restore.sh latest --yes` ile tam geri yükleme provası yapıldı.
+- Giriş güvenliği: `apps/core/tests/test_security.py` (26 test: kilit ve süresi, var olmayan kullanıcı adı,
+  admin bildirimi ve kilit açma, RFC 6238 test vektörü, 2FA kurulum/giriş/tekrar kullanılamayan kod/kurtarma
+  kodu, zorunlu rolde kurulum öncesi engel, yönetim paneli 2FA, şifre politikası ve değiştirme, hareketsizlik
+  süresi, arka plan isteğinin oturumu uzatmaması, saha tableti çerezi ve sahte çerezin reddi).
+- İzleme ve KVKK: `apps/ops/tests/test_ops.py` (21 test: durum dosyası içe aktarımı, yedek/test/disk/yük/kuyruk
+  kontrolleri, uyarının bir kez ve saatte bir tekrarı, düzelme bildirimi, dış izleme ucu, IP saklama süresi).
+- Frontend: iki adımlı giriş, Güvenlik sayfası (2FA kurulum, kurtarma kodları, şifre değiştirme), Sistem
+  (durum, kullanıcılar, bu cihaz), hareketsizlik başlığı ve süresi, arayüz hata kaydı; 259 test geçiyor.
+  Güvenlik sayfasının üretim kurulumundaki görüntüsü: `/mnt/project-files/faz5-canli-guvenlik/guvenlik-sayfasi.png`.
+- Backend 1081+ test, ruff, mypy temiz; gitleaks (tüm geçmiş), pip-audit ve npm audit (yüksek/kritik) temiz.
+
+### Faz 5 kabul kriterleri (Adım 5.4 ve 5.5'e düşenler)
+
+| Kabul kriteri | Durum | Kanıt |
+|---|---|---|
+| Canlı ortam HTTPS, güvenlik başlıkları ve `DEBUG=False` ile çalışıyor; güvenlik kontrol listesi tamam | Sandbox'ta ✓; gerçek sunucuda kontrol listesi kurulumda işaretlenecek | `scripts/prod_smoke_test.sh`, CI `prod` işi, `docs/CANLI-KONTROL-LISTESI.md` |
+| Yedekten geri yükleme testi başarılı ve otomatik | ✓ (her pazar 04:00 + CI) | `backup/restore-test.sh`, duman testindeki geri yükleme adımı, `ops` izleme kontrolü |
 
 ### Adım 5.6 doğrulaması (geçiş ve eğitim)
 

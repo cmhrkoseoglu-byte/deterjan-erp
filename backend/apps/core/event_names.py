@@ -9,6 +9,8 @@ modül yayınlayan modülü import etmeden adı bilir.
 USER_LOGGED_IN = "user.logged_in"
 USER_LOGGED_OUT = "user.logged_out"
 USER_LOGIN_FAILED = "user.login_failed"
+# Faz 5: hatalı denemelerle kilitlenen hesap (yalnızca var olan kullanıcılar için).
+USER_LOCKED = "user.locked"
 
 # core — zamanlanmış işler (Celery Beat). Her sabah 07:00'de yayınlanır; modüller kendi günlük
 # kontrollerini bu olaya bağlar (ör. inventory: SKT'si yaklaşan lotlar, minimum stok altı).
@@ -135,6 +137,12 @@ STORAGE_LIMIT_EXCEEDED = "hse.storage_limit_exceeded"
 # "row_count", "requested_by_id", "error"}`; bildirim yalnızca raporu isteyen kişiye gider.
 REPORT_JOB_DONE = "report_job.done"
 REPORT_JOB_FAILED = "report_job.failed"
+
+# ops — sistem izleme (Faz 5, Adım 5.5). Payload: `check` (sabit kod: backup, restore_test, disk,
+# cpu, queue, worker, beat), `title`, `detail`. Aynı uyarı `OPS_ALERT_REPEAT_MINUTES` içinde
+# tekrarlanmaz; sorun geçince bir kez `ops.recovered`.
+OPS_ALERT = "ops.alert"
+OPS_RECOVERED = "ops.recovered"
 
 # golive (Faz 5, Adım 5.6). Kullanıcı "Sorun bildir" ile sorun bildirdi; admin rolüne görev açılır.
 # Payload: `{"model": "golive.problemreport", "id", "number", "summary", "reporter", "page_url"}`.

@@ -1,7 +1,17 @@
+# Docker derleme bağlamına girmeyecekler (imaj küçük kalsın, yerel çıktılar sızmasın)
 __pycache__/
 *.py[cod]
+.venv/
+venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
+build/
+*.egg-info/
 staticfiles/
 media/
+celerybeat-schedule*
+.env
+.env.*

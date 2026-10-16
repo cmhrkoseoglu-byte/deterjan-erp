@@ -12,9 +12,10 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconChevronDown, IconLogout } from "@tabler/icons-react";
+import { IconChevronDown, IconLogout, IconShieldLock } from "@tabler/icons-react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { SECURITY_PATH } from "../auth/paths";
 import { displayName } from "../auth/roles";
 import { tr } from "../i18n/tr";
 import { ProblemReportButton } from "../components/problem/ProblemReportButton";
@@ -89,6 +90,14 @@ export function AppLayout() {
                     ))}
                   </Group>
                   <Menu.Divider />
+                  <Menu.Item
+                    component={Link}
+                    to={SECURITY_PATH}
+                    leftSection={<IconShieldLock size={18} />}
+                    py="sm"
+                  >
+                    {tr.layout.security}
+                  </Menu.Item>
                   <Menu.Item leftSection={<IconLogout size={18} />} onClick={handleLogout} py="sm">
                     {tr.auth.logout}
                   </Menu.Item>

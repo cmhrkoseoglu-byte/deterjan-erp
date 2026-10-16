@@ -1,0 +1,30 @@
+# rclone yapılandırma örneği. Kopyalayın: cp backup/rclone/rclone.conf.example backup/rclone/rclone.conf
+# backup/rclone/rclone.conf depoya girmez (.gitignore). .env.prod'da:
+#   BACKUP_RCLONE_REMOTE=nas:erp-yedek
+# Şifreler düz metin yazılmaz; `rclone obscure 'sifre'` çıktısı yazılır:
+#   docker compose ... run --rm --entrypoint rclone backup obscure 'sifre'
+# Bağlantıyı denemek için:
+#   docker compose ... run --rm --entrypoint rclone backup lsd nas:
+
+# Örnek 1: fabrikadaki NAS (SMB / Windows paylaşımı)
+[nas]
+type = smb
+host = 192.168.1.20
+user = erp-yedek
+pass = BURAYA_rclone_obscure_CIKTISI
+domain = WORKGROUP
+
+# Örnek 2: başka bir binadaki sunucu (SFTP, anahtar dosyası backup/rclone/ klasöründe)
+# [uzak]
+# type = sftp
+# host = yedek.firma.local
+# user = erp-yedek
+# key_file = /config/rclone/id_ed25519
+
+# Örnek 3: S3 uyumlu nesne deposu (Türkiye'deki bir veri merkezi, KVKK)
+# [s3]
+# type = s3
+# provider = Other
+# endpoint = https://s3.ornek-bulut.com.tr
+# access_key_id = ...
+# secret_access_key = ...

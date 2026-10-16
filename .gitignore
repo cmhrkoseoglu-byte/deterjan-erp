@@ -20,6 +20,7 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.prod.example
 
 # Medya ve statik çıktılar
 media/
@@ -31,3 +32,12 @@ backend/staticfiles/
 .vscode/
 .DS_Store
 dump.rdb
+
+# Üretim kurulumu: sertifikalar, iç CA anahtarı, yedekler, rclone şifreleri
+nginx/certs/*
+!nginx/certs/.gitkeep
+nginx/internal-ca/
+/backups/
+backup/rclone/rclone.conf
+backup/rclone/*.key
+backup/rclone/id_*
