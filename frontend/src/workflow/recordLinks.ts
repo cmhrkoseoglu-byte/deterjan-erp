@@ -20,6 +20,8 @@ export const RECORD_ROUTES: Record<string, (id: number) => string> = {
   "returns.customerreturn": (id) => `/iadeler/${id}`,
   "quality.specification": (id) => `/kalite/spesifikasyonlar/${id}`,
   "sales.salesorder": (id) => `/sevkiyat/siparisler/${id}`,
+  "purchasing.purchaseorder": (id) => `/satin-alma/siparisler/${id}`,
+  "purchasing.purchaserequest": () => "/satin-alma/talepler",
   "sales.shipment": (id) => `/sevkiyat/sevkiyatlar/${id}`,
 };
 

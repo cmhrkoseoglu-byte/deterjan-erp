@@ -427,3 +427,28 @@ D-10 (her sevkiyat tek siparişe bağlı), D-11 (müşteri bazında asgari kalan
 | Hammadde lotunun ileri izlemesi doğru müşterileri ve miktarları veriyor; geri izleme tedarikçiye iniyor | ✓ | `test_customer_leg_from_shipments`, uçtan uca test (müşteri ve 600 adet), `apps/traceability/tests/test_selectors.py` |
 | Geri çağırma simülasyonu 10.000 hareketlik demo veride 1 sn altında | ✓ | `test_recall_performance_on_deep_wide_data` (10.050 hareket, ~0,4 sn) |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | sevkiyat, iade ve uçtan uca testler `invariants` fixture'ı ile biter |
+
+## Faz 4 — Destek modülleri ve raporlama
+
+### Adım 4.2 doğrulaması (satın alma)
+
+- Yeni uygulama `apps/purchasing`: talep `ST-`, sipariş `SA-` (onay limiti D-13), siparişten mal kabul,
+  öneri (basit MRP), tedarikçi performansı, sipariş PDF'i ve e-posta. Ekranlar `/satin-alma`: siparişler,
+  beklenen teslimatlar, talepler, öneriler, tedarikçi performansı, ayarlar (rollere göre).
+- Backend: `pytest` 880 test yeşil (34'ü satın alma), `ruff check`, `ruff format --check`, `mypy` temiz,
+  `makemigrations --check` değişiklik yok. Frontend: `npm test` 183 test (10'u satın alma), lint, biçim,
+  tip denetimi ve build temiz.
+- Testlerde: limit altı/üstü onay ve limitsiz durumda yonetim onayı, onaya gönderme ve geri gönderme
+  görevleri, onayda depoya beklenen teslimat bildirimi, PDF ekli e-posta ve e-posta hatasında geri alma,
+  talep → sipariş → iptalde talebin yeniden açılması, %10 fazla teslim toleransı, siparişsiz mal kabulün
+  etkilenmemesi, kalanı kapatma, teslimatı olan siparişin iptal edilememesi, tedarikçi performansı,
+  `lot.rejected` bildiriminin satın almaya tedarikçi adıyla gitmesi, depo rolünün fiyat görmemesi,
+  yetkisiz rollerin 403 alması.
+
+### Faz 4 kabul kriterleri (Adım 4.2'ye düşenler)
+
+| Kriter | Durum | Kanıt |
+|---|---|---|
+| Minimum stok ve açık emir ihtiyacından satın alma talebi önerisi | ✓ | `test_suggestions_from_min_stock_and_open_production_orders` (öneri ve 07:00'de otomatik talep), API `test_supplier_performance_and_suggestions_api` |
+| Siparişe bağlı mal kabul bekleyen miktarı doğru düşürüyor | ✓ | `test_receipt_from_order_decreases_pending_quantity` (kısmi ve tam teslim, durum PARTIALLY_RECEIVED → RECEIVED, fiyat ve kur siparişten) |
+| Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | stoka dokunan satın alma testleri `invariants` fixture'ı ile biter |

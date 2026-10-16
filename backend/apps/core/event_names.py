@@ -87,3 +87,19 @@ SHIPMENT_PICKING = "shipment.picking"
 SHIPMENT_LOADED = "shipment.loaded"
 SHIPMENT_DISPATCHED = "shipment.dispatched"
 SHIPMENT_CANCELLED = "shipment.cancelled"
+
+# purchasing (Faz 4, Adım 4.2). Durum olayları makinelerden (`purchase_request.<durum>`,
+# `purchase_order.<durum>`). Talep payload'ı: `material_code`, `material_name`, `unit`, `quantity`,
+# `need_date`, `source`, `reason`. Sipariş onay olayları (`pending_approval`, `approved`, `draft`)
+# ayrıca `supplier_name`, `currency`, `total`, `total_try`, `expected_date`, `lines`; mal kabul
+# geçişleri (`partially_received`, `received`) `receipt_number`.
+PURCHASE_REQUEST_CREATED = "purchase_request.created"
+PURCHASE_REQUEST_ORDERED = "purchase_request.ordered"
+PURCHASE_REQUEST_CANCELLED = "purchase_request.cancelled"
+PURCHASE_ORDER_PENDING_APPROVAL = "purchase_order.pending_approval"
+PURCHASE_ORDER_APPROVED = "purchase_order.approved"
+PURCHASE_ORDER_RETURNED = "purchase_order.draft"
+PURCHASE_ORDER_SENT = "purchase_order.sent"
+PURCHASE_ORDER_PARTIALLY_RECEIVED = "purchase_order.partially_received"
+PURCHASE_ORDER_RECEIVED = "purchase_order.received"
+PURCHASE_ORDER_CANCELLED = "purchase_order.cancelled"

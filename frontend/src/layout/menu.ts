@@ -114,7 +114,8 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.purchasing,
     path: "/satin-alma",
     icon: IconShoppingCart,
-    roles: ["satin_alma", "yonetim"],
+    // Depo siparişleri (tutarsız) ve beklenen teslimatları görür; planlama ve üretim talep açar.
+    roles: ["satin_alma", "yonetim", "depo", "planlama", "uretim"],
     phase: 4,
   },
   {

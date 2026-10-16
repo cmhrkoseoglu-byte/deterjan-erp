@@ -9,7 +9,7 @@ function userWith(roles: Role[], extra: Partial<CurrentUser> = {}): CurrentUser 
 const keys = (user: CurrentUser | null) => visibleMenu(user).map((item) => item.key);
 
 describe("visibleMenu", () => {
-  it("depo rolü kendi modülünü, (hazırlama için) üretim ve dolumu, (rezervasyon için) sevkiyatı, (iade kabulü için) iadeleri görür", () => {
+  it("depo rolü kendi modülünü, (hazırlama için) üretim ve dolumu, (rezervasyon için) sevkiyatı, (iade kabulü için) iadeleri, (beklenen teslimatlar için) satın almayı görür", () => {
     expect(keys(userWith(["depo"]))).toEqual([
       "home",
       "inventory",
@@ -17,6 +17,7 @@ describe("visibleMenu", () => {
       "filling",
       "sales",
       "returns",
+      "purchasing",
     ]);
   });
 
@@ -46,6 +47,7 @@ describe("visibleMenu", () => {
       "filling",
       "sales",
       "returns",
+      "purchasing",
     ]);
   });
 

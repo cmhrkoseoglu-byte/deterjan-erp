@@ -10,7 +10,7 @@ Değişmez kurallar (CLAUDE.md §4):
 """
 
 import uuid
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -703,6 +703,7 @@ def _set_lot_status(actor: User | None, lot: Lot, to_status: str, note: str) -> 
         lot_payload(
             lot,
             material_type=lot.material.material_type,
+            supplier_name=lot.supplier.name if lot.supplier is not None else "",
             note=note,
             from_status=from_status,
             to_status=to_status,
@@ -877,6 +878,8 @@ RECEIPT_LINE_FIELDS = (
     "manufactured_at",
     "expiry_date",
     "unit_price",
+    "currency",
+    "exchange_rate",
 )
 
 
@@ -968,6 +971,21 @@ def update_goods_receipt(
     return receipt
 
 
+# Mal kabul kaydı kancaları (Faz 4): başka bir modül (satın alma) kayıt anında, aynı transaction
+# içinde doğrulama ve kendi belgesini güncelleme yapar. inventory o modülleri import etmez; kanca
+# `BusinessRuleError` fırlatırsa kayıt geri alınır.
+ReceiptPostHook = Callable[[User | None, GoodsReceipt, list[GoodsReceiptLine]], None]
+_receipt_post_hooks: list[ReceiptPostHook] = []
+
+
+def register_receipt_post_hook(hook: ReceiptPostHook) -> ReceiptPostHook:
+    """Kancayı kaydeder (dekoratör olarak da kullanılır). Kanca, satırlar stoka alınıp
+    `base_quantity` / `created_lot` dolduktan sonra, belge `POSTED` olmadan çağrılır."""
+    if hook not in _receipt_post_hooks:
+        _receipt_post_hooks.append(hook)
+    return hook
+
+
 @transaction.atomic
 def post_goods_receipt(actor: User | None, receipt: GoodsReceipt) -> GoodsReceipt:
     """Mal kabulü kaydeder: her satır için lot açılır ve `RECEIPT` hareketiyle stoka alınır.
@@ -1028,6 +1046,8 @@ def post_goods_receipt(actor: User | None, receipt: GoodsReceipt) -> GoodsReceip
         line.created_lot = lot
         line.save(update_fields=["base_quantity", "created_lot", "updated_at"])
         lots.append(lot_payload(lot, requires_qc=requires_qc))
+    for hook in _receipt_post_hooks:
+        hook(actor, receipt, lines)
     receipt.posted_at = timezone.now()
     receipt.posted_by = actor
     receipt.save(update_fields=["posted_at", "posted_by"])

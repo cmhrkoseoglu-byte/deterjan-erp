@@ -349,12 +349,18 @@ export function ReceiptsTab() {
           />
         </Group>
         {hasAnyRole(user, STOCK_WRITE_ROLES) && (
-          <Button
-            leftSection={<IconPlus size={16} />}
-            onClick={() => navigate(receiptPath("yeni"))}
-          >
-            {it.newReceipt}
-          </Button>
+          <Group gap="xs">
+            {/* Faz 4: siparişe bağlı mal kabul satın alma ekranındaki beklenen teslimatlardan açılır. */}
+            <Button variant="light" onClick={() => navigate("/satin-alma/teslimatlar")}>
+              {it.receiveFromOrder}
+            </Button>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => navigate(receiptPath("yeni"))}
+            >
+              {it.newReceipt}
+            </Button>
+          </Group>
         )}
       </Group>
       <ListTable

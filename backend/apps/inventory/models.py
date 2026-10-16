@@ -366,6 +366,16 @@ class GoodsReceiptLine(BaseModel):
         max_digits=18,
         decimal_places=4,
     )
+    # Maliyet (Adım 4.1) ve satın alma (Adım 4.2) ortak alanları: fiyatın para birimi ve TL kuru.
+    currency = models.CharField(
+        "para birimi",
+        max_length=3,
+        choices=[("TRY", "TL"), ("EUR", "Euro"), ("USD", "ABD doları")],
+        default="TRY",
+    )
+    exchange_rate = models.DecimalField(
+        "kur (TL)", max_digits=18, decimal_places=6, null=True, blank=True
+    )
     # Kaydedilince dolar.
     base_quantity = models.DecimalField(
         "miktar (temel birim)",

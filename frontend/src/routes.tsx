@@ -31,6 +31,8 @@ import { CustomerPage } from "./modules/sales/CustomerPage";
 import { SalesOrderPage } from "./modules/sales/OrderPage";
 import { ShipmentPickPage } from "./modules/sales/PickPage";
 import { SalesPage } from "./modules/sales/SalesPage";
+import { PurchaseOrderPage } from "./modules/purchasing/OrderPage";
+import { PurchasingPage } from "./modules/purchasing/PurchasingPage";
 import { ShipmentPage } from "./modules/sales/ShipmentPage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
@@ -109,6 +111,24 @@ const pageRoutes: RouteObject[] = [
   // İadeler: sevkiyat açar, sevkiyat ya da depo teslim alır, depo imha eder; laboratuvar izler.
   { path: "iadeler", element: returnsPage(<ReturnsPage />) },
   { path: "iadeler/:returnId", element: returnsPage(<ReturnPage />) },
+  // Satın alma: satın alma ve yönetim sipariş açar; depo siparişleri tutarsız görür ve mal kabul
+  // açar; planlama, depo ve üretim talep açar.
+  {
+    path: "satin-alma/siparisler/:orderId",
+    element: (
+      <RequireRole roles={menuRoles("purchasing")}>
+        <PurchaseOrderPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: "satin-alma/:tab?",
+    element: (
+      <RequireRole roles={menuRoles("purchasing")}>
+        <PurchasingPage />
+      </RequireRole>
+    ),
+  },
   // İzlenebilirlik ve geri çağırma: laboratuvar ve yönetim.
   {
     path: "izlenebilirlik/:tab?",
@@ -129,6 +149,7 @@ const IMPLEMENTED = new Set([
   "sales",
   "returns",
   "traceability",
+  "purchasing",
 ]);
 
 // Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar rol korumalı bir yer tutucuya gider.
