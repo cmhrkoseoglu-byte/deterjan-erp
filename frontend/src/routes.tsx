@@ -29,6 +29,7 @@ import { ReturnPage } from "./modules/returns/ReturnPage";
 import { ReturnsPage } from "./modules/returns/ReturnsPage";
 import { TracePage } from "./modules/traceability/TracePage";
 import { CostingPage } from "./modules/costing/CostingPage";
+import { ReportingPage } from "./modules/reporting/ReportingPage";
 import { LotCostPage } from "./modules/costing/LotCostPage";
 import { RecipeListPage } from "./modules/recipes/RecipeListPage";
 import { RecipePage } from "./modules/recipes/RecipePage";
@@ -167,6 +168,8 @@ const pageRoutes: RouteObject[] = [
   // atık, olay incelemesi ve ayarlar yönetimde. Sekmeler rolle daralır.
   { path: "isg/olaylar/:incidentId", element: hsePage(<IncidentPage />) },
   { path: "isg/:tab?", element: hsePage(<HsePage />) },
+  // Panolar ve raporlar: menü herkese açık; panolar ve raporlar rolle daralır (backend listesi).
+  { path: "raporlar/:tab?", element: <ReportingPage /> },
 ];
 const IMPLEMENTED = new Set([
   "masterdata",
@@ -182,6 +185,7 @@ const IMPLEMENTED = new Set([
   "purchasing",
   "maintenance",
   "hse",
+  "reporting",
 ]);
 
 // Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar rol korumalı bir yer tutucuya gider.

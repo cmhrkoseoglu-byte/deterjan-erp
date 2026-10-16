@@ -153,7 +153,8 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.reporting,
     path: "/raporlar",
     icon: IconChartBar,
-    roles: ["yonetim", "planlama"],
+    // Her rolün en az bir panosu ya da raporu var; sekme içerikleri rolle daralır.
+    roles: [],
     phase: 4,
   },
   {

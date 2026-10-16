@@ -921,6 +921,53 @@ Tutarlar yalnızca yonetim/satin_alma/admin'e gösterilmeli.
 `purchase_order_received` (satin_alma'ya bildirim); `purchase_order_cancelled` (açık görevleri iptal eder).
 `lot_rejected` bildirimi satin_alma'ya da gider ve tedarikçi adını taşır.
 
+## 2026-10-16 — Raporlama ve panolar (Faz 4, Adım 4.3)
+
+Plan kartla CUMHUR'a sunuldu; cevap beklenirken önerilen seçenekle ("Onayla") ilerlendi.
+
+- **Uygulama `reporting`** diğer modüllerin verisini yalnızca okur (modelleri ve `selectors`
+  fonksiyonları), hiçbir modeli değiştirmez. Tek tablosu `ReportJob` (arka plan dosyası).
+  Bağımlılık zincirinin en üstündedir; kimse `reporting`'e bağımlı olmaz.
+- **Panolar** (`/api/v1/reporting/dashboards/<kod>/`): `management` (yonetim, planlama),
+  `warehouse` (depo, planlama, yonetim), `lab` (laboratuvar, planlama, yonetim), `production`
+  (uretim, planlama, yonetim), `shipping` (sevkiyat, depo, planlama, yonetim); admin hepsini görür.
+  Tanımlar: haftalık = pazartesiden bugüne; dökme üretim = biten şarjların gerçek çıktısı
+  (temel birim); mamul = biten dolum partilerinin sağlam adedi; **fire oranı** = son 7 günde
+  biten partilerde mamul firesi ÷ (sağlam + fire); QC bekleyen = kararı verilmemiş numuneler,
+  bekleme numune açılışından; SKT yaklaşan = 30 gün (geçmişler dahil); gecikmiş görev = açık ve
+  `due_at` geçmiş, atanan role göre. Tank doluluğu lokasyondaki stokun kapasite birimine
+  dönüşümü ÷ kapasite (dönüşüm yoksa gösterilmez).
+- **Raporlar** (`/api/v1/reporting/reports/<kod>/`, tanımlar `apps/reporting/reports.py`):
+  stok durumu ve stok hareketleri (depo, planlama, yonetim, satin_alma), üretim (uretim,
+  planlama, yonetim), dolum (dolum, planlama, yonetim), QC (laboratuvar, planlama, yonetim),
+  sevkiyat (sevkiyat, planlama, yonetim), görev süreleri (planlama, yonetim). Tarih filtresi
+  boşsa son 30 gün, en fazla 366 gün. Üretimde sapma = tolerans dışı tartım satırı; QC red oranı
+  yürürlükteki karara göre; görev türü kural kodundan, adı görev başlığının ":" öncesi.
+- **Tutar görünürlüğü**: sütunun `sensitive` alanı — `cost` (lot maliyeti, stok değeri) yalnızca
+  yonetim ve admin (D-15), `price` (alış fiyatı) satin_alma, yonetim ve admin. Ekran, Excel ve
+  PDF aynı süzmeyi kullanır; yönetim panosunda stok değeri de yalnızca bu rollere döner.
+- **Excel / PDF**: `POST reports/<kod>/export/` `{file_format: xlsx|pdf, ...filtreler}`.
+  5.000 satıra kadar dosya hemen döner; daha büyüğü `ReportJob` olarak Celery'de hazırlanır
+  (202). PDF en fazla 10.000 satır (`pdf_too_large`, Excel önerilir). Dosyayı yalnızca isteyen
+  kişi görür ve indirir; 7 gün saklanır, sabah 07:00 kontrolünde silinir, kayıt `EXPIRED` kalır.
+  Hemen inen dosyalar denetim günlüğüne `custom` kaydı olarak yazılır.
+- **Rapor işi durumları**: QUEUED → RUNNING → DONE → EXPIRED; QUEUED/RUNNING → FAILED.
+
+### Rapor olay sözleşmesi (iş akışı tablosuna ek)
+
+- `report_job.done` / `report_job.failed`: payload `{"model": "reporting.reportjob", "id",
+  "repr", "report_code", "title", "file_format", "row_count", "requested_by_id", "error"}`,
+  aktör yok (sistem). Kurallar `report_ready` ve `report_failed` yalnızca isteyene bildirim
+  gönderir; bildirim bağlantısı Panolar ve raporlar > İndirmeler.
+
+### Bakım ve İSG bağlantısı
+
+Bakım ve İSG PR'ı (#17) ikinci birleştiği için bağlantıyı o yaptı. Üretim panosunda açık duruştaki
+tankın kartı duruş nedeni ve başlangıcını kırmızıyla gösterir (`downtime: {reason, reason_display,
+started_at}`). Yönetim panosuna iki kutu eklendi: **Bakım** (açık iş emri, süresi geçen plan, açık
+duruş, son 7 günde duruş süresi; `maintenance` anahtarı) ve **İSG olayları** (son 30 gün, yaralanmalı
+ve açık olay; `hse` anahtarı).
+
 ## 2026-10-16 — Bakım (Faz 4, Adım 4.4)
 
 Plan: `/mnt/project-files/faz4-maintenance-hse/plan.md` (karar kartıyla onaya sunuldu). Kararlar:

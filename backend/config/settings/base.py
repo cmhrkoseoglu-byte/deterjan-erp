@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "apps.purchasing",
     "apps.maintenance",
     "apps.hse",
+    "apps.reporting",
     "apps.workflow",
 ]
 

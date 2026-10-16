@@ -129,3 +129,9 @@ INCIDENT_INVESTIGATING = "incident.investigating"
 INCIDENT_CLOSED = "incident.closed"
 INCIDENT_CANCELLED = "incident.cancelled"
 STORAGE_LIMIT_EXCEEDED = "hse.storage_limit_exceeded"
+
+# reporting (Faz 4, Adım 4.3). Arka plan rapor işi bitti ya da hata verdi. Payload:
+# `{"model": "reporting.reportjob", "id", "repr", "report_code", "title", "file_format",
+# "row_count", "requested_by_id", "error"}`; bildirim yalnızca raporu isteyen kişiye gider.
+REPORT_JOB_DONE = "report_job.done"
+REPORT_JOB_FAILED = "report_job.failed"

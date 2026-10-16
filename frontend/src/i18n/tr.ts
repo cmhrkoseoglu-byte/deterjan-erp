@@ -49,7 +49,7 @@ export const tr = {
     costing: "Maliyet",
     maintenance: "Bakım",
     hse: "İSG ve çevre",
-    reporting: "Raporlar",
+    reporting: "Panolar ve raporlar",
     adminPanel: "Yönetim paneli",
   },
   home: {

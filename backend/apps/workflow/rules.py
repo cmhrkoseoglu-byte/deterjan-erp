@@ -144,6 +144,11 @@ def _fully_planned_order(payload: Payload) -> Subject | None:
     return payload.get("order") if payload.get("order_fully_planned") else None
 
 
+def _report_requester(payload: Payload) -> list[int]:
+    user_id = payload.get("requested_by_id")
+    return [user_id] if isinstance(user_id, int) else []
+
+
 def _order_creator(payload: Payload) -> list[int]:
     user_id = payload.get("order_created_by_id")
     return [user_id] if isinstance(user_id, int) else []
@@ -659,6 +664,24 @@ RULES: tuple[Rule, ...] = (
         level="WARNING",
         title="Depolama limiti aşıldı: {location_code} — {hazard_class_display}",
         body="{quantity_kg} kg / limit {limit_kg} kg",
+    ),
+    # Raporlama (Faz 4, Adım 4.3): arka planda hazırlanan rapor yalnızca isteyene bildirilir.
+    NotifyRule(
+        code="report_ready",
+        event=ev.REPORT_JOB_DONE,
+        roles=(),
+        title="Rapor hazır: {title}",
+        body="{row_count} satır. Dosyayı Raporlar > İndirmeler sayfasından indirebilirsiniz.",
+        users=_report_requester,
+    ),
+    NotifyRule(
+        code="report_failed",
+        event=ev.REPORT_JOB_FAILED,
+        roles=(),
+        title="Rapor hazırlanamadı: {title}",
+        body="{error}",
+        level="WARNING",
+        users=_report_requester,
     ),
 )
 

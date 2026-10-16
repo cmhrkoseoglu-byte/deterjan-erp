@@ -27,6 +27,7 @@ export const RECORD_ROUTES: Record<string, (id: number) => string> = {
   "hse.incident": (id) => `/isg/olaylar/${id}`,
   "hse.wasterecord": () => "/isg/atik",
   "hse.safetydatasheet": () => "/isg/gbf",
+  "reporting.reportjob": () => "/raporlar/indirmeler",
 };
 
 /** Kaydın detay sayfası; sayfası henüz yoksa null. */
