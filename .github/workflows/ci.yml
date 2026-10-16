@@ -165,6 +165,8 @@ jobs:
       - name: pip-audit (backend çalışma bağımlılıkları)
         run: |
           python -m venv /tmp/app
+          # Sanal ortamın kendi pip sürümü de denetlenir; güncel pip ile başla.
+          /tmp/app/bin/pip install --quiet --upgrade pip
           /tmp/app/bin/pip install --quiet ./backend
           python -m pip install --quiet pip-audit
           # Uygulamanın kendisi PyPI'da olmadığı için atlanır; yalnızca bağımlılıklar denetlenir.
