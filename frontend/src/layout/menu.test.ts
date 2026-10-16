@@ -18,6 +18,7 @@ describe("visibleMenu", () => {
       "sales",
       "returns",
       "purchasing",
+      "reporting",
     ]);
   });
 
@@ -48,6 +49,7 @@ describe("visibleMenu", () => {
       "sales",
       "returns",
       "purchasing",
+      "reporting",
     ]);
   });
 
@@ -61,6 +63,12 @@ describe("visibleMenu", () => {
     expect(keys(userWith(["yonetim"]))).toContain("costing");
     for (const role of ["depo", "planlama", "satin_alma", "uretim", "dolum"] as Role[]) {
       expect(keys(userWith([role]))).not.toContain("costing");
+    }
+  });
+
+  it("panolar ve raporlar her role açıktır (içerik rolle daralır)", () => {
+    for (const role of ["depo", "laboratuvar", "dolum", "sevkiyat", "uretim"] as Role[]) {
+      expect(keys(userWith([role]))).toContain("reporting");
     }
   });
 
