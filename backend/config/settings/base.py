@@ -18,7 +18,7 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
 
 INSTALLED_APPS = [
-    "apps.core.admin_site.ERPAdminConfig",  # django.contrib.admin, giriş sınırlı yönetim sitesiyle
+    "apps.core.admin_config.ERPAdminConfig",  # django.contrib.admin; giriş sınırı ve 2FA
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "apps.maintenance",
     "apps.hse",
     "apps.reporting",
+    "apps.ops",
     "apps.workflow",
 ]
 
@@ -55,6 +56,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "apps.core.context.RequestContextMiddleware",
+    "apps.core.middleware.SessionSecurityMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -70,7 +72,8 @@ ASGI_APPLICATION = "config.asgi.application"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        # Proje şablonları (ör. yönetim paneli giriş sayfasına doğrulama kodu alanı) önce gelir.
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -84,12 +87,20 @@ TEMPLATES = [
 
 DATABASES = {"default": env.db("DATABASE_URL")}
 
+# Şifre politikası (Faz 5): en az 10 karakter, harf ve rakam, kullanıcı bilgisine benzemeyen,
+# yaygın olmayan. Yalnızca yeni ve değişen şifrelere uygulanır.
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": env.int("PASSWORD_MIN_LENGTH", default=10)},
+    },
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {"NAME": "apps.core.validators.LetterAndDigitValidator"},
 ]
+# Kilitli kullanıcı adıyla şifre denenmez (core.security).
+AUTHENTICATION_BACKENDS = ["apps.core.backends.LockoutModelBackend"]
 
 LANGUAGE_CODE = "tr"
 TIME_ZONE = "Europe/Istanbul"
@@ -122,6 +133,13 @@ CELERY_BEAT_SCHEDULE = {
     "daily-check-0700": {
         "task": "core.publish_daily_check",
         "schedule": crontab(hour=7, minute=0),
+    },
+    # Faz 5 (Adım 5.5): izleme ve KVKK saklama süreleri.
+    "ops-heartbeat": {"task": "ops.heartbeat", "schedule": crontab(minute="*")},
+    "ops-run-checks": {"task": "ops.run_checks", "schedule": crontab(minute="*/5")},
+    "core-purge-personal-data-0330": {
+        "task": "core.purge_expired_personal_data",
+        "schedule": crontab(hour=3, minute=30),
     },
 }
 
@@ -186,6 +204,9 @@ SPECTACULAR_SETTINGS = {
         "LotSourceEnum": "apps.inventory.models.Lot.Source",
         "HazardStatementKindEnum": "apps.hse.models.HazardStatement.Kind",
         "HazardClassEnum": "apps.hse.models.HazardClass",
+        "BackupRunKindEnum": "apps.ops.models.BackupRun.Kind",
+        "BackupRunStatusEnum": "apps.ops.models.BackupRun.Status",
+        "BackupRunOffsiteEnum": "apps.ops.models.BackupRun.Offsite",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
@@ -193,7 +214,20 @@ SPECTACULAR_SETTINGS = {
 }
 
 # Oturum ve CSRF çerezleri (SPA aynı origin'de; CSRF çerezini JavaScript okur)
+# Mutlak süre: girişten en çok 12 saat. Hareketsizlik süresi ayrıca uygulanır (core.middleware).
 SESSION_COOKIE_AGE = env.int("DJANGO_SESSION_COOKIE_AGE", default=60 * 60 * 12)
+SESSION_IDLE_TIMEOUT_MINUTES = env.int("SESSION_IDLE_TIMEOUT_MINUTES", default=60)
+# Admin'in "saha tableti" olarak işaretlediği cihazlarda (imzalı çerez) daha kısa.
+FIELD_DEVICE_IDLE_TIMEOUT_MINUTES = env.int("FIELD_DEVICE_IDLE_TIMEOUT_MINUTES", default=10)
+FIELD_DEVICE_COOKIE = "erp_field_device"
+
+# Hesap kilitleme: pencere içinde eşik kadar hatalı denemede hesap belirtilen süre kilitlenir.
+LOGIN_LOCKOUT_THRESHOLD = env.int("LOGIN_LOCKOUT_THRESHOLD", default=5)
+LOGIN_LOCKOUT_WINDOW_MINUTES = env.int("LOGIN_LOCKOUT_WINDOW_MINUTES", default=15)
+LOGIN_LOCKOUT_MINUTES = env.int("LOGIN_LOCKOUT_MINUTES", default=15)
+# İki aşamalı doğrulamanın (TOTP) zorunlu olduğu roller; boş liste = herkes için isteğe bağlı.
+OTP_REQUIRED_ROLES = env.list("OTP_REQUIRED_ROLES", default=["admin", "yonetim"])
+OTP_ISSUER = env("OTP_ISSUER", default="Deterjan ERP")
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_HTTPONLY = False
@@ -217,6 +251,39 @@ COMPANY_NAME = env("COMPANY_NAME", default="")
 COMPANY_ADDRESS = env("COMPANY_ADDRESS", default="")
 COMPANY_TAX_OFFICE = env("COMPANY_TAX_OFFICE", default="")
 COMPANY_TAX_NO = env("COMPANY_TAX_NO", default="")
+
+# --- izleme ve yedek (Faz 5, Adım 5.5) ---------------------------------------------------------
+# Yedek servisinin durum dosyaları (backup konteyneri yazar, backend ve worker salt okur).
+BACKUP_STATUS_DIR = env("BACKUP_STATUS_DIR", default="/backups/status")
+# Geliştirmede yedek servisi yok; üretimde açık (prod.py).
+OPS_BACKUP_CHECK_ENABLED = env.bool("OPS_BACKUP_CHECK_ENABLED", default=False)
+BACKUP_MAX_AGE_HOURS = env.int("BACKUP_MAX_AGE_HOURS", default=26)
+RESTORE_TEST_MAX_AGE_DAYS = env.int("RESTORE_TEST_MAX_AGE_DAYS", default=8)
+OPS_DISK_PATHS = env.list("OPS_DISK_PATHS", default=["/", MEDIA_ROOT, "/backups"])
+OPS_DISK_ALERT_PCT = env.float("OPS_DISK_ALERT_PCT", default=85.0)
+# 15 dakikalık yük ortalamasının çekirdek sayısına oranı bu değeri aşarsa uyarı.
+OPS_LOAD_ALERT_RATIO = env.float("OPS_LOAD_ALERT_RATIO", default=1.0)
+OPS_QUEUE_ALERT_LENGTH = env.int("OPS_QUEUE_ALERT_LENGTH", default=100)
+OPS_ALERT_REPEAT_MINUTES = env.int("OPS_ALERT_REPEAT_MINUTES", default=60)
+
+# --- KVKK saklama süreleri (docs/KVKK.md) ------------------------------------------------------
+# Giriş/çıkış ve başarısız giriş kayıtlarındaki IP adresleri bu süreden sonra silinir.
+AUDIT_IP_RETENTION_DAYS = env.int("AUDIT_IP_RETENTION_DAYS", default=365)
+
+# --- hata takibi (Sentry ya da Sentry uyumlu, ör. GlitchTip) -----------------------------------
+# Boşsa kapalı. Kişisel veri (çerez, IP, istek gövdesi, kullanıcı adı) gönderilmez.
+SENTRY_DSN = env("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=env("SENTRY_ENVIRONMENT", default="production"),
+        release=env("APP_VERSION", default="") or None,
+        send_default_pii=False,
+        max_request_body_size="never",
+        traces_sample_rate=0.0,
+    )
 
 LOGGING = {
     "version": 1,

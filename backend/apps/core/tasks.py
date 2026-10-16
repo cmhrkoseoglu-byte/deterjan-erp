@@ -14,3 +14,11 @@ def publish_daily_check() -> None:
     olayı dinler; böylece zamanlama tek yerde durur ve modüller birbirine bağımlı olmaz.
     """
     events.publish(event_names.DAILY_CHECK, {"date": timezone.localdate().isoformat()})
+
+
+@shared_task(name="core.purge_expired_personal_data")
+def purge_expired_personal_data() -> None:
+    """Her gece 03:30: KVKK saklama süresi dolan kişisel veriler (docs/KVKK.md)."""
+    from apps.core import services
+
+    services.purge_expired_personal_data()

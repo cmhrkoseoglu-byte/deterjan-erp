@@ -22,6 +22,8 @@ dependencies = [
     "openpyxl>=3.1",
     # Lot etiketi PDF (Code128 + QR).
     "reportlab>=4.2",
+    # Hata takibi (SENTRY_DSN tanımlıysa; Faz 5).
+    "sentry-sdk>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -70,7 +72,7 @@ files = ["apps"]
 # CLAUDE.md §6: her servis fonksiyonu tip ipuçlu. Servis, seçici ve durum katmanında
 # tip ipucu eksik fonksiyon hata sayılır; gövdeler de denetlenir.
 [[tool.mypy.overrides]]
-module = ["apps.*.services", "apps.*.selectors", "apps.*.state"]
+module = ["apps.*.services", "apps.*.selectors", "apps.*.state", "apps.core.security"]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true

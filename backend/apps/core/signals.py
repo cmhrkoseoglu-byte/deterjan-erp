@@ -4,6 +4,7 @@ Sinyal kullanılmasının nedeni: API girişi, yönetim paneli girişi, panelden
 `changepassword` komutu gibi tüm yollar tek noktadan denetlenir. `CoreConfig.ready()` bağlar.
 """
 
+import time
 from typing import Any
 
 from django.contrib.auth.signals import user_logged_in, user_logged_out, user_login_failed
@@ -11,7 +12,7 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.http import HttpRequest
 
-from apps.core import event_names, events
+from apps.core import event_names, events, security
 from apps.core.audit import log_change
 from apps.core.context import client_ip_from_request, get_current_user
 from apps.core.models import AuditLog, User
@@ -27,6 +28,10 @@ def _ip(request: HttpRequest | None) -> str | None:
 def audit_login(sender: Any, request: HttpRequest | None, user: Any, **kwargs: Any) -> None:
     if not isinstance(user, User):
         return
+    security.reset_failed_logins(user.get_username())
+    if request is not None and hasattr(request, "session"):
+        # Hareketsizlik süresi girişten başlar (core.middleware).
+        request.session["_last_activity"] = time.time()
     log_change(user, user, AuditLog.Action.LOGIN, ip_address=_ip(request))
     events.publish(event_names.USER_LOGGED_IN, {"user_id": user.pk}, user)
 
@@ -35,7 +40,9 @@ def audit_login(sender: Any, request: HttpRequest | None, user: Any, **kwargs: A
 def audit_logout(sender: Any, request: HttpRequest | None, user: Any, **kwargs: Any) -> None:
     if not isinstance(user, User):
         return  # giriş yapmamış kullanıcının çıkışı
-    log_change(user, user, AuditLog.Action.LOGOUT, ip_address=_ip(request))
+    # Hareketsizlik nedeniyle kapanan oturumda neden not olarak yazılır (core.middleware).
+    note = getattr(request, "_logout_reason", "") if request is not None else ""
+    log_change(user, user, AuditLog.Action.LOGOUT, note=note, ip_address=_ip(request))
     events.publish(event_names.USER_LOGGED_OUT, {"user_id": user.pk}, user)
 
 
@@ -45,14 +52,18 @@ def audit_login_failed(
 ) -> None:
     username = str(credentials.get(User.USERNAME_FIELD, ""))[:150]
     known = User.objects.filter(**{User.USERNAME_FIELD: username}).first() if username else None
+    reason = (
+        "hatalı doğrulama kodu" if credentials.get("otp") else "hatalı şifre ya da kilitli hesap"
+    )
     log_change(
         None,
         known,
         AuditLog.Action.LOGIN_FAILED,
-        note=f"Başarısız giriş denemesi. Kullanıcı adı: {username}",
+        note=f"Başarısız giriş denemesi ({reason}). Kullanıcı adı: {username}",
         ip_address=_ip(request),
     )
     events.publish(event_names.USER_LOGIN_FAILED, {"username": username})
+    security.register_failed_login(username)
 
 
 @receiver(pre_save, sender=User, dispatch_uid="core_password_change_detect")

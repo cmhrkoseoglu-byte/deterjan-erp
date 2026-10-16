@@ -292,3 +292,73 @@ class Attachment(BaseModel):
 
     def delete(self, *args: Any, **kwargs: Any) -> tuple[int, dict[str, int]]:
         raise ValueError("Ekler silinemez; kaldırılır.")
+
+
+# --- giriş güvenliği (Faz 5, Adım 5.5) ------------------------------------------------------------
+
+
+class LoginLockout(models.Model):
+    """Kullanıcı adı başına hatalı giriş sayacı ve kilit (`core.security`).
+
+    Kullanıcı adına göre tutulur (var olmayan adlar da sayılır); böylece kilit mesajı kullanıcı
+    adının var olup olmadığını belli etmez. Önbellekten bağımsızdır, Redis yokken de çalışır.
+    """
+
+    username = models.CharField("kullanıcı adı", max_length=150, unique=True)
+    failed_count = models.PositiveIntegerField("hatalı deneme", default=0)
+    window_started_at = models.DateTimeField("ilk hatalı deneme", null=True, blank=True)
+    locked_until = models.DateTimeField("kilit bitişi", null=True, blank=True)
+    updated_at = models.DateTimeField("güncellenme", auto_now=True)
+
+    class Meta:
+        verbose_name = "giriş kilidi"
+        verbose_name_plural = "giriş kilitleri"
+        ordering = ["username"]
+
+    def __str__(self) -> str:
+        return self.username
+
+    def is_locked(self, now: Any = None) -> bool:
+        now = now or timezone.now()
+        return self.locked_until is not None and self.locked_until > now
+
+
+class TOTPDevice(models.Model):
+    """Kullanıcının doğrulayıcı uygulaması (TOTP, RFC 6238). `confirmed_at` boşsa kurulum yarım."""
+
+    user = models.OneToOneField(
+        User, verbose_name="kullanıcı", on_delete=models.CASCADE, related_name="totp_device"
+    )
+    secret = models.CharField("gizli anahtar", max_length=64)
+    confirmed_at = models.DateTimeField("kurulum zamanı", null=True, blank=True)
+    # Aynı kodun ikinci kez kullanılmaması için son kabul edilen zaman adımı.
+    last_used_step = models.BigIntegerField("son kullanılan adım", default=0)
+    created_at = models.DateTimeField("oluşturulma", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "doğrulayıcı uygulama"
+        verbose_name_plural = "doğrulayıcı uygulamalar"
+
+    def __str__(self) -> str:
+        return f"{self.user} (2FA)"
+
+    @property
+    def is_confirmed(self) -> bool:
+        return self.confirmed_at is not None
+
+
+class RecoveryCode(models.Model):
+    """Telefon kaybolursa kullanılan tek kullanımlık kurtarma kodu (yalnızca özeti saklanır)."""
+
+    user = models.ForeignKey(
+        User, verbose_name="kullanıcı", on_delete=models.CASCADE, related_name="recovery_codes"
+    )
+    code_hash = models.CharField("kod özeti", max_length=128)
+    used_at = models.DateTimeField("kullanılma", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "kurtarma kodu"
+        verbose_name_plural = "kurtarma kodları"
+
+    def __str__(self) -> str:
+        return f"{self.user} kurtarma kodu"
