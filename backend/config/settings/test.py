@@ -1,5 +1,8 @@
 """Test ortamı ayarları (pytest)."""
 
+import tempfile
+from pathlib import Path
+
 from .base import *  # noqa: F403
 
 DEBUG = False
@@ -11,3 +14,5 @@ LOGIN_RATE_LIMIT = "1000/minute"
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 DEMO_USER_PASSWORD = "Demo.12345"
 INSTALLED_APPS = [*INSTALLED_APPS, "apps.core.tests.testapp"]  # noqa: F405
+# Ekler testlerde geçici klasöre yazılır.
+MEDIA_ROOT = str(Path(tempfile.gettempdir()) / "deterjan-erp-test-media")

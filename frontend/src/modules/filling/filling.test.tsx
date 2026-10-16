@@ -9,7 +9,10 @@ import type {
   FillingRequirementRow,
   FillingRunDetail,
 } from "../../api/filling";
+import * as labelsApi from "../../api/labels";
 import * as mdApi from "../../api/masterdata";
+import * as scanApi from "../../api/scan";
+import type { ScanResult } from "../../api/scan";
 import * as workflowApi from "../../api/workflow";
 import { httpError, page, userWith } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
@@ -38,6 +41,38 @@ vi.mock("../../api/masterdata", async (importOriginal) => ({
   listRecords: vi.fn(),
 }));
 vi.mock("../../api/workflow");
+vi.mock("../../api/scan");
+vi.mock("../../api/labels", async (importOriginal) => ({
+  ...(await importOriginal<typeof labelsApi>()),
+  listPrinters: vi.fn(),
+  getLabelSettings: vi.fn(),
+}));
+
+function scanned(id: number, lotNo: string, material: number, materialCode: string): ScanResult {
+  return {
+    kind: "lot",
+    code: lotNo,
+    lots: [
+      {
+        id,
+        lot_no: lotNo,
+        material,
+        material_code: materialCode,
+        material_name: materialCode,
+        material_type: "PACKAGING",
+        unit: "ADET",
+        status: "RELEASED",
+        status_display: "Serbest",
+        expiry_date: null,
+        is_expired: false,
+      },
+    ],
+    material: null,
+    location: null,
+    pallet: null,
+    gs1: {},
+  };
+}
 
 function requirement(overrides: Partial<FillingRequirementRow> = {}): FillingRequirementRow {
   return {
@@ -123,6 +158,7 @@ function run(overrides: Partial<FillingRunDetail> = {}): FillingRunDetail {
     order_status: "IN_PROGRESS",
     finished_product_code: "BULASIK-LIMON-750",
     finished_product_name: "Bulaşık deterjanı limonlu 750 ml",
+    finished_product_gtin: "",
     status: "IN_PROGRESS",
     status_display: "Dolumda",
     output_lot: 95,
@@ -206,6 +242,17 @@ beforeEach(() => {
   vi.mocked(fillingApi.packagingSuggestions).mockResolvedValue([]);
   vi.mocked(fillingApi.orderReport).mockResolvedValue(report);
   vi.mocked(fillingApi.runReport).mockResolvedValue(report);
+  vi.mocked(labelsApi.listPrinters).mockResolvedValue([]);
+  vi.mocked(labelsApi.getLabelSettings).mockResolvedValue({
+    company_name: "",
+    gs1_company_prefix: "",
+    sscc_extension_digit: 0,
+    next_sscc_serial: 1,
+    default_printer: null,
+    default_printer_code: null,
+    sscc_enabled: false,
+    updated_at: "2026-10-15T09:00:00+03:00",
+  });
 });
 
 describe("dolum sekmeleri", () => {
@@ -277,16 +324,36 @@ describe("ambalaj hazırlama", () => {
     vi.mocked(fillingApi.pickPackaging).mockRejectedValueOnce(
       httpError(400, { code: "lot_material_mismatch", detail: "Lot başka malzemenin." }),
     );
+    vi.mocked(scanApi.scanCode).mockResolvedValue(scanned(9, "H-261015-009", 70, "SISE-750"));
     renderApp("/dolum/emirler/5/hazirlama");
     const scan = await screen.findByRole("textbox", { name: "Lot okut" });
-    await user.type(scan, "H-261015-009{Enter}");
+    await user.type(scan, "LOT:H-261015-009{Enter}");
+    // Okutulan lot seçilir, odak miktara geçer; Enter ile hazırlanır.
+    const qty = screen.getByRole("textbox", { name: "Miktar (ADET)" });
+    await waitFor(() => expect(qty).toHaveFocus());
+    await user.type(qty, "{Enter}");
     expect(await screen.findByTestId("pick-error")).toHaveTextContent("Lot başka malzemenin.");
     expect(fillingApi.pickPackaging).toHaveBeenCalledWith(5, {
       requirement: 31,
-      lot_no: "H-261015-009",
+      lot: 9,
       quantity: "1020",
     });
     expect(screen.getByRole("button", { name: "Ambalaj hazır" })).toBeDisabled();
+  });
+
+  it("başka malzemenin lotu okutulunca kırmızı uyarı verir, hazırlamaz", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));
+    vi.mocked(scanApi.scanCode).mockResolvedValue(scanned(10, "H-261015-010", 71, "KAPAK-28"));
+    renderApp("/dolum/emirler/5/hazirlama");
+    await user.type(
+      await screen.findByRole("textbox", { name: "Lot okut" }),
+      "H-261015-010{Enter}",
+    );
+    expect(await screen.findByTestId("scan-error")).toHaveTextContent(
+      "Yanlış malzeme! Beklenen SISE-750, okutulan KAPAK-28.",
+    );
+    expect(fillingApi.pickPackaging).not.toHaveBeenCalled();
   });
 });
 
@@ -328,16 +395,51 @@ describe("dolum hattı tableti", () => {
     expect(screen.getByRole("button", { name: "Fireyi kaydet" })).toBeDisabled();
   });
 
-  it("yanlış ambalaj lotu okutulunca hata gösterir", async () => {
+  it("ambalaj lotu okutulur; sunucunun reddi okutma alanında görünür", async () => {
     const user = userEvent.setup();
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("dolum"));
+    vi.mocked(fillingApi.getRun).mockResolvedValue(
+      run({ packaging: [{ material: 70, material_code: "SISE-750", quantity_per_unit: "1" }] }),
+    );
+    vi.mocked(scanApi.scanCode).mockResolvedValue(scanned(9, "H-261015-009", 70, "SISE-750"));
     vi.mocked(fillingApi.scanPackaging).mockRejectedValue(
-      httpError(400, { code: "lot_material_mismatch", detail: "Bu lot reçetede yok." }),
+      httpError(400, { code: "lot_not_at_line", detail: "Lot hat başında değil." }),
     );
     renderApp("/dolum/partiler/41");
     const inputs = await screen.findAllByRole("textbox", { name: "Lot okut" });
+    await user.type(inputs[1], "LOT:H-261015-009{Enter}");
+    await waitFor(() => expect(fillingApi.scanPackaging).toHaveBeenCalledWith(41, { lot: 9 }));
+    expect(await screen.findByTestId("scan-error")).toHaveTextContent("Lot hat başında değil.");
+  });
+
+  it("reçetede olmayan ambalaj lotu okutulunca sunucuya gitmeden uyarır", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("dolum"));
+    vi.mocked(fillingApi.getRun).mockResolvedValue(
+      run({ packaging: [{ material: 70, material_code: "SISE-750", quantity_per_unit: "1" }] }),
+    );
+    vi.mocked(scanApi.scanCode).mockResolvedValue(scanned(12, "H-999", 99, "ETIKET-X"));
+    renderApp("/dolum/partiler/41");
+    const inputs = await screen.findAllByRole("textbox", { name: "Lot okut" });
     await user.type(inputs[1], "H-999{Enter}");
-    expect(await screen.findByTestId("scan-error")).toHaveTextContent("Bu lot reçetede yok.");
+    expect(await screen.findByTestId("scan-error")).toHaveTextContent(
+      "Yanlış malzeme! Beklenen SISE-750, okutulan ETIKET-X.",
+    );
+    expect(fillingApi.scanPackaging).not.toHaveBeenCalled();
+  });
+
+  it("partinin koli etiketi yazdırma penceresinde önce gelir", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("dolum"));
+    renderApp("/dolum/partiler/41");
+    await user.click(await screen.findByRole("button", { name: "Koli etiketi" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText("Malzemenin GTIN'i yok: firma içi barkod basılır."),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "Aç" }).getAttribute("href")).toContain(
+      "/inventory/lots/95/case-label/",
+    );
   });
 
   it("biten partide düzenleme alanları yok, rapor var", async () => {

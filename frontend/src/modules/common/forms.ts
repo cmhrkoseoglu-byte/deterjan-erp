@@ -9,7 +9,14 @@ export type FieldType =
 /** Seçenek kaynağı: ana veri uç noktası + isteğe bağlı filtre. */
 export interface RelationSource {
   endpoint:
-    "units" | "categories" | "materials" | "warehouses" | "locations" | "suppliers" | "customers";
+    | "units"
+    | "categories"
+    | "materials"
+    | "warehouses"
+    | "locations"
+    | "suppliers"
+    | "customers"
+    | "printers";
   params?: Record<string, string>;
 }
 

@@ -11,7 +11,9 @@ services:
   backend:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
-    volumes: !reset []
+    # Ekler (core.Attachment) kalıcı volume'de; S3 uyumlu depoya geçilebilir (Adım 2.4).
+    volumes: !override
+      - media:/app/media
     command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 4
     restart: unless-stopped
 
@@ -35,3 +37,6 @@ services:
 
   nginx:
     restart: unless-stopped
+
+volumes:
+  media:

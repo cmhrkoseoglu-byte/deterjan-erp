@@ -489,6 +489,32 @@ class StockAdjustmentLine(BaseModel):
         return f"{self.adjustment_id}/{self.line_no} {self.lot_id}"
 
 
+class PalletLabel(BaseModel):
+    """SSCC'li palet etiketi kaydı (Karar D-6). SSCC bir kez verilir, tekrar basılabilir."""
+
+    sscc = models.CharField("SSCC", max_length=18, unique=True, editable=False)
+    lot = models.ForeignKey(
+        Lot, verbose_name="lot", on_delete=models.PROTECT, related_name="pallet_labels"
+    )
+    case_count = models.PositiveIntegerField("koli sayısı")
+    units_per_case = models.PositiveIntegerField("koli içi adet", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "palet etiketi"
+        verbose_name_plural = "palet etiketleri"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(case_count__gte=1),
+                name="inventory_pallet_case_count_positive",
+                violation_error_message="Koli sayısı en az 1 olmalıdır.",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.sscc
+
+
 class PickRecord(BaseModel):
     """Ortak hazırlama kaydı (soyut): depodan bir belgenin kullanım lokasyonuna transfer edilen lot.
 

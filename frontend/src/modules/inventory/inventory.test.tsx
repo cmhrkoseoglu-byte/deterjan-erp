@@ -1,9 +1,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as attachmentsApi from "../../api/attachments";
 import * as authApi from "../../api/auth";
 import * as inventoryApi from "../../api/inventory";
 import type { GoodsReceiptDetail, LotDetail, TraceNode } from "../../api/inventory";
+import * as labelsApi from "../../api/labels";
 import * as mdApi from "../../api/masterdata";
 import * as qualityApi from "../../api/quality";
 import * as workflowApi from "../../api/workflow";
@@ -12,6 +14,15 @@ import { renderApp } from "../../test/render";
 import { recordPath } from "../../workflow/recordLinks";
 
 vi.mock("../../api/auth");
+vi.mock("../../api/attachments", async (importOriginal) => ({
+  ...(await importOriginal<typeof attachmentsApi>()),
+  listAttachments: vi.fn(),
+}));
+vi.mock("../../api/labels", async (importOriginal) => ({
+  ...(await importOriginal<typeof labelsApi>()),
+  listPrinters: vi.fn(),
+  getLabelSettings: vi.fn(),
+}));
 vi.mock("../../api/inventory", async (importOriginal) => ({
   ...(await importOriginal<typeof inventoryApi>()),
   listLots: vi.fn(),
@@ -43,6 +54,7 @@ function lot(overrides: Partial<LotDetail> = {}): LotDetail {
     material_code: "LABSA",
     material_name: "Lineer alkil benzen sülfonik asit",
     material_type: "RAW",
+    material_gtin: "",
     unit: "KG",
     status: "QUARANTINE",
     status_display: "Karantina",
@@ -100,6 +112,18 @@ const locations = [
 ];
 
 beforeEach(() => {
+  vi.mocked(attachmentsApi.listAttachments).mockResolvedValue([]);
+  vi.mocked(labelsApi.listPrinters).mockResolvedValue([]);
+  vi.mocked(labelsApi.getLabelSettings).mockResolvedValue({
+    company_name: "",
+    gs1_company_prefix: "",
+    sscc_extension_digit: 0,
+    next_sscc_serial: 1,
+    default_printer: null,
+    default_printer_code: null,
+    sscc_enabled: false,
+    updated_at: "2026-10-15T09:00:00+03:00",
+  });
   vi.resetAllMocks();
   vi.mocked(authApi.fetchCsrf).mockResolvedValue();
   vi.mocked(workflowApi.fetchTasks).mockResolvedValue(page([]));
@@ -302,7 +326,11 @@ describe("mal kabul", () => {
       "/depo/lotlar/7",
     );
     expect(screen.queryByRole("button", { name: "Taslağı kaydet" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Lot etiketleri/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Lot etiketleri/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("link", { name: "Aç" }).getAttribute("href")).toContain(
+      "/inventory/goods-receipts/",
+    );
   });
 
   it("yeni mal kabul taslağı başlık ve satırlarla gönderilir", async () => {

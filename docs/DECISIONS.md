@@ -475,7 +475,7 @@ Diğer ayrıntılar:
   açık. Menüde "Dolum" artık `depo`'ya da görünür (ambalaj hazırlama sekmesi).
 - **Okutma**: lot numarası ya da lot etiketi içeriği (`LOT:<lot_no>`) kabul edilir. Okutulan lot reçetedeki
   malzemelerden değilse `lot_material_mismatch`; hat başında olmayan ambalaj lotu `lot_not_at_line`.
-  Ortak `ScanInput` bileşeni ve koli etiketi basımı Adım 2.3 ile bağlanır (hangi PR ikinci gelirse).
+  Ortak `ScanInput` bileşeni ve koli etiketi basımı Adım 2.3 PR'ıyla (#9) bağlandı.
 - **Üretim lokasyonu varsayılanı**: `production.default_production_location` dolum hattı başı lokasyonlarını
   atlar (demo verisinde DOLUM-1, URETIM-1'den önce sıralanıyordu).
 - **Mamul spesifikasyonu (D-7)**: `seed_filling_demo` (seed_demo sonunda) mamullere `FINAL` spesifikasyon
@@ -496,6 +496,51 @@ kapanır), `start_filling` (dolum, "Dolumu başlat: {number}", parti başlayınc
 `batch_sample_analysis` görevi mamul numunesi için açılmaz), `filling_bulk_variance` (planlama, yönetim;
 uyarı), `finished_lot_released` (sevkiyat, planlama: "Sevke hazır: {lot}"), `finished_lot_rejected`
 (planlama, dolum), `filling_order_cancelled` (açık görevleri iptal eder, planlamaya bildirim).
+
+## 2026-10-15 — Etiket, barkod ve ekler (Faz 2, Adım 2.3 ve 2.4)
+
+- **Karar D-6 (CUMHUR kararı, "Malzemeye göre")**: mamul koli etiketi, malzemenin GTIN'i varsa GS1-128
+  (01) GTIN-14 + (17) SKT + (10) lot; GTIN yoksa firma içi Code128 `LOT:<lot_no>`. Her ikisinde QR
+  `LOT:<lot_no>`. SSCC palet etiketi, etiket ayarlarına GS1 firma öneki girilince açılır
+  (`sscc_disabled`). GTIN `Material.gtin` alanında (8/12/13/14 hane, kontrol hanesi doğrulanır, boş
+  değilse tekil); hangi kolinin GTIN'li basılacağı yalnızca bu alana bağlıdır.
+- **Karar D-8 (CUMHUR kararı, "Zebra, 100×150 mm")**: tüm etiketler 100 × 150 mm. Çıktılar: ZPL II
+  (varsayılan 203 dpi; yazıcı kaydında 152/203/300/600), tek etiketlik PDF ve A4 PDF (sayfada iki
+  etiket, kesim çizgili). ZPL `^CI28` (UTF-8, Türkçe karakter), GS1 barkodu `^BC` mod D, diğerleri mod
+  A. **ZPL gerçek bir Zebra yazıcıda henüz denenmedi**; sahte TCP yazıcıyla ve içerik denetimiyle test
+  edildi. İlk gerçek yazıcıda "Deneme etiketi" ile hizalama kontrol edilmeli.
+- **Okutma içeriği sözleşmesi** (`inventory.selectors.decode_scan`, `/api/v1/inventory/scan/?code=`):
+  `LOT:<lot_no>` lot, `LOC:<kod>` lokasyon, `MAT:<kod>` malzeme, GS1 (00) palet, (01)/(02) GTIN ile
+  malzeme, (10) varsa lot. AIM öneki (`]C1`) ve GS ayırıcısı tanınır, parantezli yazım da kabul edilir.
+  Öneksiz kod sırayla lot no (büyük/küçük harf duyarsız), lokasyon kodu, malzeme kodu ve GTIN olarak
+  denenir; böylece Faz 1'de basılmış düz lot etiketleri de okunur. Tanınmayan kod `scan_not_found`.
+- **Ortak okutma alanı** (`ScanInput`): okuyucu klavye gibi çalışır (kod + Enter). Beklenen malzeme
+  verilirse başka malzemenin lotunda kırmızı dolu uyarı, alçak uzun ses ve titreşim; doğru lotta kısa
+  ses. Hazırlama ve tartım ekranları artık lotu okutmayla seçer ve odağı miktara taşır; yanlış malzeme
+  sunucuya gitmeden durdurulur, sunucunun reddi (karantina vb.) yine gösterilir. Depo ekranının başlığında
+  "Lot okut" alanı lot detayına götürür.
+- **Yazıcı**: `masterdata.Printer` (kod, ad, IP, port 9100, dpi, lokasyon). Ham ZPL TCP ile gönderilir,
+  zaman aşımı `PRINTER_TIMEOUT_SECONDS` (5 sn); ulaşılamazsa `printer_unreachable`. Her gönderim
+  yazdırılan kaydın denetim günlüğüne "Etiket yazdırıldı" notu düşer. Yazıcı ve etiket ayarlarını
+  yalnızca `admin` yazar; yazdırma ve PDF/ZPL indirme giriş yapmış herkese açık (etiket veri
+  değiştirmez). Palet (SSCC) açma `depo`, `uretim`, `dolum`, `sevkiyat`.
+- **SSCC**: uzantı hanesi + firma öneki + seri + kontrol hanesi = 18 hane; seri `LabelSettings`
+  üzerinde `select_for_update` ile artar, tükenirse `sscc_exhausted`. Palet etiketi
+  (`inventory.PalletLabel`) yalnızca mamul lotu için, reddedilmiş lot için açılmaz.
+- **Ekler (`core.Attachment`)**: GenericFK ile lot, mal kabul, numune ve yoruma bağlanır; bir modül
+  `register_attachment_target("app.model", can_add=...)` ile kayıt türünü açar. İzin verilen uzantılar
+  PDF, resim (JPG/PNG/WEBP/HEIC), Office, CSV/TXT; en çok `ATTACHMENT_MAX_BYTES` (20 MB). Tabletten
+  fotoğraf kamerayla çekilir; 1 MB üstü fotoğraf tarayıcıda 2000 px JPEG'e küçültülür. Dosyalar
+  `MEDIA_ROOT` altında, herkese açık `/media` yok: indirme `/api/v1/attachments/<id>/download/`
+  üzerinden oturumla. Ek silinmez (kural 6), gerekçeyle kaldırılır; kaldırmayı yükleyen ya da admin
+  yapar, kaldırılan eki yalnızca admin görür. Yoruma ek yalnızca yorumun yazarı ekler. Ekleme ve
+  kaldırma, bağlı kaydın denetim günlüğüne yazılır. Üretimde dosyalar `media` volume'ünde
+  (`docker-compose.prod.yml`), nginx yükleme sınırı 25 MB.
+- **Dolum tableti** (Adım 2.2 ile birleştirme): ambalaj hazırlama, bulk tüketimi, ambalaj lotu okutma ve
+  fire lotu `ScanInput` kullanır. Beklenen malzeme: hazırlamada satırın malzemesi, bulkta partinin bulk
+  ürünü, ambalaj okutmada ambalaj reçetesindeki kalemlerden biri (birden çok malzeme kabul edilir).
+  Parti ekranında "Koli etiketi" düğmesi mamul lotunun koli etiketini önce seçili açar; GS1 ya da firma
+  içi olduğu partideki `finished_product_gtin` ile gösterilir.
 
 ## 2026-10-16 — Satış siparişi ve rezervasyon (Faz 3, Adım 3.1)
 

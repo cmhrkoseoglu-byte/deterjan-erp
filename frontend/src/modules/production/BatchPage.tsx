@@ -19,7 +19,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconArrowLeft, IconBarcode, IconFlagCheck, IconX } from "@tabler/icons-react";
+import { IconArrowLeft, IconFlagCheck, IconX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -37,6 +37,8 @@ import { hasAnyRole } from "../../auth/roles";
 import { formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ct } from "../common/strings";
+import { errorFeedback } from "../../components/scan/feedback";
+import { ScanInput, type ScanInputHandle } from "../../components/scan/ScanInput";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { lotPath } from "../inventory/config";
 import { ExpiryText, Info, Qty } from "../inventory/shared";
@@ -331,7 +333,8 @@ function WeighForm({
   line: BatchLine;
   onSaved: (batch: ProductionBatchDetail) => void;
 }) {
-  const scanRef = useRef<HTMLInputElement>(null);
+  const scanRef = useRef<ScanInputHandle>(null);
+  const quantityRef = useRef<HTMLInputElement>(null);
   const toWeigh = remaining(line.planned_quantity, line.consumed_quantity);
   const single = line.available.length === 1 ? line.available[0] : null;
   const [lotNo, setLotNo] = useState(single?.lot_no ?? "");
@@ -359,7 +362,8 @@ function WeighForm({
     },
     onError: (err) => {
       setError(getErrorMessage(err));
-      scanRef.current?.select();
+      errorFeedback();
+      scanRef.current?.focus();
     },
   });
   const canSubmit =
@@ -385,22 +389,24 @@ function WeighForm({
             {line.instruction}
           </Alert>
         )}
-        <Group align="flex-end" grow>
-          <TextInput
+        <Group align="flex-start" grow>
+          <ScanInput
             ref={scanRef}
-            size="lg"
+            expect="lot"
+            expectedMaterial={{ id: line.material, code: line.material_code }}
             label={pt.scan}
             placeholder={pt.scanPlaceholder}
-            leftSection={<IconBarcode size={20} />}
             autoFocus
-            value={lotNo}
-            onChange={(event) => {
-              setLotNo(event.currentTarget.value);
-              setLotId(null);
+            onLot={(lot) => {
+              setLotNo(lot.lot_no);
+              setLotId(lot.id);
+              setError("");
+              quantityRef.current?.focus();
+              quantityRef.current?.select();
             }}
-            onKeyDown={submitOnEnter}
           />
           <TextInput
+            ref={quantityRef}
             size="lg"
             label={`${pt.actualQuantity} (${line.unit})`}
             inputMode="decimal"
@@ -409,6 +415,14 @@ function WeighForm({
             onKeyDown={submitOnEnter}
           />
         </Group>
+        {lotNo && (
+          <Text size="sm">
+            {`${pt.lotNo}: `}
+            <Text span fw={700}>
+              {lotNo}
+            </Text>
+          </Text>
+        )}
         {quantity.trim() !== "" && (
           <Group gap="xs">
             <LineStateBadge state={preview} />

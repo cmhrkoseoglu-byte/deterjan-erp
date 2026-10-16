@@ -216,13 +216,14 @@ Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrınt
   serbest oldu ve CoA PDF'i indi; lot detayında numune listelendi, laboratuvara yalnızca "Bloke et"
   göründü. Bu denemede otomatik numunede "numuneyi alan" boş kalıyordu; artık ilk sonucu girenle doluyor.
 
-### Faz 2 kabul kriterleri (Adım 2.1'e düşenler)
+### Faz 2 kabul kriterleri (Adım 2.1, 2.3 ve 2.4'e düşenler)
 
 | Kriter | Durum | Kanıt |
 |---|---|---|
 | Spec dışı sonuçla `RELEASE` verilemiyor; zorunlu test eksikken karar verilemiyor | ✓ | `test_out_of_spec_result_blocks_release`, `test_decision_requires_all_mandatory_tests`, API `test_decision_errors_return_codes` |
 | Mal kabul ve şarj bitişinde numune otomatik açılıyor, laboratuvara görev düşüyor | ✓ | inventory mal kabul testi, `test_goods_receipt_to_completed_order`, `test_rules.py` numune kuralları |
 | CoA PDF'i doğru bilgilerle üretiliyor | ✓ | `test_coa.py`, `test_sample_flow_via_api` |
+| Lot etiketi PDF ve ZPL üretiliyor; okutma bileşeni tüm tablet ekranlarında çalışıyor | ✓ | `test_lot_label_pdf_a4_zpl`; `ScanInput` depo, üretim hazırlama ve tartım, dolum hazırlama ve hat ekranlarında (`components.test.tsx`, `production.test.tsx`, `filling.test.tsx`) |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | quality ve rework testleri `assert_stock_invariants()` ile biter |
 
 ### Adım 2.2 doğrulaması (dolum ve ambalaj)
@@ -256,7 +257,43 @@ Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrınt
 | Mamul lotunun geri izlemesi: bulk lotlar + ambalaj lotları + bulkun hammadde lotları | ✓ | aynı test, adım 7 (`lot_trace_backward` çok seviyeli ağaç; ileri izlemede hammadde → mamul iki seviye) |
 | Teorik / gerçek bulk ve ambalaj tüketim raporu doğru | ✓ | `test_consumption_report`, e2e adım 8, API `test_filling_tablet_flow` |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | dolum testleri `invariants` fixture'ı ya da `assert_stock_invariants()` ile biter |
-| Okutma bileşeni tüm tablet ekranlarında | Adım 2.3 | Dolum tabletleri şimdilik düz okutma alanı kullanır; ortak `ScanInput` Adım 2.3 PR'ıyla bağlanır |
+| Okutma bileşeni tüm tablet ekranlarında | ✓ | Dolum tabletleri de ortak `ScanInput` kullanır (Adım 2.3, aşağıda) |
+
+### Adım 2.3 ve 2.4 doğrulaması (etiket, barkod ve ekler)
+
+- Backend: `pytest` 632 test geçti (dolumla birleşince 695) (etiket ve okutma: 27, ekler: 8); `ruff check`, `ruff format --check`,
+  `mypy` temiz; OpenAPI şeması uyarısız; `makemigrations --check` temiz.
+- D-6: `test_case_label_is_gs1_128_when_material_has_gtin` (ZPL mod D, `(01)…(17)…(10)…`),
+  `test_case_label_without_gtin_uses_internal_code`, `test_pallet_label_requires_gs1_prefix`,
+  `test_label_settings_and_sscc` (18 haneli SSCC, kontrol hanesi, seri artışı).
+- D-8: `test_render_zpl_uses_203_dpi_dots_and_utf8` (100 × 150 mm = 799 × 1199 nokta, `^CI28`),
+  `test_render_zpl_barcode_fits_its_width`, `test_render_pdf_label_and_a4`, lot/mal kabul/lokasyon
+  etiketlerinin PDF, A4 ve ZPL çıktıları.
+- Yazıcı: sahte TCP yazıcıyla (`fake_printer`) deneme etiketi, lot, koli, mal kabul ve lokasyon etiketi
+  gönderimi; ulaşılamayan ya da pasif yazıcıda hata kodu; yazıcıyı yalnızca admin tanımlar.
+- Okutma: `test_scan_prefixes` (`LOT:`, `LOC:`, `MAT:`, düz lot no), `test_scan_gs1_case_and_pallet`
+  (AIM öneki, GS ayırıcısı, SSCC), `test_parse_gs1_rejects_malformed`, anonim 401.
+- Ekler: lot, mal kabul, numune ve yoruma yükleme, listeleme, oturumla indirme, gerekçeli kaldırma;
+  yasak uzantı, boyut, bilinmeyen kayıt türü, başkasının yorumu ve başkasının ekini kaldırma reddedilir.
+- Frontend: `npm test` 114 test (dolumla birleşince 128) (okutma alanı: 4 + hazırlamada yanlış malzeme; ek paneli: 2; etiket
+  penceresi: 2; yazıcı ve etiket ayarları: 3), `lint`, `format:check`, `typecheck`, `build` temiz.
+- Tarayıcıda (Playwright, 768 px, uvicorn + Vite, `seed_demo` verisi, 9100'de sahte yazıcı): admin GS1
+  önekini girdi, "SSCC palet etiketi açık" göründü; yazıcı tanımlandı, deneme etiketi ve lokasyon
+  etiketi yazıcıya ulaştı; depo kullanıcısı `LOT:ACILIS-KORUYUCU` okutunca lot detayı açıldı, lot
+  etiketi PDF olarak indi (200, application/pdf) ve yazıcıya gitti, analiz sertifikası eklendi;
+  tanınmayan kodda kırmızı hata göründü. Bu denemede 3 nokta yuvarlanan dar çubuğun ZPL barkodunu 1,6 mm
+  taşırdığı görüldü; artık çubuk genişliği alana sığacak şekilde seçiliyor.
+- Dolumla birleştirme (PR #10 sonrası): dolum ambalaj hazırlama, bulk tüketimi, ambalaj lotu okutma ve
+  fire lotu `ScanInput` kullanır (beklenen malzeme: hazırlamada satırın malzemesi, bulkta bulk ürün,
+  ambalajda reçetedeki kalemler); yanlış malzeme sunucuya gitmeden kırmızı uyarı verir, sunucunun reddi
+  okutma alanında gösterilir. Parti ekranında "Koli etiketi" düğmesi çıkan mamul lotunun koli etiketini
+  (D-6, `finished_product_gtin`) önce seçili açar. Testler: `filling.test.tsx` (hazırlamada yanlış
+  malzeme, ambalaj okutma, reçete dışı ambalaj, koli etiketi), `test_filling_tablet_flow`.
+- Satışla birleştirme (PR #11 sonrası): göçler `masterdata/0004_labels_printers` ve
+  `inventory/0004_pallet_labels` olarak yeniden numaralandı (satışın 0003'lerinden sonra). `pytest` 749,
+  `npm test` 136 test geçti; `makemigrations --check` temiz.
+- İade ve izlenebilirlikle birleştirme (PR #12 sonrası): çakışmasız; `pytest` 787, `npm test` 148 test geçti.
+
 
 ## Faz 3 — Satış siparişi, sevkiyat ve izlenebilirlik
 

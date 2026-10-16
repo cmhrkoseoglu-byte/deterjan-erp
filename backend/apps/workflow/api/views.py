@@ -178,7 +178,9 @@ class CommentViewSet(
         if self.action == "list":
             content_type, object_id = _record_from_query(self.request)
             return selectors.comments_for(content_type, object_id)
-        return Comment.objects.select_related("author", "content_type").prefetch_related("mentions")
+        return Comment.objects.select_related("author", "content_type").prefetch_related(
+            "mentions", "attachments__created_by"
+        )
 
     @extend_schema(parameters=_RECORD_PARAMS)
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:

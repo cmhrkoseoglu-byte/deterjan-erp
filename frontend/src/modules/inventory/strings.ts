@@ -55,6 +55,7 @@ export const it = {
   releasedBy: "Serbest bırakan",
   statusNote: "Durum notu",
   label: "Etiket (PDF)",
+  scanLot: "Lot okut",
   release: "Serbest bırak",
   manualRelease: "Elle serbest bırak",
   block: "Bloke et",

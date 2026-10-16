@@ -150,6 +150,8 @@ def test_filling_tablet_flow(line: Line, planner, depo, filler):
     assert response.status_code == 201, response.data
     run_id = response.data["id"]
     assert response.data["output_lot_no"].startswith("D-")
+    # Koli etiketi türü için mamulün GTIN'i (Karar D-6); demo mamulde boş.
+    assert response.data["finished_product_gtin"] == ""
 
     bulk = {"lot_no": line.lots["bulk"].lot_no, "quantity": "781"}
     assert api.post(url("run-consume-bulk", run_id), bulk).status_code == 200

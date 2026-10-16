@@ -1,21 +1,26 @@
 """Çekirdek servisler: belge numaralama, denetimli kayıt, belge oluşturma, durum geçişi, iptal,
 rol atama, giriş/çıkış."""
 
+import mimetypes
+import os
 import re
 from collections.abc import Iterable
 from typing import Any
 
+from django.conf import settings
 from django.contrib import auth
 from django.contrib.auth.models import Group
+from django.contrib.contenttypes.models import ContentType
+from django.core.files.uploadedfile import UploadedFile
 from django.db import models, transaction
 from django.db.models import F
 from django.http import HttpRequest
 from django.utils import timezone
 
-from apps.core import events
+from apps.core import attachments, events
 from apps.core.audit import EXCLUDED_FIELDS, diff, log_change
 from apps.core.exceptions import BusinessRuleError
-from apps.core.models import AuditLog, DocumentModel, DocumentSequence, User
+from apps.core.models import Attachment, AuditLog, DocumentModel, DocumentSequence, User
 from apps.core.roles import ALL_ROLES
 from apps.core.state import StateMachine
 
@@ -297,3 +302,92 @@ def login_user(request: HttpRequest, username: str, password: str) -> User:
 def logout_user(request: HttpRequest) -> None:
     """Oturumu kapatır. Giriş yapmış kullanıcının çıkışı sinyalle denetim günlüğüne yazılır."""
     auth.logout(request)
+
+
+# --- ekler ---------------------------------------------------------------------------------------
+
+
+def attachment_target(label: str, object_id: int) -> tuple[ContentType, models.Model]:
+    """`"app_label.model"` + kimlik → (ContentType, kayıt). Ek alamayan tür ya da olmayan kayıtta
+    `BusinessRuleError`."""
+    label = (label or "").strip().lower()
+    if not attachments.is_attachment_target(label):
+        raise BusinessRuleError("invalid_record_type", "Bu kayıt türüne dosya eklenemez.")
+    app_label, _, model = label.partition(".")
+    try:
+        content_type = ContentType.objects.get_by_natural_key(app_label, model)
+    except ContentType.DoesNotExist:
+        raise BusinessRuleError("invalid_record_type", "Geçersiz kayıt türü.") from None
+    model_class = content_type.model_class()
+    assert model_class is not None
+    target = model_class._base_manager.filter(pk=object_id).first()
+    if target is None:
+        raise BusinessRuleError("record_not_found", "Dosya eklenecek kayıt bulunamadı.")
+    return content_type, target
+
+
+@transaction.atomic
+def add_attachment(
+    actor: User,
+    *,
+    target_type: str,
+    object_id: int,
+    file: UploadedFile,
+    kind: str = Attachment.Kind.OTHER,
+    note: str = "",
+) -> Attachment:
+    """Kayda dosya ekler. Uzantı izinli listede ve boyut sınırın altında olmalı; yorum gibi
+    bazı türlere yalnızca sahibi ekleyebilir (`core.attachments`)."""
+    content_type, target = attachment_target(target_type, object_id)
+    if not attachments.can_add_attachment(actor, target_type, target):
+        raise BusinessRuleError("attachment_forbidden", "Bu kayda dosya ekleme yetkiniz yok.")
+    name = os.path.basename(file.name or "dosya")[:255]
+    extension = os.path.splitext(name)[1].lower()
+    if extension not in attachments.ALLOWED_EXTENSIONS:
+        allowed = ", ".join(sorted(e.lstrip(".") for e in attachments.ALLOWED_EXTENSIONS))
+        raise BusinessRuleError(
+            "file_type_not_allowed", f"Bu dosya türü eklenemez. İzinli türler: {allowed}."
+        )
+    max_bytes = int(getattr(settings, "ATTACHMENT_MAX_BYTES", attachments.DEFAULT_MAX_BYTES))
+    size = file.size or 0
+    if size == 0:
+        raise BusinessRuleError("file_empty", "Dosya boş.")
+    if size > max_bytes:
+        raise BusinessRuleError(
+            "file_too_large", f"Dosya en çok {max_bytes // (1024 * 1024)} MB olabilir."
+        )
+    if kind not in Attachment.Kind.values:
+        raise BusinessRuleError("invalid_kind", "Geçersiz ek türü.")
+    mime_type = (getattr(file, "content_type", "") or "").split(";")[0][:100]
+    if not mime_type:
+        mime_type = mimetypes.guess_type(name)[0] or ""
+    attachment = Attachment(
+        content_type=content_type,
+        object_id=target.pk,
+        file=file,
+        kind=kind,
+        original_name=name,
+        size=size,
+        mime_type=mime_type,
+        note=note.strip()[:500],
+    )
+    save_with_audit(attachment, actor)
+    log_change(actor, target, AuditLog.Action.CUSTOM, {}, f"Dosya eklendi: {name}")
+    return attachment
+
+
+@transaction.atomic
+def remove_attachment(actor: User, attachment: Attachment, reason: str = "") -> Attachment:
+    """Eki kaldırır (silinmez, pasife alınır). Yalnızca yükleyen ya da admin kaldırabilir."""
+    locked = Attachment.objects.select_for_update().get(pk=attachment.pk)
+    if not locked.is_active:
+        raise BusinessRuleError("already_removed", "Ek zaten kaldırılmış.")
+    if not actor.is_admin and locked.created_by_id != actor.pk:
+        raise BusinessRuleError(
+            "attachment_forbidden", "Eki yalnızca yükleyen kişi ya da admin kaldırabilir."
+        )
+    locked.is_active = False
+    locked.removed_at = timezone.now()
+    locked.removed_by = actor
+    locked.removal_reason = reason.strip()[:500]
+    return save_with_audit(locked, actor, note="Ek kaldırıldı")

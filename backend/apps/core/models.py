@@ -3,6 +3,8 @@
 Bu dosyada iş mantığı yoktur; yazma işlemleri `services.py` ve `audit.py` üzerinden yapılır.
 """
 
+import os
+import uuid
 from collections.abc import Collection
 from functools import cached_property
 from typing import Any, ClassVar, Self
@@ -12,6 +14,7 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
+from django.utils import timezone
 
 from apps.core.roles import ADMIN
 
@@ -228,3 +231,56 @@ class DocumentSequence(models.Model):
 
     def __str__(self) -> str:
         return f"{self.prefix}-{self.year}: {self.last_number}"
+
+
+def attachment_upload_to(instance: "Attachment", filename: str) -> str:
+    """Dosya adı tahmin edilemez olsun diye rastgele; özgün ad `original_name`'de tutulur."""
+    extension = os.path.splitext(filename)[1].lower()[:10]
+    return f"attachments/{timezone.now():%Y/%m}/{uuid.uuid4().hex}{extension}"
+
+
+class Attachment(BaseModel):
+    """Bir kayda (lot, numune, mal kabul, yorum) bağlı dosya ya da fotoğraf. Silinmez;
+    kaldırılınca `is_active=False` olur ve denetim günlüğüne yazılır."""
+
+    class Kind(models.TextChoices):
+        SUPPLIER_COA = "SUPPLIER_COA", "Tedarikçi analiz sertifikası"
+        PHOTO = "PHOTO", "Fotoğraf"
+        DELIVERY_NOTE = "DELIVERY_NOTE", "İrsaliye"
+        DOCUMENT = "DOCUMENT", "Belge"
+        OTHER = "OTHER", "Diğer"
+
+    content_type = models.ForeignKey(
+        ContentType, verbose_name="kayıt türü", on_delete=models.PROTECT, related_name="+"
+    )
+    object_id = models.BigIntegerField("kayıt no")
+    related_object = GenericForeignKey("content_type", "object_id")
+    file = models.FileField("dosya", upload_to=attachment_upload_to, max_length=255)
+    kind = models.CharField("tür", max_length=16, choices=Kind.choices, default=Kind.OTHER)
+    original_name = models.CharField("dosya adı", max_length=255)
+    size = models.PositiveBigIntegerField("boyut (bayt)")
+    mime_type = models.CharField("içerik türü", max_length=100, blank=True)
+    note = models.CharField("not", max_length=500, blank=True)
+    is_active = models.BooleanField("aktif", default=True, db_index=True)
+    removed_at = models.DateTimeField("kaldırılma zamanı", null=True, blank=True)
+    removed_by = models.ForeignKey(
+        User,
+        verbose_name="kaldıran",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    removal_reason = models.CharField("kaldırma nedeni", max_length=500, blank=True)
+
+    class Meta:
+        verbose_name = "ek"
+        verbose_name_plural = "ekler"
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["content_type", "object_id"])]
+
+    def __str__(self) -> str:
+        return self.original_name
+
+    def delete(self, *args: Any, **kwargs: Any) -> tuple[int, dict[str, int]]:
+        raise ValueError("Ekler silinemez; kaldırılır.")

@@ -1,4 +1,5 @@
 // /api/v1/workflow/* — görevler, bildirimler, kayda bağlı yorumlar ve kayıt geçmişi.
+import type { Attachment } from "./attachments";
 import { api } from "./client";
 import type { Paginated, Role } from "./types";
 
@@ -69,6 +70,7 @@ export interface Comment {
   created_at: string;
   edited_at: string | null;
   can_edit: boolean;
+  attachments: Attachment[];
 }
 
 export interface AuditEntry {

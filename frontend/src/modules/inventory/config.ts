@@ -24,3 +24,6 @@ export const LOT_STATUS_COLOR: Record<LotStatus, string> = {
 export function today(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul" }).format(new Date());
 }
+
+/** Palet (SSCC) etiketi açabilen roller; backend `PALLET_ROLES`. */
+export const PALLET_ROLES: Role[] = ["depo", "dolum", "sevkiyat", "uretim"];

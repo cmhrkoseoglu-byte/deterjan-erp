@@ -8,6 +8,7 @@ app_name = "core"
 router = SimpleRouter()
 router.register("users", views.UserViewSet, basename="user")
 router.register("audit-log", views.AuditLogViewSet, basename="audit-log")
+router.register("attachments", views.AttachmentViewSet, basename="attachment")
 
 urlpatterns = [
     path("health/", views.HealthView.as_view(), name="health"),

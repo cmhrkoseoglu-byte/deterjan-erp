@@ -17,7 +17,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconArrowLeft, IconBarcode, IconCheck } from "@tabler/icons-react";
+import { IconArrowLeft, IconCheck } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -33,6 +33,8 @@ import {
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
 import { formatNumber } from "../../i18n/format";
+import { errorFeedback } from "../../components/scan/feedback";
+import { ScanInput, type ScanInputHandle } from "../../components/scan/ScanInput";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ExpiryText, Qty } from "../inventory/shared";
 import { orderPath, PREP_ROLES } from "./config";
@@ -215,7 +217,8 @@ function PickForm({
   onPicked: (order: ProductionOrderDetail) => void;
 }) {
   const queryClient = useQueryClient();
-  const scanRef = useRef<HTMLInputElement>(null);
+  const scanRef = useRef<ScanInputHandle>(null);
+  const quantityRef = useRef<HTMLInputElement>(null);
   const [lotNo, setLotNo] = useState("");
   const [lotId, setLotId] = useState<number | null>(null);
   const [fromLocation, setFromLocation] = useState<number | null>(null);
@@ -249,7 +252,8 @@ function PickForm({
     },
     onError: (err) => {
       setError(getErrorMessage(err));
-      scanRef.current?.select();
+      errorFeedback();
+      scanRef.current?.focus();
     },
   });
   const canSubmit = (lotId !== null || lotNo.trim() !== "") && quantity.trim() !== "";
@@ -264,25 +268,25 @@ function PickForm({
             <Qty value={row.required_quantity} unit={row.unit} />
           </Text>
         </Group>
-        <Group align="flex-end" grow>
-          <TextInput
+        <Group align="flex-start" grow>
+          <ScanInput
             ref={scanRef}
-            size="lg"
+            expect="lot"
+            expectedMaterial={{ id: row.material, code: row.material_code }}
             label={pt.scan}
             placeholder={pt.scanPlaceholder}
-            leftSection={<IconBarcode size={20} />}
             autoFocus
-            value={lotNo}
-            onChange={(event) => {
-              setLotNo(event.currentTarget.value);
-              setLotId(null);
+            onLot={(lot) => {
+              setLotNo(lot.lot_no);
+              setLotId(lot.id);
               setFromLocation(null);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && canSubmit) pick.mutate();
+              setError("");
+              quantityRef.current?.focus();
+              quantityRef.current?.select();
             }}
           />
           <TextInput
+            ref={quantityRef}
             size="lg"
             label={`${pt.quantity} (${row.unit})`}
             inputMode="decimal"
@@ -293,6 +297,14 @@ function PickForm({
             }}
           />
         </Group>
+        {lotNo && (
+          <Text size="sm">
+            {`${pt.lotNo}: `}
+            <Text span fw={700}>
+              {lotNo}
+            </Text>
+          </Text>
+        )}
         {error && (
           <Alert color="red" variant="light" data-testid="pick-error">
             {error}
