@@ -9,7 +9,7 @@ from apps.core import events
 from apps.inventory import selectors, services
 from apps.inventory.models import Lot, StockMovement
 from apps.inventory.tests.factories import stocked_lot, storage_location
-from apps.masterdata.tests.factories import BulkMaterialFactory, MaterialFactory
+from apps.masterdata.tests.factories import BulkMaterialFactory, MaterialFactory, unit
 
 pytestmark = pytest.mark.usefixtures("invariants")
 D = Decimal
@@ -82,6 +82,23 @@ def test_lot_trace_backward_and_forward(depo):
     assert selectors.lot_trace_forward(bulk)["children"] == []
     with pytest.raises(ValueError):
         selectors.lot_trace(bulk, "sideways")  # type: ignore[arg-type]
+
+
+def test_lot_trace_quantity_unit_is_input_lot_unit(depo):
+    """İleri izlemede dökmeden mamule geçen miktar, mamulün birimiyle (ADET) değil dökmenin
+    birimiyle (KG) gösterilir; geri izlemede de girdinin birimi kullanılır."""
+    bulk = stocked_lot("500", material=BulkMaterialFactory())
+    finished = _batch(depo, [(bulk, "250")], material=MaterialFactory(base_unit=unit("ADET")))
+
+    forward = selectors.lot_trace_forward(bulk)
+    assert forward["quantity_unit"] is None
+    [child] = forward["children"]
+    assert child["lot_no"] == finished.lot_no
+    assert (child["quantity"], child["quantity_unit"], child["unit"]) == (D("250"), "KG", "ADET")
+
+    backward = selectors.lot_trace_backward(finished)
+    [parent] = backward["children"]
+    assert (parent["quantity"], parent["quantity_unit"], parent["unit"]) == (D("250"), "KG", "KG")
 
 
 def test_expiring_lots():

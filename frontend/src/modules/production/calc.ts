@@ -31,9 +31,10 @@ export function remaining(planned: string | number, actual: string | number): nu
   return Math.max(0, Math.round((num(planned) - num(actual)) * 10000) / 10000);
 }
 
-/** Gösterge çubuğu doluluğu (%): planın %0–120 aralığı 0–100'e oturtulur. */
+/** Gösterge çubuğu doluluğu (%): plan miktarı tam doludur; fazlası çubuğun rengiyle görünür.
+ * (Önce planın %120'si tam sayılıyordu, plana tam tartılan satır %83'te kalıyordu.) */
 export function gaugeValue(planned: string | number, actual: string | number): number {
   const p = num(planned);
   if (p === 0) return 0;
-  return Math.min(100, (num(actual) / p / 1.2) * 100);
+  return Math.min(100, (num(actual) / p) * 100);
 }

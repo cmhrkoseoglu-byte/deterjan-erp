@@ -77,10 +77,10 @@ def test_buyer_approves_within_limit_and_not_above(buyer: User, manager: User) -
     with pytest.raises(BusinessRuleError) as exc:
         services.approve_order(buyer, above)
     assert exc.value.code == "approval_limit_exceeded"
-    assert "10010.00 TL" in exc.value.message
+    assert "10.010,00 TL" in exc.value.message
     log = AuditLog.objects.filter(object_id=str(within.pk), action="status_change").last()
     assert log is not None
-    assert "tutar 10000.00 TL" in log.note and "limit 10000.00 TL" in log.note
+    assert "tutar 10.000,00 TL" in log.note and "limit 10.000,00 TL" in log.note
 
 
 def test_foreign_currency_is_compared_in_try_at_order_rate(buyer: User, manager: User) -> None:
@@ -118,6 +118,8 @@ def test_submit_for_approval_opens_management_task_and_return_to_draft(
     assert order.approval_total_try == Decimal("5000.00")
     task = Task.objects.get(rule_code="purchase_order_approval")
     assert task.assigned_role is not None and task.assigned_role.name == "yonetim"
+    # Tutar binlik ayırıcıyla yazılır (5000.00 değil).
+    assert "tutar 5.000,00 TRY (5.000,00 TL)" in task.description
     with pytest.raises(PermissionDenied):
         services.return_to_draft(buyer, order, "neden")
     with pytest.raises(BusinessRuleError):

@@ -516,6 +516,20 @@ def test_stock_at_shipping_location_is_not_reserved_or_suggested(
     assert [s["lot"] for s in row["suggestions"]] == [stock.pk]
 
 
+def test_suggestions_list_partly_reserved_lot_once(seller: User, dock: Location) -> None:
+    """Satıra kısmen rezerve edilen lot, rezerve ve rezervesiz kısmıyla tek satırda önerilir."""
+    product = finished_product()
+    lot = finished_lot(product, "100", expiry_date=today() + timedelta(days=300))
+    later = finished_lot(product, "30", expiry_date=today() + timedelta(days=600))
+    order = confirmed_order(seller, [(product, "10", "ADET")])
+    shipment = plan(seller, order)
+
+    [row] = selectors.pick_suggestions(shipment)
+    assert [
+        (s["lot"], s["quantity"], s["reserved_quantity"], s["reserved"]) for s in row["suggestions"]
+    ] == [(lot.pk, D("100"), D("10"), True), (later.pk, D("30"), D("0"), False)]
+
+
 def test_pick_does_not_touch_another_docks_picked_stock(
     seller: User, picker: User, dock: Location
 ) -> None:

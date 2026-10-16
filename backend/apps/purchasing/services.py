@@ -29,6 +29,7 @@ from django.utils import timezone
 
 from apps.core.audit import log_change, snapshot
 from apps.core.exceptions import BusinessRuleError
+from apps.core.formatting import format_money
 from apps.core.models import AuditLog, User
 from apps.core.permissions import user_has_role
 from apps.core.roles import DEPO, PLANLAMA, SATIN_ALMA, URETIM, YONETIM
@@ -500,7 +501,7 @@ def submit_for_approval(actor: User | None, order: PurchaseOrder) -> PurchaseOrd
         Status.PENDING_APPROVAL,
         actor,
         machine=purchase_order_states,
-        note=f"Tutar {totals.total_try} TL",
+        note=f"Tutar {format_money(totals.total_try)} TL",
         event_payload=_order_payload(order),
     )
 
@@ -523,7 +524,8 @@ def approve_order(actor: User | None, order: PurchaseOrder) -> PurchaseOrder:
             message = "Onay limiti girilmediği için siparişi yönetim onaylar."
         else:
             message = (
-                f"Sipariş tutarı {totals.total_try} TL, onay limitiniz {limit} TL; "
+                f"Sipariş tutarı {format_money(totals.total_try)} TL, onay limitiniz "
+                f"{format_money(limit)} TL; "
                 "siparişi yönetim onaylar."
             )
         raise BusinessRuleError("approval_limit_exceeded", message)
@@ -540,13 +542,16 @@ def approve_order(actor: User | None, order: PurchaseOrder) -> PurchaseOrder:
             "updated_at",
         ]
     )
-    limit_text = f"{limit} TL" if limit is not None else "girilmemiş"
+    limit_text = f"{format_money(limit)} TL" if limit is not None else "girilmemiş"
     return transition_status(
         order,
         Status.APPROVED,
         actor,
         machine=purchase_order_states,
-        note=f"Onay: tutar {totals.total_try} TL (kur {order.exchange_rate}), limit {limit_text}",
+        note=(
+            f"Onay: tutar {format_money(totals.total_try)} TL (kur {order.exchange_rate}), "
+            f"limit {limit_text}"
+        ),
         event_payload=_order_payload(order),
     )
 

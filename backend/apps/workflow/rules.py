@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from apps.core import event_names as ev
+from apps.core.formatting import format_money
 from apps.core.roles import (
     ADMIN,
     DEPO,
@@ -221,6 +222,14 @@ def _shortage_body(payload: Payload) -> str:
     if payload.get("reason"):
         head = f"{head} {payload['reason']}."
     return "\n".join([head, *lines])
+
+
+def _purchase_order_approval_body(payload: Payload) -> str:
+    """Tutarlar binlik ayırıcıyla (yükte ham `Decimal` metni durur: `125000.00`)."""
+    return (
+        f"{payload.get('supplier_name', '')}, tutar {format_money(payload.get('total'))} "
+        f"{payload.get('currency', '')} ({format_money(payload.get('total_try'))} TL)."
+    )
 
 
 def _reserved_expiring_body(payload: Payload) -> str:
@@ -567,7 +576,7 @@ RULES: tuple[Rule, ...] = (
         event=ev.PURCHASE_ORDER_PENDING_APPROVAL,
         role=YONETIM,
         title="Satın alma siparişini onayla: {number}",
-        description="{supplier_name}, tutar {total} {currency} ({total_try} TL).",
+        description=_purchase_order_approval_body,
         close_on=(
             CloseOn(ev.PURCHASE_ORDER_APPROVED),
             CloseOn(ev.PURCHASE_ORDER_RETURNED),

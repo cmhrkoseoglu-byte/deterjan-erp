@@ -128,6 +128,7 @@ function suggestions(overrides: Partial<PickSuggestion> = {}): PickSuggestion[] 
           location: 9,
           location_code: "MAMUL-DEPO",
           quantity: "500.0000",
+          reserved_quantity: "500.0000",
           reserved: true,
           meets_shelf_life: true,
         },
@@ -138,6 +139,7 @@ function suggestions(overrides: Partial<PickSuggestion> = {}): PickSuggestion[] 
           location: 9,
           location_code: "MAMUL-DEPO",
           quantity: "400.0000",
+          reserved_quantity: "0.0000",
           reserved: false,
           meets_shelf_life: true,
         },
@@ -148,6 +150,7 @@ function suggestions(overrides: Partial<PickSuggestion> = {}): PickSuggestion[] 
           location: 9,
           location_code: "MAMUL-DEPO",
           quantity: "100.0000",
+          reserved_quantity: "0.0000",
           reserved: false,
           meets_shelf_life: false,
         },
@@ -603,6 +606,7 @@ describe("toplama tableti", () => {
           location: 9,
           location_code: "MAMUL-DEPO",
           quantity: "30.0000",
+          reserved_quantity: "30.0000",
           reserved: true,
           meets_shelf_life: true,
         },
@@ -647,8 +651,14 @@ describe("toplama tableti", () => {
     vi.mocked(salesApi.shipmentSuggestions).mockResolvedValue(
       suggestions({
         suggestions: [
-          { ...reserved, quantity: "200.0000" },
-          { ...reserved, location: 10, location_code: "RAF-2", quantity: "150.0000" },
+          { ...reserved, quantity: "260.0000", reserved_quantity: "200.0000" },
+          {
+            ...reserved,
+            location: 10,
+            location_code: "RAF-2",
+            quantity: "150.0000",
+            reserved_quantity: "150.0000",
+          },
           { ...free, quantity: "300.0000" },
           { ...free, location: 10, location_code: "RAF-2", quantity: "250.0000" },
         ],
@@ -663,8 +673,10 @@ describe("toplama tableti", () => {
     const qty = screen.getByRole("textbox", { name: "Miktar (ADET)" });
     // Rezervesiz kısım backend'de tek lokasyondan alınır: 300 + 250 değil, en büyüğü 300.
     await waitFor(() => expect(qty).toHaveValue("300"));
-    // Rezerve lot, satırın tüm lokasyonlardaki rezervasyonlarından toplanır: 200 + 150.
+    // Rezerve lot, satırın tüm lokasyonlardaki rezervasyonlarından toplanır: 200 + 150
+    // (aynı yerdeki rezervesiz 60 sayılmaz).
     const rows = screen.getByTestId("pick-suggestions");
+    expect(within(rows).getByText("Rezerve 200")).toBeInTheDocument();
     await user.click(within(rows).getAllByText("D-261016-001")[0]);
     await waitFor(() => expect(qty).toHaveValue("350"));
   });

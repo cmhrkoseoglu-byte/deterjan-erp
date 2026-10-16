@@ -273,6 +273,8 @@ describe("satın alma", () => {
     renderApp("/satin-alma/siparisler/5");
 
     expect(await screen.findByTestId("purchase-total")).toHaveTextContent("90.000,00");
+    // Onaydan önce bekleyen miktar "0 KG" değil, boş görünür.
+    expect(screen.getByTestId("pending-21")).toHaveTextContent("—");
     expect(screen.getByRole("button", { name: "Taslağa geri gönder" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Onayla" }));
     const dialog = await screen.findByRole("dialog");

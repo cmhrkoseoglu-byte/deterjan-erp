@@ -54,6 +54,7 @@ function backward(): BackwardNode {
     material_code: "MM-750",
     material_name: "Bulaşık deterjanı",
     quantity: null,
+    quantity_unit: null,
     children: [
       {
         ...base,
@@ -64,6 +65,7 @@ function backward(): BackwardNode {
         material_code: "LABSA",
         material_name: "Lineer alkil benzen",
         quantity: "120.0000",
+        quantity_unit: "KG",
         supplier_id: 3,
         supplier_code: "T001",
         supplier_name: "Kimya A.Ş.",
@@ -86,6 +88,7 @@ function forward(): ForwardNode {
     material_code: "LABSA",
     material_name: "Lineer alkil benzen",
     quantity: null,
+    quantity_unit: null,
     on_hand: "880.0000",
     shipped: "0.0000",
     returned: "0.0000",
@@ -100,7 +103,9 @@ function forward(): ForwardNode {
         material_name: "Bulaşık deterjanı",
         material_type: "FINISHED",
         unit: "ADET",
+        // Mamule giden miktar girdinin (LABSA) biriminde: 120 KG, 120 ADET değil.
         quantity: "120.0000",
+        quantity_unit: "KG",
         on_hand: "55.0000",
         shipped: "30.0000",
         returned: "5.0000",
@@ -195,6 +200,8 @@ describe("izlenebilirlik", () => {
     renderApp("/izlenebilirlik/ileri?lot=7");
     expect(await screen.findByText("D-261017-001")).toBeInTheDocument();
     const rows = screen.getAllByTestId("trace-row");
+    expect(rows[1]).toHaveTextContent("120 KG");
+    expect(rows[1]).not.toHaveTextContent("120 ADET");
     expect(rows[1]).toHaveTextContent("Stokta: 55 ADET");
     expect(rows[1]).toHaveTextContent("Sevk: 30 ADET");
     expect(rows[1]).toHaveTextContent("İade: 5 ADET");
