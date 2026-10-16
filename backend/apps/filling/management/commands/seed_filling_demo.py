@@ -3,18 +3,18 @@ dolum hattı DH-01, ambalaj ve mamul depoları, onaylı ambalaj reçeteleri, mam
 spesifikasyonları (görünüş, dolum miktarı, sızdırmazlık, etiket; D-7) ve ambalaj açılış stoku.
 
 `seed_demo` sonunda çağrılır; bulk ürünler ve ANA depo oradan gelir. Tekrar çalıştırılabilir: var
-olan kayıt koduyla bulunur. Yalnızca geliştirme ortamında (DEBUG=True) çalışır.
+olan kayıt koduyla bulunur. Yalnızca geliştirme ortamında (DEBUG ya da eğitim) çalışır.
 """
 
 from decimal import Decimal
 from typing import Any
 
-from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.demo import require_demo_allowed
 from apps.core.models import User
 from apps.core.roles import LABORATUVAR, PLANLAMA
 from apps.filling import services
@@ -88,8 +88,7 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        if not settings.DEBUG:
-            raise CommandError("Demo verisi yalnızca geliştirme ortamında (DEBUG=True) yüklenir.")
+        require_demo_allowed()
         if not User.objects.filter(username=PLANLAMA).exists():
             call_command("create_demo_users", stdout=self.stdout)
         planner = User.objects.get(username=PLANLAMA)

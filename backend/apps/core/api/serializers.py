@@ -19,6 +19,12 @@ class HealthSerializer(serializers.Serializer):
     redis = serializers.ChoiceField(choices=HEALTH_STATES)
 
 
+class SiteInfoSerializer(serializers.Serializer):
+    """Giriş öncesi de okunan ortam bilgisi."""
+
+    training_mode = serializers.BooleanField(help_text="Eğitim ortamı (demo veri) mı?")
+
+
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(label="Kullanıcı adı", max_length=150)
     password = serializers.CharField(

@@ -5,11 +5,11 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.conf import settings
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.demo import require_demo_allowed
 from apps.core.models import User
 from apps.core.roles import YONETIM
 from apps.costing import services
@@ -84,11 +84,10 @@ def seed(actor: User | None, write: Any = print) -> None:
 
 
 class Command(BaseCommand):
-    help = "Maliyet demo verisini yükler (yalnızca DEBUG=True)."
+    help = "Maliyet demo verisini yükler (yalnızca DEBUG ya da eğitim)."
 
     def handle(self, *args: Any, **options: Any) -> None:
-        if not settings.DEBUG:
-            raise CommandError("Demo verisi yalnızca geliştirme ortamında (DEBUG=True) yüklenir.")
+        require_demo_allowed()
         actor = User.objects.filter(username=YONETIM).first()
         with transaction.atomic():
             seed(actor, self.stdout.write)

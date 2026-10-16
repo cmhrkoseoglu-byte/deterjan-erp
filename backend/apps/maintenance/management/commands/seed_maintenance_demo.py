@@ -5,11 +5,11 @@ tekrar çalıştırmak güvenlidir."""
 from datetime import timedelta
 from typing import Any
 
-from django.conf import settings
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.demo import require_demo_allowed
 from apps.core.models import User
 from apps.core.roles import LABORATUVAR, URETIM
 from apps.maintenance import services
@@ -90,10 +90,11 @@ def seed(write: Any = print) -> None:
 
 
 class Command(BaseCommand):
-    help = "Bakım demo verisi: teraziler, kalibrasyon ve bakım planları. Yalnızca DEBUG=True."
+    help = (
+        "Bakım demo verisi: teraziler, kalibrasyon ve bakım planları. Yalnızca DEBUG ya da eğitim."
+    )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        if not settings.DEBUG:
-            raise CommandError("Demo verisi yalnızca geliştirme ortamında (DEBUG=True) yüklenir.")
+        require_demo_allowed()
         with transaction.atomic():
             seed(self.stdout.write)

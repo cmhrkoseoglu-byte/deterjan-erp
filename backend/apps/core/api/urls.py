@@ -12,6 +12,7 @@ router.register("attachments", views.AttachmentViewSet, basename="attachment")
 
 urlpatterns = [
     path("health/", views.HealthView.as_view(), name="health"),
+    path("site/", views.SiteInfoView.as_view(), name="site-info"),
     path("auth/csrf/", views.CsrfView.as_view(), name="auth-csrf"),
     path("auth/login/", views.LoginView.as_view(), name="auth-login"),
     path("auth/logout/", views.LogoutView.as_view(), name="auth-logout"),

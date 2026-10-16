@@ -1,19 +1,19 @@
 """Demo verisi (Faz 1, Adım 1.8): ana veriler, onaylı reçeteler, tanklar, lokasyonlar, tedarikçiler
 ve serbest açılış stoku. Tekrar çalıştırılabilir: var olan kayıt koduyla bulunur, yeniden yazılmaz.
 
-Yalnızca geliştirme ortamında (DEBUG=True) çalışır. Reçete onayı demo `planlama` kullanıcısıyla
+Yalnızca geliştirme ya da eğitim ortamında çalışır. Reçete onayı demo `planlama` kullanıcısıyla
 yapılır; yoksa önce `create_demo_users` çalıştırılır.
 """
 
 from decimal import Decimal
 from typing import Any
 
-from django.conf import settings
 from django.core.management import call_command
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.demo import require_demo_allowed
 from apps.core.models import User
 from apps.core.roles import PLANLAMA
 from apps.inventory import services as inventory
@@ -114,12 +114,11 @@ SUPPLIERS = [
 class Command(BaseCommand):
     help = (
         "Demo verisi: 15 hammadde, 2 bulk ürün, onaylı reçeteler, 2 karıştırma tankı, lokasyonlar, "
-        "3 tedarikçi ve serbest açılış stoku. Yalnızca geliştirme ortamında (DEBUG=True)."
+        "3 tedarikçi ve serbest açılış stoku. Yalnızca geliştirme ortamında (DEBUG ya da eğitim)."
     )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        if not settings.DEBUG:
-            raise CommandError("Demo verisi yalnızca geliştirme ortamında (DEBUG=True) yüklenir.")
+        require_demo_allowed()
         if not User.objects.filter(username=PLANLAMA).exists():
             call_command("create_demo_users", stdout=self.stdout)
         approver = User.objects.get(username=PLANLAMA)

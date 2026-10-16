@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from apps.core.demo import require_demo_allowed
 from apps.core.management.commands.seed_roles import seed_roles
 from apps.core.models import User
 from apps.core.roles import ADMIN, ALL_ROLES, ROLE_LABELS
@@ -13,14 +14,11 @@ from apps.core.services import save_with_audit, set_user_roles
 class Command(BaseCommand):
     help = (
         "Her rol için bir demo kullanıcı oluşturur (kullanıcı adı = rol kodu). "
-        "Yalnızca geliştirme ortamında (DEBUG=True) çalışır; şifre DEMO_USER_PASSWORD'dan gelir."
+        "Yalnızca geliştirme ya da eğitim ortamında çalışır; şifre DEMO_USER_PASSWORD'dan gelir."
     )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        if not settings.DEBUG:
-            raise CommandError(
-                "Demo kullanıcılar yalnızca geliştirme ortamında (DEBUG=True) oluşturulur."
-            )
+        require_demo_allowed()
         password = settings.DEMO_USER_PASSWORD
         if not password:
             raise CommandError(".env dosyasında DEMO_USER_PASSWORD tanımlı değil.")

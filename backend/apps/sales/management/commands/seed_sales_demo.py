@@ -4,19 +4,19 @@ bekleyen sevkiyatıyla), biri taslak, biri sevk edilmiş (Adım 3.2: irsaliyesi 
 
 `seed_demo` sonunda, `seed_filling_demo`'dan sonra çağrılır. Tekrar çalıştırılabilir: var olan
 müşteri koduyla, stok ve sipariş müşteri sipariş numarasıyla bulunur. Yalnızca geliştirme
-ortamında (DEBUG=True) çalışır.
+ortamında (DEBUG ya da eğitim) çalışır.
 """
 
 from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
-from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.demo import require_demo_allowed
 from apps.core.models import User
 from apps.core.roles import DEPO, SEVKIYAT
 from apps.inventory import services as inventory
@@ -45,8 +45,7 @@ class Command(BaseCommand):
     help = "Satış demo verisi: müşteriler, mamul açılış stoku ve örnek siparişler (yalnızca dev)."
 
     def handle(self, *args: Any, **options: Any) -> None:
-        if not settings.DEBUG:
-            raise CommandError("Demo verisi yalnızca geliştirme ortamında (DEBUG=True) yüklenir.")
+        require_demo_allowed()
         if not User.objects.filter(username=SEVKIYAT).exists():
             call_command("create_demo_users", stdout=self.stdout)
         seller = User.objects.get(username=SEVKIYAT)

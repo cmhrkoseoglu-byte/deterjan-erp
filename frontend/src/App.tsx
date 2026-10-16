@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthProvider";
+import { TrainingBanner } from "./components/site/TrainingBanner";
 import { routes } from "./routes";
 import { theme } from "./theme";
 
@@ -22,6 +23,7 @@ export function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <RouterProvider router={router} />
+          <TrainingBanner />
         </AuthProvider>
       </QueryClientProvider>
     </MantineProvider>
