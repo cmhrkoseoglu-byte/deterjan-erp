@@ -42,6 +42,7 @@ import {
   getOrder,
   orderAction,
   saveOrder,
+  getTankCheck,
   startBatch,
   type OrderPayload,
   type Priority,
@@ -73,6 +74,7 @@ import {
 } from "./config";
 import { BatchStatusBadge, OrderStatusBadge, ReasonModal } from "./shared";
 import { pt } from "./strings";
+import { CleaningModal } from "../maintenance/CleaningModal";
 
 const PRIORITY_OPTIONS = ([1, 2, 3, 4] as Priority[]).map((value) => ({
   value: String(value),
@@ -846,6 +848,15 @@ function StartBatchModal({
   const [equipment, setEquipment] = useState<string | null>(String(order.equipment));
   const [quantity, setQuantity] = useState(trimDecimal(order.suggested_batch_quantity));
   const [error, setError] = useState("");
+  const [cleaning, setCleaning] = useState(false);
+  const tankId = idOrNull(equipment);
+  // Faz 4: ürün değişimi temizliği (Karar D-14) ve tank duruşu; backend de denetler.
+  const check = useQuery({
+    queryKey: ["production", "tank-check", tankId, order.product],
+    queryFn: () => getTankCheck(tankId!, order.product),
+    enabled: opened && tankId !== null,
+  });
+  const tankCode = (tanks.data ?? []).find((row) => row.id === tankId)?.code ?? "";
   const mutation = useMutation({
     mutationFn: () =>
       startBatch({
@@ -884,6 +895,25 @@ function StartBatchModal({
           value={quantity}
           onChange={(event) => setQuantity(event.currentTarget.value)}
         />
+        {check.data?.is_down && (
+          <Alert color="red" variant="light" data-testid="tank-down">
+            {pt.tankDown(tankCode, check.data.downtime_reason ?? "")}
+          </Alert>
+        )}
+        {check.data?.required && (
+          <Alert color="orange" variant="light" data-testid="cleaning-required">
+            <Stack gap="xs">
+              <Text size="sm">
+                {pt.cleaningRequired(tankCode, check.data.previous_product_code ?? "")}
+              </Text>
+              <Group>
+                <Button size="xs" color="orange" onClick={() => setCleaning(true)}>
+                  {pt.cleaningRecord}
+                </Button>
+              </Group>
+            </Stack>
+          </Alert>
+        )}
         {error && (
           <Alert color="red" variant="light">
             {error}
@@ -893,10 +923,25 @@ function StartBatchModal({
           <Button variant="default" onClick={onClose}>
             {ct.cancel}
           </Button>
-          <Button color="violet" loading={mutation.isPending} onClick={() => mutation.mutate()}>
+          <Button
+            color="violet"
+            loading={mutation.isPending}
+            disabled={Boolean(check.data?.required || check.data?.is_down)}
+            onClick={() => mutation.mutate()}
+          >
             {pt.startBatch}
           </Button>
         </Group>
+        {cleaning && tankId !== null && (
+          <CleaningModal
+            equipmentId={tankId}
+            onClose={() => setCleaning(false)}
+            onSaved={() => {
+              setCleaning(false);
+              void check.refetch();
+            }}
+          />
+        )}
       </Stack>
     </Modal>
   );

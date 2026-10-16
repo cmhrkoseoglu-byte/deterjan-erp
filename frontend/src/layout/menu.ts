@@ -11,7 +11,9 @@ import {
   IconPackages,
   IconBottle,
   IconSettings,
+  IconShieldCheck,
   IconShoppingCart,
+  IconTool,
   IconTruckDelivery,
   type Icon,
 } from "@tabler/icons-react";
@@ -126,6 +128,24 @@ export const MENU: readonly MenuItem[] = [
     icon: IconCoin,
     // Maliyet tutarlarını yalnızca yönetim (ve admin) görür (Karar D-15).
     roles: ["yonetim"],
+    phase: 4,
+  },
+  {
+    key: "maintenance",
+    label: tr.menu.maintenance,
+    path: "/bakim",
+    icon: IconTool,
+    // Arıza bildirimi her rolde açıktır (ana sayfadaki düğme); bakım ekranları bu birimlere.
+    roles: ["uretim", "dolum", "laboratuvar", "planlama", "yonetim"],
+    phase: 4,
+  },
+  {
+    key: "hse",
+    label: tr.menu.hse,
+    path: "/isg",
+    icon: IconShieldCheck,
+    // Olay / ramak kala bildirimi herkese açık.
+    roles: [],
     phase: 4,
   },
   {

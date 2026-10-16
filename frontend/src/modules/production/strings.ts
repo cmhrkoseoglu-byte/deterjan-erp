@@ -27,6 +27,21 @@ export const pt = {
   plannedQuantity: "Planlanan miktar",
   plannedDate: "Planlanan tarih",
   tank: "Karıştırma tankı",
+  scale: "Terazi",
+  scalePlaceholder: "Kullanılan teraziyi seçin",
+  scaleRequired: "Tartım için terazi seçin.",
+  scaleDown: "duruşta",
+  calibrationOverdueShort: "kalibrasyon süresi geçti",
+  calibrationDueSoon: (code: string, days: number) =>
+    days === 0
+      ? `${code} terazisinin kalibrasyonu bugün doluyor; laboratuvara haber verin.`
+      : `${code} terazisinin kalibrasyonu ${days} gün içinde doluyor; laboratuvara haber verin.`,
+  calibrationBlockedHint:
+    "Kalibrasyonu geçmiş ya da duruştaki teraziler seçilemez. Laboratuvar kalibrasyonu yapınca yeniden açılır.",
+  cleaningRequired: (tank: string, previous: string) =>
+    `${tank} tankında son üretilen ürün ${previous}. Bu ürüne geçmeden önce temizlik kaydı girilmelidir.`,
+  cleaningRecord: "Temizlik kaydı gir",
+  tankDown: (tank: string, reason: string) => `${tank} duruşta (${reason}); şarj başlatılamaz.`,
   productionLocation: "Üretim lokasyonu",
   productionLocationHint: "Boş bırakılırsa tankın deposundaki üretim lokasyonu seçilir.",
   priorityLabel: "Öncelik",

@@ -962,5 +962,133 @@ Plan kartla CUMHUR'a sunuldu; cevap beklenirken önerilen seçenekle ("Onayla") 
 
 ### Bakım ve İSG bağlantısı
 
-Üretim panosundaki tank kartında `downtime` alanı şimdilik boş. Bakım ve İSG PR'ı main'e
-girince ikinci birleşen PR bu alanı duruş okuma fonksiyonuna bağlar (duruştaki tank "Duruşta").
+Bakım ve İSG PR'ı (#17) ikinci birleştiği için bağlantıyı o yaptı. Üretim panosunda açık duruştaki
+tankın kartı duruş nedeni ve başlangıcını kırmızıyla gösterir (`downtime: {reason, reason_display,
+started_at}`). Yönetim panosuna iki kutu eklendi: **Bakım** (açık iş emri, süresi geçen plan, açık
+duruş, son 7 günde duruş süresi; `maintenance` anahtarı) ve **İSG olayları** (son 30 gün, yaralanmalı
+ve açık olay; `hse` anahtarı).
+
+## 2026-10-16 — Bakım (Faz 4, Adım 4.4)
+
+Plan: `/mnt/project-files/faz4-maintenance-hse/plan.md` (karar kartıyla onaya sunuldu). Kararlar:
+
+- **Karar D-14 "İstisnalı"** (CUMHUR kararı): tankta şarj başlarken tankın son tamamlanan şarjı başka bir
+  dökme üründense ve o şarjın bitişinden sonra tamamlanmış bir temizlik iş emri yoksa şarj başlamaz
+  (`cleaning_required`). Laboratuvar **temizliksiz geçiş** çiftlerini tanımlar (`ChangeoverRule`, yönlü:
+  önceki ürün → sonraki ürün). Aynı ürün art arda temizliksiz geçer; tankta hiç şarj yoksa kural uygulanmaz.
+  Temizlik kaydı tek adımda tamamlanan `CLEANING` türü iş emridir ("Temizlik kaydı gir", görev açmaz).
+- **Kalibrasyon** (onaylı Faz 4 planı): terazinin kalibrasyon planının sıradaki tarihine ayarlardaki gün
+  (varsayılan **7**) ya da daha az kaldıysa tartım ekranı sarı uyarı gösterir; tarih geçmişse tartım reddedilir
+  (`calibration_overdue`). Tartım kaydına kullanılan terazi yazılır (`BatchConsumption.scale`). Aktif terazi
+  tanımlıysa su (D-1, sayaçtan) dışındaki tartımda terazi zorunludur (`scale_required`); terazi tanımlı
+  değilse tartım eskisi gibi terazisiz yapılır. "Uygun değil" sonuçlu kalibrasyon teraziye kalibrasyon
+  duruşu açar ve planı ileri atmaz. Kalibrasyon planı olmayan terazi engellenmez ("Kalibrasyon planı yok").
+- **Duruş**: açık duruştaki (bitişi girilmemiş) ekipman üretim ya da dolum emrine atanamaz, emir onaylanamaz,
+  şarj / dolum partisi başlatılamaz, teraziyle tartım yapılamaz (`equipment_down`). Ekipman başına tek açık
+  duruş. Arıza bildirimi her rola açıktır; onarım iş emri açar ve isteğe bağlı olarak arıza duruşu başlatır;
+  iş emri tamamlanınca bağlı açık duruş kendiliğinden kapanır.
+- **Bakım planı**: periyot gün **ya da** çalışma sayısıdır (tankta tamamlanan şarj, dolum hattında tamamlanan
+  dolum partisi; son yapılmadan bu yana). Kalibrasyon planı yalnızca terazide ve gün bazlıdır. Günlük 07:00
+  kontrolünde sıradaki tarihine ayarlardaki gün (varsayılan **7**) kalan ya da çalışma sayısına ulaşan ve açık
+  iş emri olmayan plan için `BK-` iş emri açılır; termini geçen planlar yönetime tek bildirimle gider.
+  İş emri tamamlanınca gün bazlı plan tamamlanma günü + periyoda ilerler.
+- **Roller** (karar kartında önerilen "mevcut roller"): bakım ve temizlik **uretim**, dolum hattı **dolum**,
+  kalibrasyon **laboratuvar** (sorumlu rol ekipman türünden önerilir, planda değiştirilebilir). İş emrini
+  sorumlu rol ya da yönetim yürütür. Planları uretim, dolum, laboratuvar ve yönetim yönetir; duruşu bu
+  roller ve planlama girer; temizliksiz geçişleri laboratuvar tanımlar; ayarları yönetim değiştirir.
+- **Yedek parça**: stoklu parça serbest lottan yeni `ISSUE_MAINTENANCE` ("Bakım sarfı") hareketiyle düşülür
+  (rezerve stok ve negatif stok kuralları geçerli); stoksuz parça açıklama ve miktardır. Stoktan parça
+  düşülmüş iş emri iptal edilemez.
+- **İş emri durumları**: `OPEN → IN_PROGRESS → COMPLETED`, `OPEN → COMPLETED` (tek adımda kayıt) ve
+  `CANCELLED` (neden zorunlu). Tamamlamada yapılan iş zorunlu, kontrol listesinin tüm maddeleri işaretli
+  olmalı; kalibrasyonda sonuç (uygun / uygun değil) zorunlu.
+
+### Ekipman kancası (masterdata → maintenance)
+
+Üretim ve dolum bakımı import etmez. `masterdata.services.register_equipment_guard(fn)` ile kaydedilen
+fonksiyonlar `masterdata.services.check_equipment(equipment, use, **context)` içinde çağrılır; engel için
+`BusinessRuleError` fırlatır, uyarıları liste olarak döner. Kullanım yerleri: üretim emri açma/güncelleme/
+onay ve dolum emri açma/onay (`use="assign"`), şarj ve dolum partisi başlatma (`"start"`, `product`
+ile), tartım (`"weigh"`, terazi).
+
+### Stok hareketi kancası (inventory → hse)
+
+`inventory.services.register_movement_hook(fn)`: `post_movement` her hareketi yazdıktan sonra aynı
+transaction içinde `fn(actor, movement)` çağrılır (İSG depolama limiti denetimi bunu kullanır).
+
+### Bakım okuma API'si (raporlama thread'i, Adım 4.3 için)
+
+| Fonksiyon | Döner |
+|---|---|
+| `maintenance.selectors.downtime_summary(date_from, date_to, equipment=None)` | `DowntimeRow` listesi: `equipment_id`, `equipment_code`, `equipment_name`, `reason`, `reason_display`, `count`, `minutes` (aralıkla kırpılır, açık duruş şimdiye kadar) |
+| `maintenance.selectors.open_work_orders()` | Açık ve yapılmakta olan iş emirleri (termine göre queryset) |
+| `maintenance.selectors.due_plans(today=None)` | Vadesi gelmiş aktif planlar: `PlanStatus(plan, next_due_date, runs_done, is_due, is_overdue)` |
+| `maintenance.selectors.calibration_status(today=None)` | Aktif teraziler: `CalibrationStatus(equipment, status OK/DUE_SOON/OVERDUE/NO_PLAN, next_due_date, days_left, is_down)` |
+| `maintenance.selectors.open_downtime(equipment)` | Ekipmanın açık duruşu ya da `None` |
+
+API karşılıkları: `/api/v1/maintenance/downtime-summary/`, `/work-orders/?status=OPEN&status=IN_PROGRESS`,
+`/plans/`, `/calibration/`, `/downtimes/?is_open=true`.
+
+### Bakım olay sözleşmesi (iş akışı tablosuna ek)
+
+| Olay | Payload |
+|---|---|
+| `maintenance_work_order.created`, `.in_progress`, `.completed`, `.cancelled` | belge payload'ı + `equipment_id`, `equipment_code`, `equipment_name`, `title`, `kind`, `kind_display`, `source`, `responsible_role`, `due_date`, `open_task` |
+| `downtime.started`, `downtime.ended` | `equipment_id`, `equipment_code`, `equipment_name`, `reason`, `reason_display`, `started_at`, `ended_at`, `minutes`, `note` |
+| `maintenance.overdue` | `count`, `plans` (`equipment_code`, `title`, `next_due_date`, `runs_done`) |
+
+İş akışı kuralları: `maintenance_work_order_<rol>` (iş emrinin sorumlu rolüne görev; `open_task=False` olan
+tek adımlı temizlik kaydında görev açılmaz; tamamlanınca ya da iptalde kapanır), `equipment_down` (planlama ve
+yönetime uyarı), `equipment_up` (planlamaya bilgi), `maintenance_overdue` (yönetime uyarı).
+
+## 2026-10-16 — İSG ve çevre (Faz 4, Adım 4.5)
+
+Plan: `/mnt/project-files/faz4-maintenance-hse/plan.md`. Kararlar:
+
+- **Tehlike bilgisi**: malzeme kartında GHS piktogramları (sınıf olarak da kullanılır), uyarı kelimesi
+  (Tehlike / Dikkat; piktogram varsa zorunlu) ve H/P/EUH ifadeleri. İfade listesi SEA Türkçe metinleriyle
+  58 kayıtla gelir; yönetim ve laboratuvar ekler, düzeltir, pasife alır. Tehlike bilgisini yönetim ve
+  laboratuvar girer. Kayıt `Material.is_hazardous` bayrağını piktogram olup olmamasına göre günceller; bayrak
+  ana veri formundan elle de işaretlenebilir (tehlike bilgisi girilmeden önce), bilgi kaydedilince ona uyar.
+  Tehlikeli malzemenin lotları stok listesi, lot kartı, tartım ekranında uyarı simgesiyle görünür.
+- **GBF arşivi**: malzeme başına tek geçerli GBF; yeni revizyon öncekini arşive alır, eskisinden eski
+  tarihli revizyon geçerlinin yerine girilemez (`older_revision`), ileri tarihli revizyon ve revizyondan önce
+  biten geçerlilik reddedilir. PDF kayıttan sonra ek olarak yüklenir; dosyasız GBF kaydedilir ama raporda
+  "Dosya yok" görünür. **Eksik/eskimiş GBF raporu** aktif hammaddeleri ve tehlikeli işaretli malzemeleri
+  tarar, sırasıyla: GBF yok, dosya yok, geçerliliği dolmuş, eskimiş (revizyon ayarlardaki aydan, varsayılan
+  36, eski). Excel çıktısı var. GBF'yi yönetim girer; yönetim, depo ve laboratuvar görür.
+- **Depolama limitleri**: lokasyon × tehlike sınıfı için kg limiti (yönetim tanımlar; yönetim ve depo
+  görür). Miktar kg'a çevrilerek (yoğunluk ve dönüşümlerle) toplanır. Piktogramlı bir malzeme limitli bir
+  lokasyona girdiğinde (mal kabul, transfer, iade, üretim çıktısı; her pozitif hareket) işlem commit
+  olduktan sonra limit aşılmışsa depo ve yönetime uyarı bildirimi gider. İşlem engellenmez (planda "uyarı").
+  Lokasyon limit üstündeyken gelen her yeni tehlikeli giriş yeniden uyarır.
+- **Atık kayıtları** (`AT-`, yalnızca yönetim): atık kodu (yıldızlı kod tehlikeli atıktır), tanım, kg,
+  lisanslı firma, teslim tarihi, belge no ve belge eki. İleri tarihli teslim, pasif firma ve teslim gününde
+  lisansı dolmuş firma reddedilir. Hatalı kayıt nedenle iptal edilir.
+- **Olay / kaza kayıtları** (`OL-`): her rol bildirir (ana sayfada düğme); tür, zaman, yer, anlatım,
+  yaralanma, ağırlık. Yönetime inceleme görevi açılır, yaralanma varsa ayrıca uyarı gider. Yönetim inceler
+  (kök neden, düzeltici faaliyet, sorumlu, termin) ve kapatır ya da iptal eder. Yaralanan kişinin
+  mahremiyeti için yönetim dışındaki roller yalnızca kendi bildirdiklerini görür. Durumlar:
+  `OPEN → INVESTIGATING → CLOSED`, açık ya da incelenen olay iptal edilebilir (neden zorunlu).
+
+### İSG okuma API'si (raporlama thread'i, Adım 4.3 için)
+
+| Fonksiyon | Döner |
+|---|---|
+| `hse.selectors.incident_summary(date_from, date_to)` | `IncidentSummary(total, injury_count, open_count, by_type, by_severity)`; satırlar `CountRow(code, label, count)`, tüm seçenekler listelenir; `occurred_at` yerel tarihine göre, iki uç dahil, iptaller hariç; `open_count` aralıktaki açık/incelenen olaylar |
+| `hse.selectors.waste_summary(date_from, date_to)` | `WasteSummaryRow(waste_code, description, is_hazardous, count, quantity_kg)`; `delivered_on`'a göre, iptaller hariç |
+| `hse.selectors.sds_gaps(today=None)` | Sorunlu GBF satırları `SdsStatus(material_id, material_code, material_name, is_hazardous, status MISSING/NO_FILE/EXPIRED/OUTDATED, sds_id, revision_no, revision_date, valid_until, has_file)` |
+| `hse.selectors.storage_utilisation(location=None)` | `StorageUtilisation(limit_id, location_code, location_name, hazard_class, hazard_class_display, limit_kg, quantity_kg, pct, exceeded)`, aktif limitler |
+
+API karşılıkları: `/api/v1/hse/summary/?date_from&date_to` (yönetim), `/sds-gaps/`, `/storage-utilisation/`.
+
+### İSG olay sözleşmesi (iş akışı tablosuna ek)
+
+| Olay | Payload |
+|---|---|
+| `incident.created`, `.investigating`, `.closed`, `.cancelled` | belge payload'ı + `incident_type`, `incident_type_display`, `occurred_at` ("gg.aa.yyyy SS:DD"), `place`, `injury`, `severity` |
+| `waste_record.created`, `.cancelled` | belge payload'ı; `created` ayrıca `waste_code`, `is_hazardous`, `quantity_kg`, `contractor_name` |
+| `hse.storage_limit_exceeded` | `model: "masterdata.location"`, `id`, `repr`, `location_code`, `hazard_class`, `hazard_class_display`, `quantity_kg`, `limit_kg` |
+
+İş akışı kuralları: `incident_review` (yönetime inceleme görevi; kapanınca ya da iptalde kapanır),
+`incident_injury` (yaralanmalı olayda yönetime uyarı), `storage_limit_exceeded` (depo ve yönetime uyarı).

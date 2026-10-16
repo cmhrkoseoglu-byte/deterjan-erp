@@ -168,6 +168,7 @@ class RequirementRowSerializer(serializers.Serializer):
         max_digits=6, decimal_places=2, source="requirement.tolerance_pct"
     )
     is_water = serializers.BooleanField(source="requirement.is_water")
+    is_hazardous = serializers.BooleanField(source="requirement.material.is_hazardous")
     is_picked = serializers.BooleanField(source="requirement.is_picked")
     lot = serializers.IntegerField(source="requirement.lot_id", allow_null=True)
     lot_no = serializers.CharField(source="requirement.lot.lot_no", default=None)
@@ -331,6 +332,7 @@ class BatchConsumptionSerializer(serializers.ModelSerializer):
     lot_no = serializers.CharField(source="lot.lot_no", read_only=True)
     location_code = serializers.CharField(source="location.code", read_only=True)
     weighed_by_name = UserNameField(source="weighed_by")
+    scale_code = serializers.CharField(source="scale.code", read_only=True, default=None)
 
     class Meta:
         model = BatchConsumption
@@ -349,6 +351,8 @@ class BatchConsumptionSerializer(serializers.ModelSerializer):
             "deviation_note",
             "weighed_by_name",
             "weighed_at",
+            "scale",
+            "scale_code",
         ]
         read_only_fields = fields
 
@@ -445,6 +449,14 @@ class LotInputSerializer(serializers.Serializer):
         if not attrs.get("lot") and not attrs.get("lot_no", "").strip():
             raise serializers.ValidationError({"lot_no": ["Lot okutulmalı ya da seçilmelidir."]})
         return attrs
+
+
+class ConsumeSerializer(LotInputSerializer):
+    scale = serializers.PrimaryKeyRelatedField(
+        queryset=Equipment.objects.filter(equipment_type=Equipment.Type.SCALE),
+        required=False,
+        allow_null=True,
+    )
 
 
 class PickCreateSerializer(LotInputSerializer):

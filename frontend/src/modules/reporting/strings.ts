@@ -9,6 +9,14 @@ export const rt = {
   loadedIn: (seconds: string) => `${seconds} sn'de yüklendi`,
   // Yönetim panosu
   production: "Üretim",
+  maintenance: "Bakım",
+  maintenanceDetail: (overdue: number, downtimes: number) =>
+    `Süresi geçen plan: ${overdue} · Açık duruş: ${downtimes}`,
+  openWorkOrders: (count: number) => `${count} açık iş emri`,
+  downtimeHours: (days: number, minutes: string) => `Son ${days} günde duruş: ${minutes}`,
+  incidents: (days: number) => `İSG olayları (son ${days} gün)`,
+  incidentDetail: (injuries: number, open: number) => `Yaralanmalı: ${injuries} · Açık: ${open}`,
+  tankDown: (reason: string, since: string) => `Duruşta: ${reason}, ${since} itibarıyla`,
   today: "Bugün",
   thisWeek: "Bu hafta",
   bulkOutput: "Dökme (şarj)",

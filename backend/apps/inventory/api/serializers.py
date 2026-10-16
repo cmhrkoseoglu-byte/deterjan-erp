@@ -58,6 +58,8 @@ class LotSerializer(serializers.ModelSerializer):
     material_name = serializers.CharField(source="material.name", read_only=True)
     material_type = serializers.CharField(source="material.material_type", read_only=True)
     material_gtin = serializers.CharField(source="material.gtin", read_only=True)
+    # Faz 4 (İSG): tehlikeli madde lotunda arayüz uyarı simgesi gösterir.
+    is_hazardous = serializers.BooleanField(source="material.is_hazardous", read_only=True)
     unit = serializers.CharField(source="material.base_unit.code", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     source_display = serializers.CharField(source="get_source_display", read_only=True)
@@ -79,6 +81,7 @@ class LotSerializer(serializers.ModelSerializer):
             "material_name",
             "material_type",
             "material_gtin",
+            "is_hazardous",
             "unit",
             "status",
             "status_display",
@@ -247,6 +250,7 @@ class StockBalanceSerializer(serializers.ModelSerializer):
     material_code = serializers.CharField(source="material.code", read_only=True)
     material_name = serializers.CharField(source="material.name", read_only=True)
     material_type = serializers.CharField(source="material.material_type", read_only=True)
+    is_hazardous = serializers.BooleanField(source="material.is_hazardous", read_only=True)
     unit = serializers.CharField(source="material.base_unit.code", read_only=True)
     lot_no = serializers.CharField(source="lot.lot_no", read_only=True)
     lot_status = serializers.CharField(source="lot.status", read_only=True)
@@ -272,6 +276,7 @@ class StockBalanceSerializer(serializers.ModelSerializer):
             "material_code",
             "material_name",
             "material_type",
+            "is_hazardous",
             "lot",
             "lot_no",
             "lot_status",
@@ -570,6 +575,7 @@ class ScanLotSerializer(serializers.ModelSerializer):
     material_code = serializers.CharField(source="material.code", read_only=True)
     material_name = serializers.CharField(source="material.name", read_only=True)
     material_type = serializers.CharField(source="material.material_type", read_only=True)
+    is_hazardous = serializers.BooleanField(source="material.is_hazardous", read_only=True)
     unit = serializers.CharField(source="material.base_unit.code", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     is_expired = serializers.SerializerMethodField()
@@ -583,6 +589,7 @@ class ScanLotSerializer(serializers.ModelSerializer):
             "material_code",
             "material_name",
             "material_type",
+            "is_hazardous",
             "unit",
             "status",
             "status_display",

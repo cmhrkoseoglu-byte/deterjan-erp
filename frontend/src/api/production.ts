@@ -164,6 +164,7 @@ export interface BatchLine {
   unit: string;
   tolerance_pct: string;
   is_water: boolean;
+  is_hazardous?: boolean;
   is_picked: boolean;
   lot: number | null;
   lot_no: string | null;
@@ -190,6 +191,8 @@ export interface BatchConsumption {
   deviation_note: string;
   weighed_by_name: string | null;
   weighed_at: string;
+  scale: number | null;
+  scale_code: string | null;
 }
 
 export interface ProductionBatchDetail extends ProductionBatch {
@@ -220,6 +223,8 @@ export interface LotInput {
   note?: string;
   /** Hazırlamada lotun alınacağı lokasyon (öneriden seçilince). */
   from_location?: number | null;
+  /** Tartımda kullanılan terazi (Faz 4; su satırında boş). */
+  scale?: number | null;
 }
 
 function clean(params: ListParams): ListParams {
@@ -332,6 +337,43 @@ export async function finishBatch(
 export async function cancelBatch(batchId: number, reason: string): Promise<ProductionBatchDetail> {
   const { data } = await api.post<ProductionBatchDetail>(`/production/batches/${batchId}/cancel/`, {
     reason,
+  });
+  return data;
+}
+
+// --- Faz 4 bakım kontrolleri (/api/v1/maintenance/*): tartım terazisi ve şarj başlatma ---
+
+export type CalibrationState = "OK" | "DUE_SOON" | "OVERDUE" | "NO_PLAN";
+
+export interface ScaleStatus {
+  equipment: number;
+  equipment_code: string;
+  equipment_name: string;
+  status: CalibrationState;
+  label: string;
+  next_due_date: string | null;
+  days_left: number | null;
+  is_down: boolean;
+}
+
+/** Aktif terazilerin kalibrasyon durumu. Süresi geçen ya da duruştaki teraziyle tartım reddedilir. */
+export async function getScaleStatuses(): Promise<ScaleStatus[]> {
+  const { data } = await api.get<ScaleStatus[]>("/maintenance/calibration/");
+  return data;
+}
+
+export interface TankCheck {
+  required: boolean;
+  previous_product_code: string | null;
+  previous_product_name: string | null;
+  is_down: boolean;
+  downtime_reason: string | null;
+}
+
+/** Tankta bu ürüne geçmeden temizlik gerekiyor mu (Karar D-14), tank duruşta mı. */
+export async function getTankCheck(equipment: number, product: number): Promise<TankCheck> {
+  const { data } = await api.get<TankCheck>("/maintenance/cleaning-check/", {
+    params: { equipment, product },
   });
   return data;
 }

@@ -17,6 +17,10 @@ import { FillingOrderPage } from "./modules/filling/OrderPage";
 import { FillingPrepPage } from "./modules/filling/PrepPage";
 import { RunPage } from "./modules/filling/RunPage";
 import { SpecPage } from "./modules/filling/SpecPage";
+import { HsePage } from "./modules/hse/HsePage";
+import { IncidentPage } from "./modules/hse/IncidentPage";
+import { MaintenancePage } from "./modules/maintenance/MaintenancePage";
+import { WorkOrderPage } from "./modules/maintenance/WorkOrderPage";
 import { MasterDataPage } from "./modules/masterdata/MasterDataPage";
 import { QualityPage } from "./modules/quality/QualityPage";
 import { SamplePage } from "./modules/quality/SamplePage";
@@ -69,6 +73,14 @@ function returnsPage(page: ReactNode) {
 
 function costingPage(page: ReactNode) {
   return <RequireRole roles={menuRoles("costing")}>{page}</RequireRole>;
+}
+
+function maintenancePage(page: ReactNode) {
+  return <RequireRole roles={menuRoles("maintenance")}>{page}</RequireRole>;
+}
+
+function hsePage(page: ReactNode) {
+  return <RequireRole roles={menuRoles("hse")}>{page}</RequireRole>;
 }
 
 function qualityPage(page: ReactNode) {
@@ -148,6 +160,14 @@ const pageRoutes: RouteObject[] = [
   // Maliyet: yalnızca yönetim (ve admin); tutarlar backend'de de yalnızca bu rollere döner.
   { path: "maliyet/lotlar/:lotId", element: costingPage(<LotCostPage />) },
   { path: "maliyet/:tab?", element: costingPage(<CostingPage />) },
+  // Bakım: üretim, dolum, laboratuvar ve yönetim plan ve iş emri açar; iş emrini sorumlu birim
+  // yürütür; planlama duruşları görür ve girer. Arıza bildirimi her rolde (ana sayfa).
+  { path: "bakim/is-emirleri/:workOrderId", element: maintenancePage(<WorkOrderPage />) },
+  { path: "bakim/:tab?", element: maintenancePage(<MaintenancePage />) },
+  // İSG: olay bildirimi herkese; GBF depo ve laboratuvara, depolama limitleri depoya da açık;
+  // atık, olay incelemesi ve ayarlar yönetimde. Sekmeler rolle daralır.
+  { path: "isg/olaylar/:incidentId", element: hsePage(<IncidentPage />) },
+  { path: "isg/:tab?", element: hsePage(<HsePage />) },
   // Panolar ve raporlar: menü herkese açık; panolar ve raporlar rolle daralır (backend listesi).
   { path: "raporlar/:tab?", element: <ReportingPage /> },
 ];
@@ -163,6 +183,8 @@ const IMPLEMENTED = new Set([
   "traceability",
   "costing",
   "purchasing",
+  "maintenance",
+  "hse",
   "reporting",
 ]);
 

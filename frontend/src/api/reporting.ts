@@ -153,6 +153,15 @@ export interface ManagementDashboard {
       max_delay_hours: string | null;
     }[];
   };
+  maintenance: {
+    days: number;
+    open_work_orders: number;
+    due_plans: number;
+    overdue_plans: number;
+    open_downtimes: number;
+    downtime_minutes: number;
+  };
+  hse: { days: number; incidents: number; injuries: number; open_incidents: number };
   stock_value: {
     total: string;
     by_type: { material_type: string; value: string }[];
@@ -230,7 +239,7 @@ export interface TankStatus {
     unit: string;
     lot_status: string;
   }[];
-  downtime: { reason: string; started_at: string } | null;
+  downtime: { reason: string; reason_display: string; started_at: string } | null;
 }
 
 export interface ProductionDashboard {

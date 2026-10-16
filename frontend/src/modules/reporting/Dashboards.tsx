@@ -22,7 +22,8 @@ import type {
   StatusCount,
   WarehouseDashboard,
 } from "../../api/reporting";
-import { formatDate, formatMoney, formatNumber } from "../../i18n/format";
+import { formatDate, formatDateTime, formatMoney, formatNumber } from "../../i18n/format";
+import { formatMinutes } from "../maintenance/strings";
 import { RECORD_ROUTES } from "../../workflow/recordLinks";
 import { rt } from "./strings";
 
@@ -194,6 +195,20 @@ export function ManagementView({ data }: { data: ManagementDashboard }) {
           label={rt.overdueTasks}
           value={data.tasks.overdue_total}
           color={data.tasks.overdue_total ? "red" : undefined}
+        />
+        <Stat
+          label={rt.maintenance}
+          value={rt.openWorkOrders(data.maintenance.open_work_orders)}
+          detail={`${rt.maintenanceDetail(data.maintenance.overdue_plans, data.maintenance.open_downtimes)} · ${rt.downtimeHours(data.maintenance.days, formatMinutes(data.maintenance.downtime_minutes))}`}
+          color={
+            data.maintenance.overdue_plans || data.maintenance.open_downtimes ? "orange" : undefined
+          }
+        />
+        <Stat
+          label={rt.incidents(data.hse.days)}
+          value={data.hse.incidents}
+          detail={rt.incidentDetail(data.hse.injuries, data.hse.open_incidents)}
+          color={data.hse.injuries ? "red" : undefined}
         />
         {data.stock_value && (
           <Stat
@@ -423,6 +438,14 @@ export function ProductionView({ data }: { data: ProductionDashboard }) {
                   </Group>
                   <Progress value={fill} />
                 </Stack>
+              )}
+              {tank.downtime && (
+                <Text size="sm" mt="xs" c="red">
+                  {rt.tankDown(
+                    tank.downtime.reason_display,
+                    formatDateTime(tank.downtime.started_at),
+                  )}
+                </Text>
               )}
               {tank.batch && (
                 <Text size="sm" mt="xs">

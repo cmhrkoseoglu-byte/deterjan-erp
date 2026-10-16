@@ -291,12 +291,12 @@ class ProductionBatchViewSet(
         )
         return self._respond(batch, status.HTTP_201_CREATED)
 
-    @extend_schema(request=s.LotInputSerializer, responses=s.ProductionBatchDetailSerializer)
+    @extend_schema(request=s.ConsumeSerializer, responses=s.ProductionBatchDetailSerializer)
     @action(detail=True, methods=["post"])
     def consume(self, request: Request, pk: str | None = None) -> Response:
         """Tartım kaydı: lot okut, gerçek miktar (tolerans dışıysa not zorunlu)."""
         batch = self.get_object()
-        body = s.LotInputSerializer(data=request.data)
+        body = s.ConsumeSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         data = body.validated_data
         requirement = _requirement(batch.order_id, data["requirement"])
@@ -307,6 +307,7 @@ class ProductionBatchViewSet(
             resolve_lot(requirement, data),
             data["quantity"],
             data["note"],
+            scale=data.get("scale"),
         )
         return self._respond(batch)
 

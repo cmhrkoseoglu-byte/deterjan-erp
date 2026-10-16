@@ -17,8 +17,11 @@ from apps.core.exceptions import BusinessRuleError
 from apps.core.roles import ROLE_LABELS
 from apps.costing import selectors as costing
 from apps.filling.models import FillingOrder, FillingRun, ScrapRecord
+from apps.hse import selectors as hse
 from apps.inventory import selectors as inventory
 from apps.inventory.models import GoodsReceipt, StockBalance
+from apps.maintenance import selectors as maintenance
+from apps.maintenance.models import Downtime
 from apps.masterdata.models import Equipment
 from apps.masterdata.services import convert_quantity
 from apps.production.models import ProductionBatch, ProductionOrder
@@ -218,6 +221,31 @@ def overdue_tasks() -> dict[str, Any]:
     return {"overdue_total": sum(r["overdue"] for r in items), "by_role": items}
 
 
+def maintenance_status(today: date, days: int = 7) -> dict[str, Any]:
+    """Bakım özeti: açık iş emri, vadesi gelen plan, açık duruş, son günlerdeki duruş süresi."""
+    plans = maintenance.due_plans(today)
+    rows = maintenance.downtime_summary(today - timedelta(days=days - 1), today)
+    return {
+        "days": days,
+        "open_work_orders": maintenance.open_work_orders().count(),
+        "due_plans": len(plans),
+        "overdue_plans": sum(1 for p in plans if p.is_overdue),
+        "open_downtimes": Downtime.objects.filter(ended_at__isnull=True).count(),
+        "downtime_minutes": sum(r.minutes for r in rows),
+    }
+
+
+def hse_status(today: date, days: int = 30) -> dict[str, Any]:
+    """İSG özeti: son günlerdeki olaylar ve yaralanmalı olaylar, açık olaylar."""
+    summary = hse.incident_summary(today - timedelta(days=days - 1), today)
+    return {
+        "days": days,
+        "incidents": summary.total,
+        "injuries": summary.injury_count,
+        "open_incidents": summary.open_count,
+    }
+
+
 def management_dashboard(*, show_costs: bool, today: date | None = None) -> dict[str, Any]:
     """Yönetim panosu."""
     today = today or timezone.localdate()
@@ -238,6 +266,8 @@ def management_dashboard(*, show_costs: bool, today: date | None = None) -> dict
         "critical_stock": critical_stock(),
         "expiring_lots": expiring_lots(today),
         "tasks": overdue_tasks(),
+        "maintenance": maintenance_status(today),
+        "hse": hse_status(today),
         "stock_value": None,
     }
     if show_costs:
@@ -413,6 +443,10 @@ def production_dashboard(*, today: date | None = None) -> dict[str, Any]:
             status=ProductionBatch.Status.IN_PROGRESS, equipment__in=tanks
         ).select_related("order__product")
     }
+    downtimes = {
+        d.equipment_id: d
+        for d in Downtime.objects.filter(ended_at__isnull=True, equipment__in=tanks)
+    }
     stock: dict[int, list[StockBalance]] = defaultdict(list)
     for b in StockBalance.objects.filter(
         quantity__gt=0, location__in=[t.location_id for t in tanks if t.location_id]
@@ -461,8 +495,13 @@ def production_dashboard(*, today: date | None = None) -> dict[str, Any]:
                     }
                     for b in contents
                 ],
-                # Bakım ve İSG (4.4) duruş bilgisi o PR main'e girince bağlanır.
-                "downtime": None,
+                "downtime": {
+                    "reason": downtime.reason,
+                    "reason_display": downtime.get_reason_display(),
+                    "started_at": downtime.started_at,
+                }
+                if (downtime := downtimes.get(tank.pk))
+                else None,
             }
         )
     orders = ProductionOrder.objects.filter(

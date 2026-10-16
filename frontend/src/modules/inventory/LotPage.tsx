@@ -1,3 +1,4 @@
+import { HazardIcon } from "../../components/hazard/HazardIcon";
 import {
   Alert,
   Anchor,
@@ -109,6 +110,7 @@ export function LotPage() {
           <Group justify="space-between" align="flex-start">
             <Group>
               <Title order={2}>{data.lot_no}</Title>
+              {data.is_hazardous && <HazardIcon size={24} />}
               <LotStatusBadge status={data.status} />
               {data.is_expired && (
                 <Badge color="red" variant="filled">

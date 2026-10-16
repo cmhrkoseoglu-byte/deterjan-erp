@@ -23,6 +23,10 @@ export const RECORD_ROUTES: Record<string, (id: number) => string> = {
   "purchasing.purchaseorder": (id) => `/satin-alma/siparisler/${id}`,
   "purchasing.purchaserequest": () => "/satin-alma/talepler",
   "sales.shipment": (id) => `/sevkiyat/sevkiyatlar/${id}`,
+  "maintenance.maintenanceworkorder": (id) => `/bakim/is-emirleri/${id}`,
+  "hse.incident": (id) => `/isg/olaylar/${id}`,
+  "hse.wasterecord": () => "/isg/atik",
+  "hse.safetydatasheet": () => "/isg/gbf",
   "reporting.reportjob": () => "/raporlar/indirmeler",
 };
 

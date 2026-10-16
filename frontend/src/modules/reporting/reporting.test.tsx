@@ -49,6 +49,15 @@ function management(extra: Partial<ManagementDashboard> = {}): ManagementDashboa
       overdue_total: 4,
       by_role: [{ role: "depo", label: "Depo", open: 7, overdue: 4, max_delay_hours: "12.00" }],
     },
+    maintenance: {
+      days: 7,
+      open_work_orders: 2,
+      due_plans: 1,
+      overdue_plans: 1,
+      open_downtimes: 0,
+      downtime_minutes: 200,
+    },
+    hse: { days: 30, incidents: 1, injuries: 0, open_incidents: 1 },
     stock_value: null,
     ...extra,
   };
@@ -128,6 +137,8 @@ describe("panolar", () => {
     expect(screen.getByText("2 lot")).toBeInTheDocument();
     expect(screen.getByText("%2,50")).toBeInTheDocument();
     expect(screen.getByText("LAS — LAS %96")).toBeInTheDocument();
+    expect(screen.getByText("2 açık iş emri")).toBeInTheDocument();
+    expect(screen.getByText("İSG olayları (son 30 gün)")).toBeInTheDocument();
     // Stok değeri yalnızca yönetime döner; planlamada kutu yok.
     expect(screen.queryByText("Stok değeri")).not.toBeInTheDocument();
   });

@@ -250,6 +250,8 @@ def _prepare_order(order: ProductionOrder) -> None:
                 f"{order.product.code} üretiyor.",
             )
     _validate_equipment(order.equipment)
+    # Faz 4: açık duruştaki tank emre atanamaz (bakım kancası).
+    masterdata.check_equipment(order.equipment, masterdata.EQUIPMENT_ASSIGN)
     if order.production_location_id is None:
         location = default_production_location(order.equipment)
         if location is None:
@@ -695,6 +697,8 @@ def start_batch(
         raise BusinessRuleError(
             "equipment_busy", f"{equipment.code} tankında devam eden bir şarj var."
         )
+    # Faz 4 (bakım kancası): açık duruş, ürün değişimi temizliği (Karar D-14).
+    masterdata.check_equipment(equipment, masterdata.EQUIPMENT_START, product=order.product)
     remaining = remaining_quantity(order)
     if remaining <= 0:
         raise BusinessRuleError(
@@ -811,6 +815,23 @@ def _publish_deviation(
     )
 
 
+def _weighing_scale(
+    requirement: ProductionRequirement, scale: Equipment | None
+) -> Equipment | None:
+    """Tartımın terazisini doğrular. Su (D-1) sayaçtan okunur, terazi alınmaz."""
+    if requirement.is_water:
+        return None
+    if scale is None:
+        if Equipment.objects.filter(equipment_type=Equipment.Type.SCALE, is_active=True).exists():
+            raise BusinessRuleError("scale_required", "Tartımda kullanılan terazi seçilmelidir.")
+        return None
+    scale = Equipment.objects.get(pk=scale.pk)
+    if scale.equipment_type != Equipment.Type.SCALE or not scale.is_active:
+        raise BusinessRuleError("invalid_scale", f"{scale.code} aktif bir terazi değil.")
+    masterdata.check_equipment(scale, masterdata.EQUIPMENT_WEIGH)
+    return scale
+
+
 @transaction.atomic
 def record_consumption(
     actor: User | None,
@@ -819,6 +840,7 @@ def record_consumption(
     lot: Lot,
     actual_quantity: Decimal,
     note: str = "",
+    scale: Equipment | None = None,
 ) -> BatchConsumption:
     """Tartım kaydı (rol: uretim): girdi lottan `ISSUE_PRODUCTION` hareketi ve girdi lot → çıktı
     lot soy ağacı bağı yazar.
@@ -827,6 +849,9 @@ def record_consumption(
     üretim lokasyonundan tüketilir. Negatif stoka düşürecek tartım reddedilir. Bir satır birden
     çok lottan tartılabilir; satırın toplamı toleransın üstüne çıkarsa sapma notu zorunludur ve
     `production.deviation` olayı yayınlanır.
+
+    Faz 4: aktif terazi tanımlıysa su dışındaki tartımda terazi seçilmelidir (`scale_required`);
+    kalibrasyonu geçmiş ya da duruştaki terazi bakım kancasıyla reddedilir.
     """
     _require_role(actor, PRODUCTION_ROLES, "Tartımı yalnızca üretim kaydeder.")
     actor = _actor(actor)
@@ -854,6 +879,7 @@ def record_consumption(
     actual_quantity = quantize(actual_quantity)
     if actual_quantity <= 0:
         raise BusinessRuleError("invalid_quantity", "Tartılan miktar sıfırdan büyük olmalıdır.")
+    scale = _weighing_scale(requirement, scale)
     note = note.strip()
     planned = batch_line_quantity(requirement, batch)
     cumulative = consumed_quantity(batch, requirement) + actual_quantity
@@ -888,6 +914,7 @@ def record_consumption(
             actual_quantity=actual_quantity,
             weighed_by=actor,
             weighed_at=timezone.now(),
+            scale=scale,
             deviation_pct=pct,
             deviation_note=note,
             movement=movement,

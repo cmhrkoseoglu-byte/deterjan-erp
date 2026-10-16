@@ -126,3 +126,33 @@ def test_lab_queue_and_tank_in_batch(db, staff, commit):
     assert lab["summary"]["sample_count"] == 1
     assert lab["queue"][0]["lot_no"] == lot.lot_no
     assert dashboards.qc_pending()["lot_count"] == 1
+
+
+def test_dashboards_show_maintenance_and_hse(db, make_user):
+    from apps.core.roles import URETIM
+    from apps.hse import services as hse
+    from apps.hse.models import Incident
+    from apps.maintenance import services as maintenance
+    from apps.masterdata.models import Equipment
+    from apps.masterdata.tests.factories import EquipmentFactory
+
+    operator = make_user(URETIM)
+    tank = EquipmentFactory.create(equipment_type=Equipment.Type.MIXING_TANK)
+    maintenance.report_breakdown(operator, tank, "Karıştırıcı arızalı")
+    hse.report_incident(
+        operator,
+        {
+            "incident_type": Incident.Type.WORK_ACCIDENT,
+            "occurred_at": timezone.now() - timedelta(hours=1),
+            "place": "Tank başı",
+            "description": "Kayma",
+            "injury": True,
+            "injured_person": "Operatör",
+        },
+    )
+    [row] = [t for t in dashboards.production_dashboard()["tanks"] if t["id"] == tank.pk]
+    assert row["downtime"]["reason"] == "BREAKDOWN"
+    data = dashboards.management_dashboard(show_costs=False)
+    assert data["maintenance"]["open_work_orders"] == 1
+    assert data["maintenance"]["open_downtimes"] == 1
+    assert data["hse"] == {"days": 30, "incidents": 1, "injuries": 1, "open_incidents": 1}
