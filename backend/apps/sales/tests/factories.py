@@ -8,7 +8,7 @@ from apps.core.models import User
 from apps.inventory.models import Lot
 from apps.inventory.tests.factories import stocked_lot, storage_location
 from apps.masterdata.models import Location, Material, MaterialUnitConversion
-from apps.masterdata.tests.factories import CustomerFactory, MaterialFactory, unit
+from apps.masterdata.tests.factories import CustomerFactory, LocationFactory, MaterialFactory, unit
 from apps.sales import services
 from apps.sales.models import SalesOrder
 
@@ -66,3 +66,16 @@ def draft_order(
             for product, quantity, code in lines
         ],
     )
+
+
+def shipping_location(**kwargs: Any) -> Location:
+    """Sevk alanı (`SHIPPING` türü lokasyon)."""
+    return LocationFactory.create(location_type=Location.Type.SHIPPING, **kwargs)
+
+
+def confirmed_order(
+    actor: User, lines: list[tuple[Material, str, str]], **kwargs: Any
+) -> SalesOrder:
+    """Onaylı (FEFO ile rezerve edilmiş) sipariş."""
+    order = draft_order(actor, lines, **kwargs)
+    return services.confirm_order(actor, order)

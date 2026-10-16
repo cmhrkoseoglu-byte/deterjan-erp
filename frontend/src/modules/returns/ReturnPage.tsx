@@ -33,6 +33,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import { listLots } from "../../api/inventory";
 import { listRecords, type Material } from "../../api/masterdata";
+import { listShipments } from "../../api/sales";
 import {
   cancelReturn,
   getReturn,
@@ -47,6 +48,7 @@ import {
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
 import { formatDate, formatDateTime } from "../../i18n/format";
+import { MENU } from "../../layout/menu";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
@@ -57,6 +59,7 @@ import { lotPath, today } from "../inventory/config";
 import { idOrNull, useLocations } from "../inventory/options";
 import { Info, LotStatusBadge, Qty } from "../inventory/shared";
 import { samplePath } from "../quality/config";
+import { shipmentPath } from "../sales/config";
 import {
   DISPOSITION_COLOR,
   RETURN_EDIT_ROLES,
@@ -79,11 +82,15 @@ interface LineDraft {
 
 interface HeaderDraft {
   customer: string | null;
+  shipment: string | null;
   return_date: string;
   reason: string;
   quarantine_location: string | null;
   note: string;
 }
+
+/** Sevkiyat detayını açabilen roller: sevkiyat menüsünün rolleri (routes.tsx `salesPage`). */
+const SHIPMENT_VIEW_ROLES = MENU.find((item) => item.key === "sales")!.roles;
 
 let lineSeq = 0;
 const newKey = () => `n${++lineSeq}`;
@@ -98,6 +105,7 @@ function toDraft(doc: CustomerReturnDetail | null): { header: HeaderDraft; lines
     return {
       header: {
         customer: null,
+        shipment: null,
         return_date: today(),
         reason: "",
         quarantine_location: null,
@@ -109,6 +117,7 @@ function toDraft(doc: CustomerReturnDetail | null): { header: HeaderDraft; lines
   return {
     header: {
       customer: str(doc.customer),
+      shipment: str(doc.shipment),
       return_date: doc.return_date,
       reason: doc.reason,
       quarantine_location: str(doc.quarantine_location),
@@ -128,6 +137,7 @@ function toDraft(doc: CustomerReturnDetail | null): { header: HeaderDraft; lines
 function toPayload(header: HeaderDraft, lines: LineDraft[]): ReturnPayload {
   return {
     customer: idOrNull(header.customer),
+    shipment: idOrNull(header.shipment),
     return_date: header.return_date,
     reason: header.reason.trim(),
     quarantine_location: idOrNull(header.quarantine_location),
@@ -156,6 +166,22 @@ function useFinishedProducts() {
         page_size: 500,
       });
       return page.results;
+    },
+  });
+}
+
+/** Müşterinin sevk edilmiş sevkiyatları (iade bağlantısı için, en yeni önce). */
+function useCustomerShipments(customer: string | null) {
+  return useQuery({
+    queryKey: ["options", "dispatched-shipments", customer],
+    enabled: Boolean(customer),
+    staleTime: 30_000,
+    queryFn: async () => {
+      const page = await listShipments({ customer: customer!, page_size: 100 }, ["DISPATCHED"]);
+      return page.results.map((row) => ({
+        value: String(row.id),
+        label: `${row.number} · ${row.order_number} · ${formatDate(row.planned_date)}`,
+      }));
     },
   });
 }
@@ -305,6 +331,7 @@ function ReturnForm({ doc }: { doc: CustomerReturnDetail | null }) {
   const canReceive = hasAnyRole(user, RETURN_RECEIVE_ROLES) && doc?.status === "DRAFT";
   const canCancel = hasAnyRole(user, RETURN_EDIT_ROLES) && doc?.status === "DRAFT";
   const canScrap = hasAnyRole(user, RETURN_SCRAP_ROLES) && doc?.status === "RECEIVED";
+  const canOpenShipment = hasAnyRole(user, SHIPMENT_VIEW_ROLES);
   const [{ header, lines }, setDraft] = useState(() => toDraft(doc));
   const [error, setError] = useState("");
   const [confirmReceive, setConfirmReceive] = useState(false);
@@ -312,6 +339,7 @@ function ReturnForm({ doc }: { doc: CustomerReturnDetail | null }) {
   const [scrapLine, setScrapLine] = useState<ReturnLine | null>(null);
   const customers = useOptions({ endpoint: "customers" });
   const units = useOptions({ endpoint: "units" });
+  const shipments = useCustomerShipments(header.customer);
   const products = useFinishedProducts();
   const locations = useLocations();
   const quarantineOptions = (locations.data ?? []).filter((row) => row.type === "QUARANTINE");
@@ -419,7 +447,23 @@ function ReturnForm({ doc }: { doc: CustomerReturnDetail | null }) {
               searchable
               data={customers.data ?? []}
               value={header.customer}
-              onChange={(value) => setHeader({ customer: value })}
+              onChange={(value) =>
+                setHeader({
+                  customer: value,
+                  shipment: value === header.customer ? header.shipment : null,
+                })
+              }
+              nothingFoundMessage={rt.notFound}
+            />
+            <Select
+              label={rt.shipment}
+              description={rt.shipmentHint}
+              searchable
+              clearable
+              disabled={!header.customer}
+              data={shipments.data ?? []}
+              value={header.shipment}
+              onChange={(value) => setHeader({ shipment: value })}
               nothingFoundMessage={rt.notFound}
             />
             <TextInput
@@ -461,6 +505,17 @@ function ReturnForm({ doc }: { doc: CustomerReturnDetail | null }) {
               <Info label={rt.customer}>
                 <Text size="sm">{`${doc.customer_code} - ${doc.customer_name}`}</Text>
               </Info>
+              {doc.shipment && (
+                <Info label={rt.shipment}>
+                  {canOpenShipment ? (
+                    <Anchor component={Link} to={shipmentPath(doc.shipment)} size="sm">
+                      {doc.shipment_number}
+                    </Anchor>
+                  ) : (
+                    <Text size="sm">{doc.shipment_number}</Text>
+                  )}
+                </Info>
+              )}
               <Info label={rt.returnDate}>
                 <Text size="sm">{formatDate(doc.return_date)}</Text>
               </Info>

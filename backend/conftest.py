@@ -51,3 +51,53 @@ def isolated_event_subscribers() -> Iterator[None]:
     yield
     events._subscribers.clear()
     events._subscribers.update(saved)
+
+
+class FakePrinter:
+    """Yerelde TCP dinleyen sahte etiket yazıcısı; gelen ham veriyi toplar."""
+
+    def __init__(self) -> None:
+        import socket
+        import threading
+
+        self.received: list[bytes] = []
+        self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server.bind(("127.0.0.1", 0))
+        self._server.listen()
+        self._server.settimeout(5)
+        self.port = self._server.getsockname()[1]
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._running = True
+        self._thread.start()
+
+    def _serve(self) -> None:
+        while self._running:
+            try:
+                conn, _ = self._server.accept()
+            except OSError:
+                return
+            chunks = []
+            with conn:
+                while data := conn.recv(65536):
+                    chunks.append(data)
+            self.received.append(b"".join(chunks))
+
+    def text(self) -> str:
+        import time
+
+        for _ in range(50):
+            if self.received:
+                break
+            time.sleep(0.02)
+        return b"".join(self.received).decode("utf-8")
+
+    def close(self) -> None:
+        self._running = False
+        self._server.close()
+
+
+@pytest.fixture
+def fake_printer() -> Iterator[FakePrinter]:
+    printer = FakePrinter()
+    yield printer
+    printer.close()

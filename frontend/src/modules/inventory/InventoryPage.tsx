@@ -1,10 +1,11 @@
-import { Stack, Tabs, Title } from "@mantine/core";
+import { Group, Stack, Tabs, Title } from "@mantine/core";
 import type { ReactNode } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import type { Role } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
-import { INVENTORY_BASE } from "./config";
+import { ScanInput } from "../../components/scan/ScanInput";
+import { INVENTORY_BASE, lotPath } from "./config";
 import { AdjustmentsTab, LotsTab, ReceiptsTab, StockTab } from "./ListTabs";
 import { it } from "./strings";
 
@@ -45,7 +46,18 @@ export function InventoryPage() {
 
   return (
     <Stack>
-      <Title order={2}>{it.title}</Title>
+      <Group justify="space-between" align="flex-start">
+        <Title order={2}>{it.title}</Title>
+        {/* Lot etiketini (ya da koli / palet barkodunu) okutunca lot detayı açılır. */}
+        <div style={{ width: 360, maxWidth: "100%" }}>
+          <ScanInput
+            expect="lot"
+            size="md"
+            label={it.scanLot}
+            onLot={(lot) => navigate(lotPath(lot.id))}
+          />
+        </div>
+      </Group>
       <Tabs
         value={current.slug}
         onChange={(value) => value && navigate(`${INVENTORY_BASE}/${value}`)}

@@ -475,7 +475,7 @@ Diğer ayrıntılar:
   açık. Menüde "Dolum" artık `depo`'ya da görünür (ambalaj hazırlama sekmesi).
 - **Okutma**: lot numarası ya da lot etiketi içeriği (`LOT:<lot_no>`) kabul edilir. Okutulan lot reçetedeki
   malzemelerden değilse `lot_material_mismatch`; hat başında olmayan ambalaj lotu `lot_not_at_line`.
-  Ortak `ScanInput` bileşeni ve koli etiketi basımı Adım 2.3 ile bağlanır (hangi PR ikinci gelirse).
+  Ortak `ScanInput` bileşeni ve koli etiketi basımı Adım 2.3 PR'ıyla (#9) bağlandı.
 - **Üretim lokasyonu varsayılanı**: `production.default_production_location` dolum hattı başı lokasyonlarını
   atlar (demo verisinde DOLUM-1, URETIM-1'den önce sıralanıyordu).
 - **Mamul spesifikasyonu (D-7)**: `seed_filling_demo` (seed_demo sonunda) mamullere `FINAL` spesifikasyon
@@ -496,6 +496,51 @@ kapanır), `start_filling` (dolum, "Dolumu başlat: {number}", parti başlayınc
 `batch_sample_analysis` görevi mamul numunesi için açılmaz), `filling_bulk_variance` (planlama, yönetim;
 uyarı), `finished_lot_released` (sevkiyat, planlama: "Sevke hazır: {lot}"), `finished_lot_rejected`
 (planlama, dolum), `filling_order_cancelled` (açık görevleri iptal eder, planlamaya bildirim).
+
+## 2026-10-15 — Etiket, barkod ve ekler (Faz 2, Adım 2.3 ve 2.4)
+
+- **Karar D-6 (CUMHUR kararı, "Malzemeye göre")**: mamul koli etiketi, malzemenin GTIN'i varsa GS1-128
+  (01) GTIN-14 + (17) SKT + (10) lot; GTIN yoksa firma içi Code128 `LOT:<lot_no>`. Her ikisinde QR
+  `LOT:<lot_no>`. SSCC palet etiketi, etiket ayarlarına GS1 firma öneki girilince açılır
+  (`sscc_disabled`). GTIN `Material.gtin` alanında (8/12/13/14 hane, kontrol hanesi doğrulanır, boş
+  değilse tekil); hangi kolinin GTIN'li basılacağı yalnızca bu alana bağlıdır.
+- **Karar D-8 (CUMHUR kararı, "Zebra, 100×150 mm")**: tüm etiketler 100 × 150 mm. Çıktılar: ZPL II
+  (varsayılan 203 dpi; yazıcı kaydında 152/203/300/600), tek etiketlik PDF ve A4 PDF (sayfada iki
+  etiket, kesim çizgili). ZPL `^CI28` (UTF-8, Türkçe karakter), GS1 barkodu `^BC` mod D, diğerleri mod
+  A. **ZPL gerçek bir Zebra yazıcıda henüz denenmedi**; sahte TCP yazıcıyla ve içerik denetimiyle test
+  edildi. İlk gerçek yazıcıda "Deneme etiketi" ile hizalama kontrol edilmeli.
+- **Okutma içeriği sözleşmesi** (`inventory.selectors.decode_scan`, `/api/v1/inventory/scan/?code=`):
+  `LOT:<lot_no>` lot, `LOC:<kod>` lokasyon, `MAT:<kod>` malzeme, GS1 (00) palet, (01)/(02) GTIN ile
+  malzeme, (10) varsa lot. AIM öneki (`]C1`) ve GS ayırıcısı tanınır, parantezli yazım da kabul edilir.
+  Öneksiz kod sırayla lot no (büyük/küçük harf duyarsız), lokasyon kodu, malzeme kodu ve GTIN olarak
+  denenir; böylece Faz 1'de basılmış düz lot etiketleri de okunur. Tanınmayan kod `scan_not_found`.
+- **Ortak okutma alanı** (`ScanInput`): okuyucu klavye gibi çalışır (kod + Enter). Beklenen malzeme
+  verilirse başka malzemenin lotunda kırmızı dolu uyarı, alçak uzun ses ve titreşim; doğru lotta kısa
+  ses. Hazırlama ve tartım ekranları artık lotu okutmayla seçer ve odağı miktara taşır; yanlış malzeme
+  sunucuya gitmeden durdurulur, sunucunun reddi (karantina vb.) yine gösterilir. Depo ekranının başlığında
+  "Lot okut" alanı lot detayına götürür.
+- **Yazıcı**: `masterdata.Printer` (kod, ad, IP, port 9100, dpi, lokasyon). Ham ZPL TCP ile gönderilir,
+  zaman aşımı `PRINTER_TIMEOUT_SECONDS` (5 sn); ulaşılamazsa `printer_unreachable`. Her gönderim
+  yazdırılan kaydın denetim günlüğüne "Etiket yazdırıldı" notu düşer. Yazıcı ve etiket ayarlarını
+  yalnızca `admin` yazar; yazdırma ve PDF/ZPL indirme giriş yapmış herkese açık (etiket veri
+  değiştirmez). Palet (SSCC) açma `depo`, `uretim`, `dolum`, `sevkiyat`.
+- **SSCC**: uzantı hanesi + firma öneki + seri + kontrol hanesi = 18 hane; seri `LabelSettings`
+  üzerinde `select_for_update` ile artar, tükenirse `sscc_exhausted`. Palet etiketi
+  (`inventory.PalletLabel`) yalnızca mamul lotu için, reddedilmiş lot için açılmaz.
+- **Ekler (`core.Attachment`)**: GenericFK ile lot, mal kabul, numune ve yoruma bağlanır; bir modül
+  `register_attachment_target("app.model", can_add=...)` ile kayıt türünü açar. İzin verilen uzantılar
+  PDF, resim (JPG/PNG/WEBP/HEIC), Office, CSV/TXT; en çok `ATTACHMENT_MAX_BYTES` (20 MB). Tabletten
+  fotoğraf kamerayla çekilir; 1 MB üstü fotoğraf tarayıcıda 2000 px JPEG'e küçültülür. Dosyalar
+  `MEDIA_ROOT` altında, herkese açık `/media` yok: indirme `/api/v1/attachments/<id>/download/`
+  üzerinden oturumla. Ek silinmez (kural 6), gerekçeyle kaldırılır; kaldırmayı yükleyen ya da admin
+  yapar, kaldırılan eki yalnızca admin görür. Yoruma ek yalnızca yorumun yazarı ekler. Ekleme ve
+  kaldırma, bağlı kaydın denetim günlüğüne yazılır. Üretimde dosyalar `media` volume'ünde
+  (`docker-compose.prod.yml`), nginx yükleme sınırı 25 MB.
+- **Dolum tableti** (Adım 2.2 ile birleştirme): ambalaj hazırlama, bulk tüketimi, ambalaj lotu okutma ve
+  fire lotu `ScanInput` kullanır. Beklenen malzeme: hazırlamada satırın malzemesi, bulkta partinin bulk
+  ürünü, ambalaj okutmada ambalaj reçetesindeki kalemlerden biri (birden çok malzeme kabul edilir).
+  Parti ekranında "Koli etiketi" düğmesi mamul lotunun koli etiketini önce seçili açar; GS1 ya da firma
+  içi olduğu partideki `finished_product_gtin` ile gösterilir.
 
 ## 2026-10-16 — Satış siparişi ve rezervasyon (Faz 3, Adım 3.1)
 
@@ -633,3 +678,108 @@ sonuçlandı: {number}"). Mamul numunesinin `rework_order` kuralı iade numunesi
 - **Yetki**: tüm izlenebilirlik uçları ve ekran `laboratuvar` ve `yonetim` (admin her zaman).
 - **API**: `/api/v1/traceability/lots/<id>/backward/`, `/forward/`, `/api/v1/traceability/recall/?lot=..`
   (1–50 lot), `/recall/xlsx/`, `/recall/pdf/`.
+
+## 2026-10-16 — Sevkiyat (Faz 3, Adım 3.2)
+
+Plan CUMHUR tarafından onaylandı (karar kartı, 2026-10-16). Kararlar ve sözleşmeler:
+
+- **Model `apps/sales` içinde**: `Shipment` (numara `SV-`, Karar D-10 gereği tek sipariş),
+  `ShipmentLine` (planlanan: sipariş satırı + miktar) ve `ShipmentPick` (okutulan: lot, miktar, kaynak
+  ve hedef lokasyon, okutan, zaman, farklı lot gerekçesi, sevkte oluşan `SHIPMENT` hareketi).
+  Spesifikasyondaki `ShipmentLine.lot / picked_by / picked_at` alanları `ShipmentPick`'tedir; bir satır
+  birden çok lottan toplanabilir.
+- **Durumlar**: Planlandı → Toplanıyor → Yüklendi → Sevk edildi, + İptal (sevk edilmeden, gerekçeli).
+  İlk okutma Toplanıyor yapar. "Yükleme tamam" `depo`, "Sevki onayla" `sevkiyat` işidir.
+- **Planlama**: satır başına varsayılan miktar sipariş − sevk edilen − açık sevkiyatlarda planlanandır
+  (`plannable_quantity`); azaltılabilir, aşılamaz (`shipment_exceeds_order`). Bir sipariş birden çok
+  sevkiyatla parça parça gidebilir. Açık sevkiyatı olan sipariş iptal edilemez ve kapatılamaz
+  (`open_shipments`).
+- **Okutma malı sevk alanına taşır**: sevkiyatın sevk alanı (`loading_location`, varsayılan ilk aktif
+  `SHIPPING` lokasyonu; yalnızca Planlandı'da değişir). Okutmada satırın o lottaki rezervasyonu bırakılır
+  (gerekirse kısmen), lot `TRANSFER` ile sevk alanına taşınır ve orada aynı sipariş satırına yeniden
+  rezerve edilir (Adım 3.1 rezervasyon sözleşmesi). Okutma geri alınırsa (Toplanıyor ya da Yüklendi'de,
+  sevkten önce) lot geldiği yere döner ve kullanılabilirse yeniden rezerve edilir; iptalde tüm okutmalar
+  geri döner.
+- **Okutma kuralları**: lot serbest ve SKT'si geçmemiş olmalı (`assert_lot_usable`), müşterinin asgari
+  raf ömrünü karşılamalı (D-11, `shelf_life_error`), satırın kalanını aşamaz (`pick_exceeds_line`).
+  Miktar verilmezse satırın kalanı (lot rezerveyse rezerve miktar kadar) alınır. Satırın başka lotlarda
+  rezervasyonu varken rezervesiz lot ya da rezervesinden fazlası okutulursa gerekçe istenir
+  (`lot_not_reserved`); satır taahhüdünü aşan rezervasyon SKT'si en geç olandan başlayarak bırakılır.
+- **Sevk onayı**: önce sevk alanındaki rezervasyonlar `consume_reservation` ile `CONSUMED`, sonra
+  `post_movement(-miktar, SHIPMENT, kaynak=sevkiyat)` sevk alanından çıkar; sipariş Kısmen sevk edildi /
+  Sevk edildi olur. Plaka ve şoför adı sevk onayında zorunludur (`vehicle_required`). Okutulduktan sonra
+  lot kullanılamaz hale gelirse (bloke, red, karantina) sevk reddedilir (`picked_lot_unusable`,
+  `picked_lot_unreserved`); depo okutmayı geri alır. Yüklendi'de geri alınan okutmada sevkiyat Yüklendi
+  kalır, kalanlar sevk edilir ve eksik miktar yeni sevkiyatla gider; okutma kalmadıysa sevk reddedilir
+  (`nothing_picked`) ve sevkiyat iptal edilir.
+- **Eksik yükleme**: satır eksik toplanmışsa da yüklenebilir; eksik kalan miktar siparişte yeniden
+  planlanabilir görünür. Satırın sevk edilen miktarı `CONSUMED` rezervasyonların toplamıdır ve sevkiyat
+  okutmalarının toplamına eşittir.
+- **İptal sonrası**: sevkiyat iptalinde "Sevkiyat planla" görevi yeniden açılmaz; kalan miktar siparişte
+  planlanabilir görünür.
+- **KVKK**: şoför TC kimlik no (11 hane) API'de yalnızca yazılır, okurken `*******1234` döner; ekranda ve
+  denetim günlüğünde de maskelidir (`Shipment.AUDIT_MASKED_FIELDS`, `core.audit.mask_identifier`). Tam
+  numara yalnızca irsaliye PDF'inde yazılır; irsaliye JSON'unda da maskelidir.
+- **İrsaliye**: `GET /api/v1/sales/shipments/{id}/waybill.pdf` (A4) ve aynı veri `waybill/` (JSON,
+  e-İrsaliye Faz 5 için) yalnızca Yüklendi ve Sevk edildi durumunda (`waybill_not_ready`). Firma bilgileri
+  `.env`'den: `COMPANY_NAME`, `COMPANY_ADDRESS`, `COMPANY_TAX_OFFICE`, `COMPANY_TAX_NO`. Koli sayısı
+  ürünün `KOLI` birim dönüşümünden hesaplanır (artan adet ayrıca yazılır).
+- **İzlenebilirlik**: `traceability.selectors._customers_for` sevk hareketinin kaynağı `sales.shipment`
+  olan satırlara müşteri kodu, adı ve sipariş numarasını doldurur (Adım 3.4 sözleşmesi).
+- **İade bağı**: `CustomerReturn.shipment` (isteğe bağlı). Sevkiyat sevk edilmiş ve aynı müşterinin
+  olmalı (`shipment_not_dispatched`, `shipment_customer_mismatch`); satırdaki lot o sevkiyatta olmalı
+  (`lot_not_in_shipment`) ve o lottan o sevkiyata yapılan iadelerin toplamı sevk edileni aşamaz
+  (`return_exceeds_shipped`). Taslak satırlar kabul anında yeniden kontrol edilir.
+- **Yetki**: planlama, düzenleme, sevk onayı, iptal `sevkiyat`; okutma, geri alma, yükleme `depo`; okuma
+  `sevkiyat`, `yonetim`, `planlama`, `depo`. Müşteriye sevk edilen lotlar `sevkiyat` ve `yonetim`.
+- **Ekranlar**: Sevkiyat menüsünde "Sevkiyatlar" sekmesi ve sevkiyat detayı (satırlar, okutulanlar,
+  yükleme ve sevk onayı, irsaliye, kayıt paneli); sipariş detayında "Sevkiyat planla" ve siparişin
+  sevkiyatları; depoya "Toplama" sekmesi ve toplama tableti (satır başına kalan, rezerve lotlar önce sonra
+  FEFO önerisi, raf ömrü uyarısı, `ScanInput` ile lot okutma, farklı lotta gerekçe, "Yükleme tamam");
+  müşteri kartında sevk edilen lotlar; iade formunda sevkiyat seçimi.
+
+### İnceleme sonrası kurallar (2026-10-16, PR #13)
+
+Kod incelemesinde bulunan hatalar düzeltilirken netleşen kurallar:
+
+- **Sevk alanı yalnızca ara duraktır.** `SHIPPING` lokasyonundaki stok bir sevkiyata okutulmuş maldır:
+  FEFO rezervasyonu, elle rezervasyon (`invalid_reservation_location`), rezerve edilebilir stok listesi,
+  toplama önerisi ve okutmada kaynak lokasyon seçimi karantina ile birlikte sevk alanlarını da dışarıda
+  bırakır (`sales.services.UNRESERVABLE_LOCATION_TYPES`). Birden çok rampa olduğunda bir sevkiyatın
+  okutması başka rampadaki okutulmuş mala dokunmaz. QC serbest bırakmada varsayılan lokasyon da sevk
+  alanı olmaz (iade dönen mamul son girdiği depo yerine döner).
+- **Sevk alanındaki rezervasyon siparişten elle bırakılmaz** (`reservation_on_loading`); okutma geri
+  alınır. Sipariş ekranı bu satırlarda "Bırak" göstermez (rezervasyon `location_type` alanı taşır).
+- **Sevk edilen = okutulan.** Yükleme ve sevk onayı satır + lot başına okutulan toplamı sevk alanındaki
+  rezervasyonla karşılaştırır; sevkte kullanılan (`CONSUMED`) miktar okutulandan az kalırsa işlem geri
+  alınır (`picked_lot_unreserved`).
+- **Okutma eksiği kapatırsa** (rezervesiz stoktan toplanıp siparişte eksik kalmazsa)
+  `sales_order.fully_reserved` yayınlanır; planlamanın eksik görevi kapanır.
+- **Aynı lot no sevkiyatın birden çok ürününde varsa** okutma reddedilir (`ambiguous_lot`); lot listeden
+  seçilir.
+- **İrsaliye** tarihi sevk anının yerel (İstanbul) tarihidir; satırlar farklı birimdeyse toplam miktar
+  yazılmaz, tek birimdeyse birimle yazılır (`total_unit`). Plaka 20, şoför adı ve taşıyıcı 100 karakteri
+  aşamaz (400).
+- **İade sınırı net sevke göre**: ters kayıtla geri alınan sevk hareketi sevk edilmiş sayılmaz (iade
+  kontrolü ve müşteri kartı, izlenebilirlikle aynı). İade kabulünde sevkiyat satırı kilitlenir; aynı
+  sevkiyata eşzamanlı iki kabul birlikte sınırı aşamaz.
+- **Kilit sırası** (eşzamanlı işlemlerde kilitlenme olmasın): sevkiyat → sipariş → lot → bakiye /
+  rezervasyon. Okutma, geri alma, sevk ve iptal bu sırayla kilitler; rezervasyon ve stok hareketi zaten
+  lot → bakiye sırasıyla kilitler. Lot kilidi yalnızca lot satırını kilitler (`select_for_update(of=
+  ("self",))`): rezervasyon, lot durumu değişikliği ve numune açmada malzeme ve ortak birim (ör. ADET)
+  satırları kilitlenmez, farklı ürünlerin lotlarıyla çalışan işlemler birbirini beklemez.
+
+### Sevkiyat olay sözleşmesi (iş akışı tablosuna ek)
+
+| Olay | Payload |
+|---|---|
+| `shipment.planned` | `transition_status` payload'ı + `order {model, id, number}`, `order_number`, `customer_code`, `customer_name`, `vehicle_plate`, `order_fully_planned` |
+| `shipment.picking`, `.loaded`, `.cancelled` | aynı alanlar (`order_fully_planned` hariç) |
+| `shipment.dispatched` | aynı alanlar + `order_created_by_id`, `lots` (`lot_payload` + `quantity`) |
+
+İş akışı kuralları: `plan_shipment` görevi `shipment.planned` ile, sipariş tamamen planlandıysa kapanır;
+`pick_shipment` (depo, "Toplama yap: {number}", yükleme ya da iptalde kapanır); `dispatch_shipment`
+(sevkiyat, "Sevki onayla / irsaliye kes: {number}", sevk ya da iptalde kapanır); `shipment_dispatched`
+(bildirim "Sevk edildi: {number}" siparişi oluşturan kullanıcıya ve `yonetim`e, lot listesiyle);
+`shipment_cancelled` (açık görevleri iptal eder). Bildirim kuralı artık rollerin yanında payload'dan
+kullanıcı da alabilir (`NotifyRule.users`).

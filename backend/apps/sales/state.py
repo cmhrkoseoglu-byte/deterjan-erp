@@ -35,3 +35,30 @@ class SalesOrderStateMachine(StateMachine):
 
 
 sales_order_states = SalesOrderStateMachine()
+
+
+class ShipmentStateMachine(StateMachine):
+    """Sevkiyat (Adım 3.2): PLANNED ─► PICKING ─► LOADED ─► DISPATCHED; sevk edilmeden iptal.
+
+    İlk lot okutulunca PICKING; depo "Yükleme tamam" ile LOADED; sevkiyat "Sevki onayla" ile
+    DISPATCHED (stoktan çıkış). İptalde toplanan lotlar geldikleri yere döner."""
+
+    name = "shipment"
+    initial = "PLANNED"
+    transitions = {
+        "PLANNED": ["PICKING", "CANCELLED"],
+        "PICKING": ["LOADED", "CANCELLED"],
+        "LOADED": ["DISPATCHED", "CANCELLED"],
+        "DISPATCHED": [],
+        "CANCELLED": [],
+    }
+    labels = {
+        "PLANNED": "Planlandı",
+        "PICKING": "Toplanıyor",
+        "LOADED": "Yüklendi",
+        "DISPATCHED": "Sevk edildi",
+        "CANCELLED": "İptal",
+    }
+
+
+shipment_states = ShipmentStateMachine()

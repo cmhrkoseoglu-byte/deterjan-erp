@@ -4,22 +4,28 @@ Ana veriler silinmez (CLAUDE.md §4.6); kullanılmayan kayıt `set_active(..., F
 alınır. Tüm yazma işlemleri `core.services.save_with_audit` ile denetim günlüğüne düşer.
 """
 
+import socket
 from collections.abc import Callable, Mapping
 from decimal import Decimal
 from typing import Any
 
+from django.conf import settings
 from django.db import IntegrityError, models, transaction
 
+from apps.core.audit import log_change
 from apps.core.exceptions import BusinessRuleError
-from apps.core.models import MasterDataModel, User
+from apps.core.labels import gs1_check_digit, is_valid_gtin
+from apps.core.models import AuditLog, MasterDataModel, User
 from apps.core.services import save_with_audit
 from apps.masterdata.fields import normalize_code
 from apps.masterdata.models import (
     Equipment,
+    LabelSettings,
     Location,
     Material,
     MaterialCategory,
     MaterialUnitConversion,
+    Printer,
     UnitOfMeasure,
     Warehouse,
 )
@@ -154,6 +160,13 @@ def _validate_unit(unit: UnitOfMeasure) -> None:
 def _validate_material(material: Material) -> None:
     _require_active(material.base_unit, "birim")
     _require_active(material.category, "kategori")
+    material.gtin = (material.gtin or "").strip()
+    if material.gtin and not is_valid_gtin(material.gtin):
+        raise BusinessRuleError(
+            "invalid_gtin",
+            f"{material.gtin} geçerli bir GTIN değil (8, 12, 13 ya da 14 hane, kontrol hanesi "
+            "doğru olmalı).",
+        )
     if material._state.adding:
         return
     old_base = _db_value(material, "base_unit_id")
@@ -217,12 +230,22 @@ def _validate_equipment(equipment: Equipment) -> None:
         )
 
 
+def _validate_printer(printer: Printer) -> None:
+    _require_active(printer.location, "lokasyon")
+    printer.host = printer.host.strip()
+    if not printer.host or any(char.isspace() for char in printer.host):
+        raise BusinessRuleError(
+            "invalid_host", "Yazıcının IP adresi / ana bilgisayar adı geçersiz."
+        )
+
+
 _VALIDATORS: Mapping[type[models.Model], Callable[[Any], None]] = {
     UnitOfMeasure: _validate_unit,
     Material: _validate_material,
     MaterialUnitConversion: _validate_conversion,
     Location: _validate_location,
     Equipment: _validate_equipment,
+    Printer: _validate_printer,
 }
 
 
@@ -255,7 +278,7 @@ def _validate_activation(instance: MasterDataModel) -> None:
         _require_active(instance.warehouse, "depo")
     elif isinstance(instance, MaterialUnitConversion):
         _require_active(instance.material, "malzeme")
-    elif isinstance(instance, Equipment):
+    elif isinstance(instance, Equipment | Printer):
         _require_active(instance.location, "lokasyon")
 
 
@@ -329,3 +352,98 @@ def set_active[M: MasterDataModel](
         _validate_deactivation(locked)
     locked.is_active = active
     return save_with_audit(locked, actor, note=note)
+
+
+# --- etiket ayarları ve yazıcı -----------------------------------------------------------------
+
+
+def get_label_settings() -> LabelSettings:
+    """Etiket ayarları kaydını döner; yoksa boş ayarla oluşturur (tek kayıt)."""
+    instance = LabelSettings.objects.order_by("pk").first()
+    if instance is None:
+        instance, _ = LabelSettings.objects.get_or_create(pk=1)
+    return instance
+
+
+def sscc_enabled() -> bool:
+    """GS1 firma öneki girildiyse SSCC palet etiketi açıktır (Karar D-6)."""
+    return bool(get_label_settings().gs1_company_prefix)
+
+
+@transaction.atomic
+def update_label_settings(actor: User, data: Mapping[str, Any]) -> LabelSettings:
+    """Etiket ayarlarını günceller (denetimli). Firma öneki 6-12 hanelik sayı olmalıdır."""
+    get_label_settings()
+    instance = LabelSettings.objects.select_for_update().order_by("pk").first()
+    assert instance is not None
+    for name, value in data.items():
+        setattr(instance, name, value)
+    instance.company_name = instance.company_name.strip()
+    instance.gs1_company_prefix = instance.gs1_company_prefix.strip()
+    prefix = instance.gs1_company_prefix
+    if prefix and not (prefix.isdigit() and 6 <= len(prefix) <= 12):
+        raise BusinessRuleError(
+            "invalid_gs1_prefix", "GS1 firma öneki 6-12 haneli bir sayı olmalıdır."
+        )
+    if instance.sscc_extension_digit > 9:
+        raise BusinessRuleError(
+            "invalid_extension_digit", "SSCC uzantı hanesi 0-9 arasında olmalıdır."
+        )
+    _require_active(instance.default_printer, "yazıcı")
+    return save_with_audit(instance, actor)
+
+
+@transaction.atomic
+def next_sscc(actor: User | None) -> str:
+    """Sıradaki SSCC'yi (18 hane: uzantı + firma öneki + seri + kontrol) üretir ve sayacı
+    artırır. Çakışmasızdır (`select_for_update`). Önek yoksa `sscc_disabled` hatası."""
+    get_label_settings()
+    instance = LabelSettings.objects.select_for_update().order_by("pk").first()
+    assert instance is not None
+    prefix = instance.gs1_company_prefix
+    if not prefix:
+        raise BusinessRuleError(
+            "sscc_disabled",
+            "GS1 firma öneki tanımlı değil; palet (SSCC) etiketi kullanılamaz.",
+        )
+    serial_digits = 16 - len(prefix)
+    serial = instance.next_sscc_serial
+    if serial >= 10**serial_digits:
+        raise BusinessRuleError("sscc_exhausted", "SSCC seri numaraları tükendi.")
+    body = f"{instance.sscc_extension_digit}{prefix}{serial:0{serial_digits}d}"
+    instance.next_sscc_serial = serial + 1
+    instance.updated_by = actor if actor is not None and actor.is_authenticated else None
+    instance.save(update_fields=["next_sscc_serial", "updated_by", "updated_at"])
+    return body + gs1_check_digit(body)
+
+
+def send_to_printer(
+    actor: User,
+    printer: Printer,
+    zpl: str,
+    *,
+    target: models.Model | None = None,
+    description: str = "",
+) -> None:
+    """Ham ZPL'i yazıcıya TCP ile gönderir ve baskıyı denetim günlüğüne yazar.
+
+    Pasif yazıcıya gönderilmez. Bağlantı kurulamazsa `printer_unreachable` hatası.
+    """
+    if not printer.is_active:
+        raise BusinessRuleError("inactive", f"{printer.code} yazıcısı pasif.")
+    if printer.printer_type != Printer.Type.ZPL:
+        raise BusinessRuleError("printer_type", "Bu yazıcı türüne gönderim desteklenmiyor.")
+    timeout = float(getattr(settings, "PRINTER_TIMEOUT_SECONDS", 5))
+    try:
+        with socket.create_connection((printer.host, printer.port), timeout=timeout) as conn:
+            conn.sendall(zpl.encode("utf-8"))
+    except OSError as exc:
+        raise BusinessRuleError(
+            "printer_unreachable",
+            f"{printer.name} yazıcısına ulaşılamadı ({printer.host}:{printer.port}). "
+            "Yazıcının açık ve ağa bağlı olduğunu kontrol edin.",
+        ) from exc
+    note = f"Etiket yazdırıldı: {printer.code}"
+    if description:
+        note += f" — {description}"
+    log_change(actor, target or printer, AuditLog.Action.CUSTOM, {}, note)

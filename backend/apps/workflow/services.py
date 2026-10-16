@@ -373,8 +373,9 @@ def _apply_rule(rule: rules.Rule, event: events.Event, actor: User | None) -> No
             _open_task_from_rule(rule, subject, event, actor)
     elif isinstance(rule, rules.NotifyRule):
         if rule.when(payload):
-            notify_roles(
-                rule.roles,
+            extra = list(User.objects.filter(pk__in=rule.users(payload)))
+            notify(
+                role_members(rule.roles) + extra,
                 title=rules.render(rule.title, payload),
                 body=rules.render(rule.body, payload),
                 level=rule.level,

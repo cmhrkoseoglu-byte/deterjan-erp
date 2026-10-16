@@ -1,14 +1,24 @@
 import time
+from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
+from apps.core.roles import DEPO, SEVKIYAT
 from apps.inventory import services as inventory
 from apps.inventory.models import Lot, StockMovement
 from apps.inventory.tests.factories import stocked_lot, storage_location
 from apps.masterdata.models import Material
-from apps.masterdata.tests.factories import BulkMaterialFactory, MaterialFactory, SupplierFactory
+from apps.masterdata.tests.factories import (
+    BulkMaterialFactory,
+    CustomerFactory,
+    MaterialFactory,
+    SupplierFactory,
+)
 from apps.returns.tests.factories import finished_product
+from apps.sales import services as sales
+from apps.sales.tests.factories import confirmed_order, shipping_location
 from apps.traceability import selectors
 from apps.traceability.tests.perfdata import build_trace_data
 
@@ -160,3 +170,35 @@ def test_recall_performance_on_deep_wide_data(db: None) -> None:
         node = node["children"][0]
         depth += 1
     assert depth == 5
+
+
+def test_customer_leg_from_shipments(chain: dict[str, Lot], make_user: Any) -> None:
+    """Sevkiyat modülüyle sevk edilen lotta müşteri ve sipariş bilgisi dolar (Adım 3.2)."""
+    seller = make_user(SEVKIYAT)
+    picker = make_user(DEPO)
+    shipping_location(code="SEVK")
+    customer = CustomerFactory.create(code="M-01", name="Zincir Market A.Ş.")
+    product = chain["fin2"].material
+    order = confirmed_order(seller, [(product, "20", "ADET")], customer=customer)
+    shipment = sales.plan_shipment(
+        seller,
+        order,
+        {"planned_date": date.today(), "vehicle_plate": "34 A 1", "driver_name": "Ali"},
+    )
+    sales.pick_lot(picker, shipment, chain["fin2"], reason="Önde duran palet")
+    sales.mark_loaded(picker, shipment)
+    sales.dispatch_shipment(seller, shipment)
+
+    tree = selectors.forward_trace(chain["raw_a"])
+    [row] = find(tree, chain["fin2"])["shipments"]
+    assert (row["document_number"], row["customer_code"], row["order_number"]) == (
+        shipment.number,
+        "M-01",
+        order.number,
+    )
+    assert row["quantity"] == D(20)
+    result = selectors.recall_simulation([chain["raw_a"]])
+    customers = {r["customer_name"]: r["quantity"] for r in result["customers"]}
+    # Sevkiyat modülü dışındaki eski sevk hareketinde müşteri bilinmez.
+    assert customers == {"Zincir Market A.Ş.": D(20), None: D(30)}
+    assert result["summary"]["customer_count"] == 1

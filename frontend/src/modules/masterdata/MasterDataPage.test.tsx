@@ -2,12 +2,20 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../api/auth";
+import * as labelsApi from "../../api/labels";
 import * as mdApi from "../../api/masterdata";
 import type { Material } from "../../api/masterdata";
 import { httpError, page, userWith } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
 
 vi.mock("../../api/auth");
+vi.mock("../../api/labels", async (importOriginal) => ({
+  ...(await importOriginal<typeof labelsApi>()),
+  listPrinters: vi.fn(),
+  testPrinter: vi.fn(),
+  getLabelSettings: vi.fn(),
+  saveLabelSettings: vi.fn(),
+}));
 vi.mock("../../api/masterdata", async (importOriginal) => {
   const original = await importOriginal<typeof mdApi>();
   return {
@@ -32,6 +40,7 @@ const las: Material = {
   density: "1.0500",
   shelf_life_days: 730,
   min_stock: null,
+  gtin: "",
   requires_incoming_qc: true,
   is_hazardous: true,
   storage_notes: "",
@@ -201,5 +210,82 @@ describe("ana veriler ekranı", () => {
     await waitFor(() =>
       expect(mdApi.uploadImport).toHaveBeenLastCalledWith("materials", expect.any(File), true),
     );
+  });
+
+  it("yazıcılar sekmesinde deneme etiketi gönderilir", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    vi.mocked(mdApi.listRecords).mockImplementation(async (endpoint) =>
+      endpoint === "printers"
+        ? page([
+            {
+              id: 3,
+              code: "ZB-DEPO",
+              name: "Depo Zebra",
+              printer_type: "ZPL",
+              host: "192.168.1.50",
+              port: 9100,
+              dpi: 203,
+              location: null,
+              location_code: null,
+              note: "",
+              is_active: true,
+            },
+          ])
+        : page([]),
+    );
+    vi.mocked(labelsApi.testPrinter).mockResolvedValue({ printed: 1, printer: "ZB-DEPO" });
+    renderApp("/ana-veriler/yazicilar");
+    expect(await screen.findByText("192.168.1.50:9100")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Deneme etiketi: ZB-DEPO" }));
+    await waitFor(() => expect(labelsApi.testPrinter).toHaveBeenCalledWith(3));
+  });
+
+  it("etiket ayarlarını admin kaydeder, diğer roller yalnızca görür", async () => {
+    const settings = {
+      company_name: "Inncos",
+      gs1_company_prefix: "",
+      sscc_extension_digit: 0,
+      next_sscc_serial: 1,
+      default_printer: null,
+      default_printer_code: null,
+      sscc_enabled: false,
+      updated_at: "2026-10-15T09:00:00+03:00",
+    };
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    vi.mocked(labelsApi.listPrinters).mockResolvedValue([]);
+    vi.mocked(labelsApi.getLabelSettings).mockResolvedValue(settings);
+    vi.mocked(labelsApi.saveLabelSettings).mockResolvedValue({
+      ...settings,
+      gs1_company_prefix: "8690000",
+      sscc_enabled: true,
+    });
+    renderApp("/ana-veriler/etiket-ayarlari");
+    const prefix = await screen.findByLabelText(/GS1 firma öneki/);
+    await userEvent.type(prefix, "8690000");
+    await userEvent.click(screen.getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(labelsApi.saveLabelSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ gs1_company_prefix: "8690000", company_name: "Inncos" }),
+      ),
+    );
+    expect(await screen.findByText("SSCC palet etiketi açık.")).toBeInTheDocument();
+  });
+
+  it("planlama etiket ayarlarını değiştiremez", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("planlama"));
+    vi.mocked(labelsApi.listPrinters).mockResolvedValue([]);
+    vi.mocked(labelsApi.getLabelSettings).mockResolvedValue({
+      company_name: "Inncos",
+      gs1_company_prefix: "",
+      sscc_extension_digit: 0,
+      next_sscc_serial: 1,
+      default_printer: null,
+      default_printer_code: null,
+      sscc_enabled: false,
+      updated_at: "2026-10-15T09:00:00+03:00",
+    });
+    renderApp("/ana-veriler/etiket-ayarlari");
+    expect(await screen.findByLabelText(/GS1 firma öneki/)).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Kaydet" })).toBeNull();
   });
 });

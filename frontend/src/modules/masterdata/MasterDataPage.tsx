@@ -1,4 +1,5 @@
 import { Stack, Tabs, Title } from "@mantine/core";
+import type { ReactNode } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import type { EntityConfig } from "../common/CrudPage";
 import { CrudPage } from "../common/CrudPage";
@@ -9,14 +10,17 @@ import {
   equipmentConfig,
   locationConfig,
   materialConfig,
+  printerConfig,
   supplierConfig,
   unitConfig,
   warehouseConfig,
 } from "./entities";
+import { LabelSettingsPanel } from "./LabelTools";
 
-// Sekme adresi (Türkçe) → ekran tanımı. Sıra menüdeki sıradır.
+// Sekme adresi (Türkçe) → ekran tanımı (liste ekranı ya da özel bileşen). Sıra menüdeki sıradır.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- farklı kayıt türleri
-const TABS: [string, EntityConfig<any>][] = [
+type Tab = [string, EntityConfig<any> | { title: string; render: () => ReactNode }];
+const TABS: Tab[] = [
   ["malzemeler", materialConfig],
   ["tedarikciler", supplierConfig],
   ["musteriler", customerConfig],
@@ -26,6 +30,8 @@ const TABS: [string, EntityConfig<any>][] = [
   ["kategoriler", categoryConfig],
   ["birim-donusumleri", conversionConfig],
   ["birimler", unitConfig],
+  ["yazicilar", printerConfig],
+  ["etiket-ayarlari", { title: "Etiket ayarları", render: () => <LabelSettingsPanel /> }],
 ];
 
 export const MASTERDATA_BASE = "/ana-veriler";
@@ -53,7 +59,11 @@ export function MasterDataPage() {
         </Tabs.List>
       </Tabs>
       {/* key: sekme değişince liste durumu (sayfa, arama) sıfırlanır */}
-      <CrudPage key={current[0]} config={current[1]} />
+      {"render" in current[1] ? (
+        current[1].render()
+      ) : (
+        <CrudPage key={current[0]} config={current[1]} />
+      )}
     </Stack>
   );
 }

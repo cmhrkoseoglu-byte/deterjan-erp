@@ -154,6 +154,7 @@ export interface FillingRun {
   order_status: FillingOrderStatus;
   finished_product_code: string;
   finished_product_name: string;
+  finished_product_gtin: string;
   status: FillingRunStatus;
   status_display: string;
   output_lot: number;

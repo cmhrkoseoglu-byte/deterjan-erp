@@ -9,6 +9,7 @@ from apps.masterdata.models import (
     Material,
     MaterialCategory,
     MaterialUnitConversion,
+    Printer,
     Supplier,
     UnitOfMeasure,
     Warehouse,
@@ -102,3 +103,13 @@ class CustomerFactory(factory.django.DjangoModelFactory):
 
     code = factory.Sequence(lambda n: f"M{n:03d}")
     name = factory.Sequence(lambda n: f"Müşteri {n} Ltd.")
+
+
+class PrinterFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Printer
+
+    code = factory.Sequence(lambda n: f"YZ{n}")
+    name = factory.Sequence(lambda n: f"Zebra {n}")
+    host = "127.0.0.1"
+    port = 9100

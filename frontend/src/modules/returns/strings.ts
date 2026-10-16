@@ -5,6 +5,8 @@ export const rt = {
   returnTitle: (number: string) => `İade ${number}`,
   number: "Belge no",
   customer: "Müşteri",
+  shipment: "Sevkiyat",
+  shipmentHint: "İsteğe bağlı. Seçilirse iade, o sevkiyatta o lottan sevk edilenden fazla olamaz.",
   returnDate: "İade tarihi",
   reason: "İade nedeni",
   quarantineLocation: "Karantina lokasyonu",

@@ -12,10 +12,20 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.api.labels import (
+    LABEL_PARAMETERS,
+    PDF,
+    LabelOutputSerializer,
+    PrintRequestSerializer,
+    PrintResultSerializer,
+    label_response,
+)
+from apps.core.exceptions import BusinessRuleError
+from apps.core.labels import render_zpl
 from apps.core.models import MasterDataModel
 from apps.core.permissions import HasRole
 from apps.core.roles import ADMIN, PLANLAMA
-from apps.masterdata import importers, services
+from apps.masterdata import importers, labels, services
 from apps.masterdata.api import serializers as s
 from apps.masterdata.models import (
     Customer,
@@ -24,6 +34,7 @@ from apps.masterdata.models import (
     Material,
     MaterialCategory,
     MaterialUnitConversion,
+    Printer,
     Supplier,
     UnitOfMeasure,
     Warehouse,
@@ -31,7 +42,9 @@ from apps.masterdata.models import (
 
 # Ana verileri yazabilen roller (admin her yere erişir). Okuma tüm giriş yapmış kullanıcılara açık.
 MASTERDATA_WRITE_ROLES = (PLANLAMA,)
-READ_ACTIONS = frozenset({"list", "retrieve", "metadata"})
+READ_ACTIONS = frozenset({"list", "retrieve", "metadata", "label"})
+# Etiketi yazıcıya göndermek giriş yapmış herkese açıktır (baskı denetim günlüğüne yazılır).
+PRINT_ACTIONS = frozenset({"print_label", "test"})
 
 
 class MasterDataViewSet(
@@ -51,7 +64,7 @@ class MasterDataViewSet(
     ordering_fields = ["code", "name", "created_at", "updated_at"]
 
     def get_permissions(self) -> list[BasePermission]:
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS or self.action in PRINT_ACTIONS:
             return [IsAuthenticated()]
         return [HasRole(*self.write_roles)()]
 
@@ -163,6 +176,41 @@ class LocationViewSet(MasterDataViewSet):
     }
     ordering = ["code"]
 
+    def _labels(self, copies: int) -> list[labels.Label]:
+        company = services.get_label_settings().company_name
+        return [labels.location_label(self.get_object(), company)] * copies
+
+    @extend_schema(parameters=LABEL_PARAMETERS, responses={(200, PDF): OpenApiTypes.BINARY})
+    @action(detail=True, methods=["get"])
+    def label(self, request: Request, pk: str | None = None) -> HttpResponse:
+        """Lokasyon etiketi (Code128 + QR, içerik `LOC:<kod>`): PDF, A4 PDF ya da ZPL."""
+        params = LabelOutputSerializer(data=request.query_params)
+        params.is_valid(raise_exception=True)
+        location = self.get_object()
+        return label_response(
+            self._labels(params.validated_data["copies"]),
+            params.validated_data["output"],
+            f"lokasyon-{location.code}",
+        )
+
+    @extend_schema(request=PrintRequestSerializer, responses=PrintResultSerializer)
+    @action(detail=True, methods=["post"], url_path="print-label")
+    def print_label(self, request: Request, pk: str | None = None) -> Response:
+        """Lokasyon etiketini ağ yazıcısına gönderir."""
+        body = PrintRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        printer = get_printer(body.validated_data["printer"])
+        copies = body.validated_data["copies"]
+        location = self.get_object()
+        services.send_to_printer(
+            request.user,  # type: ignore[arg-type]
+            printer,
+            render_zpl(self._labels(copies), dpi=printer.dpi),
+            target=location,
+            description=f"lokasyon etiketi × {copies}",
+        )
+        return Response({"printed": copies, "printer": printer.code})
+
 
 class EquipmentViewSet(MasterDataViewSet):
     queryset = Equipment.objects.select_related("capacity_unit", "location")
@@ -173,6 +221,64 @@ class EquipmentViewSet(MasterDataViewSet):
         "location": ["exact"],
     }
     ordering = ["code"]
+
+
+def get_printer(printer_id: int) -> Printer:
+    """Yazdırma isteğindeki yazıcıyı bulur (aktif olmalı)."""
+    printer = Printer.objects.filter(pk=printer_id).first()
+    if printer is None:
+        raise BusinessRuleError("printer_not_found", "Yazıcı bulunamadı.")
+    if not printer.is_active:
+        raise BusinessRuleError("inactive", f"{printer.code} yazıcısı pasif.")
+    return printer
+
+
+class PrinterViewSet(MasterDataViewSet):
+    """Etiket yazıcıları. Tanımı admin yazar; deneme etiketi herkes basabilir."""
+
+    queryset = Printer.objects.select_related("location")
+    serializer_class = s.PrinterSerializer
+    write_roles = (ADMIN,)
+    filterset_fields = ["is_active", "printer_type", "location"]
+    search_fields = ["code", "name", "host"]
+    ordering = ["code"]
+
+    @extend_schema(request=None, responses=PrintResultSerializer)
+    @action(detail=True, methods=["post"])
+    def test(self, request: Request, pk: str | None = None) -> Response:
+        """Yazıcıya deneme etiketi gönderir."""
+        printer = self.get_object()
+        services.send_to_printer(
+            request.user,  # type: ignore[arg-type]
+            printer,
+            render_zpl([labels.printer_test_label(printer)], dpi=printer.dpi),
+            description="deneme etiketi",
+        )
+        return Response({"printed": 1, "printer": printer.code})
+
+
+class LabelSettingsView(APIView):
+    """Etiket ayarları (tek kayıt): okuma herkese, değiştirme yalnızca admin."""
+
+    def get_permissions(self) -> list[BasePermission]:
+        if self.request.method == "GET":
+            return [IsAuthenticated()]
+        return [HasRole(ADMIN)()]
+
+    @extend_schema(responses=s.LabelSettingsSerializer)
+    def get(self, request: Request) -> Response:
+        return Response(s.LabelSettingsSerializer(services.get_label_settings()).data)
+
+    @extend_schema(request=s.LabelSettingsSerializer, responses=s.LabelSettingsSerializer)
+    def put(self, request: Request) -> Response:
+        current = services.get_label_settings()
+        body = s.LabelSettingsSerializer(current, data=request.data, partial=True)
+        body.is_valid(raise_exception=True)
+        instance = services.update_label_settings(
+            request.user,  # type: ignore[arg-type]
+            body.validated_data,
+        )
+        return Response(s.LabelSettingsSerializer(instance).data)
 
 
 class SupplierViewSet(MasterDataViewSet):

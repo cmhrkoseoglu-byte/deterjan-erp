@@ -47,6 +47,7 @@ export interface Material extends Audited {
   density: string | null;
   shelf_life_days: number | null;
   min_stock: string | null;
+  gtin: string;
   requires_incoming_qc: boolean;
   is_hazardous: boolean;
   storage_notes: string;
@@ -108,6 +109,7 @@ export type MasterDataEndpoint =
   | "equipment"
   | "suppliers"
   | "customers"
+  | "printers"
   | "quality/tests";
 
 function basePath(endpoint: MasterDataEndpoint): string {

@@ -56,9 +56,14 @@ class TaskRule:
     close_on: tuple[CloseOn, ...] = ()
 
 
+def _no_users(payload: Payload) -> list[int]:
+    return []
+
+
 @dataclass(frozen=True)
 class NotifyRule:
-    """Olay gelince rollere bildirim gönderir (`when` koşulu sağlanırsa)."""
+    """Olay gelince rollere bildirim gönderir (`when` koşulu sağlanırsa). `users` payload'dan
+    ayrıca bildirim alacak kullanıcı kimliklerini çıkarır (ör. siparişi oluşturan)."""
 
     code: str
     event: str
@@ -67,6 +72,7 @@ class NotifyRule:
     body: Text = ""
     level: str = "INFO"
     when: Callable[[Payload], bool] = lambda payload: True
+    users: Callable[[Payload], list[int]] = _no_users
 
 
 @dataclass(frozen=True)
@@ -131,6 +137,26 @@ def _return_rework_lot(payload: Payload) -> list[Subject]:
     return [
         {**lot, "sample_number": payload.get("number", ""), "reason": payload.get("reason", "")}
     ]
+
+
+def _fully_planned_order(payload: Payload) -> Subject | None:
+    """Siparişin tamamı sevkiyata planlandıysa sipariş ("Sevkiyat planla" görevi kapanır)."""
+    return payload.get("order") if payload.get("order_fully_planned") else None
+
+
+def _order_creator(payload: Payload) -> list[int]:
+    user_id = payload.get("order_created_by_id")
+    return [user_id] if isinstance(user_id, int) else []
+
+
+def _shipment_lots_body(payload: Payload) -> str:
+    lots = ", ".join(
+        f"{lot.get('lot_no')} ({lot.get('quantity')})" for lot in payload.get("lots") or []
+    )
+    plate = payload.get("vehicle_plate") or ""
+    return f"{payload.get('customer_name', '')}, sipariş {payload.get('order_number', '')}, " + (
+        f"araç {plate}. Lotlar: {lots}" if plate else f"Lotlar: {lots}"
+    )
 
 
 def _in_process_rejected(payload: Payload) -> bool:
@@ -425,7 +451,10 @@ RULES: tuple[Rule, ...] = (
         role=SEVKIYAT,
         title="Sevkiyat planla: {number}",
         description="{customer_name} siparişi onaylandı.",
-        close_on=(CloseOn(ev.SALES_ORDER_CLOSED),),
+        close_on=(
+            CloseOn(ev.SALES_ORDER_CLOSED),
+            CloseOn(ev.SHIPMENT_PLANNED, _fully_planned_order),
+        ),
     ),
     TaskRule(
         code="sales_shortage",
@@ -449,6 +478,37 @@ RULES: tuple[Rule, ...] = (
         title="Rezerve lotların SKT'si {days} gün içinde doluyor",
         body=_reserved_expiring_body,
         when=lambda payload: bool(payload.get("lots")),
+    ),
+    # Faz 3, Adım 3.2: sevkiyat.
+    TaskRule(
+        code="pick_shipment",
+        event=ev.SHIPMENT_PLANNED,
+        role=DEPO,
+        title="Toplama yap: {number}",
+        description="{customer_name}, sipariş {order_number}.",
+        close_on=(CloseOn(ev.SHIPMENT_LOADED),),
+    ),
+    TaskRule(
+        code="dispatch_shipment",
+        event=ev.SHIPMENT_LOADED,
+        role=SEVKIYAT,
+        title="Sevki onayla / irsaliye kes: {number}",
+        description="{customer_name}, sipariş {order_number}, araç {vehicle_plate}.",
+        close_on=(CloseOn(ev.SHIPMENT_DISPATCHED),),
+    ),
+    NotifyRule(
+        code="shipment_dispatched",
+        event=ev.SHIPMENT_DISPATCHED,
+        roles=(YONETIM,),
+        title="Sevk edildi: {number}",
+        body=_shipment_lots_body,
+        users=_order_creator,
+    ),
+    CancelTasksRule(
+        code="shipment_cancelled",
+        event=ev.SHIPMENT_CANCELLED,
+        title="Sevkiyat iptal edildi: {number}",
+        body="Sevkiyata bağlı açık görevler iptal edildi; toplanan lotlar yerine döndü.",
     ),
 )
 

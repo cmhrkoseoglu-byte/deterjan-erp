@@ -1,8 +1,8 @@
 import { Badge, Group } from "@mantine/core";
 import type { ReactNode } from "react";
-import type { SalesOrder } from "../../api/sales";
+import type { SalesOrder, Shipment } from "../../api/sales";
 import { formatDate } from "../../i18n/format";
-import { SalesOrderStatusBadge } from "./shared";
+import { SalesOrderStatusBadge, ShipmentStatusBadge } from "./shared";
 import { st } from "./strings";
 
 /** Sipariş listesi sütunları (sipariş listesi ve müşteri kartındaki sipariş geçmişi). */
@@ -29,4 +29,19 @@ export const orderColumns: {
       </Group>
     ),
   },
+];
+
+/** Sevkiyat listesi sütunları (sevkiyat listesi ve sipariş detayı). */
+export const shipmentColumns: {
+  header: string;
+  render: (row: Shipment) => ReactNode;
+  align?: "right";
+}[] = [
+  { header: st.shipmentNumber, render: (r) => r.number },
+  { header: st.order, render: (r) => r.order_number },
+  { header: st.customer, render: (r) => r.customer_name },
+  { header: st.plannedDate, render: (r) => formatDate(r.planned_date) },
+  { header: st.vehiclePlate, render: (r) => r.vehicle_plate },
+  { header: st.driverName, render: (r) => r.driver_name },
+  { header: st.status, render: (r) => <ShipmentStatusBadge status={r.status} /> },
 ];

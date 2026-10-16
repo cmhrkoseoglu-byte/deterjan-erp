@@ -6,7 +6,7 @@ Bu dosyada iş mantığı yoktur; yazma işlemleri `services.py` üzerinden yap�
 from typing import Any
 
 from django.contrib.auth.models import Group
-from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
@@ -193,6 +193,8 @@ class Comment(BaseModel):
         User, verbose_name="bahsedilenler", blank=True, related_name="mentioned_in_comments"
     )
     edited_at = models.DateTimeField("düzenlenme zamanı", null=True, blank=True)
+    # Yoruma eklenen dosya / fotoğraflar (Adım 2.4); sütun eklemez.
+    attachments = GenericRelation("core.Attachment")
 
     class Meta:
         verbose_name = "yorum"

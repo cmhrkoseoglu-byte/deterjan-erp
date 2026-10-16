@@ -1,13 +1,29 @@
-import { Alert, Anchor, Group, Loader, Paper, SimpleGrid, Stack, Text, Title } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Group,
+  Loader,
+  Pagination,
+  Paper,
+  SimpleGrid,
+  Stack,
+  Table,
+  Text,
+  Title,
+} from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import { getRecord, type Partner } from "../../api/masterdata";
-import { listSalesOrders } from "../../api/sales";
+import { listSalesOrders, listShippedLots, SHIPPED_LOTS_PAGE_SIZE } from "../../api/sales";
+import { useAuth } from "../../auth/AuthContext";
+import { hasAnyRole } from "../../auth/roles";
+import { formatDateTime, formatNumber } from "../../i18n/format";
 import { RowsTable } from "../filling/FillingPage";
-import { Info } from "../inventory/shared";
-import { SALES_BASE, salesOrderPath } from "./config";
+import { ExpiryText, Info } from "../inventory/shared";
+import { SALES_BASE, salesOrderPath, SHIPPED_LOT_ROLES, shipmentPath } from "./config";
 import { orderColumns } from "./columns";
 import { st } from "./strings";
 
@@ -15,10 +31,12 @@ interface Customer extends Partner {
   min_remaining_shelf_life_days: number | null;
 }
 
-/** Müşteri kartı: bilgiler, asgari kalan raf ömrü ve sipariş geçmişi (sevk edilen lotlar 3.2). */
+/** Müşteri kartı: bilgiler, asgari kalan raf ömrü, sipariş geçmişi ve sevk edilen lotlar. */
 export function CustomerPage() {
   const customerId = Number(useParams().customerId);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const showLots = hasAnyRole(user, SHIPPED_LOT_ROLES);
   const customer = useQuery({
     queryKey: ["sales", "customer", customerId],
     queryFn: () => getRecord<Customer>("customers", customerId),
@@ -81,6 +99,80 @@ export function CustomerPage() {
         error={orders.error}
         onOpen={(order) => navigate(salesOrderPath(order.id))}
       />
+      {showLots && <ShippedLots key={customerId} customerId={customerId} />}
+    </Stack>
+  );
+}
+
+/** Müşteriye sevk edilen lotlar (geri çağırmada kime ne gittiği). */
+function ShippedLots({ customerId }: { customerId: number }) {
+  const [page, setPage] = useState(1);
+  const query = useQuery({
+    queryKey: ["sales", "shipped-lots", customerId, page],
+    queryFn: () => listShippedLots(customerId, page),
+    placeholderData: keepPreviousData,
+  });
+  const rows = query.data?.results ?? [];
+  // Son bilinen kayıt sayısı: bir sayfa yüklenemezse sayfalayıcı kaybolmasın, geri dönülebilsin.
+  const [lastCount, setLastCount] = useState(0);
+  const count = query.data?.count;
+  if (count !== undefined && count !== lastCount) setLastCount(count);
+  const pages = Math.max(1, Math.ceil((count ?? lastCount) / SHIPPED_LOTS_PAGE_SIZE));
+  return (
+    <Stack gap="xs">
+      <Title order={4}>{st.shippedLots}</Title>
+      {query.isError && (
+        <Alert color="red" variant="light">
+          {getErrorMessage(query.error)}
+        </Alert>
+      )}
+      {query.isLoading ? (
+        <Loader size="sm" />
+      ) : rows.length === 0 ? (
+        <Text size="sm" c="dimmed">
+          {st.noShippedLots}
+        </Text>
+      ) : (
+        <Table.ScrollContainer minWidth={760}>
+          <Table striped fz="sm" data-testid="shipped-lots">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{st.lot}</Table.Th>
+                <Table.Th>{st.product}</Table.Th>
+                <Table.Th>{st.expiry}</Table.Th>
+                <Table.Th ta="right">{st.quantity}</Table.Th>
+                <Table.Th>{st.shipmentNumber}</Table.Th>
+                <Table.Th>{st.number}</Table.Th>
+                <Table.Th>{st.dispatchedAt}</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {rows.map((row) => (
+                <Table.Tr key={row.id}>
+                  <Table.Td>
+                    <Anchor component={Link} to={`/depo/lotlar/${row.lot}`} size="sm">
+                      {row.lot_no}
+                    </Anchor>
+                  </Table.Td>
+                  <Table.Td>{`${row.product_code} - ${row.product_name}`}</Table.Td>
+                  <Table.Td>
+                    <ExpiryText date={row.expiry_date} />
+                  </Table.Td>
+                  <Table.Td ta="right">{formatNumber(row.quantity)}</Table.Td>
+                  <Table.Td>
+                    <Anchor component={Link} to={shipmentPath(row.shipment)} size="sm">
+                      {row.shipment_number}
+                    </Anchor>
+                  </Table.Td>
+                  <Table.Td>{row.order_number}</Table.Td>
+                  <Table.Td>{formatDateTime(row.dispatched_at)}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
+      {pages > 1 && <Pagination value={page} onChange={setPage} total={pages} />}
     </Stack>
   );
 }

@@ -1,6 +1,6 @@
-"""Satış demo verisi (Faz 3, Adım 3.1): iki müşteri (biri zincir market, 180 gün asgari kalan raf
-ömrüyle; D-11), mamul açılış stoku (MAMUL-DEPO) ve iki sipariş: biri onaylı (FEFO rezervasyonlu),
-biri taslak.
+"""Satış demo verisi (Faz 3): iki müşteri (biri zincir market, 180 gün asgari kalan raf ömrüyle;
+D-11), mamul açılış stoku (MAMUL-DEPO) ve üç sipariş: biri onaylı (FEFO rezervasyonlu, toplanmayı
+bekleyen sevkiyatıyla), biri taslak, biri sevk edilmiş (Adım 3.2: irsaliyesi basılabilir).
 
 `seed_demo` sonunda, `seed_filling_demo`'dan sonra çağrılır. Tekrar çalıştırılabilir: var olan
 müşteri koduyla, stok ve sipariş müşteri sipariş numarasıyla bulunur. Yalnızca geliştirme
@@ -18,7 +18,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.models import User
-from apps.core.roles import SEVKIYAT
+from apps.core.roles import DEPO, SEVKIYAT
 from apps.inventory import services as inventory
 from apps.inventory.models import StockBalance
 from apps.masterdata import services as masterdata
@@ -138,3 +138,48 @@ def seed(seller: User, write: Any = print) -> None:
             ],
         )
         write(f"Taslak sipariş: {order.number}")
+
+    seed_shipments(seller, customers, units, write)
+
+
+VEHICLE = {"vehicle_plate": "41 DMO 41", "driver_name": "Demo Şoför", "carrier": "Kendi aracımız"}
+
+
+def seed_shipments(
+    seller: User, customers: dict[str, Customer], units: dict[str, UnitOfMeasure], write: Any
+) -> None:
+    """DEMO-1 için toplanmayı bekleyen sevkiyat; DEMO-3 siparişi ve sevk edilmiş sevkiyatı."""
+    picker = User.objects.filter(username=DEPO).first()
+    if picker is None or not Location.objects.filter(code="SEVK").exists():
+        return
+    today = timezone.localdate()
+    demo1 = SalesOrder.objects.filter(customer_po_no="DEMO-1").first()
+    if (
+        demo1 is not None
+        and demo1.status in services.RESERVABLE_STATUSES
+        and not demo1.shipments.exists()
+    ):
+        shipment = services.plan_shipment(
+            seller, demo1, {"planned_date": today + timedelta(days=1), **VEHICLE}
+        )
+        write(f"Toplanacak sevkiyat: {shipment.number}")
+    if SalesOrder.objects.filter(customer_po_no="DEMO-3").exists():
+        return
+    order = services.create_order(
+        seller,
+        {"customer": customers["M-TOPTAN"], "order_date": today, "customer_po_no": "DEMO-3"},
+        [
+            {
+                "product": Material.objects.get(code="YUZEY-CAM-1000"),
+                "quantity": D(10),
+                "unit": units["KOLI"],
+            }
+        ],
+    )
+    services.confirm_order(seller, order, "Demo sipariş")
+    shipment = services.plan_shipment(seller, order, {"planned_date": today, **VEHICLE})
+    for reservation in services.active_reservations(order):
+        services.pick_lot(picker, shipment, reservation.lot)
+    services.mark_loaded(picker, shipment)
+    services.dispatch_shipment(seller, shipment, "Demo sevkiyat")
+    write(f"Sevk edilmiş sevkiyat: {shipment.number} ({order.number})")

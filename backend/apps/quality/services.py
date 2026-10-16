@@ -433,7 +433,7 @@ def open_sample(
     kalır). Lot karantinada ya da bloke olmalı; aynı lot ve aşamada açık numune varsa reddedilir.
     Olay `sample.created` laboratuvara "Numune analizi" görevi açar."""
     with transaction.atomic():
-        lot = Lot.objects.select_for_update().select_related("material").get(pk=lot.pk)
+        lot = Lot.objects.select_for_update(of=("self",)).select_related("material").get(pk=lot.pk)
         if stage not in SampleStage.values:
             raise BusinessRuleError("invalid_stage", "Geçersiz numune aşaması.")
         if lot.status not in SAMPLEABLE_LOT_STATUSES:
@@ -708,8 +708,8 @@ def out_of_spec_results(sample: Sample) -> list[TestResult]:
 
 def default_release_location(lot: Lot) -> Location | None:
     """Serbest bırakılan lotun karantinadan taşınacağı varsayılan lokasyon: lotu oluşturan mal
-    kabulün depo lokasyonu; yoksa (ör. iade edilen mamul) lotun en son girdiği karantina dışı
-    aktif lokasyon."""
+    kabulün depo lokasyonu; yoksa (ör. iade edilen mamul) lotun en son girdiği karantina ve sevk
+    alanı dışı aktif lokasyon (sevk alanı yalnızca yükleme için ara duraktır)."""
     line = (
         GoodsReceiptLine.objects.filter(created_lot=lot)
         .select_related("receipt__storage_location")
@@ -719,7 +719,7 @@ def default_release_location(lot: Lot) -> Location | None:
         return line.receipt.storage_location
     movement = (
         StockMovement.objects.filter(lot=lot, quantity__gt=0, location__is_active=True)
-        .exclude(location__location_type=Location.Type.QUARANTINE)
+        .exclude(location__location_type__in=(Location.Type.QUARANTINE, Location.Type.SHIPPING))
         .select_related("location")
         .order_by("-created_at", "-id")
         .first()

@@ -14,22 +14,34 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.api.labels import (
+    LABEL_PARAMETERS,
+    LabelOutputSerializer,
+    PrintRequestSerializer,
+    PrintResultSerializer,
+    label_response,
+)
+from apps.core.exceptions import BusinessRuleError
+from apps.core.labels import Label, render_zpl
 from apps.core.models import DocumentModel
 from apps.core.permissions import HasRole
-from apps.core.roles import ADMIN, DEPO, LABORATUVAR
+from apps.core.roles import ADMIN, DEPO, DOLUM, LABORATUVAR, SEVKIYAT, URETIM
 from apps.inventory import importers, labels, selectors, services
 from apps.inventory.api import serializers as s
 from apps.inventory.models import (
     GoodsReceipt,
     GoodsReceiptLine,
     Lot,
+    PalletLabel,
     StockAdjustment,
     StockAdjustmentLine,
     StockBalance,
     StockMovement,
 )
+from apps.masterdata import services as masterdata_services
 from apps.masterdata.api.serializers import ImportReportSerializer
-from apps.masterdata.models import Material
+from apps.masterdata.api.views import get_printer
+from apps.masterdata.models import Material, Printer
 
 # Stoka yazan roller (admin her yere erişir); lot bloke laboratuvarındır. Okuma herkese açık.
 # Faz 2: lot serbest bırakma ve ret kalite kararıyladır (`quality`); elle serbest bırakma yalnızca
@@ -37,7 +49,13 @@ from apps.masterdata.models import Material
 STOCK_WRITE_ROLES = (DEPO,)
 LOT_DECISION_ROLES = (LABORATUVAR,)
 MANUAL_RELEASE_ROLES = (ADMIN,)
-READ_ACTIONS = frozenset({"list", "retrieve", "metadata", "trace", "label", "labels", "available"})
+READ_ACTIONS = frozenset(
+    {"list", "retrieve", "metadata", "trace", "label", "labels", "case_label", "available"}
+)
+# Etiketi yazıcıya göndermek giriş yapmış herkese açık (baskı denetim günlüğüne yazılır).
+PRINT_ACTIONS = frozenset({"print_label", "print_labels"})
+# Palet (SSCC) etiketi açabilen roller.
+PALLET_ROLES = (DEPO, DOLUM, SEVKIYAT, URETIM)
 PDF = "application/pdf"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -54,15 +72,49 @@ class RolePermissionMixin:
 
     def get_permissions(self) -> list[BasePermission]:
         name = getattr(self, "action", None)
-        if name in READ_ACTIONS:
+        if name in READ_ACTIONS or name in PRINT_ACTIONS:
             return [IsAuthenticated()]
         return [HasRole(*self.action_roles.get(name or "", self.write_roles))()]
 
 
-def _pdf(content: bytes, filename: str) -> HttpResponse:
-    response = HttpResponse(content, content_type=PDF)
-    response["Content-Disposition"] = f'inline; filename="{filename}"'
-    return response
+def _company() -> str:
+    return masterdata_services.get_label_settings().company_name
+
+
+def _output(
+    request: Request, serializer: type[LabelOutputSerializer] = LabelOutputSerializer
+) -> dict:
+    params = serializer(data=request.query_params)
+    params.is_valid(raise_exception=True)
+    return dict(params.validated_data)
+
+
+def _case_labels(lot: Lot, copies: int, units_per_case: int | None) -> list[Label]:
+    if lot.material.material_type != Material.Type.FINISHED:
+        raise BusinessRuleError(
+            "not_finished_goods", "Koli etiketi yalnızca mamul lotlarına basılır."
+        )
+    return [labels.case_label(lot, _company(), units_per_case)] * copies
+
+
+def _print_request(request: Request) -> tuple[Printer, int]:
+    """Yazdırma isteğini doğrular: (yazıcı, kopya sayısı)."""
+    body = PrintRequestSerializer(data=request.data)
+    body.is_valid(raise_exception=True)
+    return get_printer(body.validated_data["printer"]), int(body.validated_data["copies"])
+
+
+def _print(
+    request: Request, printer: Printer, items: list[Label], target: Any, description: str
+) -> Response:
+    masterdata_services.send_to_printer(
+        _user(request),
+        printer,
+        render_zpl(items, dpi=printer.dpi),
+        target=target,
+        description=description,
+    )
+    return Response({"printed": len(items), "printer": printer.code})
 
 
 # --- lot -------------------------------------------------------------------------------------
@@ -149,12 +201,44 @@ class LotViewSet(RolePermissionMixin, viewsets.ReadOnlyModelViewSet):
         tree = selectors.lot_trace(self.get_object(), direction)  # type: ignore[arg-type]
         return Response(s.TraceNodeSerializer(tree).data)
 
-    @extend_schema(responses={(200, PDF): OpenApiTypes.BINARY})
+    @extend_schema(parameters=LABEL_PARAMETERS, responses={(200, PDF): OpenApiTypes.BINARY})
     @action(detail=True, methods=["get"])
     def label(self, request: Request, pk: str | None = None) -> HttpResponse:
-        """Lot etiketi (PDF, Code128 + QR)."""
+        """Lot etiketi (Code128 + QR, `LOT:<lot_no>`): PDF, A4 PDF ya da ZPL."""
+        params = _output(request)
         lot = self.get_object()
-        return _pdf(labels.lot_labels_pdf([lot]), f"etiket-{lot.lot_no}.pdf")
+        return label_response(
+            labels.lot_labels([lot], _company(), params["copies"]),
+            params["output"],
+            f"etiket-{lot.lot_no}",
+        )
+
+    @extend_schema(
+        parameters=[*LABEL_PARAMETERS, OpenApiParameter("units_per_case", OpenApiTypes.INT)],
+        responses={(200, PDF): OpenApiTypes.BINARY},
+    )
+    @action(detail=True, methods=["get"], url_path="case-label")
+    def case_label(self, request: Request, pk: str | None = None) -> HttpResponse:
+        """Mamul koli etiketi: GTIN varsa GS1-128, yoksa firma içi Code128 (Karar D-6)."""
+        params = _output(request, s.CaseLabelOutputSerializer)
+        lot = self.get_object()
+        items = _case_labels(lot, params["copies"], params.get("units_per_case"))
+        return label_response(items, params["output"], f"koli-{lot.lot_no}")
+
+    @extend_schema(request=s.LotPrintSerializer, responses=PrintResultSerializer)
+    @action(detail=True, methods=["post"], url_path="print-label")
+    def print_label(self, request: Request, pk: str | None = None) -> Response:
+        """Lot ya da koli etiketini ağ yazıcısına (ZPL) gönderir."""
+        body = s.LotPrintSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        lot = self.get_object()
+        copies = body.validated_data["copies"]
+        printer = get_printer(body.validated_data["printer"])
+        if body.validated_data["kind"] == "case":
+            items = _case_labels(lot, copies, body.validated_data.get("units_per_case"))
+            return _print(request, printer, items, lot, f"koli etiketi × {copies}")
+        items = labels.lot_labels([lot], _company(), copies)
+        return _print(request, printer, items, lot, f"lot etiketi × {copies}")
 
 
 # --- hareket, bakiye, transfer ---------------------------------------------------------------
@@ -385,17 +469,38 @@ class GoodsReceiptViewSet(DocumentViewSet):
         )
         return self._respond(receipt)
 
-    @extend_schema(responses={(200, PDF): OpenApiTypes.BINARY})
-    @action(detail=True, methods=["get"])
-    def labels(self, request: Request, pk: str | None = None) -> HttpResponse:
-        """Mal kabulde oluşan lotların etiketleri (PDF, lot başına bir sayfa)."""
-        receipt = self.get_object()
+    def _receipt_labels(self, receipt: GoodsReceipt, copies: int) -> list[Label]:
         lots = [
             line.created_lot
-            for line in receipt.lines.select_related("created_lot__material").order_by("line_no")
+            for line in receipt.lines.select_related(
+                "created_lot__material", "created_lot__supplier"
+            ).order_by("line_no")
             if line.created_lot is not None
         ]
-        return _pdf(labels.lot_labels_pdf(lots), f"etiket-{receipt.number}.pdf")
+        return labels.lot_labels(lots, _company(), copies)
+
+    @extend_schema(parameters=LABEL_PARAMETERS, responses={(200, PDF): OpenApiTypes.BINARY})
+    @action(detail=True, methods=["get"])
+    def labels(self, request: Request, pk: str | None = None) -> HttpResponse:
+        """Mal kabulde oluşan lotların etiketleri (lot başına `copies` adet)."""
+        params = _output(request)
+        receipt = self.get_object()
+        return label_response(
+            self._receipt_labels(receipt, params["copies"]),
+            params["output"],
+            f"etiket-{receipt.number}",
+        )
+
+    @extend_schema(request=PrintRequestSerializer, responses=PrintResultSerializer)
+    @action(detail=True, methods=["post"], url_path="print-labels")
+    def print_labels(self, request: Request, pk: str | None = None) -> Response:
+        """Mal kabul lotlarının etiketlerini ağ yazıcısına gönderir."""
+        printer, copies = _print_request(request)
+        receipt = self.get_object()
+        items = self._receipt_labels(receipt, copies)
+        if not items:
+            raise BusinessRuleError("no_lots", "Bu mal kabulde henüz lot yok.")
+        return _print(request, printer, items, receipt, f"mal kabul lot etiketleri ({len(items)})")
 
 
 class StockAdjustmentFilter(django_filters.FilterSet):
@@ -505,3 +610,68 @@ class OpeningTemplateView(APIView):
         response = HttpResponse(importers.build_template(), content_type=XLSX)
         response["Content-Disposition"] = 'attachment; filename="sablon-acilis-stoku.xlsx"'
         return response
+
+
+# --- palet etiketi ve okutma -----------------------------------------------------------------
+
+
+class PalletLabelViewSet(
+    RolePermissionMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """SSCC'li palet etiketleri (Karar D-6: GS1 firma öneki tanımlıysa). Oluşturma depo, dolum,
+    sevkiyat ve üretime açık; etiket indirme ve yazdırma herkese."""
+
+    queryset = PalletLabel.objects.select_related("lot__material", "created_by")
+    serializer_class = s.PalletLabelSerializer
+    filterset_fields = ["lot"]
+    search_fields = ["sscc", "lot__lot_no"]
+    ordering = ["-created_at", "-id"]
+    write_roles = PALLET_ROLES
+
+    def perform_create(self, serializer: Any) -> None:
+        data = serializer.validated_data
+        serializer.instance = services.create_pallet_label(
+            _user(self.request),
+            data["lot"],
+            data["case_count"],
+            units_per_case=data.get("units_per_case"),
+        )
+
+    @extend_schema(parameters=LABEL_PARAMETERS, responses={(200, PDF): OpenApiTypes.BINARY})
+    @action(detail=True, methods=["get"])
+    def label(self, request: Request, pk: str | None = None) -> HttpResponse:
+        """Palet etiketi (SSCC + içerik barkodu): PDF, A4 PDF ya da ZPL."""
+        params = _output(request)
+        pallet = self.get_object()
+        items = [labels.pallet_label(pallet, _company())] * params["copies"]
+        return label_response(items, params["output"], f"palet-{pallet.sscc}")
+
+    @extend_schema(request=PrintRequestSerializer, responses=PrintResultSerializer)
+    @action(detail=True, methods=["post"], url_path="print-label")
+    def print_label(self, request: Request, pk: str | None = None) -> Response:
+        """Palet etiketini ağ yazıcısına gönderir."""
+        printer, copies = _print_request(request)
+        pallet = self.get_object()
+        items = [labels.pallet_label(pallet, _company())] * copies
+        return _print(request, printer, items, pallet, f"palet etiketi × {copies}")
+
+
+class ScanView(APIView):
+    """Okutulan barkodu çözer: lot, lokasyon, malzeme ya da palet (`?code=`)."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        parameters=[OpenApiParameter("code", OpenApiTypes.STR, required=True)],
+        responses=s.ScanResultSerializer,
+    )
+    def get(self, request: Request) -> Response:
+        code = request.query_params.get("code", "")
+        if not code.strip():
+            raise ValidationError({"code": ["Okutulan kod boş."]})
+        result = selectors.decode_scan(code)
+        return Response(s.ScanResultSerializer(result).data)

@@ -216,13 +216,14 @@ Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrınt
   serbest oldu ve CoA PDF'i indi; lot detayında numune listelendi, laboratuvara yalnızca "Bloke et"
   göründü. Bu denemede otomatik numunede "numuneyi alan" boş kalıyordu; artık ilk sonucu girenle doluyor.
 
-### Faz 2 kabul kriterleri (Adım 2.1'e düşenler)
+### Faz 2 kabul kriterleri (Adım 2.1, 2.3 ve 2.4'e düşenler)
 
 | Kriter | Durum | Kanıt |
 |---|---|---|
 | Spec dışı sonuçla `RELEASE` verilemiyor; zorunlu test eksikken karar verilemiyor | ✓ | `test_out_of_spec_result_blocks_release`, `test_decision_requires_all_mandatory_tests`, API `test_decision_errors_return_codes` |
 | Mal kabul ve şarj bitişinde numune otomatik açılıyor, laboratuvara görev düşüyor | ✓ | inventory mal kabul testi, `test_goods_receipt_to_completed_order`, `test_rules.py` numune kuralları |
 | CoA PDF'i doğru bilgilerle üretiliyor | ✓ | `test_coa.py`, `test_sample_flow_via_api` |
+| Lot etiketi PDF ve ZPL üretiliyor; okutma bileşeni tüm tablet ekranlarında çalışıyor | ✓ | `test_lot_label_pdf_a4_zpl`; `ScanInput` depo, üretim hazırlama ve tartım, dolum hazırlama ve hat ekranlarında (`components.test.tsx`, `production.test.tsx`, `filling.test.tsx`) |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | quality ve rework testleri `assert_stock_invariants()` ile biter |
 
 ### Adım 2.2 doğrulaması (dolum ve ambalaj)
@@ -256,7 +257,43 @@ Plan: `docs/plan/FAZ-2-kalite-dolum.md`. Kararlar D-5…D-8 ve Adım 2.1 ayrınt
 | Mamul lotunun geri izlemesi: bulk lotlar + ambalaj lotları + bulkun hammadde lotları | ✓ | aynı test, adım 7 (`lot_trace_backward` çok seviyeli ağaç; ileri izlemede hammadde → mamul iki seviye) |
 | Teorik / gerçek bulk ve ambalaj tüketim raporu doğru | ✓ | `test_consumption_report`, e2e adım 8, API `test_filling_tablet_flow` |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | dolum testleri `invariants` fixture'ı ya da `assert_stock_invariants()` ile biter |
-| Okutma bileşeni tüm tablet ekranlarında | Adım 2.3 | Dolum tabletleri şimdilik düz okutma alanı kullanır; ortak `ScanInput` Adım 2.3 PR'ıyla bağlanır |
+| Okutma bileşeni tüm tablet ekranlarında | ✓ | Dolum tabletleri de ortak `ScanInput` kullanır (Adım 2.3, aşağıda) |
+
+### Adım 2.3 ve 2.4 doğrulaması (etiket, barkod ve ekler)
+
+- Backend: `pytest` 632 test geçti (dolumla birleşince 695) (etiket ve okutma: 27, ekler: 8); `ruff check`, `ruff format --check`,
+  `mypy` temiz; OpenAPI şeması uyarısız; `makemigrations --check` temiz.
+- D-6: `test_case_label_is_gs1_128_when_material_has_gtin` (ZPL mod D, `(01)…(17)…(10)…`),
+  `test_case_label_without_gtin_uses_internal_code`, `test_pallet_label_requires_gs1_prefix`,
+  `test_label_settings_and_sscc` (18 haneli SSCC, kontrol hanesi, seri artışı).
+- D-8: `test_render_zpl_uses_203_dpi_dots_and_utf8` (100 × 150 mm = 799 × 1199 nokta, `^CI28`),
+  `test_render_zpl_barcode_fits_its_width`, `test_render_pdf_label_and_a4`, lot/mal kabul/lokasyon
+  etiketlerinin PDF, A4 ve ZPL çıktıları.
+- Yazıcı: sahte TCP yazıcıyla (`fake_printer`) deneme etiketi, lot, koli, mal kabul ve lokasyon etiketi
+  gönderimi; ulaşılamayan ya da pasif yazıcıda hata kodu; yazıcıyı yalnızca admin tanımlar.
+- Okutma: `test_scan_prefixes` (`LOT:`, `LOC:`, `MAT:`, düz lot no), `test_scan_gs1_case_and_pallet`
+  (AIM öneki, GS ayırıcısı, SSCC), `test_parse_gs1_rejects_malformed`, anonim 401.
+- Ekler: lot, mal kabul, numune ve yoruma yükleme, listeleme, oturumla indirme, gerekçeli kaldırma;
+  yasak uzantı, boyut, bilinmeyen kayıt türü, başkasının yorumu ve başkasının ekini kaldırma reddedilir.
+- Frontend: `npm test` 114 test (dolumla birleşince 128) (okutma alanı: 4 + hazırlamada yanlış malzeme; ek paneli: 2; etiket
+  penceresi: 2; yazıcı ve etiket ayarları: 3), `lint`, `format:check`, `typecheck`, `build` temiz.
+- Tarayıcıda (Playwright, 768 px, uvicorn + Vite, `seed_demo` verisi, 9100'de sahte yazıcı): admin GS1
+  önekini girdi, "SSCC palet etiketi açık" göründü; yazıcı tanımlandı, deneme etiketi ve lokasyon
+  etiketi yazıcıya ulaştı; depo kullanıcısı `LOT:ACILIS-KORUYUCU` okutunca lot detayı açıldı, lot
+  etiketi PDF olarak indi (200, application/pdf) ve yazıcıya gitti, analiz sertifikası eklendi;
+  tanınmayan kodda kırmızı hata göründü. Bu denemede 3 nokta yuvarlanan dar çubuğun ZPL barkodunu 1,6 mm
+  taşırdığı görüldü; artık çubuk genişliği alana sığacak şekilde seçiliyor.
+- Dolumla birleştirme (PR #10 sonrası): dolum ambalaj hazırlama, bulk tüketimi, ambalaj lotu okutma ve
+  fire lotu `ScanInput` kullanır (beklenen malzeme: hazırlamada satırın malzemesi, bulkta bulk ürün,
+  ambalajda reçetedeki kalemler); yanlış malzeme sunucuya gitmeden kırmızı uyarı verir, sunucunun reddi
+  okutma alanında gösterilir. Parti ekranında "Koli etiketi" düğmesi çıkan mamul lotunun koli etiketini
+  (D-6, `finished_product_gtin`) önce seçili açar. Testler: `filling.test.tsx` (hazırlamada yanlış
+  malzeme, ambalaj okutma, reçete dışı ambalaj, koli etiketi), `test_filling_tablet_flow`.
+- Satışla birleştirme (PR #11 sonrası): göçler `masterdata/0004_labels_printers` ve
+  `inventory/0004_pallet_labels` olarak yeniden numaralandı (satışın 0003'lerinden sonra). `pytest` 749,
+  `npm test` 136 test geçti; `makemigrations --check` temiz.
+- İade ve izlenebilirlikle birleştirme (PR #12 sonrası): çakışmasız; `pytest` 787, `npm test` 148 test geçti.
+
 
 ## Faz 3 — Satış siparişi, sevkiyat ve izlenebilirlik
 
@@ -296,7 +333,7 @@ D-10 (her sevkiyat tek siparişe bağlı), D-11 (müşteri bazında asgari kalan
 | Kriter | Durum | Kanıt |
 |---|---|---|
 | Rezerve stok başka siparişe ayrılamıyor; `available` hesabı doğru | ✓ | `test_reserved_stock_is_not_given_to_another_order`, `test_reserved_stock_cannot_be_reserved_twice`, API `test_stock_balances_show_reserved_quantity` |
-| Raf ömrü yetersiz lot (müşteri şartı) rezerve edilmiyor | ✓ (rezervasyon) | `test_shelf_life_requirement_skips_short_lots`; toplamada engel Adım 3.2 |
+| Raf ömrü yetersiz lot (müşteri şartı) rezerve edilmiyor | ✓ | `test_shelf_life_requirement_skips_short_lots`; toplamada engel `test_unshippable_lots_cannot_be_picked` (Adım 3.2) |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | sales testleri `invariants` fixture'ı, rezervasyon testleri `assert_stock_invariants()` |
 
 ### Adım 3.3 ve 3.4 doğrulaması (iade, izlenebilirlik, geri çağırma)
@@ -324,7 +361,69 @@ D-10 (her sevkiyat tek siparişe bağlı), D-11 (müşteri bazında asgari kalan
 | Kriter | Durum | Kanıt |
 |---|---|---|
 | İade karantinaya giriyor ve QC kararıyla yönleniyor | ✓ | `apps/returns/tests/test_services.py` (serbest / red / yeniden işleme) |
-| Hammadde lotunun ileri izlemesi doğru müşteri ve miktarları veriyor; geri izleme tedarikçiye iniyor | Kısmen | Miktarlar ve tedarikçi `apps/traceability/tests/test_selectors.py`; müşteri ayağı Adım 3.2 ile |
+| Hammadde lotunun ileri izlemesi doğru müşteri ve miktarları veriyor; geri izleme tedarikçiye iniyor | ✓ (Adım 3.2 ile) | Miktarlar ve tedarikçi `apps/traceability/tests/test_selectors.py`; müşteri ayağı `test_customer_leg_from_shipments` ve uçtan uca test |
 | Geri çağırma simülasyonu 10.000 hareketlik veride 1 sn altında | ✓ | `test_recall_performance_on_deep_wide_data` (10.050 hareket, ~0,4 sn) |
 | İade blokajı rezervasyonu bırakır, eksik yeniden açılır | ✓ | `test_return_hold_releases_reservations_and_reopens_shortage` |
 | Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | iade testleri `invariants` fixture'ı ile biter |
+
+### Adım 3.2 doğrulaması (sevkiyat, toplama, irsaliye ve uçtan uca test)
+
+- Backend: `pytest` 828 test geçti (sevkiyat, iade bağı ve uçtan uca: 40; izlenebilirlik müşteri ayağı: 1;
+  etiket ve ekler PR #9 ile birlikte); `ruff check`, `ruff format --check`, `mypy` temiz; OpenAPI şeması
+  uyarısız; `makemigrations --check` temiz. Stoka dokunan tüm sevkiyat testleri `invariants` fixture'ı ile
+  `assert_stock_invariants()` çağırır.
+- Sevkiyat servisleri (`apps/sales/tests/test_shipments.py`): planlamada kalan miktar ve sınırlar; okutmada
+  stok ve rezervasyonun sevk alanına taşınması; kısmi okutma ve satırı aşma; karantina, SKT'si geçmiş ve raf
+  ömrü yetersiz lotun okutulamaması; farklı lotta gerekçe ve eski rezervasyonun bırakılması; geri alma;
+  yükleme ve sevk onayında `SHIPMENT` hareketi, `CONSUMED` rezervasyon ve sipariş durumu; kısmi sevk;
+  okutulduktan sonra bloke olan lotun sevki durdurması; iptalde okutmaların geri dönmesi; görevler ve
+  "Sevk edildi" bildirimi; denetim günlüğünde maskeli TC no; durum makinesinin izinli ve yasak geçişleri.
+- API (`test_shipment_api.py`): planla, lot no ya da `LOT:` etiketiyle okut, farklı lot gerekçesi, geri al,
+  yükle, sevk et, irsaliye JSON (maskeli TC) ve PDF, toplama önerisi, müşteriye sevk edilen lotlar, rol
+  matrisi (yetkisiz rol 403).
+- İade bağı (`apps/returns/tests/test_shipment_link.py`): iade sevk edilenden fazla olamaz, sevkiyat sevk
+  edilmiş ve aynı müşterinin olmalı.
+- Uçtan uca (`apps/sales/tests/test_e2e_shipment.py`): mal kabul → QC → üretim → bulk serbest → dolum →
+  mamul serbest → sipariş → FEFO rezervasyon → ikinci siparişte eksik → sevkiyat planı → karantina lotu
+  reddedilir → toplama → yükleme → sevk → irsaliye PDF → hammadde lotunun ileri izlemesinde doğru müşteri
+  ve miktar → geri izleme tedarikçiye → geri çağırma → iade (sevk edilenden fazlası reddedilir) → QC
+  serbest → stoğa dönüş.
+- Demo verisi: `seed_sales_demo` bir siparişe planlanmış sevkiyat ve sevk edilmiş bir sevkiyat (irsaliyesi
+  alınabilir) ekler (`test_seed_demo_includes_sales`).
+- Frontend: `npm test` 164 test (sevkiyat ekranları 14, iade bağı 2), `lint`, `format:check`, `typecheck`,
+  `build` temiz. Ekranlar: Sevkiyatlar listesi ve sevkiyat detayı (satırlar, okutulanlar, araç ve şoför,
+  yükleme ve sevk onayı, irsaliye PDF, iptal, kayıt paneli); sipariş detayında "Sevkiyat planla" ve
+  siparişin sevkiyatları; depoya Toplama sekmesi ve toplama tableti (satır başına kalan, rezerve lot önce
+  sonra FEFO önerisi, raf ömrü uyarısı, `ScanInput` ile okutma, farklı lotta gerekçe, geri alma, "Yükleme
+  tamam"); müşteri kartında sevk edilen lotlar; iade formunda sevkiyat seçimi.
+- İnceleme düzeltmeleri (PR #13, kurallar DECISIONS.md "İnceleme sonrası kurallar"): kod incelemesinde
+  testle doğrulanan 20 hata ve düzeltmelerin bağımsız denetiminde bulunan 5 sorun (çok satırlı sipariş
+  onayıyla okutma arasında birim satırı kilitlenmesi, iptalde eski lot durumu, sipariş ekranında sevk
+  alanı rezervasyonunda "Bırak", eksik aday listesi ve kilit sırası testleri) düzeltildi; her düzeltmenin
+  testi düzeltmeden önceki kodda kırılıyor. Backend `pytest` 846 test geçti; yeni testler: sevk alanındaki
+  stok rezerve edilmez ve önerilmez, ikinci rampa başka rampanın okuttuğu mala dokunmaz, sevk alanı
+  rezervasyonu siparişten bırakılmaz, aynı lottan iki okutma rezervasyonu aşarsa sevk reddedilir, okutma
+  eksiği kapatınca eksik görevi kapanır, yüklendikten sonra okutma geri alınıp kalan sevk edilir, okutma
+  kalmayınca sevk reddedilir, okutma sipariş ve lotu kilitler (sipariş → lot → bakiye sırası, yalnızca lot
+  satırı), sevk alanındaki stok aday listesinde yok, sipariş rezervasyonu lokasyon türünü taşır, SKT'si
+  geçmiş rezerve lot öneride işaretlenir, irsaliye tarihi yerel ve karışık birimler toplanmaz, ters
+  kayıtla geri alınan sevk iade edilemez ve müşteri kartında görünmez, iade kabulü sevkiyatı kilitler,
+  plaka / şoför / taşıyıcı uzunluğu 400 döner, iki üründe aynı lot no `ambiguous_lot`, demo verisi sevk
+  edilemeyen siparişe sevkiyat açmaz; uçtan uca test iade dönen mamulün varsayılan olarak mamul deposuna
+  (sevk alanına değil) döndüğünü doğrular. Frontend `npm test` 173 test: tablette çift Enter (aynı anda
+  basılsa da) tek okutma gönderir, sipariş ekranı sevk alanı rezervasyonunda "Bırak" göstermez, bir sayfa
+  yüklenemezse sayfalayıcı kalır, eksik satırda seçim kalır, varsayılan miktar tek lokasyonun serbest
+  stoğu, yüklenen sevkiyatta depo okutmayı geri alır, müşteri kartında sevk edilen lotlar sayfalı,
+  laboratuvar iadede sevkiyat numarasını bağlantısız görür.
+
+### Faz 3 kabul kriterleri (tamamı)
+
+| Kriter | Durum | Kanıt |
+|---|---|---|
+| Uçtan uca test: mal kabul → … → mamul lot serbest → sipariş → rezervasyon → toplama → sevk → irsaliye PDF | ✓ | `test_goods_receipt_to_shipment_waybill_trace_and_return`; API'de `test_full_shipment_flow` |
+| Rezerve stok başka siparişe ayrılamıyor; `available` hesabı doğru | ✓ | `test_reserved_stock_is_not_given_to_another_order`, `test_reserved_stock_cannot_be_reserved_twice`, `test_stock_balances_show_reserved_quantity`; uçtan uca testte ikinci siparişin eksiği |
+| Karantina / SKT geçmiş / raf ömrü yetersiz lot sevk edilemiyor | ✓ | `test_unshippable_lots_cannot_be_picked` (üç durum), `test_lot_blocked_after_picking_stops_dispatch`, API `test_shelf_life_block_and_unknown_lot`; uçtan uca testte karantina lotu |
+| İade karantinaya giriyor ve QC kararıyla yönleniyor | ✓ | `apps/returns/tests/test_services.py`; uçtan uca testte iade → serbest → stok |
+| Hammadde lotunun ileri izlemesi doğru müşterileri ve miktarları veriyor; geri izleme tedarikçiye iniyor | ✓ | `test_customer_leg_from_shipments`, uçtan uca test (müşteri ve 600 adet), `apps/traceability/tests/test_selectors.py` |
+| Geri çağırma simülasyonu 10.000 hareketlik demo veride 1 sn altında | ✓ | `test_recall_performance_on_deep_wide_data` (10.050 hareket, ~0,4 sn) |
+| Stok değişmezleri tüm yeni testlerde geçiyor | ✓ | sevkiyat, iade ve uçtan uca testler `invariants` fixture'ı ile biter |

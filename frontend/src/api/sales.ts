@@ -1,7 +1,7 @@
 // /api/v1/sales/* uç noktaları. Miktarlar metin olarak gelir ("720.0000"); `base_quantity` ve
 // rezervasyon miktarları mamulün temel biriminde (ADET).
 import { api } from "./client";
-import type { ListParams } from "./masterdata";
+import type { ListParams, LocationType } from "./masterdata";
 import type { Paginated } from "./types";
 
 export type SalesOrderStatus =
@@ -27,6 +27,10 @@ export interface SalesOrderLine {
   reserved_quantity?: string | null;
   shipped_quantity?: string | null;
   shortage_quantity?: string | null;
+  /** Açık (sevk edilmemiş) sevkiyatlarda planlanan miktar (temel birim). */
+  planned_quantity?: string | null;
+  /** Yeni sevkiyata alınabilecek miktar: sipariş − sevk edilen − planlanan. */
+  plannable_quantity?: string | null;
 }
 
 export interface SalesOrder {
@@ -62,6 +66,8 @@ export interface Reservation {
   expiry_date: string | null;
   location: number;
   location_code: string;
+  /** Sevk alanındaki (SHIPPING) rezervasyon okutulmuş maldır; siparişten bırakılamaz. */
+  location_type: LocationType;
   quantity: string;
   unit: string;
   status: ReservationStatus;
@@ -83,6 +89,7 @@ export interface SalesOrderDetail extends SalesOrder {
   lines: SalesOrderLine[];
   totals: OrderTotal[];
   reservations: Reservation[];
+  shipments: Shipment[];
 }
 
 export interface SalesOrderPayload {
@@ -161,6 +168,204 @@ export const releaseReservation = (id: number, reservation: number, note = "") =
 export async function listCandidates(id: number, line: number): Promise<ReservationCandidate[]> {
   const { data } = await api.get<ReservationCandidate[]>(`${ORDERS}/${id}/candidates/`, {
     params: { line },
+  });
+  return data;
+}
+
+// --- Sevkiyat (Adım 3.2) ---------------------------------------------------------------------
+// Şoför TC kimlik no yalnızca yazılır; okurken maskeli gelir (`driver_id_no_masked`). Tam numara
+// yalnızca irsaliye PDF'inde yer alır.
+
+export type ShipmentStatus = "PLANNED" | "PICKING" | "LOADED" | "DISPATCHED" | "CANCELLED";
+
+export interface Shipment {
+  id: number;
+  number: string;
+  status: ShipmentStatus;
+  status_display: string;
+  sales_order: number;
+  order_number: string;
+  customer: number;
+  customer_code: string;
+  customer_name: string;
+  planned_date: string;
+  loading_location: number;
+  loading_location_code: string;
+  vehicle_plate: string;
+  driver_name: string;
+  driver_id_no_masked: string;
+  carrier: string;
+  notes: string;
+  loaded_at: string | null;
+  loaded_by_name: string | null;
+  dispatched_at: string | null;
+  dispatched_by_name: string | null;
+  cancel_reason: string;
+  cancelled_at: string | null;
+  created_at: string;
+  created_by_name: string | null;
+}
+
+export interface ShipmentLine {
+  id: number;
+  order_line: number;
+  line_no: number;
+  product: number;
+  product_code: string;
+  product_name: string;
+  quantity: string;
+  unit: string;
+  picked_quantity: string | null;
+}
+
+export interface ShipmentPick {
+  id: number;
+  line: number;
+  line_no: number;
+  product_code: string;
+  lot: number;
+  lot_no: string;
+  expiry_date: string | null;
+  quantity: string;
+  from_location_code: string;
+  to_location_code: string;
+  picked_by_name: string | null;
+  picked_at: string;
+  deviation_reason: string;
+  returned_at: string | null;
+  is_shipped: boolean;
+}
+
+export interface ShipmentDetail extends Shipment {
+  delivery_address: string;
+  min_remaining_shelf_life_days: number | null;
+  lines: ShipmentLine[];
+  picks: ShipmentPick[];
+}
+
+/** Sevkiyat başlığı (planlama ve güncelleme). `driver_id_no` boş bırakılırsa değişmez. */
+export interface ShipmentHeaderPayload {
+  planned_date: string;
+  vehicle_plate: string;
+  driver_name: string;
+  driver_id_no?: string;
+  carrier: string;
+  notes: string;
+}
+
+export interface ShipmentPlanPayload extends ShipmentHeaderPayload {
+  sales_order: number;
+  lines?: { order_line: number; quantity: string }[];
+}
+
+export interface PickSuggestionRow {
+  lot: number;
+  lot_no: string;
+  expiry_date: string | null;
+  location: number;
+  location_code: string;
+  quantity: string;
+  reserved: boolean;
+  meets_shelf_life: boolean;
+}
+
+export interface PickSuggestion {
+  line: number;
+  line_no: number;
+  product: number;
+  product_code: string;
+  product_name: string;
+  unit: string;
+  quantity: string;
+  picked_quantity: string;
+  remaining_quantity: string;
+  suggestions: PickSuggestionRow[];
+}
+
+export interface PickPayload {
+  lot?: number;
+  lot_no?: string;
+  quantity?: string | null;
+  reason?: string;
+}
+
+export interface ShippedLot {
+  id: number;
+  shipment: number;
+  shipment_number: string;
+  order_number: string;
+  dispatched_at: string | null;
+  product_code: string;
+  product_name: string;
+  lot: number;
+  lot_no: string;
+  expiry_date: string | null;
+  quantity: string;
+}
+
+const SHIPMENTS = "/sales/shipments";
+
+export async function listShipments(
+  params: ListParams = {},
+  statuses: ShipmentStatus[] = [],
+): Promise<Paginated<Shipment>> {
+  const { data } = await api.get<Paginated<Shipment>>(`${SHIPMENTS}/`, {
+    params: { ...clean(params), ...(statuses.length ? { status: statuses } : {}) },
+    paramsSerializer: { indexes: null },
+  });
+  return data;
+}
+
+export async function getShipment(id: number): Promise<ShipmentDetail> {
+  const { data } = await api.get<ShipmentDetail>(`${SHIPMENTS}/${id}/`);
+  return data;
+}
+
+export async function planShipment(payload: ShipmentPlanPayload): Promise<ShipmentDetail> {
+  const { data } = await api.post<ShipmentDetail>(`${SHIPMENTS}/`, payload);
+  return data;
+}
+
+export async function updateShipment(
+  id: number,
+  payload: Partial<ShipmentHeaderPayload>,
+): Promise<ShipmentDetail> {
+  const { data } = await api.patch<ShipmentDetail>(`${SHIPMENTS}/${id}/`, payload);
+  return data;
+}
+
+async function shipmentAction(
+  id: number,
+  name: string,
+  body: object = {},
+): Promise<ShipmentDetail> {
+  const { data } = await api.post<ShipmentDetail>(`${SHIPMENTS}/${id}/${name}/`, body);
+  return data;
+}
+
+export const pickLot = (id: number, body: PickPayload) => shipmentAction(id, "pick", body);
+export const undoPick = (id: number, pick: number) => shipmentAction(id, "undo-pick", { pick });
+export const loadShipment = (id: number) => shipmentAction(id, "load");
+export const dispatchShipment = (id: number) => shipmentAction(id, "dispatch");
+export const cancelShipment = (id: number, reason: string) =>
+  shipmentAction(id, "cancel", { reason });
+
+export async function shipmentSuggestions(id: number): Promise<PickSuggestion[]> {
+  const { data } = await api.get<PickSuggestion[]>(`${SHIPMENTS}/${id}/suggestions/`);
+  return data;
+}
+
+/** İrsaliye PDF'i (oturumla aynı origin'den açılır). */
+export function waybillPdfUrl(id: number): string {
+  return `/api/v1${SHIPMENTS}/${id}/waybill.pdf`;
+}
+
+export const SHIPPED_LOTS_PAGE_SIZE = 50;
+
+/** Müşteriye sevk edilen lotlar, sayfa sayfa (sayfa başına `SHIPPED_LOTS_PAGE_SIZE` kayıt). */
+export async function listShippedLots(customer: number, page = 1): Promise<Paginated<ShippedLot>> {
+  const { data } = await api.get<Paginated<ShippedLot>>("/sales/shipped-lots/", {
+    params: { customer, page, page_size: SHIPPED_LOTS_PAGE_SIZE },
   });
   return data;
 }

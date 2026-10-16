@@ -1,11 +1,12 @@
 from typing import Any
 
 from django.contrib.contenttypes.models import ContentType
+from django.urls import reverse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from apps.core.models import AuditLog, User
+from apps.core.models import Attachment, AuditLog, User
 
 HEALTH_STATES = ["ok", "error"]
 
@@ -90,3 +91,71 @@ class AuditLogSerializer(serializers.ModelSerializer):
 
     def get_actor_name(self, obj: AuditLog) -> str | None:
         return str(obj.actor) if obj.actor else None
+
+
+class AttachmentSerializer(serializers.ModelSerializer):
+    content_type = ContentTypeField(read_only=True)
+    kind_display = serializers.CharField(source="get_kind_display", read_only=True)
+    uploaded_by_name = serializers.SerializerMethodField()
+    removed_by_name = serializers.SerializerMethodField()
+    download_url = serializers.SerializerMethodField()
+    can_remove = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Attachment
+        fields = [
+            "id",
+            "content_type",
+            "object_id",
+            "kind",
+            "kind_display",
+            "original_name",
+            "size",
+            "mime_type",
+            "note",
+            "is_active",
+            "uploaded_by_name",
+            "created_at",
+            "removed_at",
+            "removed_by_name",
+            "removal_reason",
+            "download_url",
+            "can_remove",
+        ]
+        read_only_fields = fields
+
+    def get_uploaded_by_name(self, obj: Attachment) -> str | None:
+        return str(obj.created_by) if obj.created_by_id else None
+
+    def get_removed_by_name(self, obj: Attachment) -> str | None:
+        return str(obj.removed_by) if obj.removed_by_id else None
+
+    def get_download_url(self, obj: Attachment) -> str:
+        return reverse("core:attachment-download", args=[obj.pk])
+
+    def get_can_remove(self, obj: Attachment) -> bool:
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not obj.is_active or not isinstance(user, User):
+            return False
+        return user.is_admin or obj.created_by_id == user.pk
+
+
+class AttachmentUploadSerializer(serializers.Serializer):
+    content_type = serializers.CharField(label="Kayıt türü (ör. inventory.lot)", max_length=100)
+    object_id = serializers.IntegerField(label="Kayıt no", min_value=1)
+    file = serializers.FileField(label="Dosya")
+    kind = serializers.ChoiceField(
+        choices=Attachment.Kind.choices, default=Attachment.Kind.OTHER, label="Tür"
+    )
+    note = serializers.CharField(label="Not", max_length=500, required=False, allow_blank=True)
+
+
+class AttachmentQuerySerializer(serializers.Serializer):
+    content_type = serializers.CharField(label="Kayıt türü (ör. inventory.lot)")
+    object_id = serializers.IntegerField(label="Kayıt no", min_value=1)
+    include_removed = serializers.BooleanField(default=False, required=False)
+
+
+class AttachmentRemoveSerializer(serializers.Serializer):
+    reason = serializers.CharField(label="Neden", max_length=500, required=False, allow_blank=True)
