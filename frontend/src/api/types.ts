@@ -23,6 +23,14 @@ export interface CurrentUser {
   /** Rol kodları (Django Group adları), alfabetik sıralı. */
   roles: Role[];
   is_superuser: boolean;
+  /** İki aşamalı doğrulama (doğrulayıcı uygulama) kurulu mu? */
+  otp_enabled: boolean;
+  /** Rol 2FA istiyor ama kurulmamış: kurulana kadar diğer API'ler 403 otp_setup_required döner. */
+  otp_setup_required: boolean;
+  /** Bu tarayıcı saha tableti olarak işaretli mi? (kısa hareketsizlik süresi) */
+  field_device: boolean;
+  /** Bu süre kullanıcı işlem yapmazsa sunucu oturumu kapatır (401 session_expired). */
+  idle_timeout_seconds: number;
 }
 
 /** Sayfalı liste yanıtı (`?page`, `?page_size`, en çok 500). */

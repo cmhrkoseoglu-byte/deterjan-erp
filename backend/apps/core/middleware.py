@@ -26,7 +26,7 @@ IDLE_HEADER = "HTTP_X_ERP_IDLE_SECONDS"
 # Oturum her istekte yazılmasın: etkinlik zamanı en çok bu sıklıkla güncellenir.
 _TOUCH_INTERVAL_SECONDS = 30
 # İki aşamalı doğrulama kurulana kadar açık kalan API yolları.
-_OTP_SETUP_ALLOWED_PREFIXES = ("/api/v1/auth/", "/api/v1/health/")
+_OTP_SETUP_ALLOWED_PREFIXES = ("/api/v1/auth/", "/api/v1/health/", "/api/v1/ops/client-errors/")
 
 
 def _json(status: int, code: str, detail: str) -> JsonResponse:

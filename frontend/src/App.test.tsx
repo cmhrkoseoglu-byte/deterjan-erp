@@ -19,6 +19,10 @@ const depoUser: CurrentUser = {
   email: "",
   roles: ["depo"],
   is_superuser: false,
+  otp_enabled: false,
+  otp_setup_required: false,
+  field_device: false,
+  idle_timeout_seconds: 3600,
 };
 
 function httpError(status: number, data: unknown = {}) {

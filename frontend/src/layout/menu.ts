@@ -8,6 +8,7 @@ import {
   IconArrowBackUp,
   IconFlask,
   IconRoute,
+  IconServer,
   IconPackages,
   IconBottle,
   IconSettings,
@@ -156,6 +157,15 @@ export const MENU: readonly MenuItem[] = [
     // Her rolün en az bir panosu ya da raporu var; sekme içerikleri rolle daralır.
     roles: [],
     phase: 4,
+  },
+  {
+    key: "system",
+    label: tr.menu.system,
+    path: "/sistem",
+    icon: IconServer,
+    // Sistem durumu, yedekler, kullanıcı kilidi ve 2FA sıfırlama, saha tableti işareti.
+    roles: ["admin"],
+    phase: 5,
   },
   {
     key: "admin",

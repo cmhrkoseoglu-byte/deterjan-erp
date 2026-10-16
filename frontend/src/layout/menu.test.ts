@@ -3,7 +3,19 @@ import type { CurrentUser, Role } from "../api/types";
 import { MENU, visibleMenu } from "./menu";
 
 function userWith(roles: Role[], extra: Partial<CurrentUser> = {}): CurrentUser {
-  return { id: 1, username: "u", full_name: "", email: "", roles, is_superuser: false, ...extra };
+  return {
+    id: 1,
+    username: "u",
+    full_name: "",
+    email: "",
+    roles,
+    is_superuser: false,
+    otp_enabled: false,
+    otp_setup_required: false,
+    field_device: false,
+    idle_timeout_seconds: 3600,
+    ...extra,
+  };
 }
 
 const keys = (user: CurrentUser | null) => visibleMenu(user).map((item) => item.key);
@@ -86,6 +98,16 @@ describe("visibleMenu", () => {
 
   it("yönetim paneli yalnızca admin içindir", () => {
     expect(keys(userWith(["yonetim"]))).not.toContain("admin");
+  });
+
+  it("Sistem ekranını yalnızca admin (ve süper kullanıcı) görür; yönetim panelinden önce gelir", () => {
+    for (const role of ["yonetim", "planlama", "depo", "laboratuvar", "satin_alma"] as Role[]) {
+      expect(keys(userWith([role]))).not.toContain("system");
+    }
+    const admin = keys(userWith(["admin"]));
+    expect(admin).toContain("system");
+    expect(admin.indexOf("system")).toBe(admin.indexOf("admin") - 1);
+    expect(keys(userWith([], { is_superuser: true }))).toContain("system");
   });
 
   it("oturum yoksa menü boştur", () => {

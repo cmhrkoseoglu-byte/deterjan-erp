@@ -1092,3 +1092,106 @@ API karşılıkları: `/api/v1/hse/summary/?date_from&date_to` (yönetim), `/sds
 
 İş akışı kuralları: `incident_review` (yönetime inceleme görevi; kapanınca ya da iptalde kapanır),
 `incident_injury` (yaralanmalı olayda yönetime uyarı), `storage_limit_exceeded` (depo ve yönetime uyarı).
+
+## 2026-10-16 — Faz 5 kararları (D-16 … D-20)
+
+CUMHUR'un 2026-10-16 19:07'de kartlarla verdiği kararlar (hepsi önerilen seçenek):
+
+- **D-16 "Önce canlı"**: canlıya geçiş hazırlığı (Adım 5.4–5.6) önce; terazi ajanı, muhasebe aktarımı ve
+  e-İrsaliye sonraki grupta.
+- **D-17 "Belli değil"**: muhasebe programı henüz seçilmedi; programdan bağımsız XML/Excel aktarımıyla
+  başlanır, program belli olunca bağlayıcı eklenir.
+- **D-18 "Bu sistemde"**: cari ve malzeme kartları bu sistemde açılır, muhasebeye tek yönlü gider; muhasebedeki
+  mevcut kartlar kodla eşleştirilir.
+- **D-19 "e-Fatura firması"**: e-İrsaliye, firmanın e-Faturayı gönderdiği özel entegratör üzerinden.
+- **D-20 "Yerel sunucu"**: sistem fabrikadaki sunucuda çalışır (UPS, RAID, yedeğin ayrı konumda kopyası,
+  uzaktan erişim için VPN). Gerekçe: backend etiket yazıcılarına fabrika ağında TCP ile ZPL gönderir,
+  terazi ajanı ve tabletler de o ağdadır. Docker Compose kurulumu bulutta da çalışır (CLAUDE.md §10).
+
+## 2026-10-16 — Canlı ortam, yedek, izleme ve giriş güvenliği (Faz 5, Adım 5.4 ve 5.5)
+
+Plan: `/mnt/project-files/faz5-canli-guvenlik/plan.md`. Kurulum adımları `docs/KURULUM.md`, kişisel veri
+envanteri `docs/KVKK.md`, canlı öncesi kontrol listesi `docs/CANLI-KONTROL-LISTESI.md`.
+
+### Giriş güvenliği
+
+- **Şifre politikası**: en az 10 karakter (`PASSWORD_MIN_LENGTH`), en az bir harf ve bir rakam, kullanıcı
+  bilgisine benzemeyen, yaygın olmayan, yalnızca rakamdan oluşmayan. Yalnızca yeni ve değişen şifrelere
+  uygulanır. Kullanıcı kendi şifresini Güvenlik sayfasından değiştirir (`POST /api/v1/auth/password/`).
+- **Hesap kilidi**: aynı kullanıcı adıyla 15 dakika içinde 5 hatalı denemede (şifre ya da doğrulama kodu)
+  hesap 15 dakika kilitlenir (`LOGIN_LOCKOUT_*`). Sayaç veritabanında, kullanıcı adına göre tutulur: var
+  olmayan kullanıcı adları da kilitlenir, böylece yanıt kullanıcı adının var olup olmadığını belli etmez.
+  Kilitliyken doğru şifre de reddedilir (`account_locked`). IP başına sınır (`LOGIN_RATE_LIMIT`) ayrıca
+  sürer. Kilit denetim günlüğüne yazılır; kullanıcı varsa admin rolüne bildirim gider (`user.locked`,
+  kural `user_locked`). Admin kilidi Sistem > Kullanıcılar'dan açar (`POST /users/{id}/unlock/`). Başarılı
+  giriş sayacı sıfırlar. Yönetim paneli girişi aynı kurala tabidir.
+- **Hareketsizlik süresi**: son kullanıcı etkinliğinden 60 dakika sonra (`SESSION_IDLE_TIMEOUT_MINUTES`)
+  oturum kapanır, API `401 {"code": "session_expired"}` döner; mutlak süre 12 saat kalır. SPA her istekte
+  `X-ERP-Idle-Seconds` başlığıyla kullanıcının kaç saniyedir ekrana dokunmadığını bildirir; arka planda
+  kendiliğinden yenilenen ekranlar (bildirim zili, panolar) oturumu açık tutmaz. Kapanış denetim günlüğüne
+  "Hareketsizlik nedeniyle oturum kapandı" notuyla yazılır.
+- **Saha tableti**: admin, tabletin tarayıcısından Sistem > Bu cihaz ile cihazı "saha tableti" işaretler
+  (imzalı, 5 yıllık, HttpOnly çerez; `POST /api/v1/auth/field-device/`). İşaretli cihazda kim giriş
+  yaparsa yapsın hareketsizlik süresi 10 dakikadır (`FIELD_DEVICE_IDLE_TIMEOUT_MINUTES`). Önerilen seçenek;
+  karar kartı cevap bekliyor (alternatif: depo/üretim/dolum/sevkiyat rollerine göre).
+- **İki aşamalı doğrulama (TOTP, RFC 6238)**: telefondaki doğrulayıcı uygulamayla 6 haneli kod; kurulumda 10
+  tek kullanımlık kurtarma kodu (yalnızca bir kez gösterilir, HMAC özeti saklanır). Aynı kod ikinci kez
+  kullanılamaz; ±30 sn saat kayması kabul edilir. **Admin ve yönetim rollerinde zorunlu**
+  (`OTP_REQUIRED_ROLES`; geliştirme ortamında varsayılan boş). Önerilen seçenek; karar kartı cevap
+  bekliyor. Zorunlu rol kurulum yapmadan girerse yalnızca Güvenlik sayfasını kullanabilir (diğer API'ler
+  `403 otp_setup_required`), yönetim paneline giremez. Diğer roller isterse açar ve şifresiyle kapatır;
+  zorunlu rolde kapatılamaz. Telefonunu kaybedenin doğrulamasını admin sıfırlar
+  (`POST /users/{id}/reset-otp/`), kullanıcı sonraki girişte yeniden kurar. Hatalı kod başarısız giriş
+  sayılır (kilide dahil). Yönetim paneli girişinde de kod alanı vardır.
+
+### Kimlik doğrulama API sözleşmesine eklenenler
+
+- `POST /auth/login/` gövdesine isteğe bağlı `otp_code`. Yeni hata kodları: `account_locked`,
+  `otp_required` (kodu isteyip aynı isteği `otp_code` ile tekrarla), `invalid_otp`. Kurtarma kodu da
+  `otp_code` olarak girilir.
+- `me` yanıtına: `otp_enabled`, `otp_setup_required`, `field_device`, `idle_timeout_seconds`.
+- `GET /auth/security/`, `POST /auth/password/`, `POST /auth/otp/setup/` (QR kodu SVG, anahtar),
+  `POST /auth/otp/confirm/` (kurtarma kodları), `POST /auth/otp/recovery-codes/`, `POST /auth/otp/disable/`,
+  `POST /auth/field-device/` (admin).
+- Kullanıcı listesinde `is_locked`, `otp_enabled`; admin işlemleri `unlock`, `reset-otp`.
+
+### İzleme (`ops` uygulaması)
+
+- Celery Beat her dakika `ops.heartbeat` (beat ve worker canlı mı), her 5 dakikada `ops.run_checks`
+  çalıştırır. Kontroller: gece yedeği (son başarılı yedek 26 saatten eski, son yedek başarısız ya da ayrı
+  konuma kopyalanamadıysa sorun), geri yükleme testi (son test başarısız ya da 8 günden eskiyse; ilk hafta
+  beklenir), disk doluluğu (%85), 15 dakikalık yük ortalaması / çekirdek ≥ 1, Celery kuyruğu > 100 iş.
+  Eşikler `.env`'de. Yedek kontrolleri yalnızca üretimde açık (`OPS_BACKUP_CHECK_ENABLED`).
+- Sorun başlayınca admin rolüne `ops.alert` bildirimi (kural `ops_alert`), sorun sürerken saatte bir tekrar
+  (`OPS_ALERT_REPEAT_MINUTES`), düzelince bir kez `ops.recovered`. Durum `ops.CheckState` tablosunda.
+- Sistem > Sistem durumu ekranı (`GET /api/v1/ops/status/`, admin): kontroller, diskler, yük, kuyruk, son
+  20 yedek/test çalışması.
+- Dış izleme aracı (ör. Uptime Kuma) için `GET /api/v1/ops/health/` (kimlik doğrulamasız, ayrıntısız):
+  veritabanı, Redis, yedek, geri yükleme testi, arka plan servisleri; biri `error` ise 503. Celery
+  durursa uyarıyı Celery gönderemeyeceği için bu uç dışarıdan izlenmelidir. `GET /api/v1/health/` docker
+  sağlık kontrolü için olduğu gibi kalır.
+- Hata takibi: `SENTRY_DSN` tanımlıysa Sentry (ya da Sentry uyumlu GlitchTip); çerez, IP, istek gövdesi
+  gönderilmez. Arayüzdeki beklenmeyen hatalar `POST /api/v1/ops/client-errors/` ile sunucu günlüğüne
+  (ve Sentry'ye) yazılır, kullanıcı başına dakikada 30 kayıt.
+
+### Yedek durum dosyası (yedek servisi → backend sözleşmesi)
+
+Yedek servisi her çalışmadan sonra `/backups/status/latest-backup.json` ya da `latest-restore-test.json`
+yazar (ve `history.jsonl`'e ekler); backend ve worker klasörü salt okur, `ops.run_checks` içe aktarır
+(`BackupRun`, aynı çalışma iki kez eklenmez):
+
+```json
+{"kind": "backup | restore_test", "run_id": "20261017T020000", "source_run_id": "20261017T020000",
+ "started_at": "2026-10-17T02:00:00+03:00", "finished_at": "2026-10-17T02:01:12+03:00",
+ "status": "ok | failed", "message": "Türkçe açıklama", "database_bytes": 0, "media_bytes": 0,
+ "media_files": 0, "tables": 0, "rows": 0, "offsite": "ok | failed | disabled", "offsite_message": "",
+ "mismatches": [{"table": "inventory_lot", "expected": 10, "actual": 9}]}
+```
+
+### KVKK
+
+- Envanter `docs/KVKK.md`. Şoför TC kimlik numarası yalnızca irsaliyede açıktır; irsaliye PDF'inin ve
+  irsaliye verisinin her açılışı denetim günlüğüne yazılır (`sales.services.record_waybill_access`).
+- Her gece 03:30 `core.purge_expired_personal_data`: giriş/çıkış/başarısız giriş kayıtlarındaki IP
+  adresleri 1 yıl sonra boşaltılır (`AUDIT_IP_RETENTION_DAYS`; denetim kaydının değiştirilemezliğinin
+  bilinçli tek istisnası, kaydın kendisi kalır), süresi dolan oturumlar ve bitmiş giriş sayaçları silinir.

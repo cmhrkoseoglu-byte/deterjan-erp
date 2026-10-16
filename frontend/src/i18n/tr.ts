@@ -16,12 +16,22 @@ export const tr = {
     logout: "Çıkış yap",
     usernameRequired: "Kullanıcı adı gerekli",
     passwordRequired: "Şifre gerekli",
+    sessionExpired:
+      "Uzun süre işlem yapılmadığı için oturumunuz kapandı. Lütfen yeniden giriş yapın.",
+    otpTitle: "İki aşamalı doğrulama",
+    otpIntro: "Telefonunuzdaki doğrulayıcı uygulamada görünen 6 haneli kodu girin.",
+    otpRecoveryHint: "Telefonunuz yanınızda değilse kurtarma kodlarından birini girin.",
+    otpCode: "Doğrulama kodu",
+    otpCodeRequired: "Doğrulama kodu gerekli",
+    otpSubmit: "Doğrula",
+    otpBack: "Farklı kullanıcıyla giriş yap",
   },
   layout: {
     notifications: "Bildirimler",
     liveOffline: "Anlık bağlantı yok; bildirimler 30 sn'de bir yenileniyor.",
     openMenu: "Menüyü aç/kapat",
     roles: "Roller",
+    security: "Güvenlik",
   },
   roles: {
     admin: "Sistem yöneticisi",
@@ -50,6 +60,7 @@ export const tr = {
     maintenance: "Bakım",
     hse: "İSG ve çevre",
     reporting: "Panolar ve raporlar",
+    system: "Sistem",
     adminPanel: "Yönetim paneli",
   },
   home: {
@@ -178,5 +189,9 @@ export const tr = {
     notFoundText: "Aradığınız sayfa yok ya da taşınmış olabilir.",
     forbiddenTitle: "Yetkiniz yok",
     forbiddenText: "Bu sayfayı görüntülemek için gerekli role sahip değilsiniz.",
+    crashTitle: "Bir şeyler ters gitti",
+    crashText:
+      "Ekran beklenmeyen bir hatayla karşılaştı. Hata sistem yöneticilerine iletildi. Sayfayı yenileyip tekrar deneyin.",
+    reload: "Sayfayı yenile",
   },
 } as const;
