@@ -626,3 +626,14 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   `create_demo_users`, `seed_demo` (iki kez), `check --deploy` uyarısız; `TRAINING_MODE=false` ile
   `seed_demo` reddedildi.
 - Kalan: sunucuyu CUMHUR açar, betik çalışınca link `https://<ip>.sslip.io`.
+
+## 2026-10-21 — Bulut sunucusuna gerçek kullanım kurulumu (D-21, Turhost)
+
+- `scripts/bulut-kur.sh` (varsayılan `KIP=canli`): Ubuntu denetimi, Docker, ufw, otomatik güvenlik
+  güncellemeleri, Let's Encrypt + yenileme, prod compose, ilk yönetici (`create_first_admin`), sağlık ve
+  ortam kipi denetimi. Eğitim kipi aynı betikte; `scripts/egitim-kur.sh` ona yönlendirir. Kipler arası
+  geçiş reddedilir. Kılavuz: KURULUM.md §14.
+- Kanıt: `test_create_first_admin_once` (tek sefer, admin rolü, denetim kaydı, tekrar çalıştırmada şifre
+  değişmez), `test_create_first_admin_rejects_weak_password`; `bash -n` ve yerel prova (aşağıda PR'da).
+- Kalan (CUMHUR): sunucuda betiği çalıştırmak, dış yedek yeri, yazıcılar için VPN, KVKK güncellemesi,
+  sayım günü açılış stoku.

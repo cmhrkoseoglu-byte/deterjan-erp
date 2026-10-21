@@ -1285,3 +1285,19 @@ Plan thread'de CUMHUR'un onayıyla ("Onayla"). Kararlar:
   en az 10 karakter, örnek şifre olamaz. Ortak demo hesapları yüzünden eğitim ortamında 2FA kapalı
   (`OTP_REQUIRED_ROLES=`). Kurulum `scripts/egitim-kur.sh` (adres `<ip>.sslip.io`, Let's Encrypt),
   ayrıntı `docs/EGITIM-ORTAMI.md`.
+
+## 2026-10-21 — D-21 "Turhost bulut, gerçek kullanım" (D-20'nin yerine)
+
+- **Karar (CUMHUR, 2026-10-21 14:30, "Gerçek kullanım"):** sistem gerçek veriyle, firmanın Turhost'tan
+  aldığı bulut sunucusunda (Türkiye) çalışır. D-20 "Yerel sunucu" bu kararla değişti. Veri Türkiye'de
+  kaldığından KVKK yurt dışı aktarım koşulu doğmaz; aydınlatma metni ve VERBİS kaydı sunucu yeriyle
+  güncellenir (`docs/KVKK.md`).
+- **Sonuçları:** etiket yazıcıları ve terazi fabrika ağında olduğundan sunucunun onlara ulaşması için
+  fabrika ile sunucu arasında VPN gerekir (KURULUM.md §13); o kurulana kadar etiketler PDF olarak
+  basılır. RAID/UPS sağlayıcının sorumluluğundadır; dış yedek kopyası sunucudan ayrı bir yerde
+  (fabrikada NAS/PC ya da Türkiye'de bir depolama) yine zorunludur.
+- **Plan onayı (CUMHUR, "Onayla"):** `scripts/bulut-kur.sh` (varsayılan `KIP=canli`) tek komutla kurar:
+  Docker, ufw (22/80/443), Let's Encrypt, otomatik güvenlik güncellemeleri, demo veri yok, admin ve
+  yönetim için 2FA zorunlu, ilk yönetici hesabı (`create_first_admin`, kullanıcı adı `yonetici`).
+  Adres firma alan adı (`ADRES=erp.firma.com.tr`) ya da `<ip>.sslip.io`. Eğitim kipi (`KIP=egitim`,
+  `scripts/egitim-kur.sh`) aynı betiği kullanır; bir kipte kurulan sunucu öbür kipe çevrilmez.
