@@ -551,8 +551,8 @@ const SHOTS = [
   {
     name: "genel-giris",
     user: null,
-    // Giriş kartı küçük; geniş ekranda görüntü boş kalmasın.
-    viewport: { width: 760, height: 560 },
+    // Marka paneli 992 px üstünde görünür; tablet boyutu iki paneli de okunur ölçekte gösterir.
+    tablet: true,
     run: async (page) => go(page, "/login", "Giriş yap"),
   },
   {
