@@ -19,6 +19,11 @@
 # Eğitim betiğinin eski adları (EGITIM_ADRES, EGITIM_EPOSTA, EGITIM_DAL) de geçerlidir.
 set -euo pipefail
 
+# `curl ... | bash` ile çalışırken betik stdin'den okunur; stdin'i okuyan bir komut (docker compose
+# exec, apt, kurulum betikleri) betiğin geri kalanını yutar ve kurulum sessizce yarıda biter. Tüm
+# gövde tek blokta: bash önce bloğun tamamını okur, sonra çalıştırır.
+{
+
 MODE="${KIP:-canli}"
 ADDRESS="${ADRES:-${EGITIM_ADRES:-}}"
 EMAIL="${EPOSTA:-${EGITIM_EPOSTA:-}}"
@@ -189,14 +194,14 @@ scripts/prod-compose.sh up -d --build --wait
 umask 077
 if [ "$MODE" = egitim ]; then
     log "Demo kullanıcılar ve demo veri yükleniyor"
-    scripts/prod-compose.sh exec -T backend python manage.py create_demo_users
-    scripts/prod-compose.sh exec -T backend python manage.py seed_demo
+    scripts/prod-compose.sh exec -T backend python manage.py create_demo_users </dev/null
+    scripts/prod-compose.sh exec -T backend python manage.py seed_demo </dev/null
 else
     log "İlk yönetici hesabı"
     # Harf + rakam içeren rastgele şifre; yalnızca ilk kurulumda kullanılır (hesap varsa değişmez).
     admin_password="$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 14)Ab3"
     admin_out="$(scripts/prod-compose.sh exec -T -e FIRST_ADMIN_PASSWORD="$admin_password" backend \
-        python manage.py create_first_admin --username yonetici)"
+        python manage.py create_first_admin --username yonetici </dev/null)"
     echo "$admin_out"
     if [[ "$admin_out" == *"açıldı"* ]]; then
         cat >/root/erp-ilk-giris.txt <<EOF
@@ -238,3 +243,5 @@ fi
 log "HAZIR"
 cat "$INFO_FILE"
 [ ! -f /root/erp-ilk-giris.txt ] || cat /root/erp-ilk-giris.txt
+exit 0
+}
