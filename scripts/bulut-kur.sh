@@ -15,6 +15,7 @@
 #   EPOSTA     Let's Encrypt sertifika uyarıları için e-posta (canlıda önerilir)
 #   FIRMA_ADI  irsaliye ve etiketlerde görünen firma adı (sonra .env.prod'dan da değişir)
 #   DAL        kurulacak git dalı, varsayılan main
+#   SSH_PORT   güvenlik duvarında açık kalacak SSH portu; verilmezse sshd ayarından bulunur
 # Eğitim betiğinin eski adları (EGITIM_ADRES, EGITIM_EPOSTA, EGITIM_DAL) de geçerlidir.
 set -euo pipefail
 
@@ -86,8 +87,20 @@ fi
 address="$ADDRESS"
 log "Adres: https://$address"
 
-log "Güvenlik duvarı: yalnızca SSH, 80 ve 443"
-ufw allow OpenSSH >/dev/null
+# SSH portu sağlayıcıya göre değişir (ör. Turhost 22 yerine başka port verir). sshd'nin dinlediği
+# portlar ve bu oturumun geldiği port açılmazsa güvenlik duvarı sizi sunucudan kilitler.
+ssh_ports="$(
+    {
+        [ -z "${SSH_PORT:-}" ] || echo "$SSH_PORT"
+        sshd -T 2>/dev/null | awk '$1 == "port" {print $2}'
+        [ -z "${SSH_CONNECTION:-}" ] || echo "${SSH_CONNECTION##* }"
+    } | grep -E '^[0-9]+$' | sort -un
+)"
+[ -n "$ssh_ports" ] || ssh_ports=22
+log "Güvenlik duvarı: SSH ($(echo $ssh_ports | tr ' ' ',')), 80 ve 443"
+for port in $ssh_ports; do
+    ufw allow "$port/tcp" >/dev/null
+done
 ufw allow 80/tcp >/dev/null
 ufw allow 443/tcp >/dev/null
 ufw --force enable >/dev/null
