@@ -1,6 +1,8 @@
 // Kullanıcıya görünen tüm metinler (CLAUDE.md §6: arayüz Türkçe).
 export const tr = {
-  appName: "Deterjan ERP",
+  appName: "Inncos ERP",
+  /** Giriş ekranındaki yazı logo: ad + küçük etiket. */
+  brand: { name: "Inncos", tag: "ERP" },
   common: {
     loading: "Yükleniyor…",
     unexpectedError: "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.",
@@ -25,6 +27,19 @@ export const tr = {
     otpCodeRequired: "Doğrulama kodu gerekli",
     otpSubmit: "Doğrula",
     otpBack: "Farklı kullanıcıyla giriş yap",
+    capsLock: "Büyük harf kilidi (Caps Lock) açık",
+    forgotHint:
+      "Şifrenizi unuttuysanız ya da hesabınız kilitlendiyse sistem yöneticisine başvurun.",
+    brandHeadline: "Hammaddeden sevkiyata, her lot tek zincirde.",
+    brandLead:
+      "Kabul, üretim, kalite, dolum ve sevkiyat aynı kayıtta buluşur; her mamul lotunun nereden geldiği ve nereye gittiği tek sorguda görünür.",
+    brandFoot: "Üretim takip sistemi",
+    chain: [
+      { title: "Hammadde kabulü", hint: "Lot, karantina, serbest bırakma" },
+      { title: "Üretim şarjı", hint: "Reçete, tartım, sapma" },
+      { title: "Dolum", hint: "Ambalaj, etiket, fire" },
+      { title: "Sevkiyat", hint: "Müşteriye kadar izlenebilirlik" },
+    ],
   },
   site: {
     trainingBanner: "EĞİTİM ORTAMI · Buradaki kayıtlar örnektir, gerçek veri girmeyin.",
