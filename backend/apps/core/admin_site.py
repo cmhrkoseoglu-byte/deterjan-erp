@@ -43,8 +43,8 @@ class OtpAdminAuthenticationForm(AdminAuthenticationForm):
 
 
 class ERPAdminSite(admin.AdminSite):
-    site_header = "Deterjan ERP Yönetim"
-    site_title = "Deterjan ERP"
+    site_header = "Inncos ERP Yönetim"
+    site_title = "Inncos ERP"
     index_title = "Yönetim paneli"
     login_form = OtpAdminAuthenticationForm
 

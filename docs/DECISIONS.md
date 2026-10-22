@@ -1301,3 +1301,12 @@ Plan thread'de CUMHUR'un onayıyla ("Onayla"). Kararlar:
   yönetim için 2FA zorunlu, ilk yönetici hesabı (`create_first_admin`, kullanıcı adı `yonetici`).
   Adres firma alan adı (`ADRES=erp.firma.com.tr`) ya da `<ip>.sslip.io`. Eğitim kipi (`KIP=egitim`,
   `scripts/egitim-kur.sh`) aynı betiği kullanır; bir kipte kurulan sunucu öbür kipe çevrilmez.
+
+## 2026-10-22 — Program adı "Inncos ERP"
+
+- **Karar (CUMHUR, 2026-10-22):** kullanıcının gördüğü program adı "Inncos ERP" oldu: tarayıcı sekmesi,
+  giriş ekranı, üst menü, Django yönetim paneli, API dokümantasyonu, iki aşamalı doğrulama
+  uygulamasındaki hesap adı (`OTP_ISSUER`; yalnızca yeni kurulan 2FA'larda, eskiler eski adla kalır)
+  ve iç sertifika otoritesinin adı. Belge ve e-postalarda program adı geçmez, firma adı
+  (`COMPANY_NAME`) kullanılır. Depo, klasör, veritabanı ve kod adları (`deterjan-erp`, `deterjan`)
+  değişmedi; değiştirmek kurulu sunucuda veri taşıması gerektirir.

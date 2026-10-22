@@ -1,4 +1,4 @@
-# Deterjan ERP
+# Inncos ERP
 
 Deterjan fabrikası için hammadde kabulünden sevkiyata kadar üretim takip sistemi.
 Proje kuralları için [CLAUDE.md](CLAUDE.md), faz planları için [docs/plan/](docs/plan/),

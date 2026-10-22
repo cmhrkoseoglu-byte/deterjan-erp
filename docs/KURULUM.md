@@ -1,6 +1,6 @@
 # Üretim Kurulumu (Fabrika Sunucusu)
 
-Bu belge, Deterjan ERP'yi fabrikadaki sunucuya kuracak ve işletecek **bilgi işlem sorumlusu** içindir.
+Bu belge, Inncos ERP'yi fabrikadaki sunucuya kuracak ve işletecek **bilgi işlem sorumlusu** içindir.
 Aynı kurulum bir bulut sanal sunucusunda da çalışır (bkz. [Bulut sunucusu](#13-bulut-sunucusu)). Bulutta
 tek komutla kurulum (D-21, Turhost): [bölüm 14](#14-bulut-sunucusuna-tek-komutla-kurulum).
 
@@ -176,7 +176,7 @@ dağıtın:
 - **Android:** Ayarlar → Güvenlik → Şifreleme ve kimlik bilgileri → Sertifika yükle → **CA sertifikası**
   → dosyayı seçin (menü adları markaya göre değişir). Chrome yeniden başlatılır.
 - **iPad / iPhone:** Dosyayı açın → "Profil indirildi" → Ayarlar → Genel → VPN ve Aygıt Yönetimi →
-  profili yükleyin. Ardından **Ayarlar → Genel → Hakkında → Sertifika Güven Ayarları** → "Deterjan ERP İç
+  profili yükleyin. Ardından **Ayarlar → Genel → Hakkında → Sertifika Güven Ayarları** → "Inncos ERP İç
   Sertifika Otoritesi" için tam güveni açın (bu adım unutulursa Safari yine uyarır).
 - **Windows:** `ca.cer`'e çift tıklayın → Sertifika Yükle → Yerel Makine → "Tüm sertifikaları aşağıdaki
   depolama alanına yerleştir" → **Güvenilen Kök Sertifika Yetkilileri**. Çok bilgisayar varsa Active

@@ -23,7 +23,7 @@ CA_DIR="${CA_DIR:-nginx/internal-ca}"
 CA_DAYS="${CA_DAYS:-3650}"
 # Apple cihazları 825 günden uzun sunucu sertifikalarını kabul etmez.
 SERVER_DAYS="${SERVER_DAYS:-825}"
-CA_NAME="${CA_NAME:-Deterjan ERP Ic Sertifika Otoritesi}"
+CA_NAME="${CA_NAME:-Inncos ERP Ic Sertifika Otoritesi}"
 
 if [ $# -lt 1 ]; then
     sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
@@ -41,7 +41,7 @@ umask 077
 if [ ! -s "$CA_DIR/ca.key" ] || [ ! -s "$CA_DIR/ca.crt" ]; then
     echo "- iç CA oluşturuluyor ($CA_DAYS gün)"
     openssl req -x509 -new -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -sha256 -days "$CA_DAYS" \
-        -keyout "$CA_DIR/ca.key" -out "$CA_DIR/ca.crt" -subj "/O=Deterjan ERP/CN=$CA_NAME" \
+        -keyout "$CA_DIR/ca.key" -out "$CA_DIR/ca.crt" -subj "/O=Inncos ERP/CN=$CA_NAME" \
         -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
         -addext "keyUsage=critical,keyCertSign,cRLSign" \
         -addext "subjectKeyIdentifier=hash"
@@ -73,7 +73,7 @@ CNF
 
 echo "- sunucu sertifikası: $san ($SERVER_DAYS gün)"
 openssl req -new -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -sha256 \
-    -keyout "$work/privkey.pem" -out "$work/server.csr" -subj "/O=Deterjan ERP/CN=$1"
+    -keyout "$work/privkey.pem" -out "$work/server.csr" -subj "/O=Inncos ERP/CN=$1"
 openssl x509 -req -in "$work/server.csr" -CA "$CA_DIR/ca.crt" -CAkey "$CA_DIR/ca.key" \
     -CAcreateserial -CAserial "$CA_DIR/ca.srl" -days "$SERVER_DAYS" -sha256 \
     -extfile "$work/ext.cnf" -out "$work/server.crt" 2>/dev/null

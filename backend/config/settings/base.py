@@ -173,8 +173,8 @@ CACHES = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Deterjan ERP API",
-    "DESCRIPTION": "Deterjan fabrikası üretim takip sistemi API'si.",
+    "TITLE": "Inncos ERP API",
+    "DESCRIPTION": "Inncos ERP - deterjan fabrikası üretim takip sistemi API'si.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "SCHEMA_PATH_PREFIX": r"/api/v1",
@@ -228,7 +228,7 @@ LOGIN_LOCKOUT_WINDOW_MINUTES = env.int("LOGIN_LOCKOUT_WINDOW_MINUTES", default=1
 LOGIN_LOCKOUT_MINUTES = env.int("LOGIN_LOCKOUT_MINUTES", default=15)
 # İki aşamalı doğrulamanın (TOTP) zorunlu olduğu roller; boş liste = herkes için isteğe bağlı.
 OTP_REQUIRED_ROLES = env.list("OTP_REQUIRED_ROLES", default=["admin", "yonetim"])
-OTP_ISSUER = env("OTP_ISSUER", default="Deterjan ERP")
+OTP_ISSUER = env("OTP_ISSUER", default="Inncos ERP")
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_HTTPONLY = False

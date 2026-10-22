@@ -1,6 +1,6 @@
 // Kullanıcıya görünen tüm metinler (CLAUDE.md §6: arayüz Türkçe).
 export const tr = {
-  appName: "Deterjan ERP",
+  appName: "Inncos ERP",
   common: {
     loading: "Yükleniyor…",
     unexpectedError: "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.",
