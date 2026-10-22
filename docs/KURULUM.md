@@ -468,6 +468,10 @@ Kullanıcıları **Sistem > Kullanıcılar** ekranından açın (her çalışana
 geri kalanı (`COMPANY_ADDRESS`, `COMPANY_TAX_*`) `/srv/deterjan-erp/.env.prod` içinde doldurulup
 `scripts/prod-compose.sh up -d` ile uygulanır.
 
+Güvenlik duvarı (ufw) yalnızca 80, 443 ve SSH portunu açık bırakır. SSH portu sshd ayarından ve o anki
+bağlantıdan bulunur (Turhost gibi 22 dışında port veren sağlayıcılar için); emin olmak için
+`export SSH_PORT=23422` gibi açıkça verin.
+
 Betik tekrar çalıştırılırsa sistemi son sürüme günceller (bölüm 8); veriye ve şifrelere dokunmaz. Bir
 kipte (canlı/eğitim) kurulan sunucu öbür kipe çevrilmez.
 
