@@ -175,7 +175,8 @@ CI: `.github/workflows/ci.yml` (backend, frontend, Docker Compose duman testi).
 
 ## 10. Açık kararlar
 
-- **Barındırma:** fabrikada yerel sunucu mu, bulut mu? Henüz karar verilmedi. Docker Compose ile ikisi de
-  desteklenecek; Faz 5'e kadar karar verilmeli.
+- **Barındırma:** karar verildi (D-21, 2026-10-21): gerçek kullanım Turhost'taki bulut sunucusunda
+  (Türkiye), D-20 "Yerel sunucu"nun yerine. Kurulum `scripts/bulut-kur.sh` (docs/KURULUM.md §14);
+  Docker Compose yerel sunucuda da çalışmaya devam eder.
 - **Ölçek** (ürün sayısı, tank/hat sayısı, kullanıcı sayısı): sonra netleşecek. Veri modeli sayıdan bağımsız.
 - **Muhasebe programı** (Logo / Mikro / Netsis / diğer): Faz 5 öncesi netleşecek.
