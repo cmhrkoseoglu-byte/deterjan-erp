@@ -1,7 +1,8 @@
 # Üretim Kurulumu (Fabrika Sunucusu)
 
 Bu belge, Deterjan ERP'yi fabrikadaki sunucuya kuracak ve işletecek **bilgi işlem sorumlusu** içindir.
-Aynı kurulum bir bulut sanal sunucusunda da çalışır (bkz. [Bulut sunucusu](#13-bulut-sunucusu)).
+Aynı kurulum bir bulut sanal sunucusunda da çalışır (bkz. [Bulut sunucusu](#13-bulut-sunucusu)). Bulutta
+tek komutla kurulum (D-21, Turhost): [bölüm 14](#14-bulut-sunucusuna-tek-komutla-kurulum).
 
 Kısaca mimari: tek sunucuda Docker Compose ile çalışan servisler.
 
@@ -442,3 +443,41 @@ Aynı compose dosyaları bir bulut sanal sunucusunda değişiklik olmadan çalı
 - Etiket yazıcıları ve tartı fabrika ağındadır; bulut sunucusunun onlara ulaşması için fabrika ile bulut
   arasında site-to-site VPN gerekir (yazıcıya TCP 9100).
 - Dış yedek: rclone ile fabrikadaki NAS'a ya da başka bir bölgedeki (yine Türkiye) nesne deposuna.
+
+## 14. Bulut sunucusuna tek komutla kurulum
+
+D-21 (2026-10-21): sistem Turhost'taki bulut sunucusunda gerçek veriyle çalışır. Bölüm 2-6'daki adımları
+`scripts/bulut-kur.sh` sırayla yapar. Gerekenler: **Ubuntu 24.04**, **root yetkili VPS** (paylaşımlı
+hosting olmaz), en az 4 çekirdek / 8 GB bellek / 80 GB disk, genel IPv4 adresi.
+
+Alan adı kullanılacaksa önce DNS'te `erp.firma.com.tr` için sunucu IP'sini gösteren bir **A kaydı**
+açın (sertifika bu adla alınır). Sonra sunucuya root olarak (Turhost panelindeki konsol ya da SSH)
+girip:
+
+```bash
+export ADRES=erp.firma.com.tr          # alan adı yoksa bu satırı atlayın: adres <ip>.sslip.io olur
+export EPOSTA=bt@firma.com.tr          # sertifika süresi uyarıları için
+export FIRMA_ADI='Firma Adı A.Ş.'      # irsaliye ve etiketlerde
+curl -fsSL https://raw.githubusercontent.com/cmhrkoseoglu-byte/deterjan-erp/main/scripts/bulut-kur.sh | bash
+```
+
+İlk kurulum 10-15 dakika sürer. Sonunda adres ve ilk yönetici bilgileri yazılır (ayrıca
+`/root/erp-bilgi.txt`, `/root/erp-ilk-giris.txt`). `yonetici` hesabıyla girin; ilk girişte iki aşamalı
+doğrulama kurulur. Şifreyi Güvenlik sayfasından değiştirip `/root/erp-ilk-giris.txt`'yi silin.
+Kullanıcıları **Sistem > Kullanıcılar** ekranından açın (her çalışana ayrı hesap). Firma bilgilerinin
+geri kalanı (`COMPANY_ADDRESS`, `COMPANY_TAX_*`) `/srv/deterjan-erp/.env.prod` içinde doldurulup
+`scripts/prod-compose.sh up -d` ile uygulanır.
+
+Betik tekrar çalıştırılırsa sistemi son sürüme günceller (bölüm 8); veriye ve şifrelere dokunmaz. Bir
+kipte (canlı/eğitim) kurulan sunucu öbür kipe çevrilmez.
+
+Betiğin yapmadıkları, canlıya geçmeden önce tamamlanır (`docs/CANLI-KONTROL-LISTESI.md`):
+
+- **Dış yedek** (madde 18): yedekler sunucuda `/srv/deterjan-erp/backups` altında birikir; bir kopyası
+  rclone ile sunucudan ayrı bir yere (fabrikadaki NAS/PC ya da Türkiye'de bir nesne deposu) gönderilir
+  (bölüm 9). O ayarlanana kadar Sistem ekranı uyarı verir.
+- **Etiket yazıcıları ve terazi** (madde 16): fabrika ile sunucu arasında VPN (WireGuard, bölüm 3);
+  `INTERNAL_NETWORKS` VPN ağını (`10.8.0.0/24`) zaten içerir. VPN gelene kadar etiketler PDF basılır.
+- **SSH:** yalnızca anahtarla giriş (`PasswordAuthentication no`), mümkünse yalnızca firma IP'sinden.
+- **KVKK** (madde 29): aydınlatma metni ve VERBİS kaydında sunucu yeri (Turhost, Türkiye).
+- **Açılış stoku:** sayım günü (`docs/GECIS-PLANI.md`).

@@ -70,3 +70,27 @@ def test_create_demo_users_one_per_role(settings):
     # Rol atamaları da denetlenir (yalnızca ilk çalıştırmada; ikincide değişiklik yok).
     role_logs = AuditLog.objects.filter(changes__has_key="roles")
     assert role_logs.count() == len(ALL_ROLES)
+
+
+def test_create_first_admin_once(monkeypatch):
+    monkeypatch.setenv("FIRST_ADMIN_PASSWORD", "Ilk.Yonetici.2026")
+
+    call_command("create_first_admin")
+    user = User.objects.get(username="yonetici")
+    assert user.is_superuser and user.roles == ["admin"]
+    assert user.check_password("Ilk.Yonetici.2026")
+    assert AuditLog.objects.filter(note="create_first_admin").exists()
+
+    # Tekrar çalıştırmak şifreyi değiştirmez, ikinci hesap açmaz.
+    monkeypatch.setenv("FIRST_ADMIN_PASSWORD", "Baska.Sifre.2026")
+    call_command("create_first_admin", "--username", "ikinci")
+    assert User.objects.count() == 1
+    assert User.objects.get(username="yonetici").check_password("Ilk.Yonetici.2026")
+
+
+def test_create_first_admin_rejects_weak_password(monkeypatch):
+    monkeypatch.setenv("FIRST_ADMIN_PASSWORD", "12345")
+
+    with pytest.raises(CommandError, match="FIRST_ADMIN_PASSWORD"):
+        call_command("create_first_admin")
+    assert not User.objects.exists()

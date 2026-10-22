@@ -77,7 +77,7 @@ scripts/prod-compose.sh down -v && EGITIM_SIFRE='...' bash scripts/egitim-kur.sh
 
 ## Teknik ayrıntı
 
-`scripts/egitim-kur.sh` canlı kurulumla aynı compose dosyalarını (`scripts/prod-compose.sh`) kullanır,
+`scripts/egitim-kur.sh`, `scripts/bulut-kur.sh`'i eğitim kipinde (`KIP=egitim`) çalıştırır; canlı kurulumla aynı compose dosyalarını (`scripts/prod-compose.sh`) kullanır,
 yalnızca `.env.prod` içinde şunları ayarlar: `TRAINING_MODE=true` (demo komutlarına izin verir,
 arayüz şeridini açar), `DEMO_USER_PASSWORD`, `OTP_REQUIRED_ROLES=` (boş), `INTERNAL_NETWORKS=127.0.0.1/32`
 (yönetim paneli ve API belgeleri internetten kapalı), `WEB_CONCURRENCY=2`. Güvenlik duvarı (ufw) yalnızca
