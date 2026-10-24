@@ -889,7 +889,7 @@ const SHOTS = [
   {
     name: "yonetim-pano",
     user: "yonetim",
-    run: async (page) => go(page, "/raporlar/panolar", "Yönetim panosu"),
+    run: async (page) => go(page, "/pano", "Onayınızı bekleyenler"),
   },
   {
     name: "yonetim-sartli-kabul",

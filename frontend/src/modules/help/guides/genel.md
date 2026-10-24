@@ -20,7 +20,7 @@ Bu kılavuz her rol için ortaktır. Giriş, menü, görevler, bildirimler, yoru
 
 ## Görevlerim
 
-Giriş yapınca **Görevlerim** ekranı açılır. Birimler arası iş istekleri buraya görev olarak düşer. Örneğin mal kabul kaydedilince laboratuvara "Giriş kontrolü" görevi, üretim emri onaylanınca depoya malzeme hazırlama görevi gelir.
+Giriş yapınca **Görevlerim** ekranı açılır (yönetim rolünde **Yönetim panosu** açılır; Görevlerim menüdedir). Birimler arası iş istekleri buraya görev olarak düşer. Örneğin mal kabul kaydedilince laboratuvara "Giriş kontrolü" görevi, üretim emri onaylanınca depoya malzeme hazırlama görevi gelir.
 
 ![Görevlerim ekranı](/kilavuz/genel-gorevlerim.jpg)
 

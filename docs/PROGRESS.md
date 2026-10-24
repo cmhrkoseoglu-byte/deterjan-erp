@@ -637,3 +637,24 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   değişmez), `test_create_first_admin_rejects_weak_password`; `bash -n` ve yerel prova (aşağıda PR'da).
 - Kalan (CUMHUR): sunucuda betiği çalıştırmak, dış yedek yeri, yazıcılar için VPN, KVKK güncellemesi,
   sayım günü açılış stoku.
+
+## 2026-10-24 — Yönetim panosu (yönetimin açılış ekranı)
+
+- Sunucu (`apps/reporting/dashboards.py`): yönetim panosuna onay bekleyenler (`pending_approvals`:
+  şartlı kabul onayı sayısı ve en eski bekleme; limit üstü satın alma siparişi sayısı ve TL toplamı,
+  tutar yalnızca yönetim ve admin'e), son 14 günün günlük üretimi (`production_daily`) ve sevkiyat
+  özeti (bugün sevk edilen, istenen tarihi geçmiş sipariş) eklendi. Sevkiyat panosu aynı sorguları
+  kullanır.
+- Ekran: pano taslağa göre yeniden yapıldı (onaylar, dikkat gerektirenler, bugün, 14 gün sütun
+  grafiği — tek renk SVG, üzerine gelince günün değeri, tablo eşi —, stok değeri türlere göre, fire ve
+  duruş, birimlerin iş yükü, açık emirler, kritik stok ve SKT). `/` yönlendirme oldu: yönetim `/pano`'ya,
+  diğerleri `/gorevlerim`'e. Bağlantılar yalnızca hedef sayfayı açabilen role gösterilir.
+- Kanıt: `test_dashboards_follow_the_chain` (14 gün, bugünün çıktısı, sevkiyat özeti),
+  `test_management_dashboard_shows_pending_approvals` (TL toplamı, bekleme saati, tutarın gizlenmesi),
+  `test_stock_value_only_for_management` (API'de tutar), `test_dashboards_open_fast_on_demo_data`;
+  `reporting.test.tsx` (pano bölümleri, planlamada onay bağlantısı ve tutar yok, "Yolunda" durumu,
+  QC ve SKT uyarısı, grafiğin tablo eşi ve seri seçimi, stok değeri türleri, açılış yönlendirmeleri,
+  `/pano` yetkisi), `menu.test.ts`. Tarayıcıda yerel demo verisiyle 1024 px ve 375 px genişlikte
+  denendi (yatay kaydırma yok, ipucu çubuğu örtmüyor).
+- Kılavuz: `yonetim.md` "Yönetim panosu" bölümü, `genel.md` açılış notu; `yonetim-pano.jpg` yerel demo
+  verisinden yenilendi (betik görüntüyü artık `/pano`'dan alır).

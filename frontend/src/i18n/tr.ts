@@ -63,6 +63,7 @@ export const tr = {
     satin_alma: "Satın alma",
   },
   menu: {
+    dashboard: "Yönetim panosu",
     home: "Görevlerim",
     masterdata: "Ana veriler",
     recipes: "Reçeteler",

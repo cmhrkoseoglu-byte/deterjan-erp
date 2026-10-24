@@ -77,7 +77,8 @@ function DashboardsPanel() {
   );
 }
 
-function Dashboard({ code }: { code: DashboardCode }) {
+/** Pano: veri dakikada bir yenilenir; üstte güncellik zamanı ve Yenile düğmesi. */
+export function Dashboard({ code }: { code: DashboardCode }) {
   const query = useQuery({
     queryKey: ["reporting", "dashboard", code],
     queryFn: () => getDashboard(code),

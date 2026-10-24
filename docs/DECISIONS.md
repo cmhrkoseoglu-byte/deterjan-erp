@@ -1301,3 +1301,22 @@ Plan thread'de CUMHUR'un onayıyla ("Onayla"). Kararlar:
   yönetim için 2FA zorunlu, ilk yönetici hesabı (`create_first_admin`, kullanıcı adı `yonetici`).
   Adres firma alan adı (`ADRES=erp.firma.com.tr`) ya da `<ip>.sslip.io`. Eğitim kipi (`KIP=egitim`,
   `scripts/egitim-kur.sh`) aynı betiği kullanır; bir kipte kurulan sunucu öbür kipe çevrilmez.
+
+## 2026-10-24 — Yönetim panosu, yönetimin açılış ekranı
+
+- **Karar (CUMHUR, "Yönetici panosu" → taslağa "Evet, uygula" → "Yönetimin açılış ekranı"):** yönetim
+  panosu onaylanan taslağa göre yeniden düzenlendi ve yönetim rolünün açılış ekranı oldu.
+- **Açılış:** `/` artık bir yönlendirmedir: açıkça yönetim rolü atanmış kullanıcı `/pano`'ya, diğer herkes
+  (admin dahil) `/gorevlerim`'e gider; giriş sonrası, logo ve "ana sayfaya dön" bağlantıları da buna
+  uyar. Görevlerim'in adresi `/`'den `/gorevlerim`'e taşındı. Menüde "Yönetim panosu" yönetimin ilk
+  öğesidir (admin de görür). Planlama aynı panoyu Panolar ve raporlar'da görmeye devam eder; `/pano`
+  adresi yönetime özeldir.
+- **Pano sırası:** onayınızı bekleyenler (şartlı kabul, limit üstü satın alma siparişi ve TL toplamı,
+  açık İSG olayı; TL toplamı yalnızca yönetim ve admin'e döner, D-15), dikkat gerektirenler (önce
+  kritik, sonra uyarı; her satır ilgili listeye götürür), bugün, son 14 gün üretim (dökme birim bazında
+  ya da mamul adedi; birimler karışmaz, tablo eşi var), stok değeri (türe göre), fire ve duruş, birimlerin
+  iş yükü, açık emirler, kritik stok ve SKT listeleri.
+- **Eşik (varsayılan, değiştirilebilir):** QC'de 24 saatten uzun bekleyen numune "Uyarı" satırı olur.
+  Yalnızca görüntü eşiğidir, bir işlemi engellemez (`QC_WAIT_WARNING_HOURS`, `Dashboards.tsx`).
+- **Performans:** yönetim panosunun sorgu tavanı 30'dan 36'ya çıktı; yeni bölümler sabit sayıda sorgu
+  ekler, satır sayısıyla artmaz (`test_dashboards_open_fast_on_demo_data`).

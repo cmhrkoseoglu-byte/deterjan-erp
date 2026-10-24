@@ -26,6 +26,9 @@ pytestmark = pytest.mark.django_db
 BASE = "/api/v1/reporting/dashboards"
 LIMIT_SECONDS = 2.0
 QUERY_LIMIT = 30
+# Yönetim panosu daha çok bölüm toplar (onay bekleyenler, son 14 gün, sevkiyat özeti); sorgu
+# sayısı yine sabittir, satır sayısıyla artmaz.
+QUERY_LIMITS = {"management": 36}
 
 
 @override_settings(DEBUG=True)
@@ -55,7 +58,8 @@ def test_dashboards_open_fast_on_demo_data(roles, client_for):
         assert response.status_code == 200
         print(f"Pano {code}: {elapsed:.3f} sn, {len(queries)} sorgu")
         assert elapsed < LIMIT_SECONDS, f"{code} panosu {elapsed:.2f} sn sürdü"
-        assert len(queries) <= QUERY_LIMIT, f"{code}: {len(queries)} sorgu"
+        limit = QUERY_LIMITS.get(code, QUERY_LIMIT)
+        assert len(queries) <= limit, f"{code}: {len(queries)} sorgu"
     management = client.get(f"{BASE}/management/").json()
     assert management["tasks"]["overdue_total"] >= 900
     assert_stock_invariants()

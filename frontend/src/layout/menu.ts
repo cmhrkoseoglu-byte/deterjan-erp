@@ -8,6 +8,7 @@ import {
   IconArrowBackUp,
   IconFlask,
   IconHelp,
+  IconLayoutDashboard,
   IconRocket,
   IconRoute,
   IconServer,
@@ -21,6 +22,7 @@ import {
   type Icon,
 } from "@tabler/icons-react";
 import type { CurrentUser, Role } from "../api/types";
+import { DASHBOARD_PATH, TASKS_PATH } from "../auth/paths";
 import { hasAnyRole } from "../auth/roles";
 import { tr } from "../i18n/tr";
 
@@ -39,7 +41,15 @@ export interface MenuItem {
 
 // Menünün tek kaynağı. Rol listesi CLAUDE.md §5'teki rollerdir.
 export const MENU: readonly MenuItem[] = [
-  { key: "home", label: tr.menu.home, path: "/", icon: IconChecklist, roles: [] },
+  {
+    key: "dashboard",
+    label: tr.menu.dashboard,
+    path: DASHBOARD_PATH,
+    icon: IconLayoutDashboard,
+    // Yönetimin açılış ekranı. Aynı pano planlamaya Panolar ve raporlar'da açıktır.
+    roles: ["yonetim"],
+  },
+  { key: "home", label: tr.menu.home, path: TASKS_PATH, icon: IconChecklist, roles: [] },
   {
     key: "masterdata",
     label: tr.menu.masterdata,
@@ -199,4 +209,9 @@ export const MENU: readonly MenuItem[] = [
 
 export function visibleMenu(user: CurrentUser | null): MenuItem[] {
   return MENU.filter((item) => hasAnyRole(user, item.roles));
+}
+
+/** Menü öğesinin rolleri: rotalar ve sayfalar arası bağlantılar aynı listeyle korunur. */
+export function menuRoles(key: string): readonly Role[] {
+  return MENU.find((item) => item.key === key)!.roles;
 }
