@@ -611,6 +611,7 @@ Plan CUMHUR tarafından onaylandı (karar kartı, 2026-10-16). Kararlar:
 Adım 3.2 `shipment.planned` kapanışını ekler), `sales_shortage` (planlama, eksik ürün listesiyle; tamamen
 rezerve edilince ya da sipariş kapanınca kapanır, açık görev varken yenisi açılmaz),
 `sales_order_cancelled` (açık görevleri iptal eder), `reserved_lots_expiring` (sevkiyat, planlama; uyarı).
+
 ## 2026-10-16 — İade (Faz 3, Adım 3.3)
 
 CUMHUR'un 2026-10-16'da onayladığı plan ve kararı:
@@ -1335,6 +1336,7 @@ değiştirme zorunlu, yalnızca admin):
   deneme kilidi de açılır.
 - Denetim: oluşturma (`create`, not "Kullanıcı açıldı"), roller, bilgi değişiklikleri, pasife alma /
   etkinleştirme ve "Şifre sıfırlandı" (`custom`) yazılır; şifre yalnızca `***` olarak görünür.
+
 ## 2026-10-24 — Yönetim panosu, yönetimin açılış ekranı
 
 - **Karar (CUMHUR, "Yönetici panosu" → taslağa "Evet, uygula" → "Yönetimin açılış ekranı"):** yönetim
@@ -1378,3 +1380,16 @@ değiştirme zorunlu, yalnızca admin):
 - **Giriş ekranı:** DentMesher girişi gibi koyu kahve zemin, cam kart, turuncu (#e8622c) giriş düğmesi;
   zeminde ana zincirin sözcükleri süzülür (hareketi azalt tercihinde durur). 22.10'daki mavi marka
   panelli giriş ekranının yerini aldı.
+
+## 2026-10-24 — Açık yönlendirme denetimi (giriş dönüş adresi, sorun bildirimi sayfası)
+
+- **Bulgu:** `npm audit --omit=dev`, react-router-dom 6.30.6 için orta düzey GHSA-wrjc-x8rr-h8h6 (ters
+  bölüyle açık yönlendirme, CVE-2025-68470 atlatması) bildiriyor; yamalı sürüm yalnızca 7.x (kırıcı).
+  Yerelde `/login?next=` ile ters bölü, çift ters bölü, karışık ve sekme varyantları denendi; yüklü sürüm
+  hepsini uygulama içinde tuttu, sömürülemedi.
+- **Karar (CUMHUR öneri kartını başlattı; iş bu oturumda yapıldı):** 7.x'e geçilmez, savunma kodda.
+  Ortak `auth/safePath.ts` yalnızca bu sitenin yolunu kabul eder (`/` ile başlar, `//` ile başlamaz, ters
+  bölü ve kontrol karakteri yok, aynı origin'e çözülür). Giriş sonrası dönüş adresi ve sorun
+  bildirimindeki sayfa bağlantısı bundan geçer; geçmeyen adres ana sayfaya düşer ya da düz yazı kalır.
+- **Backend:** sorun bildiriminin `page_url` alanı yalnızca uygulama içi yol kabul eder (400
+  `validation_error`). Önceden her adres kaydedilip admin ekranında bağlantı olarak gösteriliyordu.

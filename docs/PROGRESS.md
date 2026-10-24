@@ -655,6 +655,7 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   password_change_required` döndü, yeni şifreyle Görevlerim açıldı, denetim kayıtlarında şifre yok.
 - Kılavuz: `admin.md` kullanıcı açma bölümü yeni ekrana göre, `genel.md` ilk giriş, `admin-kullanicilar.jpg`
   yeni ekranla (betikteki çekim de `/sistem/kullanicilar`); KURULUM §6 yönlendirmesi düzeltildi.
+
 ## 2026-10-24 — Yönetim panosu (yönetimin açılış ekranı)
 
 - Sunucu (`apps/reporting/dashboards.py`): yönetim panosuna onay bekleyenler (`pending_approvals`:
@@ -692,3 +693,16 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   yüz testleri, lint, biçim, tip denetimi ve derleme. Tarayıcıda gündüz ve gece, 1024 px ve 375 px.
 - Kılavuz: `genel.md` (üst çubuk, arama, gündüz/gece); kılavuz görselleri yeni görünümle yeniden
   çekildi (`scripts/kilavuz-ekran-goruntuleri.mjs`).
+
+## 2026-10-24 — Açık yönlendirme denetimi
+
+- `frontend/src/auth/safePath.ts` (`safeAppPath`): giriş sonrası dönüş adresi (`LoginPage`) ve sorun
+  bildirimi sayfasındaki adres bağlantısı (`ProblemPage`) yalnızca uygulama içi yola gider. Backend:
+  `ProblemReportCreateSerializer.validate_page_url` başka siteye giden adresi reddeder.
+- Kanıt: `auth/safePath.test.tsx` (ters bölü, çift ters bölü, sekme, satır sonu, `//`, `https:`,
+  `javascript:` reddedilir; uygulama içi yol sorgu ve çapasıyla korunur; girişten sonra kötü adreste ana
+  sayfaya dönülür), `test_problem_report_page_url_must_be_app_path`,
+  `test_problem_report_accepts_app_path_with_query`. Tarayıcıda dört varyant denendi; yüklü react-router
+  (6.30.6) hiçbirinde site dışına çıkmadı.
+- Açık: react-router-dom 7.x'e geçiş (uyarının kalıcı çözümü) ayrı ve kırıcı bir iş; CI'daki
+  `npm audit --audit-level=high` bu orta düzey uyarıda kırılmaz.
