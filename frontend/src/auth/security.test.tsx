@@ -195,6 +195,83 @@ describe("zorunlu iki aşamalı doğrulama", () => {
   });
 });
 
+describe("geçici şifreyle ilk giriş", () => {
+  async function setNewPassword(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(await screen.findByLabelText("Geçici şifre"), "Kp7m-x3Rt-9wQa");
+    await user.type(screen.getByLabelText("Yeni şifre"), "Yeni.Sifre-2026");
+    await user.type(screen.getByLabelText("Yeni şifre (tekrar)"), "Yeni.Sifre-2026");
+    await user.click(screen.getByRole("button", { name: "Şifreyi değiştir" }));
+  }
+
+  it("her sayfa önce şifre belirlemeye götürür; şifre belirlenince Görevlerim açılır", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe)
+      .mockResolvedValueOnce({ ...userWith("depo"), password_change_required: true })
+      .mockResolvedValue(userWith("depo"));
+    vi.mocked(authApi.changePassword).mockResolvedValue();
+    const { router } = renderApp("/depo");
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/guvenlik"));
+    expect(await screen.findByText("Yeni şifrenizi belirleyin")).toBeInTheDocument();
+    // Önce yalnızca şifre: iki aşamalı doğrulama ve oturum kartları görünmez.
+    expect(screen.queryByText("İki aşamalı doğrulama")).not.toBeInTheDocument();
+    expect(screen.queryByText("Oturum")).not.toBeInTheDocument();
+
+    await setNewPassword(user);
+
+    await waitFor(() =>
+      expect(authApi.changePassword).toHaveBeenCalledWith({
+        old_password: "Kp7m-x3Rt-9wQa",
+        new_password: "Yeni.Sifre-2026",
+      }),
+    );
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+  });
+
+  it("rol 2FA istiyorsa şifreden sonra doğrulama kurulumu istenir", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe)
+      .mockResolvedValueOnce({
+        ...userWith("yonetim"),
+        password_change_required: true,
+        otp_setup_required: true,
+      })
+      .mockResolvedValue({ ...userWith("yonetim"), otp_setup_required: true });
+    vi.mocked(authApi.changePassword).mockResolvedValue();
+    const { router } = renderApp("/guvenlik");
+
+    expect(await screen.findByText("Yeni şifrenizi belirleyin")).toBeInTheDocument();
+    expect(screen.queryByText("İki aşamalı doğrulama zorunlu")).not.toBeInTheDocument();
+
+    await setNewPassword(user);
+
+    expect(await screen.findByText("İki aşamalı doğrulama zorunlu")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Kur" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/guvenlik");
+  });
+
+  it("bir API 403 password_change_required dönerse me yenilenir ve Güvenlik sayfasına gidilir", async () => {
+    vi.mocked(authApi.fetchMe)
+      .mockResolvedValueOnce(userWith("depo"))
+      .mockResolvedValue({ ...userWith("depo"), password_change_required: true });
+    const { router } = renderApp("/bildirimler");
+    await screen.findByRole("link", { name: "Depo ve stok" });
+
+    await act(async () => {
+      await api
+        .get("/herhangi/", {
+          adapter: () =>
+            Promise.reject(
+              httpError(403, { code: "password_change_required", detail: "Şifrenizi belirleyin." }),
+            ),
+        })
+        .catch(() => undefined);
+    });
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/guvenlik"));
+  });
+});
+
 describe("Güvenlik sayfası", () => {
   it("kullanıcı menüsünden açılır", async () => {
     const user = userEvent.setup();

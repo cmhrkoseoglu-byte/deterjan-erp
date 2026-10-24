@@ -12,8 +12,9 @@ from apps.core.models import User
 
 
 class OtpAdminAuthenticationForm(AdminAuthenticationForm):
-    """Yönetim paneli girişi: doğrulayıcı uygulaması kurulu kullanıcıdan kod ister; rolü 2FA
-    gerektirip kurmamış kullanıcıyı önce uygulamadaki Güvenlik sayfasına yönlendirir."""
+    """Yönetim paneli girişi: doğrulayıcı uygulaması kurulu kullanıcıdan kod ister; geçici şifreli
+    ya da rolü 2FA gerektirip kurmamış kullanıcıyı önce uygulamadaki Güvenlik sayfasına
+    yönlendirir."""
 
     otp_code = forms.CharField(
         label="Doğrulama kodu",
@@ -27,6 +28,12 @@ class OtpAdminAuthenticationForm(AdminAuthenticationForm):
         super().confirm_login_allowed(user)
         if not isinstance(user, User):
             return
+        if user.must_change_password:
+            raise forms.ValidationError(
+                "Geçici şifreyle girdiniz. Önce uygulamaya girip Güvenlik sayfasından kendi "
+                "şifrenizi belirleyin.",
+                code="password_change_required",
+            )
         if security.otp_enabled(user):
             code = self.cleaned_data.get("otp_code") or ""
             if not security.verify_second_factor(user, code):
@@ -50,7 +57,9 @@ class ERPAdminSite(admin.AdminSite):
 
     def has_permission(self, request: HttpRequest) -> bool:
         user = request.user
-        if isinstance(user, User) and security.otp_setup_required(user):
+        if isinstance(user, User) and (
+            user.must_change_password or security.otp_setup_required(user)
+        ):
             return False
         return super().has_permission(request)
 

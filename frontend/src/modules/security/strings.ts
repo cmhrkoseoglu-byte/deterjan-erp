@@ -4,6 +4,11 @@ export const st = {
   setupRequiredTitle: "İki aşamalı doğrulama zorunlu",
   setupRequired:
     "Rolünüz için iki aşamalı doğrulama zorunludur. Sistemi kullanmaya devam etmek için aşağıdaki adımlarla doğrulayıcı uygulamayı kurun.",
+  passwordChangeRequiredTitle: "Yeni şifrenizi belirleyin",
+  passwordChangeRequired:
+    "Yöneticinin verdiği geçici şifreyle girdiniz. Sistemi kullanmak için önce kendi şifrenizi belirleyin: geçici şifreyi ilk alana, yeni şifrenizi alttaki iki alana yazın.",
+  temporaryPassword: "Geçici şifre",
+  passwordSetDone: "Şifreniz belirlendi. Sistemi kullanmaya başlayabilirsiniz.",
   // Şifre
   passwordTitle: "Şifre değiştir",
   oldPassword: "Mevcut şifre",

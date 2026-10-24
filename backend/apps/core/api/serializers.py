@@ -9,6 +9,7 @@ from rest_framework import serializers
 
 from apps.core import security
 from apps.core.models import Attachment, AuditLog, User
+from apps.core.roles import ALL_ROLES
 
 HEALTH_STATES = ["ok", "error"]
 
@@ -38,12 +39,16 @@ class LoginSerializer(serializers.Serializer):
 class MeSerializer(serializers.ModelSerializer):
     """Giriş yapmış kullanıcı. Biçim docs/DECISIONS.md'deki auth sözleşmesindedir.
 
-    Güvenlik alanları (Faz 5): `otp_enabled`, `otp_setup_required` (rol 2FA istiyor, kurulmamış;
-    SPA Güvenlik sayfasına yönlendirir), `field_device` (bu tarayıcı saha tableti) ve
-    `idle_timeout_seconds` (hareketsizlik süresi)."""
+    Güvenlik alanları (Faz 5): `otp_enabled`, `password_change_required` (yöneticinin verdiği
+    geçici şifreyle girdi; SPA önce şifre değiştirmeye götürür), `otp_setup_required` (rol 2FA
+    istiyor, kurulmamış; SPA Güvenlik sayfasına yönlendirir), `field_device` (bu tarayıcı saha
+    tableti) ve `idle_timeout_seconds` (hareketsizlik süresi)."""
 
     roles = serializers.ListField(child=serializers.CharField(), read_only=True)
     otp_enabled = serializers.SerializerMethodField()
+    password_change_required = serializers.BooleanField(
+        source="must_change_password", read_only=True
+    )
     otp_setup_required = serializers.SerializerMethodField()
     field_device = serializers.SerializerMethodField()
     idle_timeout_seconds = serializers.SerializerMethodField()
@@ -58,6 +63,7 @@ class MeSerializer(serializers.ModelSerializer):
             "roles",
             "is_superuser",
             "otp_enabled",
+            "password_change_required",
             "otp_setup_required",
             "field_device",
             "idle_timeout_seconds",
@@ -137,6 +143,7 @@ class UserSerializer(serializers.ModelSerializer):
             "roles",
             "is_active",
             "is_superuser",
+            "must_change_password",
             "last_login",
             "date_joined",
             "is_locked",
@@ -156,6 +163,38 @@ class UserSerializer(serializers.ModelSerializer):
     def get_roles(self, obj: User) -> list[str]:
         # prefetch_related("groups") ile ek sorgu üretmez.
         return sorted(group.name for group in obj.groups.all())
+
+
+class UserCreateSerializer(serializers.Serializer):
+    """Yeni kullanıcı (yalnızca admin). Şifre girilmez; sistem geçici şifre üretir. Kullanıcı adı
+    kuralı ve tekilliği servis katmanında denetlenir (`core.services.create_user`)."""
+
+    username = serializers.CharField(label="Kullanıcı adı", max_length=150)
+    full_name = serializers.CharField(label="Ad soyad", max_length=150)
+    email = serializers.EmailField(label="E-posta", required=False, allow_blank=True, default="")
+    phone = serializers.CharField(
+        label="Telefon", max_length=32, required=False, allow_blank=True, default=""
+    )
+    roles = serializers.ListField(
+        child=serializers.ChoiceField(choices=ALL_ROLES), required=False, default=list
+    )
+
+
+class UserUpdateSerializer(serializers.Serializer):
+    """Kullanıcı bilgisi ve rol güncelleme (yalnızca gönderilen alanlar değişir). Kullanıcı adı
+    değiştirilemez."""
+
+    full_name = serializers.CharField(label="Ad soyad", max_length=150, required=False)
+    email = serializers.EmailField(label="E-posta", required=False, allow_blank=True)
+    phone = serializers.CharField(label="Telefon", max_length=32, required=False, allow_blank=True)
+    roles = serializers.ListField(child=serializers.ChoiceField(choices=ALL_ROLES), required=False)
+
+
+class IssuedPasswordSerializer(serializers.Serializer):
+    """Yeni kullanıcı ya da şifre sıfırlama yanıtı: geçici şifre yalnızca bu yanıtta görünür."""
+
+    user = UserSerializer()
+    temporary_password = serializers.CharField()
 
 
 @extend_schema_field(OpenApiTypes.STR)

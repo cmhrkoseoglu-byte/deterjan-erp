@@ -36,7 +36,18 @@ class UserAdmin(AuditedAdminMixin, DjangoUserAdmin):
     fieldsets = (
         (None, {"fields": ("username", "password")}),
         ("Kişisel bilgiler", {"fields": ("full_name", "email", "phone")}),
-        ("Roller ve yetkiler", {"fields": ("is_active", "is_staff", "is_superuser", "groups")}),
+        (
+            "Roller ve yetkiler",
+            {
+                "fields": (
+                    "is_active",
+                    "must_change_password",
+                    "is_staff",
+                    "is_superuser",
+                    "groups",
+                )
+            },
+        ),
         ("Önemli tarihler", {"fields": ("last_login", "date_joined")}),
     )
     add_fieldsets = (

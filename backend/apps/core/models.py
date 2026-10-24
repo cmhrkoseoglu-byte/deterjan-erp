@@ -24,6 +24,12 @@ class User(AbstractUser):
 
     full_name = models.CharField("ad soyad", max_length=150, blank=True)
     phone = models.CharField("telefon", max_length=32, blank=True)
+    must_change_password = models.BooleanField(
+        "şifresini değiştirmeli",
+        default=False,
+        help_text="Şifreyi yönetici verdiyse (yeni kullanıcı, şifre sıfırlama) kullanıcı kendi "
+        "şifresini belirleyene kadar sistemde başka işlem yapamaz.",
+    )
 
     class Meta:
         verbose_name = "kullanıcı"

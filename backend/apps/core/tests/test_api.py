@@ -55,6 +55,7 @@ def test_login_success_returns_me_and_audits(make_user):
         "roles": ["depo"],
         "is_superuser": False,
         "otp_enabled": False,
+        "password_change_required": False,
         "otp_setup_required": False,
         "field_device": False,
         "idle_timeout_seconds": 3600,
@@ -319,12 +320,6 @@ def test_users_list_forbidden_for_other_roles(client_for, role):
 
 def test_users_list_requires_login():
     assert APIClient().get(USERS).status_code == 401
-
-
-def test_users_api_is_read_only(client_for):
-    client = client_for(ADMIN)
-
-    assert client.post(USERS, {"username": "x"}).status_code == 405
 
 
 def test_users_list_is_paginated_by_50(client_for, make_user):

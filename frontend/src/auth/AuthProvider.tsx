@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as authApi from "../api/auth";
-import { api, isOtpSetupRequired, isSessionExpired, isUnauthenticated } from "../api/client";
+import {
+  api,
+  isOtpSetupRequired,
+  isPasswordChangeRequired,
+  isSessionExpired,
+  isUnauthenticated,
+} from "../api/client";
 import { idleSeconds, markActivity, startIdleTracking } from "../api/idle";
 import type { CurrentUser } from "../api/types";
 import { installClientErrorHandlers, setClientErrorReporting } from "../errors/clientErrors";
@@ -57,8 +63,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (isUnauthenticated(error)) {
         // Oturum başka nedenle sona erdi: kullanıcı "yok" sayılır, RequireAuth yönlendirir.
         queryClient.setQueryData(ME_QUERY_KEY, null);
-      } else if (isOtpSetupRequired(error) && !userRef.current?.otp_setup_required) {
-        // Rol 2FA istiyor ama kurulmamış: `me` yenilenince RequireAuth Güvenlik sayfasına götürür.
+      } else if (
+        (isPasswordChangeRequired(error) && !userRef.current?.password_change_required) ||
+        (isOtpSetupRequired(error) && !userRef.current?.otp_setup_required)
+      ) {
+        // Geçici şifreyle girdi ya da rol 2FA istiyor ama kurulmamış: `me` yenilenince
+        // RequireAuth Güvenlik sayfasına götürür.
         queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
       }
       return Promise.reject(error);

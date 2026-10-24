@@ -1,0 +1,7 @@
+# gitleaks yanlış alarmları (CI "Güvenlik taramaları"). Satır biçimi: commit:dosya:kural:satır.
+# Yalnızca incelenip gizli bilgi OLMADIĞI doğrulanan bulgular eklenir; gerçek gizli bilgi geçmişten
+# temizlenir, buraya eklenmez.
+#
+# 8308478: geçici şifre üretecinin harf/rakam alfabesi (gizli bilgi değil) generic-api-key kuralına
+# takıldı. Sonraki commit alfabeyi string modülünden üretir; bulgu yalnızca bu commit'te kaldı.
+83084780de355950168e202abad8d447be9cdf09:backend/apps/core/services.py:generic-api-key:295

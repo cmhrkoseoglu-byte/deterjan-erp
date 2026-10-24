@@ -637,3 +637,21 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   değişmez), `test_create_first_admin_rejects_weak_password`; `bash -n` ve yerel prova (aşağıda PR'da).
 - Kalan (CUMHUR): sunucuda betiği çalıştırmak, dış yedek yeri, yazıcılar için VPN, KVKK güncellemesi,
   sayım günü açılış stoku.
+
+## 2026-10-23 — Kullanıcı yönetimi uygulamada
+
+- **Sistem > Kullanıcılar**: yeni kullanıcı (sistem geçici şifre üretir, bir kez gösterir), bilgi ve rol
+  düzenleme, şifre sıfırlama, pasife alma / etkinleştirme. Geçici şifreli kullanıcı kendi şifresini
+  belirlemeden başka işlem yapamaz (`403 password_change_required`); rol gerektiriyorsa ardından 2FA
+  kurulur. Kurallar: DECISIONS.md "Kullanıcı yönetimi uygulamada". Göç `core.0004_user_must_change_password`
+  yalnızca alan ekler.
+- Kanıt: `apps/core/tests/test_user_admin.py` (oluşturma ve geçici şifre, şifre politikası, kullanıcı adı
+  kuralı ve tekilliği, yalnızca admin, `PUT`/silme yok, güncelleme, son yönetici, pasife alma ve oturum,
+  şifre sıfırlama ve kilit, ilk giriş kapısı, şifreden sonra 2FA, yönetim paneli); `system.test.tsx` (yeni
+  kullanıcı ve geçici şifre penceresi, istemci doğrulaması, düzenleme, şifre sıfırlama, pasife alma /
+  etkinleştirme, kendi satırında işlem menüsü yok); `security.test.tsx` (ilk girişte şifre, ardından 2FA,
+  `403 password_change_required` yönlendirmesi). Tüm backend testleri, mypy, ruff ve eksik göç kontrolü
+  temiz. Yerel prova: demo admin ile hesap açıldı, geçici şifreyle girildi, API `403
+  password_change_required` döndü, yeni şifreyle Görevlerim açıldı, denetim kayıtlarında şifre yok.
+- Kılavuz: `admin.md` kullanıcı açma bölümü yeni ekrana göre, `genel.md` ilk giriş, `admin-kullanicilar.jpg`
+  yeni ekranla (betikteki çekim de `/sistem/kullanicilar`); KURULUM §6 yönlendirmesi düzeltildi.
