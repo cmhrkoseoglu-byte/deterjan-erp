@@ -225,7 +225,8 @@ describe("geçici şifreyle ilk giriş", () => {
         new_password: "Yeni.Sifre-2026",
       }),
     );
-    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    // Açılış ekranına döner: depo için Görevlerim (yönetim panosu yalnızca yönetim rolünde).
+    await waitFor(() => expect(router.state.location.pathname).toBe("/gorevlerim"));
   });
 
   it("rol 2FA istiyorsa şifreden sonra doğrulama kurulumu istenir", async () => {
