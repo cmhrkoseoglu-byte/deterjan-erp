@@ -5,6 +5,7 @@ import mimetypes
 import os
 import re
 import secrets
+import string
 from collections.abc import Iterable
 from typing import Any
 
@@ -291,8 +292,11 @@ def set_user_roles(user: User, roles: Iterable[str], actor: User | None, *, note
 # --- kullanıcı yönetimi (Sistem > Kullanıcılar; API yalnızca admin'e açık) ----------------------
 
 USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,149}$")
-# Geçici şifrede birbirine karışan karakterler (0/O, 1/l/I) yoktur.
-_TEMP_PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+# Geçici şifrede birbirine karışan karakterler (0/O/o, 1/l/I/i) yoktur.
+_AMBIGUOUS_CHARACTERS = frozenset("0Oo1lIi")
+_TEMP_PASSWORD_ALPHABET = "".join(
+    ch for ch in string.ascii_letters + string.digits if ch not in _AMBIGUOUS_CHARACTERS
+)
 
 
 def generate_temporary_password(user: User) -> str:
