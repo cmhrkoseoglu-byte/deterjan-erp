@@ -1302,6 +1302,39 @@ Plan thread'de CUMHUR'un onayıyla ("Onayla"). Kararlar:
   Adres firma alan adı (`ADRES=erp.firma.com.tr`) ya da `<ip>.sslip.io`. Eğitim kipi (`KIP=egitim`,
   `scripts/egitim-kur.sh`) aynı betiği kullanır; bir kipte kurulan sunucu öbür kipe çevrilmez.
 
+## 2026-10-23 — Kullanıcı yönetimi uygulamada (Sistem > Kullanıcılar)
+
+Bulut sunucusunda (D-21) yönetim paneli (`/admin/`) yalnızca sunucunun kendisinden ve VPN'den açılır
+(`INTERNAL_NETWORKS`); VPN henüz kurulmadığı için yönetici kullanıcı açamıyordu. Kullanıcı yönetimi
+uygulamaya taşındı (CUMHUR onayı, 2026-10-23: yönetici ekranı, sistem üretimi ilk şifre, ilk girişte
+değiştirme zorunlu, yalnızca admin):
+
+- **Yalnızca admin** (`HasRole(ADMIN)`): yeni kullanıcı (`POST /api/v1/users/`), bilgi ve rol güncelleme
+  (`PATCH`), `deactivate` / `activate`, `reset-password`; mevcut kilit açma ve 2FA sıfırlama. `PUT` ve
+  silme yoktur (kural 6: kullanıcı pasife alınır).
+- **İlk şifreyi sistem üretir** (`core.services.generate_temporary_password`): okunaklı dörtlü gruplar
+  (`Kp7m-x3Rt-9wQa`), birbirine karışan karakterler (0/O, 1/l/I) yok, şifre politikasına uyar (grup sayısı
+  `PASSWORD_MIN_LENGTH`'e göre artar). Yalnızca oluşturma ve sıfırlama yanıtında bir kez döner
+  (`{"user", "temporary_password"}`, `Cache-Control: no-store`); saklanmaz, denetim günlüğüne yazılmaz.
+- **İlk girişte şifre değiştirme zorunlu**: `User.must_change_password` (göç `core.0004`). İşaretli
+  kullanıcı `/api/v1/auth/*`, sağlık ve istemci hatası uçları dışında `403 {"code":
+  "password_change_required"}` alır (`core.middleware`; 2FA kapısından önce gelir) ve yönetim paneline
+  giremez. `me` yanıtına `password_change_required` eklendi; SPA Güvenlik sayfasına götürür, şifre
+  belirlenince (2FA gerekmiyorsa) Görevlerim'e döner. Yeni şifre mevcut şifreyle aynı olamaz
+  (`same_password`, her şifre değişikliğinde); değişince işaret kalkar.
+- **Kullanıcı adı**: küçük harf, rakam, `.`, `_`, `-`, en az 2 karakter; Türkçe karakter yok (tablette kolay
+  yazılır, girişte büyük/küçük harf karışmaz); büyük/küçük harf farkıyla bile tekil (`username_taken`);
+  sonradan değiştirilemez (denetim kayıtlarında ve @bahsetmelerde geçer). Ekran ad soyaddan öneri üretir.
+  Ad soyad zorunlu; telefon ve e-posta isteğe bağlı. Rolsüz kullanıcı açılabilir (ekran uyarır).
+- **Kilitlenmeye karşı**: admin kendini pasife alamaz (`cannot_deactivate_self`), kendi `admin` rolünü
+  kaldıramaz (`cannot_remove_own_admin`), kendi şifresini bu ekrandan sıfırlayamaz (`use_security_page`);
+  başka aktif yönetici (superuser ya da `admin` rolü) kalmayacaksa yönetici pasife alınamaz ve `admin` rolü
+  kaldırılamaz (`last_admin`). Pasif kullanıcının şifresi sıfırlanmaz (`user_inactive`).
+- **Oturumlar**: pasife alınan kullanıcının oturumu bir sonraki istekte düşer (kimlik doğrulama arka ucu
+  pasif kullanıcıyı tanımaz). Şifre sıfırlamada şifre özeti değiştiği için açık oturumlar kapanır; hatalı
+  deneme kilidi de açılır.
+- Denetim: oluşturma (`create`, not "Kullanıcı açıldı"), roller, bilgi değişiklikleri, pasife alma /
+  etkinleştirme ve "Şifre sıfırlandı" (`custom`) yazılır; şifre yalnızca `***` olarak görünür.
 ## 2026-10-24 — Yönetim panosu, yönetimin açılış ekranı
 
 - **Karar (CUMHUR, "Yönetici panosu" → taslağa "Evet, uygula" → "Yönetimin açılış ekranı"):** yönetim

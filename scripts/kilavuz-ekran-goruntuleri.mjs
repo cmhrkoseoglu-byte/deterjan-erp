@@ -917,18 +917,7 @@ const SHOTS = [
   {
     name: "admin-kullanicilar",
     user: "admin",
-    run: async (page) => {
-      const response = await page.goto(`${BASE}/admin/core/user/`);
-      await page.waitForLoadState("networkidle").catch(() => {});
-      if (
-        !response?.ok() ||
-        !/\/admin\/core\/user\/$/.test(new URL(page.url()).pathname)
-      ) {
-        throw new Error(
-          `Django yönetim paneline girilemedi (HTTP ${response?.status()})`,
-        );
-      }
-    },
+    run: async (page) => go(page, "/sistem/kullanicilar", "Yeni kullanıcı"),
   },
   {
     name: "admin-sorunlar",

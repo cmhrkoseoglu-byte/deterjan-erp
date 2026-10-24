@@ -12,6 +12,8 @@ Bu kılavuz her rol için ortaktır. Giriş, menü, görevler, bildirimler, yoru
 
 > Şifrenizi unuttuysanız ya da hesabınız kilitlendiyse sistem yöneticisine haber verin. Şifrenizi kimseyle paylaşmayın; her işlem sizin adınıza kaydedilir.
 
+**İlk giriş:** Sistem yöneticisi hesabınızı açınca (ya da şifrenizi sıfırlayınca) size bir geçici şifre verir. Bu şifreyle girdiğinizde sistem sizi **Güvenlik** sayfasına götürür: **Geçici şifre** alanına verilen şifreyi, alttaki iki alana kendi yeni şifrenizi yazıp **Şifreyi değiştir**'e basın. Ardından Görevlerim (yönetim rolünde **Yönetim panosu**) açılır; rolünüz gerektiriyorsa önce iki aşamalı doğrulamayı kurarsınız.
+
 ## Üst çubuk ve menü
 
 - Üst çubuğun rengi rolünüzü gösterir: yönetim altın, planlama mavi, depo turuncu, üretim çivit, laboratuvar yeşil, dolum camgöbeği, sevkiyat mor, satın alma pembe, sistem yöneticisi lacivert. **INNCOS** yazısının altında panelinizin adı yazar. Ortak tablette hangi birimin ekranında olduğunuzu renkten anlarsınız.

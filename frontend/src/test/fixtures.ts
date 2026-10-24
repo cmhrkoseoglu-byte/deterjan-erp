@@ -10,6 +10,7 @@ export function userWith(...roles: Role[]): CurrentUser {
     roles,
     is_superuser: false,
     otp_enabled: false,
+    password_change_required: false,
     otp_setup_required: false,
     field_device: false,
     idle_timeout_seconds: 3600,

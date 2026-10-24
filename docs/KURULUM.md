@@ -228,9 +228,11 @@ curl -s https://erp.firma.local/api/v1/health/    # {"status":"ok","db":"ok","re
 scripts/prod-compose.sh exec backend python manage.py createsuperuser
 ```
 
-Ardından iç ağdan `https://erp.firma.local/admin/` adresine girip kullanıcıları oluşturun ve rollerini
-(grup) atayın. `admin` ve `yonetim` rolleri iki adımlı doğrulama (TOTP, ör. Google Authenticator)
-gerektirir (`OTP_REQUIRED_ROLES`). Demo kullanıcı komutu (`create_demo_users`) üretimde çalışmaz.
+Bu hesapla uygulamaya girip **Sistem > Kullanıcılar** ekranından her çalışana hesap açın ve rollerini
+verin: sistem geçici şifre üretip bir kez gösterir, çalışan ilk girişte kendi şifresini belirler
+(`docs/DECISIONS.md` "Kullanıcı yönetimi uygulamada"). `admin` ve `yonetim` rolleri iki adımlı
+doğrulama (TOTP, ör. Google Authenticator) gerektirir (`OTP_REQUIRED_ROLES`). Demo kullanıcı komutu
+(`create_demo_users`) üretimde çalışmaz.
 
 Sonra canlıya geçiş öncesi güvenlik ve KVKK kontrol listesini (`docs/CANLI-KONTROL-LISTESI.md`,
 `docs/KVKK.md`) maddesi maddesine uygulayın. Kurulumu doğrulamak için duman testi:
@@ -241,7 +243,7 @@ scripts/prod-compose.sh exec -e SMOKE_PASSWORD='Gecici.Sifre-123' backend python
    u, _ = User.objects.get_or_create(username='smoke'); u.set_password(os.environ['SMOKE_PASSWORD']); \
    u.save(); u.groups.add(Group.objects.get(name='depo'))"
 SMOKE_CA=nginx/internal-ca/ca.crt SMOKE_PASSWORD='Gecici.Sifre-123' scripts/prod_smoke_test.sh https://erp.firma.local
-# Test kullanıcısını sonra silin (yönetim paneli) ya da pasif yapın.
+# Test kullanıcısını sonra Sistem > Kullanıcılar ekranından pasife alın (kullanıcılar silinmez).
 ```
 
 (Let's Encrypt/satın alınmış sertifikada `SMOKE_CA=/etc/ssl/certs/ca-certificates.crt`.) Duman testi
