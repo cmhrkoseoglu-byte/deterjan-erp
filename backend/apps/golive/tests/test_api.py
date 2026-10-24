@@ -125,3 +125,24 @@ def test_problem_reports_visible_to_reporter_and_admin(client_for, make_user):
 
     assert dolum.post(PROBLEMS, {"description": ""}).status_code == 400
     assert ProblemReport.objects.count() == 1
+
+
+@pytest.mark.parametrize(
+    "page_url", ["//kotu.example/giris", "https://kotu.example", "/\\kotu.example", "depo", "/\t/x"]
+)
+def test_problem_report_page_url_must_be_app_path(client_for, page_url):
+    """Sayfa adresi admin ekranında bağlantı olur; başka siteye giden adres kabul edilmez."""
+    response = client_for("dolum").post(
+        PROBLEMS, {"description": "Ekran açılmıyor", "page_url": page_url}
+    )
+    assert response.status_code == 400
+    assert response.json()["errors"]["page_url"] == ["Sayfa adresi uygulama içi bir yol olmalı."]
+    assert not ProblemReport.objects.exists()
+
+
+def test_problem_report_accepts_app_path_with_query(client_for):
+    response = client_for("dolum").post(
+        PROBLEMS, {"description": "Ekran açılmıyor", "page_url": "/depo/stok?durum=serbest"}
+    )
+    assert response.status_code == 201, response.json()
+    assert ProblemReport.objects.get().page_url == "/depo/stok?durum=serbest"

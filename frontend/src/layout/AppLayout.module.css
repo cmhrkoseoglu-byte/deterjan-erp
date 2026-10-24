@@ -1,0 +1,138 @@
+/* Uygulama kabuğu: DentMesher'ın üst çubuğu (role göre renkli) ve koyu lacivert sol menüsü.
+   Çubuk rengi ve menü zemini satır içi verilir (AppLayout.tsx); burada yazı ve düğme renkleri. */
+
+.header {
+  color: #fff;
+}
+
+/* Çubuktaki simge düğmeleri (arama, sorun bildir, bildirim, tema) renkli zeminde beyaz. */
+.header :global(.mantine-ActionIcon-root) {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.header :global(.mantine-ActionIcon-root):hover {
+  color: #fff;
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Marka: DentMesher'daki gibi Manrope ExtraBold söz-işaret, altında küçük büyük harfli panel adı. */
+.brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.15;
+  color: #fff;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.wordmark {
+  font-family: Manrope, "Inter Variable", Inter, sans-serif;
+  font-weight: 800;
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+}
+
+.panel {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Arama kutusu: yarı saydam beyaz; dar ekranda yerine yalnızca simge. */
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  width: 280px;
+  max-width: 26vw;
+  margin-left: 12px;
+  padding: 0 12px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.8);
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.search:focus-within {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  background: none;
+  outline: none;
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.search input::placeholder {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.searchIcon {
+  display: none;
+}
+
+@media (max-width: 62em) {
+  .search {
+    display: none;
+  }
+
+  .searchIcon {
+    display: inline-flex;
+  }
+}
+
+/* Telefonda panel adı sığmaz; rol çubuğun renginden anlaşılır. */
+@media (max-width: 30em) {
+  .panel {
+    display: none;
+  }
+}
+
+.user {
+  padding: 6px;
+  border-radius: 999px;
+  color: #fff;
+}
+
+.user:hover {
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Sol menü: iki temada da koyu lacivert; seçili öğe mavi (DentMesher kenar çubuğu). */
+.navLink {
+  border-radius: 8px;
+  color: #8892b0;
+}
+
+.navLink:hover {
+  background-color: rgba(255, 255, 255, 0.07);
+  color: #e8edf7;
+}
+
+.navLink[data-active] {
+  background-color: rgba(59, 126, 255, 0.22);
+  color: #6b9cff;
+}
+
+.navLink[data-active]:hover {
+  background-color: rgba(59, 126, 255, 0.3);
+  color: #8db3ff;
+}

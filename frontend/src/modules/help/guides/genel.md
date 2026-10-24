@@ -12,17 +12,26 @@ Bu kılavuz her rol için ortaktır. Giriş, menü, görevler, bildirimler, yoru
 
 > Şifrenizi unuttuysanız ya da hesabınız kilitlendiyse sistem yöneticisine haber verin. Şifrenizi kimseyle paylaşmayın; her işlem sizin adınıza kaydedilir.
 
-**İlk giriş:** Sistem yöneticisi hesabınızı açınca (ya da şifrenizi sıfırlayınca) size bir geçici şifre verir. Bu şifreyle girdiğinizde sistem sizi **Güvenlik** sayfasına götürür: **Geçici şifre** alanına verilen şifreyi, alttaki iki alana kendi yeni şifrenizi yazıp **Şifreyi değiştir**'e basın. Ardından Görevlerim açılır; rolünüz gerektiriyorsa önce iki aşamalı doğrulamayı kurarsınız.
+**İlk giriş:** Sistem yöneticisi hesabınızı açınca (ya da şifrenizi sıfırlayınca) size bir geçici şifre verir. Bu şifreyle girdiğinizde sistem sizi **Güvenlik** sayfasına götürür: **Geçici şifre** alanına verilen şifreyi, alttaki iki alana kendi yeni şifrenizi yazıp **Şifreyi değiştir**'e basın. Ardından Görevlerim (yönetim rolünde **Yönetim panosu**) açılır; rolünüz gerektiriyorsa önce iki aşamalı doğrulamayı kurarsınız.
 
-## Menü
+## Üst çubuk ve menü
 
+- Üst çubuğun rengi rolünüzü gösterir: yönetim altın, planlama mavi, depo turuncu, üretim çivit, laboratuvar yeşil, dolum camgöbeği, sevkiyat mor, satın alma pembe, sistem yöneticisi lacivert. **INNCOS** yazısının altında panelinizin adı yazar. Ortak tablette hangi birimin ekranında olduğunuzu renkten anlarsınız.
 - Sol menüde yalnızca rolünüzün kullandığı ekranlar görünür. Bir ekranı göremiyorsanız rolünüzde yoktur.
 - Telefonda ya da dikey tutulan küçük tablette menü gizlenir. Sol üstteki üç çizgili düğmeyle açıp kapatın.
 - Adınıza tıklayınca hangi rollere sahip olduğunuzu görürsünüz. Bir kişinin birden fazla rolü olabilir.
 
+## Arama
+
+Üst çubuktaki **Lot ya da belge no ara** kutusuna lot numarasını ya da belge numarasının bir kısmını (ör. `SS-2026`, bir lot no, müşteri ya da malzeme adı) yazıp Enter'a basın. Sonuçlar lot, emir, sipariş, sevkiyat, numune ve iade olarak gruplanır; numaraya basınca kayıt açılır. Yalnızca rolünüzün açabildiği listelerde aranır. Telefonda kutunun yerinde büyüteç simgesi vardır.
+
+## Gündüz ve gece görünümü
+
+Üst çubuktaki ay simgesiyle ekranı koyu (gece) görünüme, güneş simgesiyle yeniden açık (gündüz) görünüme alırsınız. Seçim o cihazda saklanır; başka cihazda yeniden seçilir. Telefonda bu seçim adınıza tıklayınca açılan menüdedir.
+
 ## Görevlerim
 
-Giriş yapınca **Görevlerim** ekranı açılır. Birimler arası iş istekleri buraya görev olarak düşer. Örneğin mal kabul kaydedilince laboratuvara "Giriş kontrolü" görevi, üretim emri onaylanınca depoya malzeme hazırlama görevi gelir.
+Giriş yapınca **Görevlerim** ekranı açılır (yönetim rolünde **Yönetim panosu** açılır; Görevlerim menüdedir). Birimler arası iş istekleri buraya görev olarak düşer. Örneğin mal kabul kaydedilince laboratuvara "Giriş kontrolü" görevi, üretim emri onaylanınca depoya malzeme hazırlama görevi gelir.
 
 ![Görevlerim ekranı](/kilavuz/genel-gorevlerim.jpg)
 

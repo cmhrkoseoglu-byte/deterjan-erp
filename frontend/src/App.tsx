@@ -18,7 +18,8 @@ export function App() {
       }),
   );
   return (
-    <MantineProvider theme={theme}>
+    // Gündüz varsayılan (DentMesher gibi); gece kullanıcının seçimidir ve tarayıcıda saklanır.
+    <MantineProvider theme={theme} defaultColorScheme="light">
       <Notifications />
       <QueryClientProvider client={queryClient}>
         <AuthProvider>

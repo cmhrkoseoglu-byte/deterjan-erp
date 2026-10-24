@@ -71,9 +71,13 @@ def test_dashboard_list_and_unknown(client_for):
 
 def test_stock_value_only_for_management(client_for):
     costed_lot("10", "2.5")
-    assert client_for(PLANLAMA).get(f"{BASE}/dashboards/management/").json()["stock_value"] is None
+    planning = client_for(PLANLAMA).get(f"{BASE}/dashboards/management/").json()
+    assert planning["stock_value"] is None
+    assert planning["approvals"]["purchase_orders"] == {"count": 0, "total_try": None}
     data = client_for(YONETIM).get(f"{BASE}/dashboards/management/").json()
     assert data["stock_value"]["total"] == "25.00"
+    assert data["approvals"]["purchase_orders"] == {"count": 0, "total_try": "0"}
+    assert len(data["daily"]) == 14
 
 
 @pytest.mark.parametrize("code", REPORT_ACCESS)

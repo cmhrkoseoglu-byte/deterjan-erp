@@ -496,7 +496,7 @@ async function go(page, url, text) {
 /**
  * Listede eşleşen (yoksa ilk) satıra tıklar ve detay sayfasının açılmasını bekler. `match` metinse
  * satırın içinde geçer; düzenli ifadeyse satırdaki bir öğenin (ör. durum rozeti) metnine tam uyar.
- * Rozetler ekranda büyük harfle görünür ama DOM'daki metin "Devam ediyor" gibidir.
+ * Rozet metni ekranda da DOM'daki gibidir ("Devam ediyor"); büyük harfe çevrilmez.
  */
 async function openRow(page, url, match, expectPath) {
   await go(page, url);
@@ -889,7 +889,7 @@ const SHOTS = [
   {
     name: "yonetim-pano",
     user: "yonetim",
-    run: async (page) => go(page, "/raporlar/panolar", "Yönetim panosu"),
+    run: async (page) => go(page, "/pano", "Onayınızı bekleyenler"),
   },
   {
     name: "yonetim-sartli-kabul",

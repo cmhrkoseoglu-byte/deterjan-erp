@@ -6,11 +6,14 @@ from decimal import Decimal
 import pytest
 from django.utils import timezone
 
-from apps.core.roles import DEPO, PLANLAMA
+from apps.core.roles import DEPO, LABORATUVAR, PLANLAMA, SATIN_ALMA
 from apps.inventory.models import Lot
 from apps.inventory.testing import assert_stock_invariants
 from apps.inventory.tests.factories import stocked_lot
+from apps.purchasing import services as purchasing
+from apps.purchasing.tests.factories import draft_order, line, raw_material
 from apps.quality import services as quality
+from apps.quality.models import QualityDecision
 from apps.reporting import dashboards, selectors
 from apps.workflow import services as workflow
 
@@ -107,6 +110,19 @@ def test_dashboards_follow_the_chain(chain):
     assert data["stock_value"] is None
     assert data["qc_pending"]["sample_count"] == 0
     assert dashboards.management_dashboard(show_costs=True)["stock_value"]["total"] >= 0
+    # Son 14 gün: eskiden yeniye, bugünün çıktısı son günde; üretim olmayan günler sıfır.
+    daily = data["daily"]
+    assert len(daily) == 14
+    assert daily[-1]["date"] == data["date"]
+    assert daily[0]["date"] == data["date"] - timedelta(days=13)
+    assert daily[-1]["bulk"] == [{"unit": "KG", "quantity": D("950")}]
+    assert daily[-1]["units"] == 975
+    assert all(day["bulk"] == [] and day["units"] == 0 for day in daily[:-1])
+    assert data["shipping"] == {"dispatched_today": 1, "late_orders": 0}
+    assert data["approvals"] == {
+        "conditional_acceptance": {"count": 0, "oldest_wait_hours": None},
+        "purchase_orders": {"count": 0, "total_try": None},
+    }
 
     tanks = dashboards.production_dashboard()["tanks"]
     assert {t["state"] for t in tanks} <= {"EMPTY", "FILLED", "IN_BATCH"}
@@ -116,6 +132,36 @@ def test_dashboards_follow_the_chain(chain):
     assert lab["last_30_days"] == {"decided": 5, "rejected": 1, "rejection_rate": D("20.00")}
     warehouse = dashboards.warehouse_dashboard()
     assert warehouse["shipment_picking"] == []
+
+
+def test_management_dashboard_shows_pending_approvals(db, make_user, commit):
+    buyer = make_user(SATIN_ALMA)
+    lab = make_user(LABORATUVAR)
+    order = draft_order(buyer, [line(raw_material(), quantity="500", price="12")])
+    purchasing.submit_for_approval(buyer, order)
+    lot = stocked_lot("10", status=Lot.Status.QUARANTINE)
+    with commit():
+        sample = quality.open_sample(lab, lot, "INCOMING")
+    QualityDecision.objects.create(
+        sample=sample,
+        decision=QualityDecision.Decision.CONDITIONAL_RELEASE,
+        reason="pH sınırda",
+        decided_by=lab,
+        decided_at=timezone.now() - timedelta(hours=5),
+        approval_status=QualityDecision.Approval.PENDING,
+    )
+
+    approvals = dashboards.management_dashboard(show_costs=True)["approvals"]
+
+    order.refresh_from_db()
+    assert approvals["purchase_orders"] == {"count": 1, "total_try": order.approval_total_try}
+    assert order.approval_total_try == D("6000")
+    conditional = approvals["conditional_acceptance"]
+    assert conditional["count"] == 1
+    assert D("5") <= conditional["oldest_wait_hours"] < D("6")
+    # Tutar yalnızca yönetim ve admin'e (D-15): diğer rolde toplam yok, sayı var.
+    hidden = dashboards.management_dashboard(show_costs=False)["approvals"]["purchase_orders"]
+    assert hidden == {"count": 1, "total_try": None}
 
 
 def test_lab_queue_and_tank_in_batch(db, staff, commit):

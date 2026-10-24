@@ -107,6 +107,13 @@ describe("visibleMenu", () => {
     }
   });
 
+  it("yönetim panosu yönetimin ilk menü öğesidir (açılış ekranı); diğer rollerde yoktur", () => {
+    expect(keys(userWith(["yonetim"])).slice(0, 2)).toEqual(["dashboard", "home"]);
+    for (const role of ["planlama", "depo", "laboratuvar", "satin_alma"] as Role[]) {
+      expect(keys(userWith([role]))).not.toContain("dashboard");
+    }
+  });
+
   it("yönetim paneli yalnızca admin içindir", () => {
     expect(keys(userWith(["yonetim"]))).not.toContain("admin");
   });

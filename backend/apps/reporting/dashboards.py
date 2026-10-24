@@ -10,7 +10,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from django.db.models import Count, Min, Q, Sum
+from django.db.models import Count, Min, Q, QuerySet, Sum
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 
 from apps.core.exceptions import BusinessRuleError
@@ -25,6 +26,7 @@ from apps.maintenance.models import Downtime
 from apps.masterdata.models import Equipment
 from apps.masterdata.services import convert_quantity
 from apps.production.models import ProductionBatch, ProductionOrder
+from apps.purchasing.models import PurchaseOrder
 from apps.quality import selectors as quality
 from apps.quality.models import QualityDecision, Sample
 from apps.reporting.selectors import ZERO, day_start, hours, mean, pct
@@ -33,6 +35,7 @@ from apps.sales.models import SalesOrder, Shipment
 from apps.workflow.models import Task
 
 EXPIRY_DAYS = 30
+DAILY_DAYS = 14
 LIST_LIMIT = 10
 QUEUE_LIMIT = 50
 USER_ASSIGNED = "Kişiye atanmış"
@@ -246,12 +249,91 @@ def hse_status(today: date, days: int = 30) -> dict[str, Any]:
     }
 
 
+def production_daily(today: date, days: int = DAILY_DAYS) -> list[dict[str, Any]]:
+    """Son `days` günün günlük üretimi (eskiden yeniye): biten şarjların gerçek çıktısı (temel
+    birim bazında) ve biten dolum partilerinin sağlam adedi. Üretim olmayan gün de listede
+    sıfırla yer alır; gün, Türkiye saatine göre bitiş zamanından alınır."""
+    start = today - timedelta(days=days - 1)
+    series: dict[date, dict[str, Any]] = {
+        start + timedelta(days=i): {"date": start + timedelta(days=i), "bulk": [], "units": 0}
+        for i in range(days)
+    }
+    bulk = (
+        ProductionBatch.objects.filter(status=ProductionBatch.Status.COMPLETED)
+        .filter(_between("finished_at", start, today))
+        .annotate(day=TruncDate("finished_at"))
+        .values("day", "order__product__base_unit__code")
+        .annotate(total=Sum("actual_output_quantity"))
+        .order_by("day", "order__product__base_unit__code")
+    )
+    for row in bulk:
+        if row["day"] in series:
+            series[row["day"]]["bulk"].append(
+                {"unit": row["order__product__base_unit__code"], "quantity": row["total"] or ZERO}
+            )
+    units = (
+        FillingRun.objects.filter(status=FillingRun.Status.COMPLETED)
+        .filter(_between("finished_at", start, today))
+        .annotate(day=TruncDate("finished_at"))
+        .values("day")
+        .annotate(units=Sum("good_units"))
+        .order_by("day")
+    )
+    for day_units in units:
+        if day_units["day"] in series:
+            series[day_units["day"]]["units"] = day_units["units"] or 0
+    return list(series.values())
+
+
+def pending_approvals(*, show_costs: bool) -> dict[str, Any]:
+    """Yönetimin kararını bekleyenler: şartlı kabul onayı (en eski bekleme, saat) ve limit üstü
+    satın alma siparişleri. Siparişlerin TL karşılığı toplamı yalnızca tutar görebilene döner
+    (Karar D-15)."""
+    now = timezone.now()
+    decisions = QualityDecision.objects.filter(
+        approval_status=QualityDecision.Approval.PENDING
+    ).aggregate(count=Count("id"), oldest=Min("decided_at"))
+    orders = PurchaseOrder.objects.filter(status=PurchaseOrder.Status.PENDING_APPROVAL).aggregate(
+        count=Count("id"), total=Sum("approval_total_try")
+    )
+    return {
+        "conditional_acceptance": {
+            "count": decisions["count"],
+            "oldest_wait_hours": hours(now - decisions["oldest"]) if decisions["oldest"] else None,
+        },
+        "purchase_orders": {
+            "count": orders["count"],
+            "total_try": (orders["total"] or ZERO) if show_costs else None,
+        },
+    }
+
+
+def _dispatched_today(today: date) -> int:
+    return Shipment.objects.filter(
+        status=Shipment.Status.DISPATCHED, dispatched_at__gte=day_start(today)
+    ).count()
+
+
+def _late_sales_orders(today: date) -> QuerySet[SalesOrder]:
+    """Sevk edilebilir durumda, istenen teslim tarihi geçmiş siparişler."""
+    return SalesOrder.objects.filter(
+        status__in=SHIPPABLE_SALES, requested_delivery_date__lt=today
+    ).order_by("requested_delivery_date", "id")
+
+
 def management_dashboard(*, show_costs: bool, today: date | None = None) -> dict[str, Any]:
-    """Yönetim panosu."""
+    """Yönetim panosu: onay bekleyenler, bugünün ve haftanın üretimi, son 14 gün, sevkiyat, kalite,
+    stok, görevler, bakım ve İSG. Yönetim rolünün açılış ekranıdır."""
     today = today or timezone.localdate()
     data: dict[str, Any] = {
         "date": today,
+        "approvals": pending_approvals(show_costs=show_costs),
         "production": production_output(today),
+        "daily": production_daily(today),
+        "shipping": {
+            "dispatched_today": _dispatched_today(today),
+            "late_orders": _late_sales_orders(today).count(),
+        },
         "open_orders": {
             "production": _status_counts(
                 ProductionOrder.objects, ProductionOrder.Status.choices, OPEN_PRODUCTION
@@ -547,17 +629,11 @@ def shipping_dashboard(*, today: date | None = None) -> dict[str, Any]:
         .select_related("sales_order__customer")
         .order_by("status", "number")
     )
-    late_orders = (
-        SalesOrder.objects.filter(status__in=SHIPPABLE_SALES, requested_delivery_date__lt=today)
-        .select_related("customer")
-        .order_by("requested_delivery_date", "id")
-    )
+    late_orders = _late_sales_orders(today).select_related("customer")
     return {
         "date": today,
         "status_counts": _status_counts(Shipment.objects, Shipment.Status.choices, active),
-        "dispatched_today": Shipment.objects.filter(
-            status=Shipment.Status.DISPATCHED, dispatched_at__gte=day_start(today)
-        ).count(),
+        "dispatched_today": _dispatched_today(today),
         "today": [
             {
                 "id": s.pk,

@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 import type { RouteObject } from "react-router-dom";
+import { DASHBOARD_PATH, SEARCH_PATH, TASKS_PATH } from "./auth/paths";
 import { RequireAuth } from "./auth/RequireAuth";
 import { RequireRole } from "./auth/RequireRole";
 import { AppLayout } from "./layout/AppLayout";
-import { MENU } from "./layout/menu";
+import { MENU, menuRoles } from "./layout/menu";
 import { AdjustmentPage } from "./modules/inventory/AdjustmentPage";
 import { GoodsReceiptPage } from "./modules/inventory/GoodsReceiptPage";
 import { InventoryPage } from "./modules/inventory/InventoryPage";
@@ -29,6 +30,7 @@ import { ReturnPage } from "./modules/returns/ReturnPage";
 import { ReturnsPage } from "./modules/returns/ReturnsPage";
 import { TracePage } from "./modules/traceability/TracePage";
 import { CostingPage } from "./modules/costing/CostingPage";
+import { ManagementHomePage } from "./modules/reporting/ManagementHomePage";
 import { ReportingPage } from "./modules/reporting/ReportingPage";
 import { LotCostPage } from "./modules/costing/LotCostPage";
 import { RecipeListPage } from "./modules/recipes/RecipeListPage";
@@ -48,15 +50,13 @@ import { GoLivePage } from "./modules/golive/GoLivePage";
 import { ProblemPage } from "./modules/golive/ProblemPage";
 import { HelpPage } from "./modules/help/HelpPage";
 import { HomePage } from "./pages/HomePage";
+import { HomeRedirect } from "./pages/HomeRedirect";
 import { LoginPage } from "./pages/LoginPage";
 import { ModulePlaceholderPage } from "./pages/ModulePlaceholderPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { RouteErrorPage } from "./pages/RouteErrorPage";
-
-function menuRoles(key: string) {
-  return MENU.find((item) => item.key === key)!.roles;
-}
+import { SearchPage } from "./pages/SearchPage";
 
 function recipesPage(page: ReactNode) {
   return <RequireRole roles={menuRoles("recipes")}>{page}</RequireRole>;
@@ -209,6 +209,8 @@ const pageRoutes: RouteObject[] = [
   { path: "yardim/:guide?", element: <HelpPage /> },
 ];
 const IMPLEMENTED = new Set([
+  "dashboard",
+  "home",
   "masterdata",
   "recipes",
   "inventory",
@@ -251,8 +253,20 @@ export const routes: RouteObject[] = [
         // Sayfa hatası menü ve başlık yerinde kalarak içerik alanında gösterilir.
         errorElement: <RouteErrorPage />,
         children: [
-          { index: true, element: <HomePage /> },
+          // Açılış: yönetim rolü panoya, diğer herkes Görevlerim'e yönlenir.
+          { index: true, element: <HomeRedirect /> },
+          { path: TASKS_PATH.slice(1), element: <HomePage /> },
+          {
+            path: DASHBOARD_PATH.slice(1),
+            element: (
+              <RequireRole roles={menuRoles("dashboard")}>
+                <ManagementHomePage />
+              </RequireRole>
+            ),
+          },
           { path: "bildirimler", element: <NotificationsPage /> },
+          // Lot ve belge no araması: herkese açık; her rol yalnızca okuyabildiği listelerde arar.
+          { path: SEARCH_PATH.slice(1), element: <SearchPage /> },
           // Güvenlik (şifre, 2FA): her giriş yapmış kullanıcı.
           { path: "guvenlik", element: <SecurityPage /> },
           ...pageRoutes,

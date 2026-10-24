@@ -2,15 +2,24 @@
 
 Yönetim; panolardan fabrikanın durumunu izler, kendi onayını gerektiren kararları (şartlı kabul, limit üstü satın alma) verir, maliyet oranlarını tutar ve canlıya geçiş tarihini belirler.
 
-## Panolar ve raporlar
+## Yönetim panosu
 
-1. **Panolar ve raporlar > Panolar** sekmesinde **Yönetim panosu** açılır: bugünkü ve haftalık üretim, QC bekleyen lotlar, fire oranı, kritik stok, gecikmiş görevler, bakım, İSG olayları ve stok değeri.
-2. Birim panoları için **Depo**, **Laboratuvar**, **Üretim** ve **Sevkiyat** düğmelerine basın.
-3. Güncel rakamlar için **Yenile**'ye basın.
-4. **Raporlar** sekmesinde raporu seçin, süzgeçleri doldurun ve **Excel** ya da **PDF** alın.
-5. Büyük raporlar arka planda hazırlanır. Hazır olunca bildirim gelir; dosyayı **İndirmeler** sekmesinden alın. Dosyalar 7 gün saklanır.
+Giriş yapınca **Yönetim panosu** açılır; menünün en üstündedir. Görevleriniz **Görevlerim**'dedir. Pano dakikada bir kendini yeniler; hemen güncellemek için **Yenile**'ye basın.
+
+1. **Onayınızı bekleyenler**: şartlı kabul kararları, limit üstü satın alma siparişleri (TL toplamıyla) ve açık İSG olayları. Bekleyen varsa kartın çerçevesi mavi olur; **Kararları aç**, **Siparişleri aç** ya da **Olayları aç** ile listeye gidin.
+2. **Dikkat gerektirenler**: önce **Kritik** satırlar (minimum stokun altındaki malzeme, son kullanma tarihi geçmiş lot, yaralanmalı İSG olayı), sonra **Uyarı** satırları (gecikmiş görev, istenen teslim tarihi geçmiş sipariş, duruştaki ekipman, zamanı geçmiş bakım planı, QC'de 24 saatten uzun bekleyen numune). Satıra basınca ilgili liste açılır. Sorun yoksa **Yolunda** yazar.
+3. **Bugün**: dökme üretim, mamul adedi, sevk edilen sevkiyat ve QC bekleyen lotlar; altlarında bu haftanın toplamı ve geciken sipariş sayısı.
+4. **Son 14 gün üretim**: günlük dökme üretim ya da mamul adedi; seriyi grafiğin üstündeki düğmeden seçin. Çubuğun üzerine gelince (tablette dokununca) günün değeri görünür. **Tablo** rakamları gün gün listeler.
+5. Aşağıda stok değeri (malzeme türüne göre), son 7 günün fire oranı ve duruş süresi, birimlerin açık ve gecikmiş görevleri, açık emirler, kritik stok ve son kullanma tarihi yaklaşan lotlar yer alır.
 
 ![Yönetim panosu](/kilavuz/yonetim-pano.jpg)
+
+## Panolar ve raporlar
+
+1. **Panolar ve raporlar > Panolar** sekmesinde yönetim panosunun yanında birim panoları da vardır: **Depo**, **Laboratuvar**, **Üretim** ve **Sevkiyat** düğmelerine basın.
+2. Güncel rakamlar için **Yenile**'ye basın.
+3. **Raporlar** sekmesinde raporu seçin, süzgeçleri doldurun ve **Excel** ya da **PDF** alın.
+4. Büyük raporlar arka planda hazırlanır. Hazır olunca bildirim gelir; dosyayı **İndirmeler** sekmesinden alın. Dosyalar 7 gün saklanır.
 
 ## Şartlı kabul onayı
 

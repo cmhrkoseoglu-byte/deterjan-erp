@@ -2,13 +2,13 @@ import {
   AppShell,
   Avatar,
   Badge,
+  Box,
   Burger,
   Group,
   Menu,
   NavLink,
   ScrollArea,
   Text,
-  Title,
   UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -21,7 +21,14 @@ import { tr } from "../i18n/tr";
 import { ProblemReportButton } from "../components/problem/ProblemReportButton";
 import { NotificationBell } from "../workflow/NotificationBell";
 import { RealtimeProvider } from "../workflow/realtime";
+import classes from "./AppLayout.module.css";
+import { HeaderSearch } from "./HeaderSearch";
 import { visibleMenu } from "./menu";
+import { roleBar } from "./roleBar";
+import { ThemeMenuItem, ThemeToggle } from "./ThemeToggle";
+
+/** Sol menü zemini: DentMesher kenar çubuğu gibi iki temada da koyu lacivert. */
+const NAV_BACKGROUND = "#0a0f1c";
 
 export function AppLayout() {
   const { user, logout } = useAuth();
@@ -32,6 +39,7 @@ export function AppLayout() {
   if (!user) return null;
   const items = visibleMenu(user);
   const name = displayName(user);
+  const bar = roleBar(user);
 
   const isActive = (path: string) =>
     path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
@@ -44,12 +52,19 @@ export function AppLayout() {
   return (
     <RealtimeProvider>
       <AppShell
-        header={{ height: 64 }}
+        header={{ height: 68 }}
         // 768 px (sm) ve üstünde menü sabit açık; daha dar ekranda hamburger menü.
-        navbar={{ width: 260, breakpoint: "sm", collapsed: { mobile: !opened } }}
+        navbar={{ width: 240, breakpoint: "sm", collapsed: { mobile: !opened } }}
         padding="md"
       >
-        <AppShell.Header>
+        <AppShell.Header
+          className={classes.header}
+          data-role={bar.role}
+          style={{
+            background: `linear-gradient(100deg, ${bar.from}, ${bar.to})`,
+            borderBottom: "1px solid rgba(255, 255, 255, 0.14)",
+          }}
+        >
           <Group h="100%" px="md" justify="space-between" wrap="nowrap">
             <Group gap="sm" wrap="nowrap">
               <Burger
@@ -57,26 +72,35 @@ export function AppLayout() {
                 onClick={toggle}
                 hiddenFrom="sm"
                 size="md"
+                color="white"
                 aria-label={tr.layout.openMenu}
               />
-              <Link to="/" style={{ color: "inherit", textDecoration: "none" }}>
-                <Title order={3}>{tr.appName}</Title>
+              <Link to="/" className={classes.brand} aria-label={tr.appName}>
+                <span className={classes.wordmark}>{tr.brand.wordmark}</span>
+                <span className={classes.panel}>{tr.layout.panels[bar.role]}</span>
               </Link>
+              <HeaderSearch />
             </Group>
-            <Group gap="sm" wrap="nowrap">
+            <Group gap={4} wrap="nowrap">
               <ProblemReportButton />
               <NotificationBell />
+              {/* Telefonda çubukta yer kalmadığı için tema düğmesi kullanıcı menüsüne geçer. */}
+              <Box visibleFrom="xs">
+                <ThemeToggle />
+              </Box>
               <Menu position="bottom-end" width={240}>
                 <Menu.Target>
-                  <UnstyledButton p={6} style={{ borderRadius: 8 }}>
+                  <UnstyledButton className={classes.user}>
                     <Group gap="xs" wrap="nowrap">
-                      <Avatar radius="xl" color="blue">
+                      <Avatar radius="xl" variant="white" color="dark">
                         {name.charAt(0).toLocaleUpperCase("tr-TR")}
                       </Avatar>
-                      <Text fw={500} visibleFrom="xs">
+                      <Text fw={500} visibleFrom="sm">
                         {name}
                       </Text>
-                      <IconChevronDown size={16} />
+                      <Box visibleFrom="sm" display="flex">
+                        <IconChevronDown size={16} />
+                      </Box>
                     </Group>
                   </UnstyledButton>
                 </Menu.Target>
@@ -98,6 +122,7 @@ export function AppLayout() {
                   >
                     {tr.layout.security}
                   </Menu.Item>
+                  <ThemeMenuItem />
                   <Menu.Item leftSection={<IconLogout size={18} />} onClick={handleLogout} py="sm">
                     {tr.auth.logout}
                   </Menu.Item>
@@ -107,7 +132,13 @@ export function AppLayout() {
           </Group>
         </AppShell.Header>
 
-        <AppShell.Navbar p="sm">
+        <AppShell.Navbar
+          p="sm"
+          style={{
+            backgroundColor: NAV_BACKGROUND,
+            borderRight: "1px solid rgba(255, 255, 255, 0.06)",
+          }}
+        >
           <ScrollArea>
             <nav>
               {items.map((item) => {
@@ -117,7 +148,7 @@ export function AppLayout() {
                   leftSection: <Icon size={22} stroke={1.6} />,
                   onClick: close,
                   py: "sm",
-                  style: { borderRadius: 8 },
+                  className: classes.navLink,
                 } as const;
                 return item.external ? (
                   <NavLink key={item.key} component="a" href={item.path} {...common} />

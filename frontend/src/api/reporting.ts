@@ -112,9 +112,23 @@ export interface QcPending {
   max_wait_hours: string | null;
 }
 
+/** Son 14 günün bir günü: biten şarjların çıktısı (birim bazında) ve dolumun sağlam adedi. */
+export interface DailyOutput {
+  date: string;
+  bulk: { unit: string; quantity: string }[];
+  units: number;
+}
+
 export interface ManagementDashboard {
   date: string;
+  /** Yönetim onayı bekleyenler; sipariş toplamı (TL) yalnızca yönetim ve admin'e döner. */
+  approvals: {
+    conditional_acceptance: { count: number; oldest_wait_hours: string | null };
+    purchase_orders: { count: number; total_try: string | null };
+  };
   production: ProductionOutput;
+  daily: DailyOutput[];
+  shipping: { dispatched_today: number; late_orders: number };
   open_orders: { production: StatusCount[]; filling: StatusCount[]; sales: StatusCount[] };
   qc_pending: QcPending;
   scrap: { days: number; good_units: string; scrap_units: string; rate: string | null };

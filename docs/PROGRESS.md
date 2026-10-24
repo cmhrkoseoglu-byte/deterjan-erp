@@ -655,3 +655,54 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   password_change_required` döndü, yeni şifreyle Görevlerim açıldı, denetim kayıtlarında şifre yok.
 - Kılavuz: `admin.md` kullanıcı açma bölümü yeni ekrana göre, `genel.md` ilk giriş, `admin-kullanicilar.jpg`
   yeni ekranla (betikteki çekim de `/sistem/kullanicilar`); KURULUM §6 yönlendirmesi düzeltildi.
+
+## 2026-10-24 — Yönetim panosu (yönetimin açılış ekranı)
+
+- Sunucu (`apps/reporting/dashboards.py`): yönetim panosuna onay bekleyenler (`pending_approvals`:
+  şartlı kabul onayı sayısı ve en eski bekleme; limit üstü satın alma siparişi sayısı ve TL toplamı,
+  tutar yalnızca yönetim ve admin'e), son 14 günün günlük üretimi (`production_daily`) ve sevkiyat
+  özeti (bugün sevk edilen, istenen tarihi geçmiş sipariş) eklendi. Sevkiyat panosu aynı sorguları
+  kullanır.
+- Ekran: pano taslağa göre yeniden yapıldı (onaylar, dikkat gerektirenler, bugün, 14 gün sütun
+  grafiği — tek renk SVG, üzerine gelince günün değeri, tablo eşi —, stok değeri türlere göre, fire ve
+  duruş, birimlerin iş yükü, açık emirler, kritik stok ve SKT). `/` yönlendirme oldu: yönetim `/pano`'ya,
+  diğerleri `/gorevlerim`'e. Bağlantılar yalnızca hedef sayfayı açabilen role gösterilir.
+- Kanıt: `test_dashboards_follow_the_chain` (14 gün, bugünün çıktısı, sevkiyat özeti),
+  `test_management_dashboard_shows_pending_approvals` (TL toplamı, bekleme saati, tutarın gizlenmesi),
+  `test_stock_value_only_for_management` (API'de tutar), `test_dashboards_open_fast_on_demo_data`;
+  `reporting.test.tsx` (pano bölümleri, planlamada onay bağlantısı ve tutar yok, "Yolunda" durumu,
+  QC ve SKT uyarısı, grafiğin tablo eşi ve seri seçimi, stok değeri türleri, açılış yönlendirmeleri,
+  `/pano` yetkisi), `menu.test.ts`. Tarayıcıda yerel demo verisiyle 1024 px ve 375 px genişlikte
+  denendi (yatay kaydırma yok, ipucu çubuğu örtmüyor).
+- Kılavuz: `yonetim.md` "Yönetim panosu" bölümü, `genel.md` açılış notu; `yonetim-pano.jpg` yerel demo
+  verisinden yenilendi (betik görüntüyü artık `/pano`'dan alır).
+
+## 2026-10-24 — Arayüz: DentMesher tasarım dili
+
+- Tema (`theme.ts`, `styles/global.css`): Inter + Manrope (`@fontsource-variable/inter`,
+  `@fontsource/manrope`), DentMesher mavisi ve kayrak gri, 16 px köşeli kutular, hap rozetler; gece
+  paleti (kahve) ve zemin ışıması; durum yazısı renkleri (`--status-*`) iki temada okunur.
+- Kabuk (`layout/AppLayout.tsx`): role göre renkli üst çubuk (`layout/roleBar.ts`), INNCOS söz-işareti
+  ve panel adı, arama kutusu (`HeaderSearch`), gündüz/gece düğmesi (`ThemeToggle`; telefonda kullanıcı
+  menüsünde), koyu lacivert sol menü (240 px). Arama sayfası `pages/SearchPage.tsx` (`/ara`). Giriş
+  ekranı (`pages/LoginPage.tsx`) DentMesher girişi gibi.
+- Gece temasında bütün modüller gezildi; sabit renkli durum yazıları (pano, okutma) ve bir görsel
+  çerçevesi tema değişkenine alındı; tarayıcı denetimleri gecede koyu çizilir (`color-scheme`).
+- Kanıt: `layout/shell.test.tsx` (rol rengi ve panel adı, tema düğmesi ve saklanması, arama kutusu,
+  arama sayfasında rol süzmesi ve kayıt bağlantıları, kısa aramada istek yok, giriş ekranı); bütün ön
+  yüz testleri, lint, biçim, tip denetimi ve derleme. Tarayıcıda gündüz ve gece, 1024 px ve 375 px.
+- Kılavuz: `genel.md` (üst çubuk, arama, gündüz/gece); kılavuz görselleri yeni görünümle yeniden
+  çekildi (`scripts/kilavuz-ekran-goruntuleri.mjs`).
+
+## 2026-10-24 — Açık yönlendirme denetimi
+
+- `frontend/src/auth/safePath.ts` (`safeAppPath`): giriş sonrası dönüş adresi (`LoginPage`) ve sorun
+  bildirimi sayfasındaki adres bağlantısı (`ProblemPage`) yalnızca uygulama içi yola gider. Backend:
+  `ProblemReportCreateSerializer.validate_page_url` başka siteye giden adresi reddeder.
+- Kanıt: `auth/safePath.test.tsx` (ters bölü, çift ters bölü, sekme, satır sonu, `//`, `https:`,
+  `javascript:` reddedilir; uygulama içi yol sorgu ve çapasıyla korunur; girişten sonra kötü adreste ana
+  sayfaya dönülür), `test_problem_report_page_url_must_be_app_path`,
+  `test_problem_report_accepts_app_path_with_query`. Tarayıcıda dört varyant denendi; yüklü react-router
+  (6.30.6) hiçbirinde site dışına çıkmadı.
+- Açık: react-router-dom 7.x'e geçiş (uyarının kalıcı çözümü) ayrı ve kırıcı bir iş; CI'daki
+  `npm audit --audit-level=high` bu orta düzey uyarıda kırılmaz.

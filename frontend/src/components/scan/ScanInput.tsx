@@ -189,8 +189,8 @@ export const ScanInput = forwardRef<ScanInputHandle, ScanInputProps>(function Sc
       )}
       {!error && done && (
         <Group gap={4} mt={4}>
-          <IconCheck size={16} color="var(--mantine-color-green-7)" />
-          <Text size="sm" c="green.8" data-testid="scan-ok">
+          <IconCheck size={16} color="var(--status-ok)" />
+          <Text size="sm" c="var(--status-ok)" data-testid="scan-ok">
             {done}
           </Text>
         </Group>
