@@ -1301,3 +1301,16 @@ Plan thread'de CUMHUR'un onayıyla ("Onayla"). Kararlar:
   yönetim için 2FA zorunlu, ilk yönetici hesabı (`create_first_admin`, kullanıcı adı `yonetici`).
   Adres firma alan adı (`ADRES=erp.firma.com.tr`) ya da `<ip>.sslip.io`. Eğitim kipi (`KIP=egitim`,
   `scripts/egitim-kur.sh`) aynı betiği kullanır; bir kipte kurulan sunucu öbür kipe çevrilmez.
+
+## 2026-10-24 — Açık yönlendirme denetimi (giriş dönüş adresi, sorun bildirimi sayfası)
+
+- **Bulgu:** `npm audit --omit=dev`, react-router-dom 6.30.6 için orta düzey GHSA-wrjc-x8rr-h8h6 (ters
+  bölüyle açık yönlendirme, CVE-2025-68470 atlatması) bildiriyor; yamalı sürüm yalnızca 7.x (kırıcı).
+  Yerelde `/login?next=` ile ters bölü, çift ters bölü, karışık ve sekme varyantları denendi; yüklü sürüm
+  hepsini uygulama içinde tuttu, sömürülemedi.
+- **Karar (CUMHUR öneri kartını başlattı; iş bu oturumda yapıldı):** 7.x'e geçilmez, savunma kodda.
+  Ortak `auth/safePath.ts` yalnızca bu sitenin yolunu kabul eder (`/` ile başlar, `//` ile başlamaz, ters
+  bölü ve kontrol karakteri yok, aynı origin'e çözülür). Giriş sonrası dönüş adresi ve sorun
+  bildirimindeki sayfa bağlantısı bundan geçer; geçmeyen adres ana sayfaya düşer ya da düz yazı kalır.
+- **Backend:** sorun bildiriminin `page_url` alanı yalnızca uygulama içi yol kabul eder (400
+  `validation_error`). Önceden her adres kaydedilip admin ekranında bağlantı olarak gösteriliyordu.

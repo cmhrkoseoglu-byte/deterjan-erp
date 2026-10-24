@@ -111,3 +111,12 @@ class ProblemReportCreateSerializer(serializers.Serializer):
     user_agent = serializers.CharField(required=False, allow_blank=True, default="", max_length=500)
     screen = serializers.CharField(required=False, allow_blank=True, default="", max_length=32)
     screenshot = serializers.FileField(required=False, allow_null=True)
+
+    def validate_page_url(self, value: str) -> str:
+        """Bildirimin sayfası yalnızca uygulama içi bir yol olabilir (ör. `/depo/stok?x=1`): adres
+        admin ekranında bağlantı olarak gösterilir; başka siteye giden adres ("//…", "https://…",
+        ters bölü, kontrol karakteri) açık yönlendirme olurdu."""
+        unsafe = any(char == "\\" or ord(char) < 32 or ord(char) == 127 for char in value)
+        if value and (not value.startswith("/") or value.startswith("//") or unsafe):
+            raise serializers.ValidationError("Sayfa adresi uygulama içi bir yol olmalı.")
+        return value

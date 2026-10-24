@@ -637,3 +637,16 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   değişmez), `test_create_first_admin_rejects_weak_password`; `bash -n` ve yerel prova (aşağıda PR'da).
 - Kalan (CUMHUR): sunucuda betiği çalıştırmak, dış yedek yeri, yazıcılar için VPN, KVKK güncellemesi,
   sayım günü açılış stoku.
+
+## 2026-10-24 — Açık yönlendirme denetimi
+
+- `frontend/src/auth/safePath.ts` (`safeAppPath`): giriş sonrası dönüş adresi (`LoginPage`) ve sorun
+  bildirimi sayfasındaki adres bağlantısı (`ProblemPage`) yalnızca uygulama içi yola gider. Backend:
+  `ProblemReportCreateSerializer.validate_page_url` başka siteye giden adresi reddeder.
+- Kanıt: `auth/safePath.test.tsx` (ters bölü, çift ters bölü, sekme, satır sonu, `//`, `https:`,
+  `javascript:` reddedilir; uygulama içi yol sorgu ve çapasıyla korunur; girişten sonra kötü adreste ana
+  sayfaya dönülür), `test_problem_report_page_url_must_be_app_path`,
+  `test_problem_report_accepts_app_path_with_query`. Tarayıcıda dört varyant denendi; yüklü react-router
+  (6.30.6) hiçbirinde site dışına çıkmadı.
+- Açık: react-router-dom 7.x'e geçiş (uyarının kalıcı çözümü) ayrı ve kırıcı bir iş; CI'daki
+  `npm audit --audit-level=high` bu orta düzey uyarıda kırılmaz.

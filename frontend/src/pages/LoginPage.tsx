@@ -14,14 +14,15 @@ import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorCode, getErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { safeAppPath } from "../auth/safePath";
 import { BrandMark } from "../components/brand/BrandMark";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { tr } from "../i18n/tr";
 import classes from "./LoginPage.module.css";
 
-/** Yalnızca uygulama içi yollara dönüş (açık yönlendirmeyi önler). */
+/** Yalnızca uygulama içi yollara dönüş (açık yönlendirmeyi önler); geçersiz adreste ana sayfa. */
 function safeNext(next: string | null): string {
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  return safeAppPath(next) ?? "/";
 }
 
 const CHAIN_ICONS = [IconPackageImport, IconFlask2, IconBottle, IconTruckDelivery];

@@ -6,6 +6,7 @@ import { getErrorMessage } from "../../api/client";
 import { getProblem, problemScreenshotUrl } from "../../api/golive";
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
+import { safeAppPath } from "../../auth/safePath";
 import { formatDateTime } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { gt } from "./strings";
@@ -16,6 +17,9 @@ export function ProblemPage() {
   const { user } = useAuth();
   const query = useQuery({ queryKey: ["golive", "problem", id], queryFn: () => getProblem(id) });
   const report = query.data;
+  // Bildirimdeki adres yalnızca uygulama içi bir yolsa bağlantıdır; başka siteye giden adres düz
+  // yazı kalır (açık yönlendirmeyi önler).
+  const pagePath = safeAppPath(report?.page_url);
 
   return (
     <Stack>
@@ -43,10 +47,12 @@ export function ProblemPage() {
               <Text style={{ whiteSpace: "pre-wrap" }}>{report.description}</Text>
               <Text size="sm">
                 {gt.problems.page}: {report.page_title}{" "}
-                {report.page_url && (
-                  <Anchor component={Link} to={report.page_url}>
+                {pagePath ? (
+                  <Anchor component={Link} to={pagePath}>
                     {report.page_url}
                   </Anchor>
+                ) : (
+                  report.page_url
                 )}
               </Text>
               <Text size="xs" c="dimmed">
