@@ -2,7 +2,7 @@
 export const tr = {
   appName: "Inncos ERP",
   /** Giriş ekranındaki yazı logo: ad + küçük etiket. */
-  brand: { name: "Inncos", tag: "ERP" },
+  brand: { name: "Inncos", tag: "ERP", wordmark: "INNCOS" },
   common: {
     loading: "Yükleniyor…",
     unexpectedError: "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.",
@@ -10,8 +10,8 @@ export const tr = {
     backToHome: "Ana sayfaya dön",
   },
   auth: {
-    loginTitle: "Giriş yap",
-    loginSubtitle: "Üretim takip sistemine hoş geldiniz",
+    loginTitle: "Hoş geldiniz",
+    loginSubtitle: "Devam etmek için hesabınızla giriş yapın",
     username: "Kullanıcı adı",
     password: "Şifre",
     submit: "Giriş yap",
@@ -30,16 +30,9 @@ export const tr = {
     capsLock: "Büyük harf kilidi (Caps Lock) açık",
     forgotHint:
       "Şifrenizi unuttuysanız ya da hesabınız kilitlendiyse sistem yöneticisine başvurun.",
-    brandHeadline: "Hammaddeden sevkiyata, her lot tek zincirde.",
-    brandLead:
-      "Kabul, üretim, kalite, dolum ve sevkiyat aynı kayıtta buluşur; her mamul lotunun nereden geldiği ve nereye gittiği tek sorguda görünür.",
     brandFoot: "Üretim takip sistemi",
-    chain: [
-      { title: "Hammadde kabulü", hint: "Lot, karantina, serbest bırakma" },
-      { title: "Üretim şarjı", hint: "Reçete, tartım, sapma" },
-      { title: "Dolum", hint: "Ambalaj, etiket, fire" },
-      { title: "Sevkiyat", hint: "Müşteriye kadar izlenebilirlik" },
-    ],
+    // Giriş zemininde süzülen sözcükler: sistemin ana zinciri (CLAUDE.md §1).
+    chain: ["Hammadde lotu", "Üretim şarjı", "Dolum lotu", "Sevkiyat", "Müşteri"],
   },
   site: {
     trainingBanner: "EĞİTİM ORTAMI · Buradaki kayıtlar örnektir, gerçek veri girmeyin.",
@@ -50,6 +43,43 @@ export const tr = {
     openMenu: "Menüyü aç/kapat",
     roles: "Roller",
     security: "Güvenlik",
+    nightTheme: "Gece temasına geç",
+    dayTheme: "Gündüz temasına geç",
+    search: "Lot ya da belge no ara",
+    // Üst çubuktaki panel adı (DentMesher'daki "Yönetim Merkezi" gibi); rengi role göre değişir.
+    panels: {
+      admin: "Sistem yönetimi",
+      yonetim: "Yönetim merkezi",
+      planlama: "Planlama paneli",
+      depo: "Depo paneli",
+      uretim: "Üretim paneli",
+      laboratuvar: "Laboratuvar paneli",
+      dolum: "Dolum paneli",
+      sevkiyat: "Sevkiyat paneli",
+      satin_alma: "Satın alma paneli",
+    } as Record<string, string>,
+  },
+  search: {
+    title: "Arama",
+    placeholder: "Lot no, belge no, müşteri ya da malzeme",
+    submit: "Ara",
+    hint: "Aramak için en az 2 karakter yazın.",
+    empty: "Sonuç bulunamadı.",
+    more: (n: number) => `ve ${n} kayıt daha`,
+    failed: "Bazı listeler aranamadı; sonuçlar eksik olabilir.",
+    groups: {
+      lots: "Lotlar",
+      receipts: "Mal kabuller",
+      productionOrders: "Üretim emirleri",
+      batches: "Şarjlar",
+      fillingOrders: "Dolum emirleri",
+      runs: "Dolum partileri",
+      salesOrders: "Satış siparişleri",
+      shipments: "Sevkiyatlar",
+      purchaseOrders: "Satın alma siparişleri",
+      samples: "Numuneler",
+      returns: "Müşteri iadeleri",
+    },
   },
   roles: {
     admin: "Sistem yöneticisi",

@@ -304,9 +304,10 @@ function Approvals({ data }: { data: ManagementDashboard }) {
 
 type Severity = "critical" | "warning";
 
+// Renkler global.css'teki durum değişkenlerinden: gündüzde koyu, gecede açık ton.
 const SEVERITY: Record<Severity, { color: string; icon: Icon }> = {
-  critical: { color: "red", icon: IconAlertOctagon },
-  warning: { color: "orange", icon: IconAlertTriangle },
+  critical: { color: "var(--status-critical)", icon: IconAlertOctagon },
+  warning: { color: "var(--status-warning)", icon: IconAlertTriangle },
 };
 
 interface AttentionItem {
@@ -387,8 +388,8 @@ function AttentionList({ items }: { items: AttentionItem[] }) {
     return (
       <Paper withBorder p="md" radius="md">
         <Group gap="xs" wrap="nowrap">
-          <IconCircleCheck size={20} color="var(--mantine-color-teal-7)" />
-          <Text size="sm" fw={700} c="teal.8">
+          <IconCircleCheck size={20} color="var(--status-ok)" />
+          <Text size="sm" fw={700} c="var(--status-ok)">
             {rt.severity.ok}
           </Text>
           <Text size="sm">{rt.allClear}</Text>
@@ -403,8 +404,8 @@ function AttentionList({ items }: { items: AttentionItem[] }) {
         // Durum rengi her zaman simge ve etiketle birlikte (yalnız renge dayanmaz).
         const badge = (
           <Group gap={6} wrap="nowrap" w={76}>
-            <SeverityIcon size={18} color={`var(--mantine-color-${color}-7)`} />
-            <Text size="xs" fw={700} c={`${color}.8`}>
+            <SeverityIcon size={18} color={color} />
+            <Text size="xs" fw={700} c={color}>
               {rt.severity[item.severity]}
             </Text>
           </Group>
@@ -642,8 +643,8 @@ function WorkloadCard({ tasks }: { tasks: ManagementDashboard["tasks"] }) {
           r.open,
           r.overdue ? (
             <Group gap={4} wrap="nowrap">
-              <IconClockExclamation size={14} color="var(--mantine-color-red-7)" />
-              <Text c="red.8" fw={700} size="sm">
+              <IconClockExclamation size={14} color="var(--status-critical)" />
+              <Text c="var(--status-critical)" fw={700} size="sm">
                 {r.overdue}
               </Text>
             </Group>

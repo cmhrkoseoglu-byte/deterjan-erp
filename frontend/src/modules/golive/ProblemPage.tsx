@@ -62,7 +62,7 @@ export function ProblemPage() {
                 alt={gt.problems.screenshot}
                 maw={960}
                 radius="sm"
-                style={{ border: "1px solid var(--mantine-color-gray-3)" }}
+                style={{ border: "1px solid var(--mantine-color-default-border)" }}
               />
             </Anchor>
           ) : (

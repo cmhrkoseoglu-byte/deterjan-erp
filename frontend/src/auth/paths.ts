@@ -6,6 +6,12 @@ export const SECURITY_PATH = "/guvenlik";
 export const TASKS_PATH = "/gorevlerim";
 /** Yönetim panosu: yönetim rolünün açılış ekranı. */
 export const DASHBOARD_PATH = "/pano";
+/** Lot ve belge numarası araması (üst çubuktaki arama kutusu buraya götürür). */
+export const SEARCH_PATH = "/ara";
+
+export function searchPath(query: string): string {
+  return `${SEARCH_PATH}?q=${encodeURIComponent(query.trim())}`;
+}
 
 /**
  * Açılış ekranı (`/`, girişten sonra ve logoya basınca): yönetim rolü panoyla, diğer herkes

@@ -658,3 +658,20 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   denendi (yatay kaydırma yok, ipucu çubuğu örtmüyor).
 - Kılavuz: `yonetim.md` "Yönetim panosu" bölümü, `genel.md` açılış notu; `yonetim-pano.jpg` yerel demo
   verisinden yenilendi (betik görüntüyü artık `/pano`'dan alır).
+
+## 2026-10-24 — Arayüz: DentMesher tasarım dili
+
+- Tema (`theme.ts`, `styles/global.css`): Inter + Manrope (`@fontsource-variable/inter`,
+  `@fontsource/manrope`), DentMesher mavisi ve kayrak gri, 16 px köşeli kutular, hap rozetler; gece
+  paleti (kahve) ve zemin ışıması; durum yazısı renkleri (`--status-*`) iki temada okunur.
+- Kabuk (`layout/AppLayout.tsx`): role göre renkli üst çubuk (`layout/roleBar.ts`), INNCOS söz-işareti
+  ve panel adı, arama kutusu (`HeaderSearch`), gündüz/gece düğmesi (`ThemeToggle`; telefonda kullanıcı
+  menüsünde), koyu lacivert sol menü (240 px). Arama sayfası `pages/SearchPage.tsx` (`/ara`). Giriş
+  ekranı (`pages/LoginPage.tsx`) DentMesher girişi gibi.
+- Gece temasında bütün modüller gezildi; sabit renkli durum yazıları (pano, okutma) ve bir görsel
+  çerçevesi tema değişkenine alındı; tarayıcı denetimleri gecede koyu çizilir (`color-scheme`).
+- Kanıt: `layout/shell.test.tsx` (rol rengi ve panel adı, tema düğmesi ve saklanması, arama kutusu,
+  arama sayfasında rol süzmesi ve kayıt bağlantıları, kısa aramada istek yok, giriş ekranı); bütün ön
+  yüz testleri, lint, biçim, tip denetimi ve derleme. Tarayıcıda gündüz ve gece, 1024 px ve 375 px.
+- Kılavuz: `genel.md` (üst çubuk, arama, gündüz/gece); kılavuz görselleri yeni görünümle yeniden
+  çekildi (`scripts/kilavuz-ekran-goruntuleri.mjs`).

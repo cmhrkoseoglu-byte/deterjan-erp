@@ -1320,3 +1320,28 @@ Plan thread'de CUMHUR'un onayıyla ("Onayla"). Kararlar:
   Yalnızca görüntü eşiğidir, bir işlemi engellemez (`QC_WAIT_WARNING_HOURS`, `Dashboards.tsx`).
 - **Performans:** yönetim panosunun sorgu tavanı 30'dan 36'ya çıktı; yeni bölümler sabit sayıda sorgu
   ekler, satır sayısıyla artmaz (`test_dashboards_open_fast_on_demo_data`).
+
+## 2026-10-24 — Arayüz DentMesher tasarım dilinde
+
+- **Karar (CUMHUR, "Sistemin kullanıcı arayüzünü DentMesher gibi yapalım"; seçimler "Üst çubuk + sol
+  menü", "Gündüz + gece düğmesi", "Role göre", "DentMesher girişi gibi"; plan onayı "Plan uygun;
+  başla"):** Inncos ERP'nin arayüzü DentMesher'ın (Desktop\DENTMESHER) tasarım dilini izler. Kaynak:
+  DentMesher `static/css/main.css` (renkler, kart, düğme), `admin.css` (üst çubuk), `panel.css` (rol
+  renkleri), `templates/auth/login.html` (giriş ekranının gece paleti).
+- **Görünüm:** Inter (gövde) ve Manrope ExtraBold (INNCOS söz-işareti) uygulamayla paketlenir; canlıdaki
+  CSP dış yazı tipine izin vermez. Vurgu mavisi #3b7eff, kayrak gri yazı ve çizgiler, 10/16 px köşeler,
+  hap biçimli ve büyük harfe çevrilmeyen rozetler. Tablet için düğme boyutları değişmedi.
+- **Üst çubuk:** rol rengiyle degrade (yönetim altın, planlama mavi, depo turuncu, üretim çivit,
+  laboratuvar yeşil, dolum camgöbeği, sevkiyat mor, satın alma pembe, sistem yöneticisi lacivert). Çok
+  rollü kullanıcıda öncelik: admin, yönetim, planlama, laboratuvar, üretim, dolum, depo, sevkiyat, satın
+  alma. Çubukta panel adı, arama, sorun bildir, bildirim, tema ve profil; sol menü iki temada koyu
+  lacivert.
+- **Gündüz / gece:** gündüz varsayılan; gece DentMesher'ın kahve zemini ve turuncu ışıması, sayfa
+  kutuları yarı saydam. Seçim tarayıcıda saklanır; `public/tema.js` açılışta uygular (CSP satır içi
+  betiğe izin vermediği için ayrı dosya).
+- **Arama (`/ara?q=`):** lot, mal kabul, üretim emri, şarj, dolum emri ve partisi, satış siparişi,
+  sevkiyat, satın alma siparişi, numune ve müşteri iadesi; mevcut listelerin `search` süzgeci, kaynak
+  başına 5 kayıt, yalnızca rolün açabildiği listeler. Backend değişmedi.
+- **Giriş ekranı:** DentMesher girişi gibi koyu kahve zemin, cam kart, turuncu (#e8622c) giriş düğmesi;
+  zeminde ana zincirin sözcükleri süzülür (hareketi azalt tercihinde durur). 22.10'daki mavi marka
+  panelli giriş ekranının yerini aldı.

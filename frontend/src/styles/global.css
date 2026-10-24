@@ -1,0 +1,40 @@
+/* Uygulama geneli: DentMesher tasarım dili (tema renkleri theme.ts'te). */
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.02em;
+}
+
+/* Durum yazısı renkleri (Kritik / Uyarı / Yolunda, gecikme sayısı): gündüzde koyu, gecede açık ton;
+   iki temada da zemin üstünde okunur. Durum rengi her yerde simge ve etiketle birlikte kullanılır. */
+:root {
+  --status-critical: var(--mantine-color-red-8);
+  --status-warning: var(--mantine-color-orange-8);
+  --status-ok: var(--mantine-color-teal-8);
+}
+
+:root[data-mantine-color-scheme="dark"] {
+  /* Tarayıcının kendi denetimleri (tarih seçici, kaydırma çubuğu) de koyu çizilsin. */
+  color-scheme: dark;
+  --status-critical: var(--mantine-color-red-4);
+  --status-warning: var(--mantine-color-orange-4);
+  --status-ok: var(--mantine-color-teal-4);
+}
+
+/* Gece: DentMesher'ın gece zemini. Işık sol alttan (sıcak turuncu), sağ üstte koyu kahve; zemin
+   kaydırmayla akmaz. Düz renk isteyen yerler (açılır pencereler, alanlar) tema renginde kalır. */
+:root[data-mantine-color-scheme="dark"] body {
+  background:
+    radial-gradient(120% 90% at 8% 100%, #7a3c12 0%, transparent 58%),
+    radial-gradient(90% 70% at 100% 0%, #3a1f0c 0%, transparent 55%),
+    linear-gradient(160deg, #241609 0%, #150d07 60%);
+  background-attachment: fixed;
+}
+
+/* Gece: sayfa içindeki kutular cam gibi yarı saydam; zemindeki ışık arkadan görünür. Açılır
+   pencereler (modal, menü, bildirim) sayfa dışında çizildiği için opak kalır. */
+:root[data-mantine-color-scheme="dark"] .mantine-AppShell-main .mantine-Paper-root {
+  background-color: rgba(255, 237, 215, 0.035);
+}

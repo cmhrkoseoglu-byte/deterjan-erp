@@ -1,13 +1,9 @@
 import { Alert, Button, Group, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
 import {
   IconAlertCircle,
-  IconBottle,
   IconClockPause,
-  IconFlask2,
   IconLock,
-  IconPackageImport,
   IconShieldLock,
-  IconTruckDelivery,
   IconUser,
 } from "@tabler/icons-react";
 import { useState, type FormEvent, type KeyboardEvent } from "react";
@@ -24,55 +20,26 @@ function safeNext(next: string | null): string {
   return next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
 }
 
-const CHAIN_ICONS = [IconPackageImport, IconFlask2, IconBottle, IconTruckDelivery];
-
-/** Marka panelindeki köpük kabarcıkları (konum ve boyut, px). */
-const BUBBLES = [
-  { size: 420, right: -140, top: -120 },
-  { size: 220, right: 90, bottom: 60 },
-  { size: 90, right: 40, top: 300 },
-  { size: 140, left: -50, bottom: -40 },
-  { size: 46, right: 200, top: 440 },
+/** Zeminde süzülen zincir sözcüklerinin yerleri (%), DentMesher girişindeki sözcükler gibi. */
+const FLOATING = [
+  { left: "6%", top: "18%" },
+  { left: "72%", top: "9%" },
+  { left: "80%", top: "58%" },
+  { left: "10%", top: "70%" },
+  { left: "44%", top: "88%" },
 ];
 
-/** Geniş ekranda soldaki tanıtım paneli; süs olduğu için ekran okuyucudan gizli. */
-function BrandPanel() {
-  return (
-    <aside className={classes.brand} aria-hidden="true">
-      {BUBBLES.map(({ size, ...pos }, i) => (
-        <span key={i} className={classes.bubble} style={{ width: size, height: size, ...pos }} />
-      ))}
-      <div className={classes.brandTop}>
-        <div className={classes.wordmark}>
-          <BrandMark size={40} inverse />
-          <span className={classes.wordmarkName}>{tr.brand.name}</span>
-          <span className={classes.wordmarkTag}>{tr.brand.tag}</span>
-        </div>
-        <p className={classes.headline}>{tr.auth.brandHeadline}</p>
-        <p className={classes.lead}>{tr.auth.brandLead}</p>
-      </div>
-      <ol className={classes.chain}>
-        {tr.auth.chain.map((step, i) => {
-          const Icon = CHAIN_ICONS[i];
-          return (
-            <li key={step.title} className={classes.step}>
-              <span className={classes.stepIcon}>
-                <Icon size={22} stroke={1.6} />
-              </span>
-              <span>
-                <span className={classes.stepTitle}>{step.title}</span>
-                <span className={classes.stepHint}>{step.hint}</span>
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-      <div className={classes.brandFoot}>
-        {tr.appName} · {tr.auth.brandFoot}
-      </div>
-    </aside>
-  );
-}
+/** Alanlar ve düğmeler gece paletinde: giriş, temadan bağımsız olarak hep koyu kahve zemindedir. */
+const FIELD = {
+  root: classes.field,
+  label: classes.fieldLabel,
+  input: classes.fieldInput,
+  section: classes.fieldSection,
+  error: classes.fieldError,
+  description: classes.fieldHint,
+  innerInput: classes.fieldInner,
+  visibilityToggle: classes.fieldToggle,
+};
 
 export function LoginPage() {
   const { user, isLoading, login } = useAuth();
@@ -150,45 +117,56 @@ export function LoginPage() {
 
   return (
     <div className={classes.root}>
-      <BrandPanel />
-      <main className={classes.formSide}>
-        <div className={classes.formBox}>
-          <div className={classes.compactBrand}>
-            <BrandMark size={34} />
-            <span className={classes.compactName}>{tr.brand.name}</span>
-            <span className={classes.compactTag}>{tr.brand.tag}</span>
-          </div>
+      {/* Zemin süsü: ana zincirin sözcükleri yavaşça süzülür; ekran okuyucudan gizli. */}
+      <div className={classes.scene} aria-hidden="true">
+        {tr.auth.chain.map((word, i) => (
+          <span key={word} className={classes.floating} style={FLOATING[i]}>
+            {word}
+          </span>
+        ))}
+      </div>
+      <header className={classes.top}>
+        <BrandMark size={30} inverse />
+        <span className={classes.wordmark}>{tr.brand.wordmark}</span>
+        <span className={classes.tag}>{tr.brand.tag}</span>
+      </header>
+      <main className={classes.center}>
+        <div className={classes.card}>
           <form onSubmit={handleSubmit} noValidate>
             <Stack gap="lg">
               {otpStep ? (
                 <div>
                   <Group gap="xs" wrap="nowrap" mb={6}>
-                    <IconShieldLock size={26} stroke={1.6} />
-                    <Title order={1} fz={26}>
+                    <IconShieldLock size={26} stroke={1.6} className={classes.titleIcon} />
+                    <Title order={1} className={classes.title}>
                       {tr.auth.otpTitle}
                     </Title>
                   </Group>
-                  <Text c="dimmed">{tr.auth.otpIntro}</Text>
+                  <Text className={classes.subtitle}>{tr.auth.otpIntro}</Text>
                 </div>
               ) : (
                 <div>
-                  <Title order={1} fz={28} mb={6}>
+                  <Title order={1} className={classes.title} mb={6}>
                     {tr.auth.loginTitle}
                   </Title>
-                  <Text c="dimmed">{tr.auth.loginSubtitle}</Text>
+                  <Text className={classes.subtitle}>{tr.auth.loginSubtitle}</Text>
                 </div>
               )}
               {expired && !error && !otpStep && (
-                <Alert color="blue" variant="light" icon={<IconClockPause size={18} />}>
+                <Alert
+                  variant="light"
+                  icon={<IconClockPause size={18} />}
+                  classNames={{ root: classes.notice, icon: classes.noticeIcon }}
+                >
                   {tr.auth.sessionExpired}
                 </Alert>
               )}
               {error && (
                 <Alert
-                  color="red"
                   variant="light"
                   icon={<IconAlertCircle size={18} />}
                   role="alert"
+                  classNames={{ root: classes.danger, icon: classes.dangerIcon }}
                 >
                   {error}
                 </Alert>
@@ -206,17 +184,29 @@ export function LoginPage() {
                     maxLength={16}
                     size="lg"
                     autoFocus
+                    classNames={FIELD}
                     styles={{
                       input: { letterSpacing: "0.2em", fontVariantNumeric: "tabular-nums" },
                     }}
                   />
-                  <Text size="sm" c="dimmed">
+                  <Text size="sm" className={classes.subtitle}>
                     {tr.auth.otpRecoveryHint}
                   </Text>
-                  <Button type="submit" size="lg" loading={submitting} fullWidth>
+                  <Button
+                    type="submit"
+                    size="lg"
+                    loading={submitting}
+                    fullWidth
+                    className={classes.submit}
+                  >
                     {tr.auth.otpSubmit}
                   </Button>
-                  <Button variant="subtle" onClick={backToPassword} disabled={submitting}>
+                  <Button
+                    variant="subtle"
+                    onClick={backToPassword}
+                    disabled={submitting}
+                    className={classes.back}
+                  >
                     {tr.auth.otpBack}
                   </Button>
                 </>
@@ -233,6 +223,7 @@ export function LoginPage() {
                     size="lg"
                     leftSection={<IconUser size={18} stroke={1.6} />}
                     autoFocus
+                    classNames={FIELD}
                   />
                   <PasswordInput
                     label={tr.auth.password}
@@ -247,20 +238,30 @@ export function LoginPage() {
                     autoComplete="current-password"
                     size="lg"
                     leftSection={<IconLock size={18} stroke={1.6} />}
-                    styles={{ description: { color: "var(--mantine-color-orange-filled)" } }}
+                    classNames={FIELD}
                   />
-                  <Button type="submit" size="lg" loading={submitting} fullWidth mt="xs">
+                  <Button
+                    type="submit"
+                    size="lg"
+                    loading={submitting}
+                    fullWidth
+                    mt="xs"
+                    className={classes.submit}
+                  >
                     {tr.auth.submit}
                   </Button>
                 </>
               )}
             </Stack>
           </form>
-          <Text size="sm" c="dimmed" className={classes.formFoot}>
+          <Text size="sm" className={classes.hint}>
             {tr.auth.forgotHint}
           </Text>
         </div>
       </main>
+      <footer className={classes.foot}>
+        {tr.appName} · {tr.auth.brandFoot}
+      </footer>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { RouteObject } from "react-router-dom";
-import { DASHBOARD_PATH, TASKS_PATH } from "./auth/paths";
+import { DASHBOARD_PATH, SEARCH_PATH, TASKS_PATH } from "./auth/paths";
 import { RequireAuth } from "./auth/RequireAuth";
 import { RequireRole } from "./auth/RequireRole";
 import { AppLayout } from "./layout/AppLayout";
@@ -56,6 +56,7 @@ import { ModulePlaceholderPage } from "./pages/ModulePlaceholderPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { RouteErrorPage } from "./pages/RouteErrorPage";
+import { SearchPage } from "./pages/SearchPage";
 
 function recipesPage(page: ReactNode) {
   return <RequireRole roles={menuRoles("recipes")}>{page}</RequireRole>;
@@ -264,6 +265,8 @@ export const routes: RouteObject[] = [
             ),
           },
           { path: "bildirimler", element: <NotificationsPage /> },
+          // Lot ve belge no araması: herkese açık; her rol yalnızca okuyabildiği listelerde arar.
+          { path: SEARCH_PATH.slice(1), element: <SearchPage /> },
           // Güvenlik (şifre, 2FA): her giriş yapmış kullanıcı.
           { path: "guvenlik", element: <SecurityPage /> },
           ...pageRoutes,
