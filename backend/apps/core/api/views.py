@@ -31,6 +31,7 @@ from apps.core.api.serializers import (
     AuditLogSerializer,
     FieldDeviceSerializer,
     HealthSerializer,
+    IssuedPasswordSerializer,
     LoginSerializer,
     MeSerializer,
     OtpCodeSerializer,
@@ -40,7 +41,9 @@ from apps.core.api.serializers import (
     RecoveryCodesSerializer,
     SecurityStatusSerializer,
     SiteInfoSerializer,
+    UserCreateSerializer,
     UserSerializer,
+    UserUpdateSerializer,
 )
 from apps.core.attachments import INLINE_TYPES
 from apps.core.authentication import CsrfFailed
@@ -282,7 +285,9 @@ class FieldDeviceView(APIView):
 
 
 class UserViewSet(viewsets.ReadOnlyModelViewSet):
-    """Kullanıcı listesi (yalnızca admin). Kilitli hesabı açma ve 2FA sıfırlama burada."""
+    """Kullanıcı yönetimi (yalnızca admin): liste, yeni kullanıcı (geçici şifreyle), bilgi ve rol
+    güncelleme, pasife alma / etkinleştirme, şifre sıfırlama, kilit açma, 2FA sıfırlama.
+    Kullanıcı silinmez (pasife alınır); `PUT` yoktur, güncelleme `PATCH` ile."""
 
     serializer_class = UserSerializer
     permission_classes = [HasRole(ADMIN)]
@@ -313,6 +318,53 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.get_object()
         security.reset_otp(_actor(request), user)
         return Response(self.get_serializer(self.get_queryset().get(pk=user.pk)).data)
+
+    def _fresh(self, user: User) -> Any:
+        return self.get_serializer(self.get_queryset().get(pk=user.pk)).data
+
+    def _issued(self, user: User, password: str, status_code: int) -> Response:
+        """Geçici şifreli yanıt: tarayıcı ya da ara sunucu önbelleğine yazılmaz."""
+        response = Response(
+            {"user": self._fresh(user), "temporary_password": password}, status=status_code
+        )
+        response["Cache-Control"] = "no-store"
+        return response
+
+    @extend_schema(request=UserCreateSerializer, responses={201: IssuedPasswordSerializer})
+    def create(self, request: Request) -> Response:
+        body = UserCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        user, password = services.create_user(_actor(request), **body.validated_data)
+        return self._issued(user, password, status.HTTP_201_CREATED)
+
+    @extend_schema(request=UserUpdateSerializer, responses=UserSerializer)
+    def partial_update(self, request: Request, pk: str | None = None) -> Response:
+        user = self.get_object()
+        body = UserUpdateSerializer(data=request.data, partial=True)
+        body.is_valid(raise_exception=True)
+        services.update_user(_actor(request), user, **body.validated_data)
+        return Response(self._fresh(user))
+
+    @extend_schema(request=None, responses=UserSerializer)
+    @action(detail=True, methods=["post"])
+    def deactivate(self, request: Request, pk: str | None = None) -> Response:
+        user = self.get_object()
+        services.set_user_active(_actor(request), user, False)
+        return Response(self._fresh(user))
+
+    @extend_schema(request=None, responses=UserSerializer)
+    @action(detail=True, methods=["post"])
+    def activate(self, request: Request, pk: str | None = None) -> Response:
+        user = self.get_object()
+        services.set_user_active(_actor(request), user, True)
+        return Response(self._fresh(user))
+
+    @extend_schema(request=None, responses=IssuedPasswordSerializer)
+    @action(detail=True, methods=["post"], url_path="reset-password")
+    def reset_password(self, request: Request, pk: str | None = None) -> Response:
+        user = self.get_object()
+        password = services.reset_user_password(_actor(request), user)
+        return self._issued(user, password, status.HTTP_200_OK)
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):

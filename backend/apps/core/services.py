@@ -1,19 +1,22 @@
 """Çekirdek servisler: belge numaralama, denetimli kayıt, belge oluşturma, durum geçişi, iptal,
-rol atama, giriş/çıkış."""
+rol atama, kullanıcı yönetimi, giriş/çıkış."""
 
 import mimetypes
 import os
 import re
+import secrets
 from collections.abc import Iterable
 from typing import Any
 
 from django.conf import settings
 from django.contrib import auth
+from django.contrib.auth import password_validation
 from django.contrib.auth.models import Group
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.uploadedfile import UploadedFile
 from django.db import models, transaction
-from django.db.models import F
+from django.db.models import F, Q, QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 
@@ -21,7 +24,7 @@ from apps.core import attachments, events, security
 from apps.core.audit import EXCLUDED_FIELDS, diff, log_change
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import Attachment, AuditLog, DocumentModel, DocumentSequence, User
-from apps.core.roles import ALL_ROLES
+from apps.core.roles import ADMIN, ALL_ROLES
 from apps.core.state import StateMachine
 
 _PREFIX_RE = re.compile(r"^[A-Z][A-Z0-9]{0,9}$")
@@ -283,6 +286,205 @@ def set_user_roles(user: User, roles: Iterable[str], actor: User | None, *, note
         log_change(
             _real_actor(actor), user, AuditLog.Action.UPDATE, {"roles": [before, wanted]}, note
         )
+
+
+# --- kullanıcı yönetimi (Sistem > Kullanıcılar; API yalnızca admin'e açık) ----------------------
+
+USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,149}$")
+# Geçici şifrede birbirine karışan karakterler (0/O, 1/l/I) yoktur.
+_TEMP_PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def generate_temporary_password(user: User) -> str:
+    """Şifre politikasına uyan, okunaklı geçici şifre üretir: dörtlü gruplar, ör. `Kp7m-x3Rt-9wQa`.
+
+    Grup sayısı `PASSWORD_MIN_LENGTH` tutana kadar artar; doğrulayıcıların reddettiği aday yeniden
+    üretilir. Şifre hiçbir yerde saklanmaz; çağıran onu yalnızca bir kez gösterir.
+    """
+    for groups in range(3, 9):
+        for _ in range(20):
+            candidate = "-".join(
+                "".join(secrets.choice(_TEMP_PASSWORD_ALPHABET) for _ in range(4))
+                for _ in range(groups)
+            )
+            try:
+                password_validation.validate_password(candidate, user)
+            except DjangoValidationError:
+                continue
+            return candidate
+    raise RuntimeError("Şifre politikasına uyan geçici şifre üretilemedi.")
+
+
+def _clean_username(username: str) -> str:
+    value = (username or "").strip()
+    if not USERNAME_RE.match(value):
+        raise BusinessRuleError(
+            "invalid_username",
+            "Kullanıcı adı en az 2 karakter olmalı ve yalnızca küçük harf (Türkçe karakter "
+            "olmadan), rakam, nokta, alt çizgi ve tire içermeli (ör. ahmet.yilmaz).",
+        )
+    return value
+
+
+def _clean_full_name(full_name: str) -> str:
+    value = (full_name or "").strip()
+    if not value:
+        raise BusinessRuleError("full_name_required", "Ad soyad gerekli.")
+    return value
+
+
+def active_admins() -> QuerySet[User]:
+    """Aktif yöneticiler: superuser'lar ve `admin` rolündekiler."""
+    return (
+        User.objects.filter(is_active=True)
+        .filter(Q(is_superuser=True) | Q(groups__name=ADMIN))
+        .distinct()
+    )
+
+
+def _ensure_another_admin(user: User, message: str) -> None:
+    """`user` dışında aktif bir yönetici kalmayacaksa `BusinessRuleError("last_admin")`."""
+    if not active_admins().exclude(pk=user.pk).exists():
+        raise BusinessRuleError("last_admin", message)
+
+
+def create_user(
+    actor: User,
+    *,
+    username: str,
+    full_name: str,
+    email: str = "",
+    phone: str = "",
+    roles: Iterable[str] = (),
+) -> tuple[User, str]:
+    """Yeni kullanıcı açar; sistemin ürettiği geçici şifreyi döner.
+
+    Geçici şifre yalnızca bu dönüş değerinde görünür, hiçbir yerde saklanmaz ve denetim günlüğüne
+    yazılmaz. Kullanıcı ilk girişte kendi şifresini belirlemeden başka işlem yapamaz
+    (`must_change_password`, `core.middleware`).
+
+    - Kullanıcı adı: küçük harf, rakam, `.`, `_`, `-` (`invalid_username`); büyük/küçük harf
+      farkıyla bile var olan bir adla aynı olamaz (`username_taken`). Sonradan değiştirilemez.
+    - Ad soyad zorunlu (`full_name_required`); roller `set_user_roles` kurallarıyla atanır.
+    """
+    username = _clean_username(username)
+    full_name = _clean_full_name(full_name)
+    with transaction.atomic():
+        if User.objects.filter(username__iexact=username).exists():
+            raise BusinessRuleError("username_taken", "Bu kullanıcı adı zaten kullanılıyor.")
+        user = User(
+            username=username,
+            full_name=full_name,
+            email=(email or "").strip(),
+            phone=(phone or "").strip(),
+            must_change_password=True,
+        )
+        password = generate_temporary_password(user)
+        user.set_password(password)
+        save_with_audit(user, actor, note="Kullanıcı açıldı")
+        set_user_roles(user, roles, actor, note="Kullanıcı açıldı")
+    return user, password
+
+
+def update_user(
+    actor: User,
+    user: User,
+    *,
+    full_name: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    roles: Iterable[str] | None = None,
+) -> User:
+    """Kullanıcının kişisel bilgilerini ve rollerini günceller; verilmeyen alan değişmez.
+
+    Kullanıcı adı değiştirilemez (denetim kayıtlarında ve @bahsetmelerde geçer). Admin kendi
+    `admin` rolünü kaldıramaz (`cannot_remove_own_admin`); başka aktif yönetici kalmayacaksa
+    `admin` rolü kaldırılamaz (`last_admin`). Değişiklikler denetim günlüğüne yazılır.
+    """
+    with transaction.atomic():
+        user = User.objects.select_for_update().get(pk=user.pk)
+        if full_name is not None:
+            user.full_name = _clean_full_name(full_name)
+        if email is not None:
+            user.email = email.strip()
+        if phone is not None:
+            user.phone = phone.strip()
+        save_with_audit(user, actor, note="Kullanıcı bilgileri güncellendi")
+        if roles is not None:
+            wanted = set(roles)
+            if user.has_role(ADMIN) and ADMIN not in wanted:
+                if user.pk == actor.pk:
+                    raise BusinessRuleError(
+                        "cannot_remove_own_admin",
+                        "Kendi sistem yöneticisi rolünüzü kaldıramazsınız.",
+                    )
+                if user.is_active and not user.is_superuser:
+                    _ensure_another_admin(
+                        user, "Başka aktif sistem yöneticisi olmadığı için bu rol kaldırılamaz."
+                    )
+            set_user_roles(user, wanted, actor, note="Roller güncellendi")
+    return user
+
+
+def set_user_active(actor: User, user: User, active: bool) -> User:
+    """Kullanıcıyı pasife alır ya da yeniden etkinleştirir; kullanıcılar silinmez.
+
+    Pasif kullanıcı giriş yapamaz; açık oturumu bir sonraki isteğinde düşer (kimlik doğrulama arka
+    ucu pasif kullanıcıyı tanımaz). Admin kendini pasife alamaz (`cannot_deactivate_self`); başka
+    aktif yönetici kalmayacaksa yönetici pasife alınamaz (`last_admin`). Durum zaten istenen
+    gibiyse hiçbir şey yapılmaz.
+    """
+    with transaction.atomic():
+        user = User.objects.select_for_update().get(pk=user.pk)
+        if user.is_active == active:
+            return user
+        if not active:
+            if user.pk == actor.pk:
+                raise BusinessRuleError(
+                    "cannot_deactivate_self", "Kendi hesabınızı pasife alamazsınız."
+                )
+            if user.is_admin:
+                _ensure_another_admin(
+                    user, "Başka aktif sistem yöneticisi olmadığı için bu hesap pasife alınamaz."
+                )
+        user.is_active = active
+        save_with_audit(
+            user,
+            actor,
+            note="Kullanıcı yeniden etkinleştirildi" if active else "Kullanıcı pasife alındı",
+        )
+    return user
+
+
+def reset_user_password(actor: User, user: User) -> str:
+    """Kullanıcıya yeni geçici şifre üretir ve döner (yalnızca bu dönüş değerinde görünür).
+
+    Kullanıcı bir sonraki girişte kendi şifresini belirler (`must_change_password`). Şifre
+    değiştiği için kullanıcının açık oturumları kapanır; hatalı denemelerden doğan hesap kilidi de
+    açılır. Kendi şifreniz Güvenlik sayfasından değişir (`use_security_page`); pasif kullanıcının
+    şifresi sıfırlanmaz (`user_inactive`).
+    """
+    if user.pk == actor.pk:
+        raise BusinessRuleError(
+            "use_security_page", "Kendi şifrenizi Güvenlik sayfasından değiştirin."
+        )
+    with transaction.atomic():
+        user = User.objects.select_for_update().get(pk=user.pk)
+        if not user.is_active:
+            raise BusinessRuleError(
+                "user_inactive", "Pasif kullanıcının şifresi sıfırlanamaz; önce etkinleştirin."
+            )
+        was_locked = security.is_locked(user.get_username())
+        password = generate_temporary_password(user)
+        user.set_password(password)
+        user.must_change_password = True
+        user.save(update_fields=["password", "must_change_password"])  # şifre: core.signals
+        security.reset_failed_logins(user.get_username())
+        note = "Şifre sıfırlandı; kullanıcı girişte kendi şifresini belirleyecek"
+        if was_locked:
+            note += " (hesap kilidi açıldı)"
+        log_change(_real_actor(actor), user, AuditLog.Action.CUSTOM, note=note)
+    return password
 
 
 def login_user(request: HttpRequest, username: str, password: str, otp_code: str = "") -> User:

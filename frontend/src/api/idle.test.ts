@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api, isOtpSetupRequired, isSessionExpired } from "./client";
+import { api, isOtpSetupRequired, isPasswordChangeRequired, isSessionExpired } from "./client";
 import {
   IDLE_HEADER,
   idleSeconds,
@@ -65,5 +65,9 @@ describe("hareketsizlik izleyici", () => {
     expect(isSessionExpired(httpError(401, { code: "not_authenticated" }))).toBe(false);
     expect(isOtpSetupRequired(httpError(403, { code: "otp_setup_required" }))).toBe(true);
     expect(isOtpSetupRequired(httpError(403, { code: "permission_denied" }))).toBe(false);
+    expect(isPasswordChangeRequired(httpError(403, { code: "password_change_required" }))).toBe(
+      true,
+    );
+    expect(isPasswordChangeRequired(httpError(403, { code: "otp_setup_required" }))).toBe(false);
   });
 });

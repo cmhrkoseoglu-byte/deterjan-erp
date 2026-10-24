@@ -8,7 +8,7 @@ Hazırlığın nerede olduğunu **Canlıya geçiş > Hazırlık** ekranı göste
 
 ## 1. Sayımdan önce (en az bir hafta önce)
 
-1. **Kullanıcılar:** Sistem yöneticisi her çalışana kullanıcı açar ve rolünü verir (**Yönetim paneli > Kullanıcılar**). Tabletler için hat ya da vardiya kullanıcısı açılabilir.
+1. **Kullanıcılar:** Sistem yöneticisi her çalışana kullanıcı açar ve rolünü verir (**Sistem > Kullanıcılar**; geçici şifreyi çalışana kendisi iletir). Tabletler için hat ya da vardiya kullanıcısı açılabilir.
 2. **Ana veriler:** Planlama, Excel'deki listeleri şu sırayla yükler. Her ekranda **Excel'den içe aktar** düğmesi vardır; önce **Şablonu indir**, sonra dosyayı seçip **Önizle**, hata yoksa **Aktar**.
    - Malzemeler (Ana veriler > Malzemeler). Kategoriler varsa önce elle girilir.
    - Birim dönüşümleri (1 KOLI = 12 ADET gibi).

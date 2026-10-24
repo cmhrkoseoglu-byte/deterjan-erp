@@ -369,16 +369,22 @@ def change_password(
     request: HttpRequest, actor: User, old_password: str, new_password: str
 ) -> None:
     """Kullanıcı kendi şifresini değiştirir; oturum açık kalır (diğer oturumlar kapanır).
-    Şifre politikası `AUTH_PASSWORD_VALIDATORS` ile uygulanır."""
+    Şifre politikası `AUTH_PASSWORD_VALIDATORS` ile uygulanır; yeni şifre mevcut şifreyle aynı
+    olamaz (`same_password`). Yöneticinin verdiği geçici şifreyle giren kullanıcının
+    `must_change_password` işareti burada kalkar."""
     if not actor.check_password(old_password):
         raise BusinessRuleError("wrong_password", "Mevcut şifre hatalı.")
+    if new_password == old_password:
+        raise BusinessRuleError("same_password", "Yeni şifre mevcut şifreden farklı olmalı.")
     try:
         password_validation.validate_password(new_password, actor)
     except Exception as exc:  # django.core.exceptions.ValidationError
         messages = getattr(exc, "messages", [str(exc)])
         raise BusinessRuleError("weak_password", " ".join(messages)) from exc
     actor.set_password(new_password)
-    actor.save(update_fields=["password"])  # denetim: core.signals (şifre değişti)
+    actor.must_change_password = False
+    # denetim: core.signals (şifre değişti)
+    actor.save(update_fields=["password", "must_change_password"])
     auth.update_session_auth_hash(request, actor)
 
 

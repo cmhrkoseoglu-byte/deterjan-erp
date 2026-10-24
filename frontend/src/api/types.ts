@@ -25,6 +25,11 @@ export interface CurrentUser {
   is_superuser: boolean;
   /** İki aşamalı doğrulama (doğrulayıcı uygulama) kurulu mu? */
   otp_enabled: boolean;
+  /**
+   * Yöneticinin verdiği geçici şifreyle girdi: kendi şifresini belirleyene kadar diğer API'ler
+   * 403 password_change_required döner.
+   */
+  password_change_required: boolean;
   /** Rol 2FA istiyor ama kurulmamış: kurulana kadar diğer API'ler 403 otp_setup_required döner. */
   otp_setup_required: boolean;
   /** Bu tarayıcı saha tableti olarak işaretli mi? (kısa hareketsizlik süresi) */

@@ -52,6 +52,14 @@ export function isOtpSetupRequired(error: unknown): boolean {
   );
 }
 
+/** Geçici şifreyle girdi, önce kendi şifresini belirlemeli mi? (403 password_change_required) */
+export function isPasswordChangeRequired(error: unknown): boolean {
+  return (
+    (error as AxiosError | undefined)?.response?.status === 403 &&
+    getErrorCode(error) === "password_change_required"
+  );
+}
+
 /** API hatasından kullanıcıya gösterilecek Türkçe mesajı çıkarır. */
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {

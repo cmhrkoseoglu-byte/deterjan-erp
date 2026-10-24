@@ -6,8 +6,12 @@
    kullanıcının kaç saniyedir ekrana dokunmadığını bildirir; böylece arka planda kendiliğinden
    yenilenen ekranlar (bildirim zili, panolar) oturumu açık tutmaz. Başlıksız istek (yönetim paneli,
    API istemcisi) etkinlik sayılır. Mutlak süre `SESSION_COOKIE_AGE` (12 saat) ayrıca geçerlidir.
-2. **Zorunlu iki aşamalı doğrulama**: rolü gerektiren ama doğrulayıcıyı kurmamış kullanıcı, kurulum
-   ve oturum uçları dışındaki API'leri kullanamaz (`403 {"code": "otp_setup_required"}`).
+2. **Geçici şifre**: şifresi yönetici tarafından verilmiş (yeni kullanıcı, şifre sıfırlama)
+   kullanıcı, kendi şifresini belirleyene kadar oturum uçları dışındaki API'leri kullanamaz
+   (`403 {"code": "password_change_required"}`).
+3. **Zorunlu iki aşamalı doğrulama**: rolü gerektiren ama doğrulayıcıyı kurmamış kullanıcı, kurulum
+   ve oturum uçları dışındaki API'leri kullanamaz (`403 {"code": "otp_setup_required"}`). Geçici
+   şifreli kullanıcıya önce şifre kuralı söylenir.
 
 `AuthenticationMiddleware`'den sonra gelmelidir.
 """
@@ -25,8 +29,8 @@ LAST_ACTIVITY_KEY = "_last_activity"
 IDLE_HEADER = "HTTP_X_ERP_IDLE_SECONDS"
 # Oturum her istekte yazılmasın: etkinlik zamanı en çok bu sıklıkla güncellenir.
 _TOUCH_INTERVAL_SECONDS = 30
-# İki aşamalı doğrulama kurulana kadar açık kalan API yolları.
-_OTP_SETUP_ALLOWED_PREFIXES = ("/api/v1/auth/", "/api/v1/health/", "/api/v1/ops/client-errors/")
+# Şifre değiştirilene ya da iki aşamalı doğrulama kurulana kadar açık kalan API yolları.
+_SETUP_ALLOWED_PREFIXES = ("/api/v1/auth/", "/api/v1/health/", "/api/v1/ops/client-errors/")
 
 
 def _json(status: int, code: str, detail: str) -> JsonResponse:
@@ -54,7 +58,7 @@ class SessionSecurityMiddleware:
             expired = self._enforce_idle_timeout(request)
             if expired is not None:
                 return expired
-            blocked = self._enforce_otp_setup(request, user)
+            blocked = self._enforce_setup(request, user)
             if blocked is not None:
                 return blocked
         return self.get_response(request)
@@ -79,10 +83,17 @@ class SessionSecurityMiddleware:
             request.session[LAST_ACTIVITY_KEY] = activity
         return None
 
-    def _enforce_otp_setup(self, request: HttpRequest, user: User) -> HttpResponse | None:
+    def _enforce_setup(self, request: HttpRequest, user: User) -> HttpResponse | None:
         path = request.path
-        if not path.startswith("/api/") or path.startswith(_OTP_SETUP_ALLOWED_PREFIXES):
+        if not path.startswith("/api/") or path.startswith(_SETUP_ALLOWED_PREFIXES):
             return None
+        if user.must_change_password:
+            return _json(
+                403,
+                "password_change_required",
+                "Yöneticinin verdiği geçici şifreyle girdiniz. Devam etmek için Güvenlik "
+                "sayfasından kendi şifrenizi belirleyin.",
+            )
         if security.otp_setup_required(user):
             return _json(
                 403,

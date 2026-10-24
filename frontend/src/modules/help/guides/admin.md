@@ -4,22 +4,26 @@ Sistem yöneticisi; kullanıcıları ve rollerini yönetir, kullanıcıların g�
 
 ## Kullanıcı açma ve rol verme
 
-Kullanıcılar Django yönetim panelinde tutulur. Sol menüdeki **Yönetim paneli** bağlantısı paneli açar (adres: /admin/). Uygulamaya giriş yaptığınız oturumla girersiniz.
+Kullanıcılar **Sistem > Kullanıcılar** ekranında yönetilir. Bu ekranı yalnızca sistem yöneticisi görür.
 
-1. Panelde **Kullanıcılar**'ı açın ve sağ üstteki **Kullanıcı ekle**'ye basın.
-2. Kullanıcı adını, adını soyadını, e-postasını ve iki kez geçici şifreyi girip kaydedin.
-3. Açılan kullanıcı sayfasında **Roller ve yetkiler** bölümüne inin. **Gruplar** listesinden kişinin rollerini seçin (depo, uretim, laboratuvar gibi). Bir kişiye birden fazla rol verilebilir.
-4. **Etkin** işaretli olsun ve **Kaydet**'e basın.
-5. Geçici şifreyi kişiye kendiniz iletin.
+1. **Yeni kullanıcı**'ya basın.
+2. **Ad soyad**'ı yazın. **Kullanıcı adı** ad soyaddan önerilir (Ahmet Yılmaz → ahmet.yilmaz); isterseniz değiştirin. Kullanıcı adı küçük harf, rakam, nokta, alt çizgi ve tireden oluşur, Türkçe karakter içermez ve sonradan değiştirilemez.
+3. Varsa telefonu ve e-postayı girin, kişinin **Roller**ini işaretleyin. Bir kişiye birden fazla rol verilebilir.
+4. **Hesabı aç**'a basın. Sistem bir **geçici şifre** üretir ve **yalnızca bir kez** gösterir. **Kopyala** ile alın ya da not edin ve kişiye yüz yüze ya da güvenli bir yoldan iletin.
+5. Kişi geçici şifreyle girince önce kendi şifresini belirler; o zamana kadar başka ekran açılmaz. Rolü gerektiriyorsa (sistem yöneticisi, yönetim) ardından iki aşamalı doğrulamayı kurar.
 
-![Yönetim panelinde kullanıcı listesi](/kilavuz/admin-kullanicilar.jpg)
+![Kullanıcılar ekranı](/kilavuz/admin-kullanicilar.jpg)
 
-> Kullanıcı silinmez. İşten ayrılan kişinin **Etkin** işaretini kaldırın; geçmiş kayıtlarda adı kalır.
+> Kullanıcı silinmez. İşten ayrılan kişiyi satırdaki **⋯ > Pasife al** ile pasife alın: giriş yapamaz, açık oturumu kapanır, geçmiş kayıtlarda adı kalır. Gerekirse **⋯ > Etkinleştir** ile geri açın.
 
-- **Görev durumu** yalnızca yönetim paneline girecek kişilere verilir. Uygulamayı kullanmak için gerekmez.
-- Rollerin kendisi sabittir ve `seed_roles` komutuyla oluşur; panelden eklenmez ya da silinmez.
-- Şifresini unutan kullanıcının sayfasında şifre alanının altındaki form bağlantısıyla yeni şifre verin.
-- Paneldeki her değişiklik denetim günlüğüne yazılır.
+- **Düzenle**: ad soyad, telefon, e-posta ve rolleri değiştirir. Kendi sistem yöneticisi rolünüzü kaldıramazsınız; sistemde her zaman en az bir aktif yönetici kalır.
+- **⋯ > Şifre sıfırla**: şifresini unutan kişiye yeni geçici şifre üretir (bir kez gösterilir). Kişinin açık oturumu kapanır, hesabı kilitliyse kilit açılır; kişi girişte yeniden kendi şifresini belirler. Kendi şifrenizi **Güvenlik** sayfasından değiştirirsiniz.
+- **Kilidi aç**: çok sayıda hatalı deneme yüzünden kilitlenen hesabı hemen açar.
+- **2FA sıfırla**: telefonunu kaybeden kişinin iki aşamalı doğrulamasını sıfırlar; kişi sonraki girişte yeniden kurar.
+- **Geçici şifre** rozeti kişinin henüz kendi şifresini belirlemediğini gösterir.
+- Rollerin kendisi sabittir ve `seed_roles` komutuyla oluşur; eklenmez ya da silinmez.
+- Bu ekrandaki her değişiklik denetim günlüğüne yazılır; şifreler günlüğe yazılmaz.
+- Yönetim paneli (/admin/) yalnızca iç ağdan açılır; kullanıcı işleri için gerekmez.
 
 ## Sorun bildirimleri
 

@@ -15,12 +15,15 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconDeviceTablet, IconShieldLock } from "@tabler/icons-react";
+import { IconAlertCircle, IconDeviceTablet, IconKey, IconShieldLock } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import * as authApi from "../../api/auth";
 import { getErrorMessage } from "../../api/client";
+import type { CurrentUser } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
+import { ME_QUERY_KEY } from "../../auth/AuthProvider";
 import { groupSecret, svgDataUrl } from "./otp";
 import { RecoveryCodesModal } from "./RecoveryCodesModal";
 import { idleMinutes, st } from "./strings";
@@ -38,32 +41,84 @@ function ErrorAlert({ error }: { error: unknown }) {
   );
 }
 
-/** Kendi güvenlik ayarlarım: şifre, iki aşamalı doğrulama, oturum bilgisi. */
+/**
+ * Kendi güvenlik ayarlarım: şifre, iki aşamalı doğrulama, oturum bilgisi.
+ *
+ * Yöneticinin verdiği geçici şifreyle giren kullanıcı burada önce kendi şifresini belirler (başka
+ * ekran açılmaz); ardından rolü gerektiriyorsa iki aşamalı doğrulamayı kurar, gerektirmiyorsa
+ * Görevlerim'e döner.
+ */
 export function SecurityPage() {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const query = useQuery({ queryKey: SECURITY_QUERY_KEY, queryFn: authApi.fetchSecurity });
+  const mustChange = user?.password_change_required ?? false;
+  // Geçici şifre değişince Görevlerim'e dönülür; ama yalnızca yenilenen `me` bağlama ulaştıktan
+  // sonra (yoksa RequireAuth eski bilgiyle yeniden Güvenlik sayfasına yönlendirir).
+  const [leaveWhenReady, setLeaveWhenReady] = useState(false);
+  useEffect(() => {
+    if (leaveWhenReady && user && !user.password_change_required && !user.otp_setup_required) {
+      setLeaveWhenReady(false);
+      navigate("/", { replace: true });
+    }
+  }, [leaveWhenReady, user, navigate]);
+
+  async function afterTemporaryPasswordChange() {
+    await refresh();
+    const fresh = queryClient.getQueryData<CurrentUser | null>(ME_QUERY_KEY);
+    if (fresh && !fresh.password_change_required && !fresh.otp_setup_required) {
+      notifications.show({ color: "green", message: st.passwordSetDone });
+      setLeaveWhenReady(true);
+    } else {
+      notifications.show({ color: "green", message: st.passwordChanged });
+    }
+  }
+
   return (
     <Stack maw={760}>
       <Title order={2}>{st.title}</Title>
-      {user?.otp_setup_required && (
-        <Alert color="yellow" icon={<IconShieldLock size={18} />} title={st.setupRequiredTitle}>
-          {st.setupRequired}
+      {mustChange ? (
+        <Alert color="yellow" icon={<IconKey size={18} />} title={st.passwordChangeRequiredTitle}>
+          {st.passwordChangeRequired}
         </Alert>
+      ) : (
+        user?.otp_setup_required && (
+          <Alert color="yellow" icon={<IconShieldLock size={18} />} title={st.setupRequiredTitle}>
+            {st.setupRequired}
+          </Alert>
+        )
       )}
       {query.isLoading && <Loader />}
       {query.isError && <ErrorAlert error={query.error} />}
-      {query.data && (
-        <>
-          <OtpCard status={query.data} />
-          <PasswordCard help={query.data.password_help} />
-          <SessionCard status={query.data} />
-        </>
-      )}
+      {query.data &&
+        (mustChange ? (
+          <PasswordCard
+            help={query.data.password_help}
+            temporary
+            onChanged={afterTemporaryPasswordChange}
+          />
+        ) : (
+          <>
+            <OtpCard status={query.data} />
+            <PasswordCard help={query.data.password_help} />
+            <SessionCard status={query.data} />
+          </>
+        ))}
     </Stack>
   );
 }
 
-function PasswordCard({ help }: { help: string[] }) {
+function PasswordCard({
+  help,
+  temporary = false,
+  onChanged,
+}: {
+  help: string[];
+  /** Geçici şifreyle girildi: "Mevcut şifre" alanı geçici şifreyi ister. */
+  temporary?: boolean;
+  onChanged?: () => Promise<void>;
+}) {
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -71,11 +126,12 @@ function PasswordCard({ help }: { help: string[] }) {
   const mutation = useMutation({
     mutationFn: (payload: { old_password: string; new_password: string }) =>
       authApi.changePassword(payload),
-    onSuccess: () => {
+    onSuccess: async () => {
       setOldPassword("");
       setNewPassword("");
       setConfirm("");
-      notifications.show({ color: "green", message: st.passwordChanged });
+      if (onChanged) await onChanged();
+      else notifications.show({ color: "green", message: st.passwordChanged });
     },
   });
 
@@ -103,7 +159,7 @@ function PasswordCard({ help }: { help: string[] }) {
             </Alert>
           )}
           <PasswordInput
-            label={st.oldPassword}
+            label={temporary ? st.temporaryPassword : st.oldPassword}
             value={oldPassword}
             onChange={(e) => setOldPassword(e.currentTarget.value)}
             error={errors.old}

@@ -44,5 +44,5 @@ yalnızca VPN üzerinden açılır; trafik HTTPS ile şifrelidir.
 
 Kişi (ör. ayrılan çalışan, şoför) verisinin silinmesini isterse: yasal saklama süresi dolmamış belgelerdeki
 (irsaliye, denetim izi) veri **saklanmaya devam eder** (KVKK m.7 ve m.5/2-ç). Süresi dolmuş ya da yasal
-dayanağı olmayan veriler (ör. pasif kullanıcının telefonu, e-postası) yönetim panelinden boşaltılır; işlem
-denetim günlüğüne yazılır. Talep ve cevap 30 gün içinde (KVKK m.13) firma tarafından yazılı yürütülür.
+dayanağı olmayan veriler (ör. pasif kullanıcının telefonu, e-postası) **Sistem > Kullanıcılar > Düzenle** ile
+boşaltılır; işlem denetim günlüğüne yazılır. Talep ve cevap 30 gün içinde (KVKK m.13) firma tarafından yazılı yürütülür.
