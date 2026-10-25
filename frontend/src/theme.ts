@@ -54,9 +54,6 @@ const dark: MantineColorsTuple = [
 
 const SANS = "'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
-/** Marka yazısı (INNCOS): DentMesher'daki gibi Manrope ExtraBold, sıkı harf aralığı. */
-export const BRAND_FONT = "Manrope, 'Inter Variable', Inter, sans-serif";
-
 // Tablet kullanımı: varsayılan bileşen boyutları büyük, dokunma alanları en az 44 px.
 export const theme = createTheme({
   primaryColor: "blue",

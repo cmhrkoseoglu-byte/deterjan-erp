@@ -1,8 +1,8 @@
 // Kullanıcıya görünen tüm metinler (CLAUDE.md §6: arayüz Türkçe).
 export const tr = {
   appName: "Inncos ERP",
-  /** Giriş ekranındaki yazı logo: ad + küçük etiket. */
-  brand: { name: "Inncos", tag: "ERP", wordmark: "INNCOS" },
+  /** Giriş ekranında Inncos logosunun yanındaki ürün etiketi (logo: components/brand/InncosLogo). */
+  brand: { tag: "ERP" },
   common: {
     loading: "Yükleniyor…",
     unexpectedError: "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.",

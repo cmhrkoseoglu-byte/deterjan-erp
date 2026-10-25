@@ -35,7 +35,9 @@ describe("üst çubuk", () => {
     renderApp("/gorevlerim");
     expect(await screen.findByText(panel)).toBeInTheDocument();
     expect(screen.getByRole("banner")).toHaveAttribute("data-role", barRole);
-    expect(screen.getByText("INNCOS")).toBeInTheDocument();
+    // Sol üstte Inncos logosu: işaret ve INNCOS yazısı (süs; bağlantının adı "Inncos ERP").
+    const brand = screen.getByRole("link", { name: "Inncos ERP" });
+    expect(brand.querySelectorAll("svg[aria-hidden='true']")).toHaveLength(2);
   });
 
   it("gece / gündüz düğmesi temayı değiştirir ve seçimi saklar", async () => {
@@ -121,6 +123,9 @@ describe("giriş ekranı", () => {
     const photos = [...document.querySelectorAll<HTMLImageElement>('img[src^="/giris/"]')];
     expect(photos).toHaveLength(6);
     expect(photos.every((img) => img.closest('[aria-hidden="true"]'))).toBe(true);
+    // Sol üstte Inncos logosu (işaret + INNCOS yazısı) ve "ERP"; süs, sayfa adı gizli başlıkta.
+    const brand = screen.getByText("ERP").closest('[aria-hidden="true"]');
+    expect(brand?.querySelectorAll("svg")).toHaveLength(2);
     expect(screen.getByLabelText("Kullanıcı adı")).toHaveAttribute(
       "placeholder",
       "ör. ahmet.yilmaz",

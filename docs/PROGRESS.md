@@ -723,3 +723,18 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
 - Kılavuz: `genel.md` giriş bölümü (göz simgesi, Caps Lock, Beni hatırla, fotoğraf geçişi, oturum
   kapanması); `genel-giris.jpg` yeniden çekildi. `scripts/kilavuz-ekran-goruntuleri.mjs` alanları tam
   adla bulur (göz düğmesinin adı da "Şifre" ile başlıyor) ve giriş görselinde hep ilk fotoğrafı çeker.
+
+## 2026-10-25 — Uygulama logosu
+
+- `components/brand/InncosLogo.tsx`: logo resminden izlenmiş SVG (işaret ve INNCOS yazısı). Giriş
+  ekranının sol üstü ve üst çubuk bunu kullanır. Simgeler: `public/favicon.svg`,
+  `public/apple-touch-icon.png` (180 px), `public/icon-192.png`; bağlantıları `index.html`'de. Giriş
+  ekranı paletinde logo rengi (`--lp-brand`) açık zeminde lacivert, koyuda beyaz; geçişteki okunurluk
+  denetimine logo/zemin oranı eklendi. `@fontsource/manrope` kaldırıldı.
+- Kanıt: `layout/shell.test.tsx` (üst çubukta ve giriş ekranında logo), `pages/login/slideshow.test.ts`
+  (logo rengi ve zeminle karşıtlığı); bütün ön yüz testleri, lint, biçim, tip denetimi ve derleme.
+  Tarayıcıda giriş ekranı 1366 ve 375 px (açık ve koyu fotoğraf); üst çubuk 1366, 1024, 768, 500 ve
+  375 px, gündüz ve gece; 375 px ve üstünde çubuk taşmıyor.
+- Kılavuz: `genel.md` üst çubuk paragrafı; kılavuz görselleri yeni logoyla yeniden çekildi.
+- Bilinen: 320 px genişlikte üst çubuk 25 px taşıyor. Logodan önce de taşıyordu; işaret eski yazıdan
+  dar olduğu için taşma azaldı.
