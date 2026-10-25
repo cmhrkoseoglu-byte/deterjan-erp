@@ -58,6 +58,24 @@ Onay limitini aşan satın alma siparişi size görev olarak gelir.
 
 > **Tahmini** işaretli maliyet gerçek alış fiyatından değil, son alıştan ya da standart maliyetten gelir. Mal kabulde fiyat girilmesini satın almadan isteyin.
 
+## Personel
+
+**Personel** menüsünü yalnızca yönetim ve sistem yöneticisi görür. Sahadaki ve ofisteki bütün çalışanların kartları buradadır; sistemi kullanmayan çalışanlar (ör. forklift ve dolum operatörleri) da kaydedilir.
+
+1. **Yeni personel**'e basın.
+2. **Ad soyad** ve **Birim** zorunludur. Birimi listeden seçin ya da yeni birimi yazın; aynı birim farklı yazılırsa (depo / Depo) var olan yazım kullanılır.
+3. Varsa **Sicil no**, **Görev**, **İşe giriş tarihi**, **Telefon** ve acil durumda aranacak kişiyi girin. Aynı sicil no iki kişide olamaz.
+4. Kişinin sisteme giriş hesabı varsa **Sistem kullanıcısı** alanında seçin. Hesabı sistem yöneticisi **Sistem > Kullanıcılar**'dan açar.
+5. **Kartı aç**'a basın.
+
+![Personel listesi](/kilavuz/yonetim-personel.jpg)
+
+- Arama kutusu ad, sicil no, birim ve görevde arar; birim ve **Çalışanlar / Ayrılanlar / Tümü** süzgeçleri vardır. Satıra basınca kart açılır.
+- Kartta **Düzenle** bilgileri değiştirir. **Geçmiş** bölümünde her değişiklik kimin yaptığı, tarihi, eski ve yeni değeriyle yazılıdır.
+- Kart silinmez. Ayrılan çalışanın kartında **İşten ayrıldı**'ya basıp çıkış tarihini girin; kart **Ayrılanlar**'a geçer. Yeniden işe başlarsa **Yeniden işe başladı**'ya basın.
+
+> Personel kartı kişisel veridir; diğer roller göremez. Kişinin sistem hesabı ayrılışla kendiliğinden kapanmaz: kartta uyarı çıkar, hesabı sistem yöneticisi **Sistem > Kullanıcılar**'dan pasife alır.
+
 ## Canlı başlangıç tarihi
 
 1. **Canlıya geçiş > Hazırlık** sekmesinde kontrol kartlarını gözden geçirin. Kırmızı maddeler kapanmadan başlanmaz.

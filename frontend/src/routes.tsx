@@ -20,6 +20,8 @@ import { RunPage } from "./modules/filling/RunPage";
 import { SpecPage } from "./modules/filling/SpecPage";
 import { HsePage } from "./modules/hse/HsePage";
 import { IncidentPage } from "./modules/hse/IncidentPage";
+import { EmployeePage } from "./modules/personnel/EmployeePage";
+import { PersonnelPage } from "./modules/personnel/PersonnelPage";
 import { MaintenancePage } from "./modules/maintenance/MaintenancePage";
 import { WorkOrderPage } from "./modules/maintenance/WorkOrderPage";
 import { MasterDataPage } from "./modules/masterdata/MasterDataPage";
@@ -88,6 +90,10 @@ function maintenancePage(page: ReactNode) {
 
 function hsePage(page: ReactNode) {
   return <RequireRole roles={menuRoles("hse")}>{page}</RequireRole>;
+}
+
+function personnelPage(page: ReactNode) {
+  return <RequireRole roles={menuRoles("personnel")}>{page}</RequireRole>;
 }
 
 function qualityPage(page: ReactNode) {
@@ -175,6 +181,9 @@ const pageRoutes: RouteObject[] = [
   // atık, olay incelemesi ve ayarlar yönetimde. Sekmeler rolle daralır.
   { path: "isg/olaylar/:incidentId", element: hsePage(<IncidentPage />) },
   { path: "isg/:tab?", element: hsePage(<HsePage />) },
+  // Personel: kişisel veri, yalnızca yönetim ve admin (backend de aynı rolle süzer).
+  { path: "personel", element: personnelPage(<PersonnelPage />) },
+  { path: "personel/:employeeId", element: personnelPage(<EmployeePage />) },
   // Panolar ve raporlar: menü herkese açık; panolar ve raporlar rolle daralır (backend listesi).
   { path: "raporlar/:tab?", element: <ReportingPage /> },
   // Sistem: yalnızca admin (sistem durumu, yedekler, kullanıcı kilidi/2FA, saha tableti).
@@ -224,6 +233,7 @@ const IMPLEMENTED = new Set([
   "purchasing",
   "maintenance",
   "hse",
+  "personnel",
   "reporting",
   "system",
   "golive",

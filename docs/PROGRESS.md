@@ -738,3 +738,21 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
 - Kılavuz: `genel.md` üst çubuk paragrafı; kılavuz görselleri yeni logoyla yeniden çekildi.
 - Bilinen: 320 px genişlikte üst çubuk 25 px taşıyor. Logodan önce de taşıyordu; işaret eski yazıdan
   dar olduğu için taşma azaldı.
+
+## 2026-10-25 — Personel kartları
+
+- Backend `apps/personnel`: `Employee` (ana veri; koşullu benzersiz sicil no, durum ile çıkış tarihi CHECK
+  kısıtları), servisler (kart açma, güncelleme, işten ayrılış, yeniden başlama; denetim günlüğü), seçiciler
+  (birimler, kart geçmişi, bağlanabilir kullanıcılar), API `/api/v1/personnel/` (`employees` +
+  `terminate`, `reinstate`, `history`; `departments`; `linkable-users`), `seed_personnel_demo`
+  (`seed_demo`'ya bağlı). `workflow` genel geçmiş ve yorum uç noktaları personel kartını reddeder.
+- Ön yüz: menüde "Personel" (yönetim, admin); liste (arama, birim ve durum süzgeci, sayfalama), kart
+  (bilgiler, düzenleme, işten ayrılış ve yeniden başlama, Türkçe alan adlı geçmiş), yeni kart penceresi.
+- Kanıt: `apps/personnel/tests` (servis kuralları, denetim günlüğü, diğer rollere 403, genel geçmiş ve
+  yorumun reddi, demo verisi), `modules/personnel/personnel.test.tsx`; bütün backend ve ön yüz testleri,
+  ruff, mypy, lint, biçim, tip denetimi ve derleme. Tarayıcıda yönetimle kart açma (çakışan sicil no
+  uyarısı, birim yazımı), düzenleme, ayrılış ve yeniden başlama; depo rolünde menü yok, sayfa "Yetkiniz
+  yok", API 403; 375 px'te taşma yok.
+- Kılavuz: `yonetim.md` "Personel" bölümü, `admin.md` personel kartı maddesi; yeni görsel
+  `yonetim-personel.jpg`, yönetim ve admin görselleri yeni menüyle yeniden çekildi. KVKK envanteri ve
+  CLAUDE.md modül tablosu güncellendi.

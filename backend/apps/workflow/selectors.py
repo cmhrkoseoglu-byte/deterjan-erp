@@ -17,6 +17,8 @@ _NOT_COMMENTABLE = frozenset(
         "core.documentsequence",
         "workflow.notification",
         "workflow.comment",
+        # Kişisel veri: geçmişi yalnız admin ve yönetime açık personel uç noktasında.
+        "personnel.employee",
     }
 )
 

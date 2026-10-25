@@ -1447,3 +1447,22 @@ değiştirme zorunlu, yalnızca admin):
   (işaret ve yazı ayrı parçalar, renk `currentColor`). Asıl vektör dosyası gelirse yalnızca bu bileşen
   ve `public/` altındaki simgeler değişir.
 - **Temizlik:** yalnızca eski INNCOS yazısı için yüklenen Manrope yazı tipi kaldırıldı.
+
+## 2026-10-25 — Personel kartları (yeni `personnel` modülü)
+
+- **Karar (CUMHUR, "personel kayıtları için bir alan ekleyelim"; kapsam için "Kimlik ve görev", kişiler
+  için "Evet, herkes", yetki için "Admin ve yönetim"):** sistemi kullanmayanlar dahil bütün çalışanlar için
+  personel kartı tutulur. Eğitim/belge takibi, vardiya ve izin bu kararın dışında.
+- **Kart:** ad soyad ve birim zorunlu; sicil no isteğe bağlı, doluysa benzersiz; görev, işe giriş ve çıkış
+  tarihi, telefon, acil durumda aranacak kişi ve telefonu. Sistem hesabı olanın kartı kullanıcısına
+  bağlanır (bir kullanıcı tek karta; pasif kullanıcı bağlanmaz).
+- **Birim:** ayrı ana veri değil, serbest metin; kayıtlı birimler önerilir ve büyük/küçük harf farkı
+  (Türkçe i/ı dahil) var olan yazıma çevrilir.
+- **Ayrılış:** kart silinmez. "İşten ayrıldı" çıkış tarihiyle kartı pasife alır, "Yeniden işe başladı"
+  geri açar (çıkış tarihi silinir, denetim günlüğünde kalır). Bağlı sistem hesabı kendiliğinden kapanmaz;
+  kartta uyarı çıkar, hesabı sistem yöneticisi pasife alır.
+- **Yetki ve gizlilik:** ekran ve API yalnızca admin ve yönetim (diğer roller 403); kartın değişiklik
+  geçmişi kendi uç noktasında. `workflow`'un genel geçmiş ve yorum uç noktaları `personnel.employee`
+  kaydını kabul etmez; aksi halde her kullanıcı değişiklik geçmişinden kişisel veriyi okuyabilirdi. KVKK
+  envanterine iki satır eklendi.
+- **Modül:** `apps/personnel` (yalnızca core ve masterdata'ya bağlı); CLAUDE.md modül tablosuna eklendi.
