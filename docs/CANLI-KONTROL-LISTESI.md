@@ -45,10 +45,10 @@ sunucuda elle doğrulanır; **Elle** satırlar sunucuda kontrol edilir.
 | # | Kontrol | Tür |
 |---|---|---|
 | 21 | Demo kullanıcılar yok (`create_demo_users` üretimde çalışmaz); her çalışanın kendi hesabı var | Elle |
-| 22 | Admin ve yönetim kullanıcıları iki aşamalı doğrulamayı kurdu, kurtarma kodlarını sakladı | Elle |
+| 22 | Admin ve yönetim kullanıcıları iki aşamalı doğrulamayı kurdu, kurtarma kodlarını sakladı (25.10.2026'dan beri geçici olarak zorunlu değil, DECISIONS.md) | Elle |
 | 23 | Ortak saha tabletleri Sistem > Bu cihaz ile "saha tableti" işaretlendi | Elle |
 | 24 | Hesap kilidi ve hareketsizlik süresi bir kez denendi (yanlış şifre ×5; tablette 10 dk bekleme) | Elle |
-| 25 | Superuser hesabı yalnızca bir/iki kişide; yönetim paneline giriş 2FA istiyor | Elle |
+| 25 | Superuser hesabı yalnızca bir/iki kişide; yönetim paneline giriş 2FA istiyor (2FA geçici olarak zorunlu değil, madde 22) | Elle |
 
 ## İzleme ve KVKK
 
