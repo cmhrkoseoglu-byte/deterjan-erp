@@ -5,10 +5,14 @@ Bu kılavuz her rol için ortaktır. Giriş, menü, görevler, bildirimler, yoru
 ## Giriş ve çıkış
 
 1. Tarayıcıda sistemin adresini açın. Tablette ana ekrana eklenmiş simgeyi kullanabilirsiniz.
-2. **Kullanıcı adı** ve **Şifre** alanlarını doldurup **Giriş yap**'a basın.
+2. **Kullanıcı adı** ve **Şifre** alanlarını doldurup **Giriş yap**'a basın. Şifre alanının sağındaki göz simgesi yazdığınız şifreyi gösterir ya da gizler. Büyük harf kilidi (Caps Lock) açıksa alanın altında uyarı çıkar.
 3. İşiniz bitince sağ üstte adınıza tıklayın ve **Çıkış yap**'ı seçin. Ortak kullanılan tablette mutlaka çıkış yapın.
 
 ![Giriş ekranı](/kilavuz/genel-giris.jpg)
+
+- **Beni hatırla** işaretliyse yalnızca kullanıcı adınız o cihazda saklanır ve sonraki girişte kutuda hazır gelir; şifre saklanmaz. Ortak kullanılan tablette işaretlemeyin.
+- Arka plandaki ürün fotoğrafları birkaç saniyede bir değişir; giriş kartının rengi fotoğrafa uyar. Sol alttaki düğmeyle geçişi duraklatıp sürdürür, yanındaki noktalarla istediğiniz fotoğrafa geçersiniz.
+- Uzun süre işlem yapmazsanız oturumunuz kendiliğinden kapanır; giriş ekranında bunu söyleyen bir not görünür. Yeniden giriş yapınca kaldığınız sayfa açılır.
 
 > Şifrenizi unuttuysanız ya da hesabınız kilitlendiyse sistem yöneticisine haber verin. Şifrenizi kimseyle paylaşmayın; her işlem sizin adınıza kaydedilir.
 

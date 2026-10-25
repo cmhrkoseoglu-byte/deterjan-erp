@@ -1,56 +1,122 @@
-import { Alert, Button, Group, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
-import {
-  IconAlertCircle,
-  IconClockPause,
-  IconLock,
-  IconShieldLock,
-  IconUser,
-} from "@tabler/icons-react";
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { IconEye, IconEyeOff } from "@tabler/icons-react";
+import { memo, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorCode, getErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { safeAppPath } from "../auth/safePath";
-import { BrandMark } from "../components/brand/BrandMark";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { tr } from "../i18n/tr";
-import classes from "./LoginPage.module.css";
+import c from "./login/login.module.css";
+import { startSlideshow } from "./login/slideshow";
+
+/*
+ * Giriş ekranı: PET Üretim Takip projesinin giriş ekranı gibi (templates/registration/login.html).
+ * Arka planda ürün fotoğrafları kendiliğinden geçer; kart, yazı, düğme ve alt bant renkleri her
+ * fotoğrafın baskın tonlarından hesaplanır (login/slideshow.ts).
+ * Slaytlar ve denetimleri betiğe aittir: React onları bir kez çizer, sonra dokunmaz.
+ */
+
+/** Arka plan fotoğrafları (public/giris/; ilki betiksiz de görünür, CSS varsayılanları onun paleti). */
+const SLIDES = [
+  "01-mavi-siseler",
+  "02-seftali-bidon",
+  "03-tas-bidon",
+  "04-deterjan-havlu",
+  "05-pompali-siseler",
+  "07-krem-pompa",
+].map((name) => `/giris/${name}.webp`);
+
+/** "Beni hatırla": yalnızca kullanıcı adı bu tarayıcıda saklanır; şifre asla saklanmaz. */
+const REMEMBER_KEY = "inncosKullaniciAdi";
+
+function readRemembered(): string {
+  try {
+    return window.localStorage.getItem(REMEMBER_KEY) ?? "";
+  } catch {
+    return ""; // gizli pencere ya da kapalı site verisi
+  }
+}
+
+function writeRemembered(value: string) {
+  try {
+    if (value) window.localStorage.setItem(REMEMBER_KEY, value);
+    else window.localStorage.removeItem(REMEMBER_KEY);
+  } catch {
+    // saklanamazsa yalnızca hatırlanmaz
+  }
+}
+
+const cx = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(" ");
 
 /** Yalnızca uygulama içi yollara dönüş (açık yönlendirmeyi önler); geçersiz adreste ana sayfa. */
 function safeNext(next: string | null): string {
   return safeAppPath(next) ?? "/";
 }
 
-/** Zeminde süzülen zincir sözcüklerinin yerleri (%), DentMesher girişindeki sözcükler gibi. */
-const FLOATING = [
-  { left: "6%", top: "18%" },
-  { left: "72%", top: "9%" },
-  { left: "80%", top: "58%" },
-  { left: "10%", top: "70%" },
-  { left: "44%", top: "88%" },
-];
+/** Slayt katmanları: süs, ekran okuyucudan gizli. Betik sınıf ve renklerini değiştirir. */
+const Slides = memo(function Slides() {
+  return (
+    <>
+      <div className={c.slides} aria-hidden="true">
+        {SLIDES.map((src, i) => (
+          <div key={src} className={cx(c.slide, i === 0 && c["is-active"])}>
+            <img className={c["slide-image"]} src={src} alt="" decoding="async" />
+          </div>
+        ))}
+      </div>
+      <div className={c["slide-curtain"]} aria-hidden="true" />
+    </>
+  );
+});
 
-/** Alanlar ve düğmeler gece paletinde: giriş, temadan bağımsız olarak hep koyu kahve zemindedir. */
-const FIELD = {
-  root: classes.field,
-  label: classes.fieldLabel,
-  input: classes.fieldInput,
-  section: classes.fieldSection,
-  error: classes.fieldError,
-  description: classes.fieldHint,
-  innerInput: classes.fieldInner,
-  visibilityToggle: classes.fieldToggle,
-};
+/** Otomatik geçen arka plan için duraklatma zorunludur (WCAG 2.2.2); noktaları betik ekler. */
+const SlideControls = memo(function SlideControls() {
+  return (
+    <div className={c["slide-controls"]} hidden>
+      <button
+        type="button"
+        className={c["slide-toggle"]}
+        aria-pressed="false"
+        aria-label={tr.auth.slidePause}
+        title={tr.auth.slidePause}
+      >
+        <svg
+          className={c["icon-pause"]}
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <rect x="6" y="4" width="4" height="16" rx="1" />
+          <rect x="14" y="4" width="4" height="16" rx="1" />
+        </svg>
+        <svg
+          className={c["icon-play"]}
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z" />
+        </svg>
+      </button>
+      <div className={c["slide-dots"]} role="group" aria-label={tr.auth.slideImages} />
+    </div>
+  );
+});
 
-export function LoginPage() {
-  const { user, isLoading, login } = useAuth();
+function LoginScreen({ next, expired }: { next: string; expired: boolean }) {
+  const { login } = useAuth();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const next = safeNext(params.get("next"));
-  const expired = params.get("reason") === "expired";
-
-  const [username, setUsername] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const [remembered] = useState(readRemembered);
+  const [username, setUsername] = useState(remembered);
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(Boolean(remembered));
+  const [showPassword, setShowPassword] = useState(false);
   // İki aşamalı doğrulama: şifre doğruysa ve 2FA kuruluysa sunucu otp_required döner.
   const [otpStep, setOtpStep] = useState(false);
   const [otpCode, setOtpCode] = useState("");
@@ -63,8 +129,7 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
 
-  if (isLoading) return <LoadingScreen />;
-  if (user) return <Navigate to={next} replace />;
+  useEffect(() => (rootRef.current ? startSlideshow(rootRef.current) : undefined), []);
 
   async function submit(payload: { username: string; password: string; otp_code?: string }) {
     setSubmitting(true);
@@ -100,6 +165,7 @@ export function LoginPage() {
     };
     setFieldErrors(errors);
     if (errors.username || errors.password) return;
+    writeRemembered(remember ? username.trim() : "");
     await submit({ username: username.trim(), password });
   }
 
@@ -116,153 +182,230 @@ export function LoginPage() {
     setCapsLock(event.getModifierState?.("CapsLock") ?? false);
   }
 
+  const submitButton = (label: string) => (
+    <button
+      type="submit"
+      className={cx(c["submit-button"], submitting && c["is-loading"])}
+      disabled={submitting}
+    >
+      <span className={c.spinner} aria-hidden="true" />
+      <span className={c["submit-label"]}>{submitting ? tr.auth.submitting : label}</span>
+    </button>
+  );
+
   return (
-    <div className={classes.root}>
-      {/* Zemin süsü: ana zincirin sözcükleri yavaşça süzülür; ekran okuyucudan gizli. */}
-      <div className={classes.scene} aria-hidden="true">
-        {tr.auth.chain.map((word, i) => (
-          <span key={word} className={classes.floating} style={FLOATING[i]}>
-            {word}
-          </span>
-        ))}
+    <div ref={rootRef} className={cx(c["login-page"], c["has-slides"])}>
+      <h1 className={c["login-sr-only"]}>{tr.auth.pageTitle}</h1>
+      <Slides />
+      <div className={c.brand} aria-hidden="true">
+        {/* Inncos damla ve köpük işareti; rengi fotoğrafın paletinden (--lp-brand). */}
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M11 3C8 7.5 6 10.2 6 13a5 5 0 0 0 10 0c0-2.8-2-5.5-5-10z" />
+          <circle cx="18" cy="6.5" r="1.8" />
+        </svg>
+        <span className={c["brand-text"]}>
+          <span>{tr.brand.wordmark}</span> {tr.brand.tag}
+        </span>
       </div>
-      <header className={classes.top}>
-        <BrandMark size={30} inverse />
-        <span className={classes.wordmark}>{tr.brand.wordmark}</span>
-        <span className={classes.tag}>{tr.brand.tag}</span>
-      </header>
-      <main className={classes.center}>
-        <div className={classes.card}>
-          <form onSubmit={handleSubmit} noValidate>
-            <Stack gap="lg">
-              {otpStep ? (
-                <div>
-                  <Group gap="xs" wrap="nowrap" mb={6}>
-                    <IconShieldLock size={26} stroke={1.6} className={classes.titleIcon} />
-                    <Title order={1} className={classes.title}>
-                      {tr.auth.otpTitle}
-                    </Title>
-                  </Group>
-                  <Text className={classes.subtitle}>{tr.auth.otpIntro}</Text>
-                </div>
-              ) : (
-                <div>
-                  <Title order={1} className={classes.title} mb={6}>
-                    {tr.auth.loginTitle}
-                  </Title>
-                  <Text className={classes.subtitle}>{tr.auth.loginSubtitle}</Text>
-                </div>
-              )}
+
+      <div className={c["page-wrap"]}>
+        <main className={c.stage}>
+          <div className={c.card}>
+            <div className={c["form-panel"]}>
+              <div className={c["form-head"]}>
+                <h2 className={c["form-title"]}>
+                  {otpStep ? tr.auth.otpTitle : tr.auth.loginTitle}
+                </h2>
+                <p className={c["form-subtitle"]}>
+                  {otpStep ? tr.auth.otpIntro : tr.auth.loginSubtitle}
+                </p>
+              </div>
+
               {expired && !error && !otpStep && (
-                <Alert
-                  variant="light"
-                  icon={<IconClockPause size={18} />}
-                  classNames={{ root: classes.notice, icon: classes.noticeIcon }}
-                >
+                <div className={cx(c.notice, c["is-info"])} role="status">
                   {tr.auth.sessionExpired}
-                </Alert>
+                </div>
               )}
               {error && (
-                <Alert
-                  variant="light"
-                  icon={<IconAlertCircle size={18} />}
-                  role="alert"
-                  classNames={{ root: classes.danger, icon: classes.dangerIcon }}
-                >
+                <div className={cx(c.notice, c["is-error"])} role="alert">
                   {error}
-                </Alert>
+                </div>
               )}
-              {otpStep ? (
-                <>
-                  <TextInput
-                    label={tr.auth.otpCode}
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.currentTarget.value)}
-                    error={fieldErrors.otp}
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    autoCapitalize="none"
-                    maxLength={16}
-                    size="lg"
-                    autoFocus
-                    classNames={FIELD}
-                    styles={{
-                      input: { letterSpacing: "0.2em", fontVariantNumeric: "tabular-nums" },
-                    }}
-                  />
-                  <Text size="sm" className={classes.subtitle}>
-                    {tr.auth.otpRecoveryHint}
-                  </Text>
-                  <Button
-                    type="submit"
-                    size="lg"
-                    loading={submitting}
-                    fullWidth
-                    className={classes.submit}
-                  >
-                    {tr.auth.otpSubmit}
-                  </Button>
-                  <Button
-                    variant="subtle"
-                    onClick={backToPassword}
-                    disabled={submitting}
-                    className={classes.back}
-                  >
-                    {tr.auth.otpBack}
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <TextInput
-                    label={tr.auth.username}
-                    value={username}
-                    onChange={(e) => setUsername(e.currentTarget.value)}
-                    error={fieldErrors.username}
-                    autoComplete="username"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    size="lg"
-                    leftSection={<IconUser size={18} stroke={1.6} />}
-                    autoFocus
-                    classNames={FIELD}
-                  />
-                  <PasswordInput
-                    label={tr.auth.password}
-                    value={password}
-                    onChange={(e) => setPassword(e.currentTarget.value)}
-                    onKeyDown={trackCapsLock}
-                    onKeyUp={trackCapsLock}
-                    onBlur={() => setCapsLock(false)}
-                    error={fieldErrors.password}
-                    description={capsLock ? tr.auth.capsLock : undefined}
-                    inputWrapperOrder={["label", "input", "description", "error"]}
-                    autoComplete="current-password"
-                    size="lg"
-                    leftSection={<IconLock size={18} stroke={1.6} />}
-                    classNames={FIELD}
-                  />
-                  <Button
-                    type="submit"
-                    size="lg"
-                    loading={submitting}
-                    fullWidth
-                    mt="xs"
-                    className={classes.submit}
-                  >
-                    {tr.auth.submit}
-                  </Button>
-                </>
-              )}
-            </Stack>
-          </form>
-          <Text size="sm" className={classes.hint}>
-            {tr.auth.forgotHint}
-          </Text>
-        </div>
-      </main>
-      <footer className={classes.foot}>
-        {tr.appName} · {tr.auth.brandFoot}
-      </footer>
+
+              <form onSubmit={handleSubmit} noValidate>
+                {otpStep ? (
+                  <>
+                    <div className={c.field}>
+                      <label className={c["field-label"]} htmlFor="login-otp">
+                        {tr.auth.otpCode}
+                      </label>
+                      <div className={c["field-wrap"]}>
+                        <input
+                          id="login-otp"
+                          className={cx(c["field-input"], c["is-code"])}
+                          value={otpCode}
+                          onChange={(e) => setOtpCode(e.currentTarget.value)}
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          autoCapitalize="none"
+                          maxLength={16}
+                          autoFocus
+                          aria-invalid={fieldErrors.otp ? true : undefined}
+                          aria-describedby={fieldErrors.otp ? "login-otp-error" : undefined}
+                        />
+                      </div>
+                      {fieldErrors.otp && (
+                        <p id="login-otp-error" className={c["field-error"]}>
+                          {fieldErrors.otp}
+                        </p>
+                      )}
+                      <p className={cx(c["field-hint"], c["is-secondary"])}>
+                        {tr.auth.otpRecoveryHint}
+                      </p>
+                    </div>
+                    {submitButton(tr.auth.otpSubmit)}
+                    <button
+                      type="button"
+                      className={c["back-button"]}
+                      onClick={backToPassword}
+                      disabled={submitting}
+                    >
+                      {tr.auth.otpBack}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className={c.field}>
+                      <label className={c["field-label"]} htmlFor="login-username">
+                        {tr.auth.username}
+                      </label>
+                      <div className={c["field-wrap"]}>
+                        <input
+                          id="login-username"
+                          className={c["field-input"]}
+                          type="text"
+                          value={username}
+                          onChange={(e) => setUsername(e.currentTarget.value)}
+                          maxLength={150}
+                          autoComplete="username"
+                          autoCapitalize="none"
+                          spellCheck={false}
+                          placeholder={tr.auth.usernamePlaceholder}
+                          autoFocus={!remembered}
+                          aria-invalid={fieldErrors.username ? true : undefined}
+                          aria-describedby={
+                            fieldErrors.username ? "login-username-error" : undefined
+                          }
+                        />
+                      </div>
+                      {fieldErrors.username && (
+                        <p id="login-username-error" className={c["field-error"]}>
+                          {fieldErrors.username}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className={c.field}>
+                      <label className={c["field-label"]} htmlFor="login-password">
+                        {tr.auth.password}
+                      </label>
+                      <div className={c["field-wrap"]}>
+                        <input
+                          ref={passwordRef}
+                          id="login-password"
+                          className={cx(c["field-input"], c["with-button"])}
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.currentTarget.value)}
+                          onKeyDown={trackCapsLock}
+                          onKeyUp={trackCapsLock}
+                          onBlur={() => setCapsLock(false)}
+                          autoComplete="current-password"
+                          placeholder="••••••••"
+                          autoFocus={Boolean(remembered)}
+                          aria-invalid={fieldErrors.password ? true : undefined}
+                          aria-describedby={
+                            fieldErrors.password ? "login-password-error" : undefined
+                          }
+                        />
+                        <button
+                          type="button"
+                          className={c["reveal-button"]}
+                          aria-label={showPassword ? tr.auth.hidePassword : tr.auth.showPassword}
+                          aria-pressed={showPassword}
+                          title={showPassword ? tr.auth.hidePassword : tr.auth.showPassword}
+                          onClick={() => {
+                            setShowPassword((value) => !value);
+                            passwordRef.current?.focus();
+                          }}
+                        >
+                          <IconEye className={c["eye-open"]} size={18} aria-hidden="true" />
+                          <IconEyeOff className={c["eye-closed"]} size={18} aria-hidden="true" />
+                        </button>
+                      </div>
+                      {fieldErrors.password && (
+                        <p id="login-password-error" className={c["field-error"]}>
+                          {fieldErrors.password}
+                        </p>
+                      )}
+                      {capsLock && (
+                        <p className={c["field-hint"]} role="status">
+                          {tr.auth.capsLock}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className={c["field-row"]}>
+                      {/* Yalnızca kullanıcı adı bu tarayıcıda saklanır; ortak tablette işaretlemeyin. */}
+                      <label className={c.remember}>
+                        <input
+                          type="checkbox"
+                          checked={remember}
+                          onChange={(e) => setRemember(e.currentTarget.checked)}
+                        />
+                        <span>{tr.auth.rememberMe}</span>
+                      </label>
+                    </div>
+
+                    {submitButton(tr.auth.submit)}
+                  </>
+                )}
+              </form>
+
+              <p className={c.footnote}>{tr.auth.forgotHint}</p>
+            </div>
+          </div>
+        </main>
+
+        <footer className={c["footer-band"]}>
+          <SlideControls />
+          <p className={c["footer-text"]}>
+            <span>{tr.appName}</span>
+            <span className={c["dot-sep"]}>&middot;</span>
+            <span>{tr.auth.brandFoot}</span>
+            <span className={c["dot-sep"]}>&middot;</span>
+            <span>&copy; {new Date().getFullYear()}</span>
+          </p>
+        </footer>
+      </div>
     </div>
   );
+}
+
+export function LoginPage() {
+  const { user, isLoading } = useAuth();
+  const [params] = useSearchParams();
+  const next = safeNext(params.get("next"));
+  const expired = params.get("reason") === "expired";
+
+  if (isLoading) return <LoadingScreen />;
+  if (user) return <Navigate to={next} replace />;
+  return <LoginScreen next={next} expired={expired} />;
 }

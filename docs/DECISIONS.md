@@ -1408,3 +1408,24 @@ değiştirme zorunlu, yalnızca admin):
 - **Geri dönüş (iki adıma geçildiğinde):** `.env.prod` içinde `OTP_REQUIRED_ROLES=admin,yonetim`, ardından
   `scripts/prod-compose.sh up -d --wait`. Bu rollerdeki kullanıcılar bir sonraki girişte kurulumu yapar
   (Güvenlik sayfası); kontrol listesi madde 22 ve 25 o zaman yeniden işaretlenir.
+
+## 2026-10-25 — Giriş ekranı PET ERP'deki gibi
+
+- **Karar (CUMHUR, "giriş kısmını pet erp uygulamasında yaptığımız giriş arayüzü gibi olmasını
+  istiyorum"; fotoğraflar için "PET'tekiler, preformsuz"):** giriş ekranı PET ERP'nin (PET şişe üretimi
+  projesi) giriş arayüzüne geçer. 24.10'daki DentMesher girişinin (koyu kahve zemin, süzülen zincir
+  sözcükleri) yerini alır; uygulamanın geri kalanı DentMesher dilinde kalır.
+- **Görünüm:** tam ekran ürün fotoğrafları 7 sn'de bir kendiliğinden değişir (yazarken geçiş son tuştan
+  4 sn sonraya ertelenir). Kart, düğme ve alt bant rengi her fotoğraftan tarayıcıda çıkarılan palete
+  uyar: açık fotoğrafta açık, koyuda koyu kart; yazı ve düğme karşıtlığı en az 4,5:1. Sol üstte INNCOS
+  ERP; altta cam bant, duraklat/sürdür düğmesi ve fotoğraf noktaları (WCAG 2.2.2). Hareketi azalt
+  tercihinde geçiş duraklatılmış başlar.
+- **Fotoğraflar:** PET'teki ürün fotoğraflarından 6'sı (`frontend/public/giris/*.webp`); preform
+  fotoğrafları deterjan fabrikasına uymadığı için alınmadı. Fotoğraf değiştirmek için klasöre webp
+  koyup `LoginPage.tsx`'teki `SLIDES` listesini güncellemek yeter.
+- **Beni hatırla:** yalnızca kullanıcı adı o tarayıcıda saklanır (`localStorage`,
+  `inncosKullaniciAdi`) ve sonraki girişte kutuya yazılır. Şifre saklanmaz; oturum süresi ve
+  hareketsizlikte kapanma değişmez. Ortak tablette işaretlenmemesi kılavuzda yazıyor.
+- **Korunanlar:** iki aşamalı doğrulama adımı (2FA'sı açık kullanıcıda), Caps Lock uyarısı, oturum
+  kapandı notu, girişten sonra güvenli dönüş adresi (`safeAppPath`), geçici şifreyle girişte Güvenlik
+  sayfası. Backend ve CSP değişmedi (satır içi betik yok; fotoğraf analizi tarayıcıda, dış istek yok).
