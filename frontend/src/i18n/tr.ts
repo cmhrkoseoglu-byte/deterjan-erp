@@ -116,6 +116,7 @@ export const tr = {
     costing: "Maliyet",
     maintenance: "Bakım",
     hse: "İSG ve çevre",
+    personnel: "Personel",
     reporting: "Panolar ve raporlar",
     system: "Sistem",
     golive: "Canlıya geçiş",

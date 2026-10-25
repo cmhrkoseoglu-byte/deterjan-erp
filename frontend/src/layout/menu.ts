@@ -19,6 +19,7 @@ import {
   IconShoppingCart,
   IconTool,
   IconTruckDelivery,
+  IconUsers,
   type Icon,
 } from "@tabler/icons-react";
 import type { CurrentUser, Role } from "../api/types";
@@ -160,6 +161,14 @@ export const MENU: readonly MenuItem[] = [
     // Olay / ramak kala bildirimi herkese açık.
     roles: [],
     phase: 4,
+  },
+  {
+    key: "personnel",
+    label: tr.menu.personnel,
+    path: "/personel",
+    icon: IconUsers,
+    // Personel kartları kişisel veri: yalnızca yönetim (ve admin) görür (docs/KVKK.md).
+    roles: ["yonetim"],
   },
   {
     key: "reporting",

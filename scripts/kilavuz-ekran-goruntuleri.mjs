@@ -918,6 +918,15 @@ const SHOTS = [
     user: "yonetim",
     run: async (page) => go(page, "/maliyet/oranlar", "Oran ekle"),
   },
+  {
+    // Personel kartları seed_demo'dan (seed_personnel_demo) gelir.
+    name: "yonetim-personel",
+    user: "yonetim",
+    run: async (page) => {
+      await go(page, "/personel", "Yeni personel");
+      await page.getByTestId("employees").waitFor({ timeout: 15000 });
+    },
+  },
 
   // admin.md
   {

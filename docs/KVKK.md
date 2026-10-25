@@ -23,6 +23,8 @@ yalnızca VPN üzerinden açılır; trafik HTTPS ile şifrelidir.
 | Şoför | İrsaliye görüntüleme kaydı | `core_auditlog` ("İrsaliye görüntülendi") | TC no'nun kimler tarafından görüldüğünün izi (KVKK m.12) | Kanuni yükümlülük | Admin, yönetim | 10 yıl |
 | Müşteri / tedarikçi yetkilisi | Yetkili kişi adı, telefon, e-posta, adres | `masterdata_customer`, `masterdata_supplier` (`contact_person`, `phone`, `email`, `address`) | Sipariş, sevkiyat, satın alma iletişimi | Sözleşmenin ifası, meşru menfaat | Kartı görebilen roller (planlama, yönetim, sevkiyat, satın alma) | Ticari ilişki süresince + 10 yıl; ilişki bitince kart pasife alınır |
 | Şahıs firması | Vergi no yerine TCKN | `masterdata_customer.tax_number`, `masterdata_supplier.tax_number` | Fatura, irsaliye | Kanuni yükümlülük | Kartı görebilen roller | 10 yıl |
+| Çalışan (personel kartı; sistemi kullanmayanlar dahil) | Sicil no, ad soyad, birim, görev, işe giriş ve çıkış tarihi, telefon; bağlıysa sistem kullanıcısı | `personnel_employee` | Personel listesi, iletişim, işe giriş ve ayrılışın kaydı | Sözleşmenin ifası (iş sözleşmesi), kanuni yükümlülük (İş Kanunu, SGK) | Yalnızca admin ve yönetim (Personel ekranı; kartın değişiklik geçmişi de yalnızca onlara açık) | Çalışma süresince; ayrılınca kart pasife alınır, silinmez. Ayrılıştan sonraki saklama süresi (genel zamanaşımı 10 yıl) firma İK ve hukuk birimiyle teyit edilmeli |
+| Çalışanın yakını | Acil durumda aranacak kişinin adı ve telefonu | `personnel_employee.emergency_contact_name`, `emergency_contact_phone` | Kaza ya da acil durumda yakına haber vermek | Meşru menfaat; acil durumda hayati menfaat (m.5/2-b) | Yalnızca admin ve yönetim | Çalışma süresince; çalışan ayrılınca amaç biter, kartta boşaltılması önerilir (**Personel > kart > Düzenle**) |
 | Kaza / olay kayıtlarında yaralanan | Ad soyad, yaralanma bilgisi, olay anlatımı | `hse_incident.injured_person`, `injury`, `description`; olay fotoğrafları (ekler) | İş sağlığı ve güvenliği kaydı, SGK bildirimi | Kanuni yükümlülük (6331 İSG Kanunu); sağlık verisi için m.6 | Yalnızca yönetim; diğer roller yalnızca kendi bildirdikleri olayları görür | 6331 gereği en az 15 yıl (iş kazası kayıtları) — firma İSG uzmanıyla teyit edilmeli |
 | Herkes | Ek dosyalar (fotoğraf, belge) | `core_attachment`, ekler klasörü | Kayıtlara kanıt | Kaydın amacına bağlı | Kaydı görebilen roller; dosyalar yalnızca giriş yapmış kullanıcıya verilir | Bağlı olduğu kayıtla aynı |
 | Çalışan | Arayüz hata kayıtları (sayfa adresi, kullanıcı no) | sunucu günlüğü (`docker compose logs`), Sentry tanımlıysa Sentry | Hata giderme | Meşru menfaat | Admin, sunucuyu yöneten BT | Günlük dosyaları 5 × 10 MB döner (birkaç hafta); Sentry'de 30–90 gün (hesap ayarı). Sentry'ye çerez, IP, istek gövdesi gönderilmez |
@@ -31,6 +33,8 @@ yalnızca VPN üzerinden açılır; trafik HTTPS ile şifrelidir.
 
 - Erişim yetkisi rol bazlıdır ve her uç noktada kontrol edilir (CLAUDE.md kural 12). Maliyet ve olay
   kayıtları gibi hassas alanlar ayrıca daraltılmıştır.
+- Personel kartları ve değişiklik geçmişleri yalnızca admin ve yönetime açıktır; kayıtlara bağlı genel
+  geçmiş ve yorum uç noktaları personel kartını kabul etmez.
 - Şifre politikası (en az 10 karakter, harf ve rakam), hatalı girişte hesap kilidi, hareketsizlik süresi,
   admin ve yönetim rollerinde iki aşamalı doğrulama (docs/DECISIONS.md, "Giriş güvenliği").
 - Trafik HTTPS (TLS 1.2+), güvenlik başlıkları; sunucu yalnızca iç ağ ve VPN'den erişilebilir; yönetim paneli
@@ -44,5 +48,6 @@ yalnızca VPN üzerinden açılır; trafik HTTPS ile şifrelidir.
 
 Kişi (ör. ayrılan çalışan, şoför) verisinin silinmesini isterse: yasal saklama süresi dolmamış belgelerdeki
 (irsaliye, denetim izi) veri **saklanmaya devam eder** (KVKK m.7 ve m.5/2-ç). Süresi dolmuş ya da yasal
-dayanağı olmayan veriler (ör. pasif kullanıcının telefonu, e-postası) **Sistem > Kullanıcılar > Düzenle** ile
-boşaltılır; işlem denetim günlüğüne yazılır. Talep ve cevap 30 gün içinde (KVKK m.13) firma tarafından yazılı yürütülür.
+dayanağı olmayan veriler (ör. pasif kullanıcının telefonu, e-postası) **Sistem > Kullanıcılar > Düzenle** ile,
+ayrılmış personelin telefonu ve acil durum kişisi **Personel > kart > Düzenle** ile boşaltılır; işlem denetim
+günlüğüne yazılır. Talep ve cevap 30 gün içinde (KVKK m.13) firma tarafından yazılı yürütülür.
