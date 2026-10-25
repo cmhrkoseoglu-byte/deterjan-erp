@@ -199,7 +199,8 @@ python3 -c "import secrets; print(secrets.token_urlsafe(64))"   # DJANGO_SECRET_
 openssl rand -hex 32                                             # POSTGRES_PASSWORD, REDIS_PASSWORD
 ```
 
-Sonra kontrol edin: firma bilgileri (`COMPANY_*`), `INTERNAL_NETWORKS` (iç ağ + VPN), `BACKUP_*`
+Sonra kontrol edin: firma bilgileri (`COMPANY_*`; yalnızca ilk değer, sonra **Ana veriler > Firma
+bilgileri** ekranından değiştirilir), `INTERNAL_NETWORKS` (iç ağ + VPN), `BACKUP_*`
 (bölüm 9), `SENTRY_DSN` (bölüm 12), `OTP_REQUIRED_ROLES` ve oturum/kilitleme süreleri.
 
 - `.env.prod` **depoya girmez**; içeriğini şifre kasasında (ör. KeePass) ayrıca saklayın. Sunucu
@@ -466,9 +467,10 @@ curl -fsSL https://raw.githubusercontent.com/cmhrkoseoglu-byte/deterjan-erp/main
 İlk kurulum 10-15 dakika sürer. Sonunda adres ve ilk yönetici bilgileri yazılır (ayrıca
 `/root/erp-bilgi.txt`, `/root/erp-ilk-giris.txt`). `yonetici` hesabıyla girin; ilk girişte iki aşamalı
 doğrulama kurulur. Şifreyi Güvenlik sayfasından değiştirip `/root/erp-ilk-giris.txt`'yi silin.
-Kullanıcıları **Sistem > Kullanıcılar** ekranından açın (her çalışana ayrı hesap). Firma bilgilerinin
-geri kalanı (`COMPANY_ADDRESS`, `COMPANY_TAX_*`) `/srv/deterjan-erp/.env.prod` içinde doldurulup
-`scripts/prod-compose.sh up -d` ile uygulanır.
+Kullanıcıları **Sistem > Kullanıcılar** ekranından açın (her çalışana ayrı hesap). Firmanın ticari
+bilgilerini (unvan, adres, vergi dairesi, vergi no, ticaret sicil ve MERSİS no) yönetim ya da sistem
+yöneticisi **Ana veriler > Firma bilgileri** ekranından girer; irsaliye ve satın alma siparişi buradan
+basılır.
 
 Güvenlik duvarı (ufw) yalnızca 80, 443 ve SSH portunu açık bırakır. SSH portu sshd ayarından ve o anki
 bağlantıdan bulunur (Turhost gibi 22 dışında port veren sağlayıcılar için); emin olmak için

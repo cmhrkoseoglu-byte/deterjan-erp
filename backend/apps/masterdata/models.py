@@ -382,3 +382,28 @@ class LabelSettings(BaseModel):
 
     def __str__(self) -> str:
         return "Etiket ayarları"
+
+
+class CompanyProfile(BaseModel):
+    """Firmanın ticari bilgileri (tek kayıt): sevk irsaliyesinde satıcı, satın alma siparişinde
+    alıcı olarak basılır. İlk açılışta ayar dosyasındaki `COMPANY_*` değerleriyle oluşur; sonra
+    yalnızca `masterdata.services.update_company_profile` değiştirir (yönetim ve admin)."""
+
+    legal_name = models.CharField("ticari unvan", max_length=255, blank=True)
+    address = models.TextField("adres", blank=True)
+    tax_office = models.CharField("vergi dairesi", max_length=100, blank=True)
+    tax_number = models.CharField(
+        "vergi no / TCKN",
+        max_length=11,
+        blank=True,
+        help_text="10 haneli VKN; şahıs firmasında TCKN",
+    )
+    trade_registry_no = models.CharField("ticaret sicil no", max_length=32, blank=True)
+    mersis_no = models.CharField("MERSİS no", max_length=16, blank=True)
+
+    class Meta:
+        verbose_name = "firma bilgileri"
+        verbose_name_plural = "firma bilgileri"
+
+    def __str__(self) -> str:
+        return self.legal_name or "Firma bilgileri"

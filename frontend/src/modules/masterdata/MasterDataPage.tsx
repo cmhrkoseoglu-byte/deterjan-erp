@@ -15,6 +15,7 @@ import {
   unitConfig,
   warehouseConfig,
 } from "./entities";
+import { CompanyProfilePanel } from "./CompanyProfilePanel";
 import { LabelSettingsPanel } from "./LabelTools";
 
 // Sekme adresi (Türkçe) → ekran tanımı (liste ekranı ya da özel bileşen). Sıra menüdeki sıradır.
@@ -31,6 +32,7 @@ const TABS: Tab[] = [
   ["birim-donusumleri", conversionConfig],
   ["birimler", unitConfig],
   ["yazicilar", printerConfig],
+  ["firma-bilgileri", { title: "Firma bilgileri", render: () => <CompanyProfilePanel /> }],
   ["etiket-ayarlari", { title: "Etiket ayarları", render: () => <LabelSettingsPanel /> }],
 ];
 

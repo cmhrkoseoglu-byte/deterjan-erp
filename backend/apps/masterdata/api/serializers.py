@@ -3,6 +3,7 @@ from typing import Any
 from rest_framework import serializers
 
 from apps.masterdata.models import (
+    CompanyProfile,
     Customer,
     Equipment,
     LabelSettings,
@@ -275,3 +276,26 @@ class LabelSettingsSerializer(serializers.ModelSerializer):
 
     def get_sscc_enabled(self, instance: LabelSettings) -> bool:
         return bool(instance.gs1_company_prefix)
+
+
+class CompanyProfileSerializer(serializers.ModelSerializer):
+    """Firma bilgileri (tek kayıt). Doğrulama servis katmanında (Türkçe mesaj, hata kodu)."""
+
+    class Meta:
+        model = CompanyProfile
+        fields = [
+            "legal_name",
+            "address",
+            "tax_office",
+            "tax_number",
+            "trade_registry_no",
+            "mersis_no",
+            "updated_at",
+        ]
+        read_only_fields = ["updated_at"]
+        # "123 456 7890" gibi boşluklu yazım kabul edilir: boşluklar serviste atılır, uzunluk ve
+        # kontrol hanesi orada denetlenir.
+        extra_kwargs: dict[str, dict[str, Any]] = {
+            "tax_number": {"max_length": 20},
+            "mersis_no": {"max_length": 24},
+        }

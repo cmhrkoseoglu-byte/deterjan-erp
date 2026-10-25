@@ -772,3 +772,21 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   Bütün backend ve ön yüz testleri, ruff, mypy, lint, biçim, tip denetimi ve derleme de geçti.
 - Tarayıcıda: depo lot geçmişinde maliyet satırını görmüyor, yönetim görüyor. Sevkiyat, İSG olayının
   geçmişine, yorumlarına ve eklerine erişemiyor; olayı bildiren erişiyor.
+
+## 2026-10-25 — Firma ticari bilgileri
+
+- `masterdata.CompanyProfile` (tek kayıt; göç `0005_company_profile`), servisler
+  `get_company_profile` (ilk değer `COMPANY_*`) ve `update_company_profile` (yönetim, admin; VKN/TCKN
+  kontrol hanesi, MERSİS 16 hane, denetim günlüğü), API `/api/v1/masterdata/company/`. İrsaliye
+  (`sales.selectors.waybill_data`, `waybill.py`), satın alma siparişi PDF'i ve tedarikçi e-postası bu
+  kayıttan okur.
+- Ön yüz: Ana veriler > Firma bilgileri (`CompanyProfilePanel`); yönetim ve admin düzenler, planlama
+  okur.
+- Kanıt: `masterdata/tests/test_company.py` (ilk değerler, VKN ve TCKN kontrol haneleri, boşlukların
+  atılması, zorunlu unvan, MERSİS, yetki, API), irsaliye satıcı bloğu (`sales/tests/test_shipments.py`),
+  sipariş PDF'i ve e-posta imzası (`purchasing/tests/test_services.py`), ön yüz `MasterDataPage.test.tsx`.
+  Bütün backend ve ön yüz testleri, ruff, mypy, lint, biçim, tip denetimi ve derleme.
+- Tarayıcıda: yönetim kaydetti (hatalı vergi no kontrol hanesiyle reddedildi, boşluklu yazım
+  düzeltildi); planlamada alanlar kapalı, Kaydet düğmesi yok.
+- Kılavuz: `yonetim.md` "Firma bilgileri", görsel `yonetim-firma-bilgileri.jpg`. `KURULUM.md`,
+  `.env*.example` ve `KVKK.md` güncellendi.

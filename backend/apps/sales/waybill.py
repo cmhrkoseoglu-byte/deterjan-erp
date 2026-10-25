@@ -77,6 +77,8 @@ def waybill_pdf(shipment: Shipment) -> bytes:
     seller = [para(company["name"] or "—", bold), para(company["address"])]
     if company["tax_office"] or company["tax_no"]:
         seller.append(para(f"V.D.: {company['tax_office']}  V.No: {company['tax_no']}"))
+    if company.get("registry"):
+        seller.append(para(company["registry"]))
     document = [
         para("SEVK İRSALİYESİ", title),
         para(f"İrsaliye no: {data['number']}", bold),

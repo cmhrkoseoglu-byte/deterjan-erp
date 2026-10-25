@@ -19,7 +19,6 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.core.mail import EmailMessage
 from django.core.validators import validate_email
@@ -573,7 +572,7 @@ def return_to_draft(actor: User | None, order: PurchaseOrder, note: str) -> Purc
 
 
 def _send_email(order: PurchaseOrder, to: str, pdf: bytes) -> None:
-    company = settings.COMPANY_NAME or "Firmamız"
+    company = masterdata.get_company_profile().legal_name or "Firmamız"
     message = EmailMessage(
         subject=f"Satın alma siparişi {order.number}",
         body=(

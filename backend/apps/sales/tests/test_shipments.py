@@ -767,3 +767,30 @@ def test_reversed_shipment_movement_is_not_counted_as_shipped(
 
     assert selectors.shipped_by_shipment_lot(shipment) == {}
     assert list(selectors.customer_shipped_lots(order.customer)) == []
+
+
+def test_waybill_seller_comes_from_company_profile(
+    seller: User, picker: User, dock: Location
+) -> None:
+    from apps.masterdata import services as masterdata
+    from apps.masterdata.models import CompanyProfile
+    from apps.sales.waybill import waybill_pdf
+
+    profile = masterdata.get_company_profile()
+    CompanyProfile.objects.filter(pk=profile.pk).update(
+        legal_name="Örnek Deterjan A.Ş.",
+        address="OSB 1. Cadde\nKocaeli",
+        tax_office="Gebze",
+        tax_number="1234567890",
+        trade_registry_no="Gebze 12345",
+        mersis_no="0123456789000017",
+    )
+    shipment = plan_single(seller, picker, finished_product())
+    assert selectors.waybill_data(shipment)["company"] == {
+        "name": "Örnek Deterjan A.Ş.",
+        "address": "OSB 1. Cadde\nKocaeli",
+        "tax_office": "Gebze",
+        "tax_no": "1234567890",
+        "registry": "Ticaret sicil no: Gebze 12345  MERSİS no: 0123456789000017",
+    }
+    assert waybill_pdf(shipment).startswith(b"%PDF")

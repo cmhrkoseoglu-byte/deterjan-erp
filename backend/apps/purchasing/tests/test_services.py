@@ -13,6 +13,8 @@ from apps.core.roles import LABORATUVAR
 from apps.inventory import services as inventory
 from apps.inventory.models import GoodsReceipt, Lot
 from apps.inventory.tests.factories import stocked_lot
+from apps.masterdata import services as masterdata
+from apps.masterdata.models import CompanyProfile
 from apps.masterdata.tests.factories import SupplierFactory, unit
 from apps.production.tests.factories import approved_order as approved_production_order
 from apps.production.tests.factories import build_plant
@@ -238,6 +240,7 @@ def test_full_order_lifecycle_through_services(
 def test_send_by_email_attaches_pdf(buyer: User, manager: User) -> None:
     supplier = SupplierFactory.create(email="satis@tedarikci.com")
     order = approved_order(manager, [line(raw_material())], supplier=supplier)
+    _company("Örnek Deterjan A.Ş.")
     with pytest.raises(BusinessRuleError) as exc:
         services.mark_sent(buyer, order, email="gecersiz")
     assert exc.value.code == "invalid_email"
@@ -248,6 +251,8 @@ def test_send_by_email_attaches_pdf(buyer: User, manager: User) -> None:
     message = mail.outbox[0]
     assert message.to == ["satis@tedarikci.com"]
     assert order.number in message.subject
+    # E-postanın imzası: Ana veriler > Firma bilgileri'ndeki unvan.
+    assert message.body.endswith("Örnek Deterjan A.Ş.")
     name, content, mimetype = message.attachments[0]
     assert name == f"{order.number}.pdf" and mimetype == "application/pdf"
     assert content[:4] == b"%PDF"
@@ -269,6 +274,19 @@ def test_failed_email_keeps_order_approved(
     assert order.status == Status.APPROVED
 
 
+def _company(legal_name: str) -> None:
+    """Firma bilgilerini doldurur (alıcı bloğu ve e-posta imzası buradan gelir)."""
+    profile = masterdata.get_company_profile()
+    CompanyProfile.objects.filter(pk=profile.pk).update(
+        legal_name=legal_name,
+        address="OSB 1. Cadde\nKocaeli",
+        tax_office="Gebze",
+        tax_number="1234567890",
+        trade_registry_no="Gebze 12345",
+        mersis_no="0123456789000017",
+    )
+
+
 def test_pdf_renders(manager: User) -> None:
     order = approved_order(
         manager,
@@ -277,6 +295,8 @@ def test_pdf_renders(manager: User) -> None:
         exchange_rate=Decimal("36.5"),
         notes="Paletli teslim",
     )
+    assert purchase_order_pdf(order)[:4] == b"%PDF"
+    _company("Örnek Deterjan A.Ş.")  # çok satırlı adres ve sicil satırıyla da basılır
     assert purchase_order_pdf(order)[:4] == b"%PDF"
 
 

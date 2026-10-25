@@ -7,7 +7,6 @@ from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import (
     Case,
@@ -320,6 +319,18 @@ def case_breakdown(material: Material, quantity: Decimal) -> tuple[int | None, D
     return cases, quantity - cases * factor
 
 
+def _company() -> dict[str, str]:
+    """İrsaliyede satıcı: Ana veriler > Firma bilgileri."""
+    profile = masterdata.get_company_profile()
+    return {
+        "name": profile.legal_name,
+        "address": profile.address,
+        "tax_office": profile.tax_office,
+        "tax_no": profile.tax_number,
+        "registry": masterdata.company_registry_line(profile),
+    }
+
+
 def waybill_data(shipment: Shipment) -> dict[str, Any]:
     """İrsaliye verisi (PDF ve dışa aktarım; e-İrsaliye Faz 5): firma, müşteri ve teslim adresi,
     araç / şoför, satırlar (ürün, lot, SKT, miktar, koli). Satırlar sevk edildiyse sevk
@@ -363,12 +374,7 @@ def waybill_data(shipment: Shipment) -> dict[str, Any]:
         )
         or shipment.planned_date,
         "dispatched_at": shipment.dispatched_at,
-        "company": {
-            "name": settings.COMPANY_NAME,
-            "address": settings.COMPANY_ADDRESS,
-            "tax_office": settings.COMPANY_TAX_OFFICE,
-            "tax_no": settings.COMPANY_TAX_NO,
-        },
+        "company": _company(),
         "customer": {
             "code": customer.code,
             "name": customer.name,
