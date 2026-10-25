@@ -11,7 +11,17 @@ export const tr = {
   },
   auth: {
     loginTitle: "Hoş geldiniz",
-    loginSubtitle: "Devam etmek için hesabınızla giriş yapın",
+    loginSubtitle: "Devam etmek için hesabınıza giriş yapın",
+    pageTitle: "Giriş – Inncos ERP",
+    usernamePlaceholder: "ör. ahmet.yilmaz",
+    rememberMe: "Beni hatırla",
+    showPassword: "Şifreyi göster",
+    hidePassword: "Şifreyi gizle",
+    submitting: "Giriş yapılıyor…",
+    slidePause: "Arka plan geçişini duraklat",
+    slideResume: "Arka plan geçişini sürdür",
+    slideImages: "Arka plan görselleri",
+    slideLabel: (n: number) => `${n}. görsel`,
     username: "Kullanıcı adı",
     password: "Şifre",
     submit: "Giriş yap",
@@ -31,8 +41,6 @@ export const tr = {
     forgotHint:
       "Şifrenizi unuttuysanız ya da hesabınız kilitlendiyse sistem yöneticisine başvurun.",
     brandFoot: "Üretim takip sistemi",
-    // Giriş zemininde süzülen sözcükler: sistemin ana zinciri (CLAUDE.md §1).
-    chain: ["Hammadde lotu", "Üretim şarjı", "Dolum lotu", "Sevkiyat", "Müşteri"],
   },
   site: {
     trainingBanner: "EĞİTİM ORTAMI · Buradaki kayıtlar örnektir, gerçek veri girmeyin.",

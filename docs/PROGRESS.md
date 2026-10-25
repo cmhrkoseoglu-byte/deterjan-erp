@@ -706,3 +706,20 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   (6.30.6) hiçbirinde site dışına çıkmadı.
 - Açık: react-router-dom 7.x'e geçiş (uyarının kalıcı çözümü) ayrı ve kırıcı bir iş; CI'daki
   `npm audit --audit-level=high` bu orta düzey uyarıda kırılmaz.
+
+## 2026-10-25 — Giriş ekranı: PET ERP tasarımı
+
+- `pages/LoginPage.tsx` yeniden yazıldı. Stil `pages/login/login.module.css`, fotoğraf geçişi ve
+  palet `pages/login/slideshow.ts` (PET'teki `giris_slayt.js`'in TypeScript'i); fotoğraflar
+  `public/giris/` (6 webp). Eski `LoginPage.module.css` ve `components/brand/BrandMark.tsx` kaldırıldı.
+- Kanıt: `layout/shell.test.tsx` (başlık, 6 arka plan fotoğrafı ekran okuyucudan gizli, şifre
+  göster/gizle, Beni hatırla yalnızca kullanıcı adını saklar ve işaret kalkınca siler),
+  `pages/login/slideshow.test.ts` (resim analizi; açık, koyu ve vurgulu fotoğrafta yazı ve düğme
+  karşıtlığı; geçiş türü). Mevcut giriş, 2FA ve oturum testleri değişmeden geçti; bütün ön yüz testleri,
+  lint, biçim, tip denetimi ve derleme.
+- Tarayıcıda 1366, 1024 ve 375 px: 6 fotoğrafın her birinde kart okunur (3. fotoğrafta koyu kart);
+  duraklatınca geçiş durdu, sürdürünce devam etti; oturum kapandı notu, boş gönderimde alan hataları,
+  yanlış şifrede hata kutusu. Kılavuz betiği yeni formdan giriş yaptı.
+- Kılavuz: `genel.md` giriş bölümü (göz simgesi, Caps Lock, Beni hatırla, fotoğraf geçişi, oturum
+  kapanması); `genel-giris.jpg` yeniden çekildi. `scripts/kilavuz-ekran-goruntuleri.mjs` alanları tam
+  adla bulur (göz düğmesinin adı da "Şifre" ile başlıyor) ve giriş görselinde hep ilk fotoğrafı çeker.

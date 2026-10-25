@@ -72,8 +72,9 @@ async function session(user) {
   const page = await context.newPage();
   for (let attempt = 0; ; attempt++) {
     await page.goto(`${BASE}/login`);
-    await page.getByLabel("Kullanıcı adı").fill(user);
-    await page.getByLabel("Şifre").fill(PASSWORD);
+    // exact: "Şifreyi göster" düğmesi de "Şifre" ile başlar.
+    await page.getByLabel("Kullanıcı adı", { exact: true }).fill(user);
+    await page.getByLabel("Şifre", { exact: true }).fill(PASSWORD);
     const response = page.waitForResponse((r) =>
       r.url().includes("/api/v1/auth/login/"),
     );
@@ -551,9 +552,14 @@ const SHOTS = [
   {
     name: "genel-giris",
     user: null,
-    // Marka paneli 992 px üstünde görünür; tablet boyutu iki paneli de okunur ölçekte gösterir.
+    // Tablet boyutu ürün fotoğrafını ve giriş kartını birlikte, okunur ölçekte gösterir. Hep ilk
+    // fotoğraf çıksın: 1. noktaya basmak o fotoğrafı açar ve 7 sn'lik geçiş sayacını sıfırlar.
     tablet: true,
-    run: async (page) => go(page, "/login", "Giriş yap"),
+    run: async (page) => {
+      await go(page, "/login", "Giriş yap");
+      await page.getByRole("button", { name: "1. görsel" }).click();
+      await page.waitForTimeout(1600);
+    },
   },
   {
     name: "genel-gorevlerim",

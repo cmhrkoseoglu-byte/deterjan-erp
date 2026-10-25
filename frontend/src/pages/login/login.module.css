@@ -1,0 +1,1095 @@
+/* ────────────────────────────────────────────────────────────
+   Inncos ERP — Giriş ekranı (PET Üretim Takip projesinin giriş ekranından
+   uyarlandı: static/css/giris.css; sınıflar İngilizce adlandırıldı, kök
+   gövde yerine .login-page kapsayıcısıdır).
+   Arka plan: public/giris/ resimleri tam ekran slayt (slideshow.ts).
+   Renkler her resmin baskın tonlarından tarayıcıda hesaplanır ve aşağıdaki
+   KAYITLI özelliklere (@property) yazılır; kayıtlı oldukları için slayt
+   değişince renkler de yumuşakça geçer. İstisna: kart kipi ya da düğme yazısı
+   açık↔koyu dönerse (ya da ara kareler bir oranı eşiğin altına indirecekse)
+   ilgili renkler resim geçişinin ortasında ANİDEN değişir (okunurluk kuralı,
+   aşağıda). Betik yoksa ilk resim durur ve buradaki varsayılanlar (ilk
+   resmin paletine yakın) kullanılır. Hareketin eğri ve süreleri
+   .login-page içindeki hareket belirteçlerinden gelir.
+   Düzen: cam kart, tek vurgu rengi, altta cam bant. Uygulamanın kabuğu
+   (üst çubuk, menü) yoktur; kapsayıcı ekranı kaplar.
+   ──────────────────────────────────────────────────────────── */
+.login-page,
+.login-page *,
+.login-page *::before,
+.login-page *::after {
+  box-sizing: border-box;
+}
+.login-page [hidden] {
+  display: none !important;
+}
+
+/* Ekranda yer kaplamayan ama erişilebilirlik ağacında kalan metin (h1). */
+.login-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── Palet: kayıtlı renk özellikleri (geçiş yapabilsinler diye) ── */
+@property --lp-bg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #cdd6e2;
+}
+@property --lp-text {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #17283f;
+}
+@property --lp-text-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #3d5671;
+}
+@property --lp-accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #4a6fa3;
+}
+@property --lp-accent-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #577cb0;
+}
+@property --lp-accent-text {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #ffffff;
+}
+@property --lp-brand {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #4a6fa3;
+}
+@property --lp-card {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(243, 245, 248, 0.66);
+}
+@property --lp-band {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(243, 245, 248, 0.55);
+}
+@property --lp-line {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(23, 40, 63, 0.14);
+}
+@property --lp-input {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(255, 255, 255, 0.6);
+}
+@property --lp-input-focus {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(255, 255, 255, 0.85);
+}
+@property --lp-focus {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(74, 111, 163, 0.35);
+}
+@property --lp-focus-line {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #4a6fa3;
+}
+
+.login-page {
+  /* Aynı varsayılanlar normal bildirim olarak da: @property desteklemeyen tarayıcıda kart, alan
+     ve düğme renksiz kalmasın (geçiş yalnızca orada olmaz). Betiğin satır içi değerleri ezer. */
+  --lp-bg: #cdd6e2;
+  --lp-text: #17283f;
+  --lp-text-2: #3d5671;
+  --lp-accent: #4a6fa3;
+  --lp-accent-2: #577cb0;
+  --lp-accent-text: #ffffff;
+  --lp-brand: #4a6fa3;
+  --lp-card: rgba(243, 245, 248, 0.66);
+  --lp-band: rgba(243, 245, 248, 0.55);
+  --lp-line: rgba(23, 40, 63, 0.14);
+  --lp-input: rgba(255, 255, 255, 0.6);
+  --lp-input-focus: rgba(255, 255, 255, 0.85);
+  --lp-focus: rgba(74, 111, 163, 0.35);
+  --lp-focus-line: #4a6fa3; /* odak çerçevesi: kart ve banda karşı ≥ 3:1 (betik denetler) */
+  --lp-transition: 1.4s;
+  /* Hareket belirteçleri: sayfadaki her eğri ve kısa süre buradan gelir (yeni değer uydurma). */
+  --lp-ease-out: cubic-bezier(
+    0.23,
+    1,
+    0.32,
+    1
+  ); /* güçlü ease-out: basma, nokta, hata kutusu, kesilen kayma */
+  --lp-ease-slide: cubic-bezier(
+    0.77,
+    0,
+    0.175,
+    1
+  ); /* güçlü ease-in-out: ekranda yer değiştiren resim */
+  --lp-dur-press: 160ms; /* basma geri bildirimi */
+  --lp-dur-short: 200ms; /* küçük durum değişimi (nokta, hata kutusu) */
+  --lp-font:
+    "Inter Variable", Inter, "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  transition-property:
+    --lp-bg, --lp-text, --lp-text-2, --lp-accent, --lp-accent-2, --lp-accent-text, --lp-brand,
+    --lp-card, --lp-band, --lp-line, --lp-input, --lp-input-focus, --lp-focus, --lp-focus-line;
+  transition-duration: var(--lp-transition);
+  transition-timing-function: ease;
+}
+/* Okunurluk kuralı: yazı/zemin çifti açık↔koyu yer değiştirirse yumuşak geçişin ortasında ikisi aynı
+   griden geçer (~1:1). Betik böyle bir değişimde bu sınıfları resim geçişinin ortasında (GECIS/2) iki kare
+   için koyar. Kart kipi dönerse BÜTÜN palet aynı karede değişir: kart, bant ve odak çerçevesinin denetlenen
+   renkleri arkalarındaki zemine göre hesaplandığından zemin, düğme ve halka da kartla birlikte döner.
+   Yalnız düğme yazısı dönerse düğme üçlüsü aniden değişir, kalan renkler yumuşak geçer. Betik geçiş
+   yolunu da önceden sınar: ara karelerden biri (aynı kipteki iki palette bile) denetlenen bir oranı eşiğin
+   altına indirecekse o geçişte de .instant-card konur. İlk palet de (CSS varsayılanlarından) geçişsiz
+   yazılır: bu bir durum değişimi değil, düzeltmedir. */
+.login-page.instant-card {
+  transition-property: none;
+}
+.login-page.instant-button {
+  transition-property:
+    --lp-bg, --lp-text, --lp-text-2, --lp-brand, --lp-card, --lp-band, --lp-line, --lp-input,
+    --lp-input-focus, --lp-focus, --lp-focus-line;
+}
+.login-page.instant-card.instant-button {
+  transition-property: none;
+} /* birleşik kural EN SONDA kalsın */
+/* --lp-* ile boyanan öğeye renk geçişi (color, background, border-color, box-shadow) YAZMA: palet gövdede
+   geçer; çocuktaki geçiş değeri her karede kovalar ve .instant-card/.instant-button dönüşünü yeniden yumuşatır
+   (ölçüldü: nokta bantta 1,61:1). Yalnız transform/scale/opacity/clip-path geçer. */
+
+/* Masaüstünde tek sayfa: kaydırma yok. Telefonda kapsayıcı kayar (en altta). */
+.login-page {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  margin: 0;
+  font-family: var(--lp-font);
+  color: var(--lp-text);
+  background-color: var(--lp-bg);
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent; /* basma geri bildirimini düğmeler kendisi verir (:active) */
+}
+/* Resim yoksa düz bir ton geçişi. */
+.login-page:not(.has-slides) {
+  background-image: linear-gradient(160deg, #e6ebf2 0%, var(--lp-bg) 70%);
+}
+
+/* ── Slaytlar ─────────────────────────────────────────────────
+   Ürün HER ekranda tam görünür: resim kırpılarak ekranı "kaplamaz"; BOYUNA sığdırılır ve
+   sahne alt bandın üstünde biter (--lp-footer-h, betik bandın gerçek yüksekliğini yazar).
+   Her resim kendi katmanındadır (.slide; geçiş katmanda olur: kayma, kısıtta solma). Resmin kaplamadığı kenarları
+   katman RESMİN KENAR RENKLERİYLE doldurur: betik sol ve sağ kenarı bantlar hâlinde okur,
+   --lp-fill-left / --lp-fill-right dikey geçişlerini yazar (üstü siyah altı beyaz bir resimde dolgu
+   da öyledir); resim kenarları maskeyle bu dolguya karışır, ek yeri görünmez. Betik yoksa
+   dolgu yoktur, sayfa zemini (--lp-bg) görünür.
+   Yatay konum --lp-slide-center: ürün (resmin ortası) kartın solundaki boş alanın ortasına gelir.
+   Yakınlaşma hafiftir (%4); resimde ürünün altında fon payı olduğundan taban kesilmez. */
+.slides {
+  --lp-slide-center: 50%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: var(--lp-footer-h, 52px);
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.slide {
+  position: absolute;
+  inset: 0;
+  /* Geniş resim katmandan taşabilir; kayarken komşu katmanın üstüne binmesin diye her katman
+     kendi sınırında kırpar (durağanken katman sahneyle aynı boydadır, görünüm değişmez). */
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 1.4s ease;
+  background:
+    var(--lp-fill-left, none) left top / 50% 100% no-repeat,
+    var(--lp-fill-right, none) right top / 50% 100% no-repeat;
+}
+.slide-image {
+  position: absolute;
+  top: 0;
+  left: var(--lp-slide-center);
+  height: 100%;
+  width: auto;
+  max-width: none;
+  translate: -50% 0;
+  scale: 1;
+  user-select: none;
+  /* Yalnızca yan kenarlar yumuşar: resim sahnenin tam boyunda olduğundan üst/alt kenar ekrana
+     değer; orada maske açılsaydı altındaki dolgu (sol yarıda sol kenarın, sağ yarıda sağ kenarın
+     renkleri) ince bir şerit olarak görünür ve ortada kırılırdı. */
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 9%, #000 91%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 9%, #000 91%, transparent 100%);
+}
+/* Ayrı dönüşüm özellikleri (translate/scale) yoksa eski yol: ortala, yakınlaşma yok. */
+@supports not (translate: 0) {
+  .slide-image {
+    transform: translateX(-50%);
+  }
+}
+.slide.is-active {
+  opacity: 1;
+}
+/* Katman yalnız oynayan (görünen) slaytta: 8 resmin hepsi kalıcı katman olunca durağan sayfa bile GPU belleği
+   tutuyordu. Kayma yolunda aşağıdaki daha özgül kurallar bunu translate'e çevirir. */
+.slide.is-active,
+.slide.is-leaving {
+  will-change: opacity;
+}
+/* Kayarak geçiş (betik varken ve hareket kısıtı yokken; yoksa yukarıdaki solma kalır): yeni
+   resim bir yandan gelir, eskisi öbür yandan çıkar; iki katman yan yana kayar ve her biri kendi
+   kenar dolgusunu taşıdığı için aralarında boşluk açılmaz. Yön sınıfı (.is-right / .is-left) katmanı
+   ekranın dışına koyar. Betik gelen katmanı önce geçişsiz (.is-preparing) geleceği yana yerleştirir,
+   sonra .is-active ile yerine kaydırır; çıkan katman .is-leaving + yön sınıfıyla öbür yana gider ve
+   ekran dışında kalır. Hareket keyframe değil geçiştir: hızlı tıklamada yarı yoldaki katman
+   olduğu yerden yeni hedefine döner. Eğri güçlü ease-in-out (ekranda yer değiştiren hareket);
+   süre JS'teki GECIS ile aynı, renk geçişi de ona eşitlenir. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (translate: 0) {
+    .login-page.is-scripted {
+      --lp-transition: 0.9s;
+    }
+    /* Düğme dönüşünde yumuşak kalan renkler GECIS/2'de başlar; kalan yarıda (0,45 s) bitip resimle aynı anda
+       otururlar. Başlamış geçiş sonradan değişen süreyi kullanmaz, sınıf iki kare sonra kalkınca da sürer. */
+    .login-page.is-scripted.instant-button {
+      --lp-transition: 0.45s;
+    }
+    .is-scripted .slide {
+      translate: 0 0;
+      transition: translate 0.9s var(--lp-ease-slide);
+      will-change: auto;
+    }
+    .is-scripted .slide.is-active,
+    .is-scripted .slide.is-leaving,
+    .is-scripted .slide.is-preparing {
+      will-change: translate;
+    }
+    .is-scripted .slide.is-leaving {
+      opacity: 1;
+    }
+    .is-scripted .slide.is-right {
+      translate: 100% 0;
+    }
+    .is-scripted .slide.is-left {
+      translate: -100% 0;
+    }
+    .is-scripted .slide.is-preparing {
+      transition: none;
+    }
+    /* Kesilen geçiş (ekranda kayma sürerken betik .slides'a .is-interrupted koyar): görünen katmanlar tek şerit gibi
+       aynı mesafeyi kayar, hareket hızını taşısın diye güçlü ease-out ile (süre aynı, JS GECIS ile eşit). Gelen
+       katman görünen bir katmanın yerine hiç konmaz; ekran dışında eski bir çıkan katmanla aynı yere
+       konduğunda üstte kalır. */
+    .is-scripted .slide.is-leaving {
+      z-index: 1;
+    }
+    .is-scripted .slide.is-active {
+      z-index: 2;
+    }
+    .is-scripted .slides.is-interrupted .slide {
+      transition-timing-function: var(--lp-ease-out);
+    }
+  }
+}
+/* Eski yol (ayrı translate yok, 1,4 s solma): aynı kural, kalan yarı 0,7 s. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports not (translate: 0) {
+    .login-page.instant-button {
+      --lp-transition: 0.7s;
+    }
+  }
+}
+/* Yakınlaşma yalnızca betik varken (duraklatılabilir olduğu için, WCAG 2.2.2): betik gövdeye
+   .is-scripted koyar. Çıkan slayt kararırken yakınlaşması sürer (aynı animasyon değeri: yeniden
+   başlamaz). Duraklatınca hareket olduğu yerde donar. Eğri ease-in-out (ekranda biçim değiştiren
+   hareket): kayarak gelirken neredeyse büyümez (0,9 s'de 1,0008), en hızlı yeri ekranda kalınan sürenin
+   ortasıdır (ortalamanın 1,7 katı) ve sıfır hızla biter. linear, slayt 9 sn'den uzun kalınca (yazarken
+   bekleme, duraklat/sürdür) tam hızdayken aniden duruyordu; güçlü ease-in-out ortada belirgin bir
+   hızlanma (5 kat) yapardı. Üst sınır 1,04 (9 s; ekranda kalınan 7,9 s'de ≈1,039). Katman
+   (will-change) yalnız oynayan iki resimde. */
+.is-scripted .slide.is-active .slide-image,
+.is-scripted .slide.is-leaving .slide-image {
+  animation: slide-zoom 9s ease-in-out both;
+  will-change: scale;
+}
+/* Özgüllük: yukarıdaki `animation` kısayolu oynatma durumunu "running"e sıfırlar; donma kuralı
+   ondan daha özgül olmalı. */
+.is-scripted[data-slides="paused"] .slide.is-active .slide-image,
+.is-scripted[data-slides="paused"] .slide.is-leaving .slide-image {
+  animation-play-state: paused;
+}
+@keyframes slide-zoom {
+  from {
+    scale: 1;
+  }
+  to {
+    scale: 1.04;
+  }
+}
+
+/* Okunurluk perdesi: kartın durduğu sağ kenar zemin rengine doğru hafifçe kararır (ürüne dokunmaz).
+   Yalnız boyanan kısım: geçiş zaten %40'ta bitiyordu; zemin rengi geçerken her karede daha az alan boyanır. */
+.slide-curtain {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 40%;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to left,
+    color-mix(in srgb, var(--lp-bg) 50%, transparent) 0%,
+    transparent 100%
+  );
+}
+
+.page-wrap {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(10px, 2.5vh, 28px);
+}
+
+/* ── Sol üstte marka ──────────────────────────────────────── */
+.brand {
+  position: fixed;
+  top: clamp(16px, 3vh, 28px);
+  left: clamp(18px, 3vw, 34px);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  user-select: none;
+}
+.brand svg {
+  width: clamp(26px, 3vw, 32px);
+  height: auto;
+  color: var(--lp-brand);
+}
+.brand-text {
+  font-weight: 800;
+  font-size: clamp(1.05rem, 1.9vw, 1.35rem);
+  letter-spacing: 0.06em;
+  color: var(--lp-text);
+  line-height: 1;
+}
+.brand-text span {
+  color: var(--lp-brand);
+}
+
+/* ── Cam kart: tek kolon ──────────────────────────────────── */
+.card {
+  position: relative;
+  width: min(430px, 100%);
+  margin: 0 auto;
+  border-radius: 22px;
+  overflow: hidden;
+  background: var(--lp-card);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--lp-line);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #fff 18%, transparent) inset,
+    0 28px 70px color-mix(in srgb, var(--lp-text) 24%, transparent);
+}
+
+.form-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(24px, 4vh, 48px) clamp(28px, 4vw, 52px);
+}
+
+.form-head {
+  margin-bottom: clamp(14px, 2.5vh, 24px);
+}
+.form-title {
+  margin: 0 0 4px;
+  font-weight: 800;
+  font-size: clamp(1.6rem, 3.4vw, 2.1rem);
+  letter-spacing: -0.03em;
+  color: var(--lp-text);
+}
+.form-title {
+  line-height: 1.15;
+}
+.form-subtitle {
+  margin: 0;
+  font-size: 0.87rem;
+  color: var(--lp-text-2);
+}
+
+/* ── Uyarı kutuları (Django iletileri ve form dışı hatalar) ── */
+.notice {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  line-height: 1.4;
+  margin: 0 0 14px;
+  border: 1px solid;
+}
+/* Açık kart (varsayılan): koyu yazılı, açık tonlu kutular. */
+.notice.is-error {
+  background: rgba(220, 38, 38, 0.1);
+  color: #8f1d1d;
+  border-color: rgba(220, 38, 38, 0.32);
+}
+.notice.is-success {
+  background: rgba(22, 163, 74, 0.1);
+  color: #14532d;
+  border-color: rgba(22, 163, 74, 0.32);
+}
+.notice.is-warning {
+  background: rgba(217, 119, 6, 0.12);
+  color: #7c2d12;
+  border-color: rgba(217, 119, 6, 0.34);
+}
+.notice.is-info {
+  background: var(--lp-input);
+  color: var(--lp-text);
+  border-color: var(--lp-line);
+}
+/* Koyu kart (koyu resimlerde betik data-card="dark" yazar). */
+[data-card="dark"] .notice.is-error {
+  background: rgba(185, 28, 28, 0.22);
+  color: #ffd5cc;
+  border-color: rgba(248, 113, 113, 0.45);
+}
+[data-card="dark"] .notice.is-success {
+  background: rgba(21, 128, 61, 0.22);
+  color: #c9f2d6;
+  border-color: rgba(74, 222, 128, 0.4);
+}
+[data-card="dark"] .notice.is-warning {
+  background: rgba(180, 83, 9, 0.24);
+  color: #ffe2b8;
+  border-color: rgba(251, 191, 36, 0.4);
+}
+/* Hatalı girişte sayfa yeniden gelir ve önceki ekranla aynıdır; tek fark hata kutusudur. Kısa beliriş
+   reddin yeniden olduğunu gösterir. Yalnız opaklık ve 4 px: yerleşim değişmez, alanlar kıpırdamaz, odak
+   taşınmaz. Gecikme ve fill-mode yok: animasyon hiç oynamazsa kutu zaten görünür (betiğe bağlı değil). */
+.notice.is-error,
+.field-error {
+  animation: notice-in var(--lp-dur-short) var(--lp-ease-out);
+}
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@keyframes notice-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ── Alanlar ──────────────────────────────────────────────── */
+.field {
+  margin-bottom: clamp(10px, 1.8vh, 16px);
+}
+.field-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--lp-text-2);
+  margin-bottom: 6px;
+}
+.field-wrap {
+  position: relative;
+}
+.field-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--lp-line);
+  background: var(--lp-input);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--lp-text);
+}
+.field-input::placeholder {
+  color: color-mix(in srgb, var(--lp-text) 42%, transparent);
+}
+.field-input:focus {
+  outline: none;
+  background: var(--lp-input-focus);
+  border-color: var(--lp-focus-line);
+  box-shadow:
+    0 0 0 1px var(--lp-focus-line),
+    0 0 0 4px var(--lp-focus);
+}
+.field-input[aria-invalid="true"] {
+  border-color: rgba(220, 38, 38, 0.7);
+}
+/* Tarayıcının otomatik doldurma sarısı yazıyı yutmasın. */
+.field-input:-webkit-autofill {
+  -webkit-text-fill-color: var(--lp-text);
+  -webkit-box-shadow: 0 0 0 1000px color-mix(in srgb, var(--lp-bg) 70%, #fff) inset;
+  caret-color: var(--lp-text);
+}
+/* Otomatik doldurma kuralı odaklı alanın halkasını da siliyordu (aynı özgüllük, sonra geliyor;
+   -webkit-box-shadow box-shadow'un takma adı). Kayıtlı parola seçildiği an halka görünür kalsın.
+   TEK BAŞINA yazılır: bilinmeyen sözde sınıf bir seçici listesini bütünüyle düşürür. */
+.field-input:-webkit-autofill:focus {
+  -webkit-box-shadow:
+    0 0 0 1px var(--lp-focus-line),
+    0 0 0 4px var(--lp-focus),
+    0 0 0 1000px color-mix(in srgb, var(--lp-bg) 70%, #fff) inset;
+}
+.field-input.with-button {
+  padding-right: 46px;
+}
+.field-error {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: #b42318;
+}
+[data-card="dark"] .field-error {
+  color: #ffb4a1;
+}
+/* Inncos: Caps Lock uyarısı ve doğrulama kodu ipucu (kartın yazı renkleri; kontrastı betik denetler). */
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--lp-text);
+}
+.field-hint.is-secondary {
+  font-weight: 500;
+  color: var(--lp-text-2);
+}
+.field-input.is-code {
+  letter-spacing: 0.2em;
+  font-variant-numeric: tabular-nums;
+}
+/* Inncos: iki aşamalı doğrulamada "farklı kullanıcıyla giriş" bağlantı görünümlü düğme. */
+.back-button {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--lp-text-2);
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .back-button:hover {
+    color: var(--lp-text);
+    background: color-mix(in srgb, var(--lp-text) 8%, transparent);
+  }
+}
+.back-button:focus-visible {
+  outline: 2px solid var(--lp-focus-line);
+  outline-offset: 1px;
+}
+.back-button:disabled {
+  cursor: progress;
+}
+
+.reveal-button {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: color-mix(in srgb, var(--lp-text) 62%, transparent);
+  cursor: pointer;
+  transition: transform var(--lp-dur-press) var(--lp-ease-out);
+}
+/* Üzerine gelme yalnız gerçek imleçte (dokunmatikte yapışkan hover kalır); rengi anında değişir. */
+@media (hover: hover) and (pointer: fine) {
+  .reveal-button:hover {
+    color: var(--lp-text);
+    background: color-mix(in srgb, var(--lp-text) 10%, transparent);
+  }
+}
+/* Küçük düğmede .97 görünmez. Ölçek transform'un İÇİNDE, ortalamadan sonra: ayrı scale özelliği transform'dan
+   önce uygulanır, merkezi görünen düğmenin 18 px altında kalır ve basışta simge 0,9 px aşağı kayıyordu. */
+.reveal-button:active {
+  transform: translateY(-50%) scale(0.95);
+}
+.reveal-button:focus-visible {
+  outline: 2px solid var(--lp-focus-line);
+  outline-offset: 1px;
+}
+.reveal-button .eye-closed {
+  display: none;
+}
+.reveal-button[aria-pressed="true"] .eye-open {
+  display: none;
+}
+.reveal-button[aria-pressed="true"] .eye-closed {
+  display: block;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 8px;
+  margin-top: clamp(4px, 1vh, 8px);
+  margin-bottom: clamp(12px, 2.2vh, 20px);
+}
+.remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--lp-text-2);
+}
+.remember input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--lp-accent);
+  cursor: pointer;
+  margin: 0;
+}
+.remember input:focus-visible {
+  outline: 2px solid var(--lp-focus-line);
+  outline-offset: 2px;
+}
+
+/* ── Giriş düğmesi: resmin vurgu rengi ────────────────────── */
+.submit-button {
+  width: 100%;
+  height: 46px;
+  border: none;
+  border-radius: 10px;
+  background: var(--lp-accent);
+  color: var(--lp-accent-text);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--lp-accent) 34%, transparent);
+  /* Yalnız transform geçer: zemin ve gölge --lp-accent'dan gelir, geçiş yazılırsa .instant-button ani dönüşü yumuşar. */
+  transition: transform var(--lp-dur-press) var(--lp-ease-out);
+}
+/* Hareketli/renkli üzerine gelme yalnız gerçek imleçte: dokunmatikte dokunuş yapışkan hover bırakır. */
+@media (hover: hover) and (pointer: fine) {
+  .submit-button:hover {
+    background: var(--lp-accent-2);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--lp-accent) 44%, transparent);
+  }
+}
+/* Basış: değdiği an (bırakınca değil). Hover kuralından SONRA, :disabled'dan ÖNCE kalmalı (özgüllük eşit). */
+.submit-button:active {
+  background: var(--lp-accent-2);
+  transform: scale(0.97);
+}
+.submit-button:focus-visible {
+  outline: 2px solid var(--lp-text);
+  outline-offset: 2px;
+}
+/* Yükleme 'çalışıyor' demektir, 'kullanılamaz' değil: soluklaşma yazıyı 4,5:1'in, düğmeyi kartta 2:1'in
+   altına indiriyordu (4 palette). Durumu dönen halka ve 'Giriş yapılıyor…' anlatır; disabled çift gönderimi
+   engeller. */
+.submit-button:disabled {
+  cursor: progress;
+  transform: none;
+}
+.submit-button .spinner {
+  display: none;
+}
+.submit-button.is-loading .spinner {
+  display: block;
+  width: 15px;
+  height: 15px;
+  border: 2px solid color-mix(in srgb, var(--lp-accent-text) 40%, transparent);
+  border-top-color: var(--lp-accent-text);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.footnote {
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--lp-text-2);
+  margin: clamp(14px, 2.5vh, 20px) 0 0;
+  line-height: 1.45;
+}
+
+/* ── Alt bilgi: cam bant ──────────────────────────────────── */
+/* Üç sütun: [denetim] [yazı, ortada] [boş]. Denetim akışta olduğundan resim sayısı veya uzun
+   şirket adı ne olursa olsun yazıyla üst üste binmez; betik yoksa yazı yine ortadadır. */
+.footer-band {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 6px;
+  min-height: 46px;
+  padding: 10px 14px clamp(10px, 2vh, 14px);
+  background: var(--lp-band);
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+  backdrop-filter: blur(14px) saturate(130%);
+  border-top: 1px solid var(--lp-line);
+  font-size: 0.74rem;
+  color: var(--lp-text-2);
+}
+.footer-text {
+  grid-column: 2;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 8px;
+  text-align: center;
+}
+.footer-text .dot-sep {
+  opacity: 0.5;
+}
+
+/* ── Slayt denetimi: duraklat + noktalar (alt bandın sol sütunu) ── */
+.slide-controls {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.slide-toggle {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--lp-line);
+  background: var(--lp-input);
+  color: var(--lp-text);
+  cursor: pointer;
+  padding: 0;
+  transition: scale var(--lp-dur-press) var(--lp-ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .slide-toggle:hover {
+    border-color: var(--lp-focus-line);
+  }
+}
+.slide-toggle:active {
+  scale: 0.95;
+}
+.slide-toggle .icon-play {
+  display: none;
+}
+.slide-toggle[aria-pressed="true"] .icon-pause {
+  display: none;
+}
+.slide-toggle[aria-pressed="true"] .icon-play {
+  display: block;
+}
+.slide-dots {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.slide-dot {
+  width: 24px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+/* Noktalar bantta ≥ 3:1 (WCAG 1.4.11): pasif = ikincil yazı rengi (kartta ≥ 4,5:1 denetlenir),
+   etkin = denetlenmiş odak rengi ve daha uzun (renk tek ayırt edici değil). */
+.slide-dot::before {
+  content: "";
+  width: 22px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--lp-text-2);
+  /* Pasif nokta 22 px'lik hapın ortadaki 8 px'idir (daire). Uzama genişlikle değil kırpmayla yapılır:
+     yerleşim hesaplanmaz, hap yuvarlağı bozulmaz. Renk geçişi YOK (bkz. palet kuralı). */
+  clip-path: inset(0 7px round 4px);
+  transition: clip-path var(--lp-dur-short) var(--lp-ease-out);
+}
+/* Dokunmatikte basılan nokta koyu renkte yapışıp iki vurgulu nokta göstermesin. Etkin kuraldan ÖNCE kalmalı. */
+@media (hover: hover) and (pointer: fine) {
+  .slide-dot:hover::before {
+    background: var(--lp-text);
+  }
+}
+/* Basış: parmak değdiği an (dokunma parlaması kapalı; bırakınca gelen tek tepki seçimdi). Kapısız: :active
+   parmak kalkınca düşer, yapışmaz. Renk anında (palet kuralı); kısıtta da kalır. Etkin kuraldan ÖNCE. */
+.slide-dot:active::before {
+  background: var(--lp-text);
+}
+.slide-dot[aria-current="true"]::before {
+  clip-path: inset(0 round 4px);
+  background: var(--lp-focus-line);
+}
+.slide-toggle:focus-visible,
+.slide-dot:focus-visible {
+  outline: 2px solid var(--lp-focus-line);
+  outline-offset: 1px;
+  border-radius: 999px;
+}
+
+/* Windows Yüksek Karşıtlık: sözde öğe zeminleri silinir; noktalar sistem renkleriyle çizilir. */
+@media (forced-colors: active) {
+  .slide-dot::before {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+  .slide-dot:active::before {
+    background: Highlight;
+  } /* basışta palet rengi sistem zemininde kaybolmasın */
+  .slide-dot[aria-current="true"]::before {
+    background: Highlight;
+  }
+  .card,
+  .footer-band {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* ── Geniş ekran: kart sağda, ürün solda tam görünür ──
+   Ürün (resmin ortası) kartın solundaki boş alanın ortasına konur:
+   merkez = (genişlik − kart − sağ boşluk − 40 px ara) / 2. Resim boyuna sığdığı için
+   ürünün üstü ve altı hiçbir ekran oranında kesilmez. */
+@media (min-width: 860px) {
+  .login-page {
+    --lp-card-w: 380px;
+    --lp-card-right: clamp(24px, 4vw, 120px);
+  }
+  .stage {
+    justify-content: flex-end;
+    padding-right: var(--lp-card-right);
+  }
+  .card {
+    margin: 0;
+    width: var(--lp-card-w);
+  }
+  .slides {
+    --lp-slide-center: calc((100% - var(--lp-card-w) - var(--lp-card-right) - 40px) / 2);
+  }
+}
+@media (min-width: 1100px) {
+  .login-page {
+    --lp-card-w: 410px;
+    --lp-card-right: clamp(32px, 7vw, 120px);
+  }
+}
+
+/* Alçak ekranlarda formu sıkılaştır: kart içinde kaydırma oluşmasın. */
+@media (max-height: 620px) {
+  .field-input {
+    height: 40px;
+  }
+  .submit-button {
+    height: 42px;
+  }
+  .form-head {
+    margin-bottom: 10px;
+  }
+  .field {
+    margin-bottom: 8px;
+  }
+  .field-row {
+    margin-top: 4px;
+    margin-bottom: 10px;
+  }
+  .form-panel {
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+}
+
+/* Hareket kısıtı: kayma ve yakınlaşma yok, resimler kısa solmayla değişir (otomatik geçişi
+   betik de kapatır; elle seçilen resim yine solarak gelir). Düğmelerde basış ölçeği ve hover
+   kalkması yok; basışın renk karşılığı (--lp-accent-2, ani) kalır. Hata kutusu yalnız solarak belirir. */
+@media (prefers-reduced-motion: reduce) {
+  .login-page {
+    --lp-transition: 0.3s;
+  }
+  .slide {
+    transition-duration: 0.3s;
+  }
+  .is-scripted .slide.is-active .slide-image,
+  .is-scripted .slide.is-leaving .slide-image {
+    animation: none;
+    scale: 1;
+    will-change: auto;
+  }
+  .submit-button,
+  .submit-button:hover,
+  .submit-button:active {
+    transition: none;
+    transform: none;
+  }
+  .reveal-button:active {
+    transform: translateY(-50%);
+  } /* ortalama kalır, ölçek yok */
+  .slide-toggle:active {
+    scale: none;
+  }
+  .notice.is-error,
+  .field-error {
+    animation-name: notice-fade;
+  }
+}
+
+/* ── Telefon veya alçak ekran: sayfa kaydırılabilir. (Bu bloklar dosyanın EN SONUNDA:
+   masaüstü kuralları aynı özgüllükte ve sonra gelseydi ezerdi.) ── */
+@media (max-width: 600px), (max-height: 500px) {
+  .login-page {
+    overflow-y: auto;
+  }
+  .page-wrap {
+    height: auto;
+    min-height: 100dvh;
+  }
+  .stage {
+    align-items: flex-start;
+    padding-top: 70px;
+  }
+  /* Marka akışta: kaydırınca kartın üstüne binmesin. */
+  .brand {
+    position: absolute;
+    top: 20px;
+    left: 16px;
+  }
+  .footer-band {
+    margin-top: auto;
+  }
+  /* Bant burada sayfanın sonunda akar (ekranın altına sabit değil): sahne tüm ekranı kullanır. */
+  .slides {
+    bottom: 0;
+  }
+}
+@media (max-width: 600px) {
+  /* Kart sıkı: ürün resmi kartın altında durur, kart ne kadar kısaysa ürün o kadar açıkta kalır. */
+  .stage {
+    padding: 60px 14px 12px;
+  }
+  .card {
+    width: 100%;
+    border-radius: 18px;
+  }
+  .form-panel {
+    padding: 18px 18px 16px;
+  }
+  .form-head {
+    margin-bottom: 12px;
+  }
+  .form-title {
+    font-size: 1.45rem;
+  }
+  .form-subtitle {
+    font-size: 0.8rem;
+  }
+  .field {
+    margin-bottom: 10px;
+  }
+  .field-label {
+    margin-bottom: 4px;
+  }
+  .field-input {
+    height: 42px;
+  }
+  .field-row {
+    margin: 2px 0 12px;
+  }
+  .submit-button {
+    height: 44px;
+  }
+  .footnote {
+    margin-top: 10px;
+    font-size: 0.76rem;
+  }
+  .brand {
+    top: 16px;
+  }
+  .slide-curtain {
+    display: none;
+  }
+  /* Telefonda sahne KARTIN ALTINDAKİ bantla sınırlıdır: betik kartın alt kenarını ölçüp
+     --lp-mobile-stage-top yazar (betiksiz %55). Resim masaüstündeki gibi bu bandın boyuna sığar ve
+     ortalanır; dar ya da geniş her resimde ürün kartın arkasına girmeden tam görünür, yanlarda
+     kalan yer kenar renkleriyle dolar. Bandın üstü (kartın arkası) sayfa zeminidir. */
+  .slides {
+    top: var(--lp-mobile-stage-top, 55%);
+    bottom: var(--lp-footer-h, 80px);
+    --lp-slide-center: 50%;
+  }
+  /* Dar ekranda denetim kendi satırında, ortada; yazı altında. */
+  .footer-band {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .slide-controls {
+    grid-column: 1;
+    justify-self: center;
+  }
+  .footer-text {
+    grid-column: 1;
+  }
+}

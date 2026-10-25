@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../api/auth";
@@ -114,11 +114,66 @@ describe("arama", () => {
 });
 
 describe("giriş ekranı", () => {
-  it("DentMesher girişi gibi: başlık, süs sözcükleri ekran okuyucudan gizli", async () => {
+  it("PET ERP girişi gibi: ürün fotoğrafları süs, kart başlığı ve alanlar", async () => {
     vi.mocked(authApi.fetchMe).mockRejectedValue(httpError(401));
     renderApp("/login");
     expect(await screen.findByRole("heading", { name: "Hoş geldiniz" })).toBeInTheDocument();
-    expect(screen.getByText("Hammadde lotu").closest('[aria-hidden="true"]')).not.toBeNull();
+    const photos = [...document.querySelectorAll<HTMLImageElement>('img[src^="/giris/"]')];
+    expect(photos).toHaveLength(6);
+    expect(photos.every((img) => img.closest('[aria-hidden="true"]'))).toBe(true);
+    expect(screen.getByLabelText("Kullanıcı adı")).toHaveAttribute(
+      "placeholder",
+      "ör. ahmet.yilmaz",
+    );
     expect(screen.getByRole("button", { name: "Giriş yap" })).toBeInTheDocument();
+    expect(screen.getByText("Üretim takip sistemi")).toBeInTheDocument();
+  });
+
+  it("şifre göster / gizle", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockRejectedValue(httpError(401));
+    renderApp("/login");
+    const password = await screen.findByLabelText("Şifre");
+    expect(password).toHaveAttribute("type", "password");
+    await user.click(screen.getByRole("button", { name: "Şifreyi göster" }));
+    expect(password).toHaveAttribute("type", "text");
+    expect(screen.getByRole("button", { name: "Şifreyi gizle" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("Beni hatırla yalnız kullanıcı adını saklar ve sonraki açılışta doldurur", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockRejectedValue(httpError(401));
+    vi.mocked(authApi.login).mockResolvedValue(userWith("depo"));
+    renderApp("/login");
+    await user.type(await screen.findByLabelText("Kullanıcı adı"), "ayse");
+    await user.type(screen.getByLabelText("Şifre"), "gizli-sifre");
+    await user.click(screen.getByLabelText("Beni hatırla"));
+    await user.click(screen.getByRole("button", { name: "Giriş yap" }));
+    await waitFor(() => expect(authApi.login).toHaveBeenCalled());
+    expect(window.localStorage.getItem("inncosKullaniciAdi")).toBe("ayse");
+    const stored = Object.keys(window.localStorage).map((k) => window.localStorage.getItem(k));
+    expect(stored.some((value) => value?.includes("gizli-sifre"))).toBe(false);
+
+    cleanup();
+    vi.mocked(authApi.fetchMe).mockRejectedValue(httpError(401));
+    renderApp("/login");
+    expect(await screen.findByLabelText("Kullanıcı adı")).toHaveValue("ayse");
+    expect(screen.getByLabelText("Beni hatırla")).toBeChecked();
+  });
+
+  it("Beni hatırla işaretsizse saklanan kullanıcı adı silinir", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("inncosKullaniciAdi", "eski");
+    vi.mocked(authApi.fetchMe).mockRejectedValue(httpError(401));
+    vi.mocked(authApi.login).mockResolvedValue(userWith("depo"));
+    renderApp("/login");
+    await user.click(await screen.findByLabelText("Beni hatırla"));
+    await user.type(screen.getByLabelText("Şifre"), "gizli");
+    await user.click(screen.getByRole("button", { name: "Giriş yap" }));
+    await waitFor(() => expect(authApi.login).toHaveBeenCalled());
+    expect(window.localStorage.getItem("inncosKullaniciAdi")).toBeNull();
   });
 });
