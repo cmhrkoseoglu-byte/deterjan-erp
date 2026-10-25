@@ -207,3 +207,28 @@ export async function uploadImport(
 export function importTemplateUrl(kind: ImportKind): string {
   return `/api/v1/masterdata/import/templates/${kind}/`;
 }
+
+/** Firmanın ticari bilgileri (tek kayıt): irsaliyede satıcı, satın alma siparişinde alıcı. */
+export interface CompanyProfile {
+  legal_name: string;
+  address: string;
+  tax_office: string;
+  /** 10 haneli VKN; şahıs firmasında 11 haneli TCKN. */
+  tax_number: string;
+  trade_registry_no: string;
+  mersis_no: string;
+  updated_at: string;
+}
+
+export type CompanyProfileInput = Omit<CompanyProfile, "updated_at">;
+
+export async function getCompanyProfile(): Promise<CompanyProfile> {
+  const { data } = await api.get<CompanyProfile>("/masterdata/company/");
+  return data;
+}
+
+/** Yönetim ve admin. Hata kodları: legal_name_required, invalid_tax_number, invalid_mersis_no. */
+export async function saveCompanyProfile(input: CompanyProfileInput): Promise<CompanyProfile> {
+  const { data } = await api.put<CompanyProfile>("/masterdata/company/", input);
+  return data;
+}

@@ -1487,3 +1487,23 @@ değiştirme zorunlu, yalnızca admin):
 - **Tek kural:** olay ve sorun bildirimi görünürlüğü tek fonksiyonda
   (`hse.services.incidents_visible_to`, `golive.selectors.problem_reports_visible_to`); ekran ve
   kayda bağlı uç noktalar aynı fonksiyonu kullanır.
+
+## 2026-10-25 — Firma ticari bilgileri uygulamada (Ana veriler > Firma bilgileri)
+
+- **Karar (CUMHUR, "şirketin ticari bilgilerini gireceğimiz alan yapalım"; alanlar için "Kimlik ve
+  vergi", yetki için "Admin ve yönetim", belgeler için "İrsaliye ve sipariş"):** firmanın ticari
+  bilgileri sunucudaki ayar dosyasından (`COMPANY_*`) uygulamadaki tek kayıtlık **Firma bilgileri**
+  formuna taşınır.
+- **Alanlar:** ticari unvan (zorunlu), adres, vergi dairesi, vergi no, ticaret sicil no, MERSİS no.
+  Vergi no 10 haneli VKN ya da şahıs firmasında 11 haneli TCKN; ikisi de kontrol haneleriyle
+  denetlenir. MERSİS no 16 hane. Boşluklu yazım kabul edilir, boşluklar atılır. İletişim ve banka
+  bilgileri bu kararın dışında.
+- **Yetki:** yönetim ve admin değiştirir; okuma giriş yapmış herkese açık, çünkü bilgiler belgelerde
+  zaten görünür. Ekran Ana veriler'de (planlama yalnızca okur). Her değişiklik denetim günlüğüne
+  yazılır.
+- **Kullanıldığı yer:** sevk irsaliyesinde satıcı, satın alma siparişinde alıcı bloğu (sicil ve MERSİS
+  satırı dahil); tedarikçiye giden sipariş e-postasının imzası. Analiz sertifikası ve etiketler bu
+  kararın dışında: sertifika `COMPANY_NAME` ayarını, etiket Etiket ayarları'ndaki adı kullanmaya devam
+  eder.
+- **Geçiş:** kayıt ilk açılışta `COMPANY_*` değerleriyle oluşur. Canlıda bu değerler boştu; ilk girişte
+  formdan doldurulur.

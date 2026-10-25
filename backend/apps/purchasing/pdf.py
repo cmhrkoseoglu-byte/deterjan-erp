@@ -4,7 +4,6 @@ import io
 from typing import Any
 from xml.sax.saxutils import escape
 
-from django.conf import settings
 from django.utils import timezone
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -14,6 +13,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 from apps.core.formatting import format_money
 from apps.inventory.services import format_quantity
+from apps.masterdata import services as masterdata
 from apps.purchasing import selectors
 from apps.purchasing.models import PurchaseOrder
 from apps.quality.coa import FONT, FONT_BOLD, _register_fonts
@@ -57,9 +57,14 @@ def purchase_order_pdf(order: PurchaseOrder) -> bytes:
         bottomMargin=15 * mm,
         title=f"Satın alma siparişi {order.number}",
     )
-    buyer = [para(settings.COMPANY_NAME or "—", bold), para(settings.COMPANY_ADDRESS)]
-    if settings.COMPANY_TAX_OFFICE or settings.COMPANY_TAX_NO:
-        buyer.append(para(f"V.D.: {settings.COMPANY_TAX_OFFICE}  V.No: {settings.COMPANY_TAX_NO}"))
+    # Alıcı: Ana veriler > Firma bilgileri.
+    company = masterdata.get_company_profile()
+    buyer = [para(company.legal_name or "—", bold), para(company.address)]
+    if company.tax_office or company.tax_number:
+        buyer.append(para(f"V.D.: {company.tax_office}  V.No: {company.tax_number}"))
+    registry = masterdata.company_registry_line(company)
+    if registry:
+        buyer.append(para(registry))
     document = [
         para("SATIN ALMA SİPARİŞİ", title),
         para(f"Sipariş no: {order.number}", bold),

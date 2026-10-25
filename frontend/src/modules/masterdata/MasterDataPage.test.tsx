@@ -24,8 +24,20 @@ vi.mock("../../api/masterdata", async (importOriginal) => {
     saveRecord: vi.fn(),
     setRecordActive: vi.fn(),
     uploadImport: vi.fn(),
+    getCompanyProfile: vi.fn(),
+    saveCompanyProfile: vi.fn(),
   };
 });
+
+const company = {
+  legal_name: "Örnek Deterjan San. ve Tic. A.Ş.",
+  address: "OSB 1. Cadde No: 1\nKocaeli",
+  tax_office: "Gebze",
+  tax_number: "1234567890",
+  trade_registry_no: "",
+  mersis_no: "",
+  updated_at: "2026-10-25T10:00:00+03:00",
+};
 
 const las: Material = {
   id: 5,
@@ -286,6 +298,47 @@ describe("ana veriler ekranı", () => {
     });
     renderApp("/ana-veriler/etiket-ayarlari");
     expect(await screen.findByLabelText(/GS1 firma öneki/)).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Kaydet" })).toBeNull();
+  });
+  it("yönetim firma bilgilerini düzenler; hatalı vergi no gönderilmez", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    vi.mocked(mdApi.getCompanyProfile).mockResolvedValue(company);
+    vi.mocked(mdApi.saveCompanyProfile).mockResolvedValue({
+      ...company,
+      mersis_no: "0123456789000017",
+    });
+    renderApp("/ana-veriler/firma-bilgileri");
+    const taxNumber = await screen.findByLabelText(/Vergi no \/ TCKN/);
+    expect(screen.getByLabelText(/Ticari unvan/)).toHaveValue(company.legal_name);
+    await user.clear(taxNumber);
+    await user.type(taxNumber, "12345");
+    await user.click(screen.getByRole("button", { name: "Kaydet" }));
+    expect(await screen.findByText("10 ya da 11 haneli bir sayı olmalı.")).toBeInTheDocument();
+    expect(mdApi.saveCompanyProfile).not.toHaveBeenCalled();
+
+    await user.clear(taxNumber);
+    await user.type(taxNumber, "1234567890");
+    await user.type(screen.getByLabelText(/MERSİS no/), "0123456789000017");
+    await user.click(screen.getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(mdApi.saveCompanyProfile).toHaveBeenCalledWith({
+        legal_name: company.legal_name,
+        address: company.address,
+        tax_office: "Gebze",
+        tax_number: "1234567890",
+        trade_registry_no: "",
+        mersis_no: "0123456789000017",
+      }),
+    );
+  });
+
+  it("planlama firma bilgilerini yalnızca okur", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("planlama"));
+    vi.mocked(mdApi.getCompanyProfile).mockResolvedValue(company);
+    renderApp("/ana-veriler/firma-bilgileri");
+    expect(await screen.findByLabelText(/Ticari unvan/)).toBeDisabled();
+    expect(screen.getByText(/yönetim ve sistem yöneticisi değiştirir/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Kaydet" })).toBeNull();
   });
 });

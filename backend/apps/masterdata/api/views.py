@@ -281,6 +281,32 @@ class LabelSettingsView(APIView):
         return Response(s.LabelSettingsSerializer(instance).data)
 
 
+class CompanyProfileView(APIView):
+    """Firma ticari bilgileri (tek kayıt): okuma giriş yapmış herkese (bilgiler belgelerde zaten
+    görünür), değiştirme yönetim ve admin."""
+
+    def get_permissions(self) -> list[BasePermission]:
+        if self.request.method == "GET":
+            return [IsAuthenticated()]
+        return [HasRole(*services.COMPANY_WRITE_ROLES)()]
+
+    @extend_schema(responses=s.CompanyProfileSerializer)
+    def get(self, request: Request) -> Response:
+        return Response(s.CompanyProfileSerializer(services.get_company_profile()).data)
+
+    @extend_schema(request=s.CompanyProfileSerializer, responses=s.CompanyProfileSerializer)
+    def put(self, request: Request) -> Response:
+        body = s.CompanyProfileSerializer(
+            services.get_company_profile(), data=request.data, partial=True
+        )
+        body.is_valid(raise_exception=True)
+        instance = services.update_company_profile(
+            request.user,  # type: ignore[arg-type]
+            body.validated_data,
+        )
+        return Response(s.CompanyProfileSerializer(instance).data)
+
+
 class SupplierViewSet(MasterDataViewSet):
     queryset = Supplier.objects.all()
     serializer_class = s.SupplierSerializer

@@ -919,6 +919,13 @@ const SHOTS = [
     run: async (page) => go(page, "/maliyet/oranlar", "Oran ekle"),
   },
   {
+    // Demo verisinde firma bilgileri .env'deki örnek değerlerle başlar.
+    name: "yonetim-firma-bilgileri",
+    user: "yonetim",
+    run: async (page) =>
+      go(page, "/ana-veriler/firma-bilgileri", "Ticari unvan"),
+  },
+  {
     // Personel kartları seed_demo'dan (seed_personnel_demo) gelir.
     name: "yonetim-personel",
     user: "yonetim",

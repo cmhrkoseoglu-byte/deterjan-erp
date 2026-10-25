@@ -19,6 +19,7 @@ router.register("printers", views.PrinterViewSet, basename="printer")
 
 urlpatterns = [
     path("label-settings/", views.LabelSettingsView.as_view(), name="label-settings"),
+    path("company/", views.CompanyProfileView.as_view(), name="company"),
     path(
         "import/templates/<str:kind>/",
         views.ImportTemplateView.as_view(),

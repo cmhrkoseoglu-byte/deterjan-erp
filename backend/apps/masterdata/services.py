@@ -4,21 +4,26 @@ Ana veriler silinmez (CLAUDE.md §4.6); kullanılmayan kayıt `set_active(..., F
 alınır. Tüm yazma işlemleri `core.services.save_with_audit` ile denetim günlüğüne düşer.
 """
 
+import re
 import socket
 from collections.abc import Callable, Mapping
 from decimal import Decimal
 from typing import Any
 
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, models, transaction
 
 from apps.core.audit import log_change
 from apps.core.exceptions import BusinessRuleError
 from apps.core.labels import gs1_check_digit, is_valid_gtin
 from apps.core.models import AuditLog, MasterDataModel, User
+from apps.core.permissions import user_has_role
+from apps.core.roles import YONETIM
 from apps.core.services import save_with_audit
 from apps.masterdata.fields import normalize_code
 from apps.masterdata.models import (
+    CompanyProfile,
     Equipment,
     LabelSettings,
     Location,
@@ -368,6 +373,110 @@ def get_label_settings() -> LabelSettings:
 def sscc_enabled() -> bool:
     """GS1 firma öneki girildiyse SSCC palet etiketi açıktır (Karar D-6)."""
     return bool(get_label_settings().gs1_company_prefix)
+
+
+# --- firma bilgileri ---------------------------------------------------------------------------
+
+# Firma bilgilerini değiştiren roller (admin her yere erişir); okuma giriş yapmış herkese.
+COMPANY_WRITE_ROLES = (YONETIM,)
+COMPANY_FIELDS = (
+    "legal_name",
+    "address",
+    "tax_office",
+    "tax_number",
+    "trade_registry_no",
+    "mersis_no",
+)
+
+
+def get_company_profile() -> CompanyProfile:
+    """Firma bilgilerini döner; yoksa ayar dosyasındaki `COMPANY_*` değerleriyle oluşturur (tek
+    kayıt). Sonraki değişiklikler yalnızca ekrandan (`update_company_profile`)."""
+    instance = CompanyProfile.objects.order_by("pk").first()
+    if instance is None:
+        instance, _ = CompanyProfile.objects.get_or_create(
+            pk=1,
+            defaults={
+                "legal_name": (settings.COMPANY_NAME or "").strip(),
+                "address": (settings.COMPANY_ADDRESS or "").strip(),
+                "tax_office": (settings.COMPANY_TAX_OFFICE or "").strip(),
+                "tax_number": (settings.COMPANY_TAX_NO or "").strip(),
+            },
+        )
+    return instance
+
+
+def company_registry_line(profile: CompanyProfile) -> str:
+    """Belgelerde unvanın altındaki sicil satırı ("Ticaret sicil no: … MERSİS no: …"); boşsa ""."""
+    parts = []
+    if profile.trade_registry_no:
+        parts.append(f"Ticaret sicil no: {profile.trade_registry_no}")
+    if profile.mersis_no:
+        parts.append(f"MERSİS no: {profile.mersis_no}")
+    return "  ".join(parts)
+
+
+def valid_vkn(value: str) -> bool:
+    """10 haneli vergi kimlik numarası ve kontrol hanesi (GİB algoritması)."""
+    if len(value) != 10 or not value.isdigit():
+        return False
+    total = 0
+    for i, char in enumerate(value[:9]):
+        tmp = (int(char) + 9 - i) % 10
+        part = (tmp * 2 ** (9 - i)) % 9
+        total += 9 if tmp and not part else part
+    return (10 - total % 10) % 10 == int(value[9])
+
+
+def valid_tckn(value: str) -> bool:
+    """11 haneli T.C. kimlik numarası ve iki kontrol hanesi."""
+    if len(value) != 11 or not value.isdigit() or value[0] == "0":
+        return False
+    d = [int(char) for char in value]
+    tenth = ((d[0] + d[2] + d[4] + d[6] + d[8]) * 7 - (d[1] + d[3] + d[5] + d[7])) % 10
+    return d[9] == tenth and d[10] == sum(d[:10]) % 10
+
+
+def _company_text(name: str, value: Any) -> str:
+    text = str(value or "")
+    if name == "address":
+        # Adres satırları korunur; her satırın başı ve sonu kırpılır, boş satırlar atılır.
+        return "\n".join(line.strip() for line in text.splitlines() if line.strip())
+    text = re.sub(r"\s+", " ", text).strip()
+    if name in ("tax_number", "mersis_no"):
+        text = text.replace(" ", "")
+    return text
+
+
+@transaction.atomic
+def update_company_profile(actor: User, data: Mapping[str, Any]) -> CompanyProfile:
+    """Firma bilgilerini günceller (yönetim ve admin); değişen alanlar eski → yeni değerleriyle
+    denetim günlüğüne yazılır. Ticari unvan boş olamaz; vergi no 10 haneli VKN ya da şahıs
+    firmasında 11 haneli TCKN, MERSİS no 16 hane olmalıdır (doluysa)."""
+    if not user_has_role(actor, COMPANY_WRITE_ROLES):
+        raise PermissionDenied(
+            "Firma bilgilerini yalnızca yönetim ve sistem yöneticisi değiştirir."
+        )
+    unknown = set(data) - set(COMPANY_FIELDS)
+    if unknown:
+        raise ValueError(f"Tanımsız alan: {', '.join(sorted(unknown))}")
+    get_company_profile()
+    instance = CompanyProfile.objects.select_for_update().order_by("pk").first()
+    assert instance is not None
+    for name, value in data.items():
+        setattr(instance, name, _company_text(name, value))
+    if not instance.legal_name:
+        raise BusinessRuleError("legal_name_required", "Ticari unvan girilmelidir.")
+    number = instance.tax_number
+    if number and not (valid_vkn(number) or valid_tckn(number)):
+        raise BusinessRuleError(
+            "invalid_tax_number",
+            "Vergi no 10 haneli VKN ya da 11 haneli TCKN olmalı; kontrol hanesi tutmuyor.",
+        )
+    if instance.mersis_no and not (len(instance.mersis_no) == 16 and instance.mersis_no.isdigit()):
+        raise BusinessRuleError("invalid_mersis_no", "MERSİS no 16 haneli bir sayı olmalıdır.")
+    instance.full_clean(exclude=["created_by", "updated_by"])
+    return save_with_audit(instance, actor)
 
 
 @transaction.atomic

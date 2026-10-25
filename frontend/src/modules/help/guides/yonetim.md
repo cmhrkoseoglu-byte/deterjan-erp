@@ -76,6 +76,19 @@ Onay limitini aşan satın alma siparişi size görev olarak gelir.
 
 > Personel kartı kişisel veridir; diğer roller göremez. Kişinin sistem hesabı ayrılışla kendiliğinden kapanmaz: kartta uyarı çıkar, hesabı sistem yöneticisi **Sistem > Kullanıcılar**'dan pasife alır.
 
+## Firma bilgileri
+
+Firmanın ticari bilgileri **Ana veriler > Firma bilgileri** sekmesindedir. Sevk irsaliyesinde satıcı, satın alma siparişinde alıcı olarak bu bilgiler basılır; tedarikçiye giden sipariş e-postası da ticari unvanla imzalanır.
+
+1. **Ticari unvan**'ı (zorunlu) ve **Adres**'i yazın.
+2. **Vergi dairesi** ve **Vergi no / TCKN**'yi girin: şirkette 10 haneli VKN, şahıs firmasında 11 haneli TCKN. Numara kontrol hanesiyle denetlenir; yanlış yazılırsa kaydedilmez.
+3. Varsa **Ticaret sicil no** ve 16 haneli **MERSİS no**'yu girin; belgelerde unvanın altında görünür.
+4. **Kaydet**'e basın. Sonraki irsaliye ve siparişler yeni bilgilerle basılır.
+
+![Firma bilgileri](/kilavuz/yonetim-firma-bilgileri.jpg)
+
+> Bilgileri yönetim ve sistem yöneticisi değiştirir; planlama yalnızca görür. Her değişiklik denetim günlüğüne yazılır.
+
 ## Canlı başlangıç tarihi
 
 1. **Canlıya geçiş > Hazırlık** sekmesinde kontrol kartlarını gözden geçirin. Kırmızı maddeler kapanmadan başlanmaz.
