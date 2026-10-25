@@ -21,7 +21,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
-from apps.core import health, ratelimit, security, services
+from apps.core import health, ratelimit, records, security, services
 from apps.core.api.filters import AuditLogFilter, UserFilter
 from apps.core.api.serializers import (
     AttachmentQuerySerializer,
@@ -390,7 +390,8 @@ class AttachmentViewSet(
 
     Liste `?content_type=inventory.lot&object_id=5` ister. Yükleme `multipart/form-data`.
     Dosyalar açık `/media` yolundan değil, giriş yapmış kullanıcıya `download` ucundan verilir.
-    Ekler silinmez; `remove` ile kaldırılır (yükleyen ya da admin).
+    Ekler silinmez; `remove` ile kaldırılır (yükleyen ya da admin). Eki yalnızca bağlı olduğu kaydı
+    kendi ekranında görebilen görür (`core.records`); göremeyene ek yokmuş gibi davranılır.
     """
 
     serializer_class = AttachmentSerializer
@@ -401,12 +402,21 @@ class AttachmentViewSet(
     def get_queryset(self) -> QuerySet[Attachment]:
         return Attachment.objects.select_related("content_type", "created_by", "removed_by")
 
+    def get_object(self) -> Attachment:
+        """Tek ek (okuma, indirme, kaldırma): kaydını göremeyene ek yokmuş gibi."""
+        attachment: Attachment = super().get_object()
+        if not records.can_view(self.request.user, attachment.related_object):
+            raise NotFound("Ek bulunamadı.")
+        return attachment
+
     @extend_schema(parameters=[AttachmentQuerySerializer])
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         query = AttachmentQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
         content_type, target = services.attachment_target(
-            query.validated_data["content_type"], query.validated_data["object_id"]
+            query.validated_data["content_type"],
+            query.validated_data["object_id"],
+            request.user,  # type: ignore[arg-type]
         )
         queryset = self.get_queryset().filter(content_type=content_type, object_id=target.pk)
         if not query.validated_data["include_removed"]:

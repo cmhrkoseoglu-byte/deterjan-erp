@@ -178,10 +178,7 @@ class ProblemReportViewSet(
         queryset = ProblemReport.objects.select_related("created_by")
         if getattr(self, "swagger_fake_view", False):  # OpenAPI şeması üretimi
             return queryset.none()
-        user = self.request.user
-        if not getattr(user, "is_admin", False):
-            queryset = queryset.filter(created_by=user)  # type: ignore[misc]
-        return queryset
+        return selectors.problem_reports_visible_to(self.request.user, queryset)
 
     @extend_schema(
         request={"multipart/form-data": s.ProblemReportCreateSerializer},

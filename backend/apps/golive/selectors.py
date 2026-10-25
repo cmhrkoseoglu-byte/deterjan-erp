@@ -6,10 +6,11 @@ from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth.models import Group
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Q, QuerySet, Sum
 
 from apps.core.roles import ADMIN, ALL_ROLES, ROLE_LABELS
 from apps.filling.models import PackagingSpec
+from apps.golive.models import ProblemReport
 from apps.inventory import services as inventory
 from apps.inventory.models import StockMovement
 from apps.masterdata.models import (
@@ -23,6 +24,16 @@ from apps.masterdata.models import (
 )
 from apps.quality.models import SampleStage, Specification
 from apps.recipes.models import RecipeVersion
+
+
+def problem_reports_visible_to(
+    user: Any, queryset: QuerySet[ProblemReport]
+) -> QuerySet[ProblemReport]:
+    """Sorun bildirimi görünürlüğü (ekran ve kayda bağlı yorum, geçmiş, ek için aynı kural): admin
+    hepsini, diğer kullanıcılar yalnızca kendi bildirimlerini görür."""
+    if getattr(user, "is_admin", False):
+        return queryset
+    return queryset.filter(created_by=getattr(user, "pk", None))
 
 
 @dataclass(frozen=True)

@@ -756,3 +756,19 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
 - Kılavuz: `yonetim.md` "Personel" bölümü, `admin.md` personel kartı maddesi; yeni görsel
   `yonetim-personel.jpg`, yönetim ve admin görselleri yeni menüyle yeniden çekildi. KVKK envanteri ve
   CLAUDE.md modül tablosu güncellendi.
+
+## 2026-10-25 — Kayda bağlı yorum, geçmiş ve eklerde erişim denetimi
+
+- `core/records.py`: kayıt türü defteri (`register_record_type`, `can_view`, `visible_record`,
+  `hidden_fields_for`). Modüllerin `apps.py`'sinde 19 tür kendi okuma kuralıyla kaydedildi. workflow
+  geçmiş, yorum (liste, okuma, ekleme, düzenleme) ve @bahsetme; core ekler (liste, okuma, indirme,
+  kaldırma, yükleme) bu kurala bağlandı. Ön yüzde @bahsetme önerisi kayda göre süzülüyor.
+- Kanıt: `core/tests/test_records.py` ve `workflow/tests/test_record_access.py`:
+  - olay: bildiren ve yönetim görür, diğer rol göremez; ekler ve yorum eki de aynı kurala uyar;
+  - @bahsetme önerisi ve bildirimi, sorun bildirimi görünürlüğü;
+  - lot maliyeti ve sipariş tutarı gizleme, satış siparişi rolleri;
+  - kayıtlı olmayan türlerin reddi, panel ve ek türlerinin hepsinin kurallı olduğu.
+  
+  Bütün backend ve ön yüz testleri, ruff, mypy, lint, biçim, tip denetimi ve derleme de geçti.
+- Tarayıcıda: depo lot geçmişinde maliyet satırını görmüyor, yönetim görüyor. Sevkiyat, İSG olayının
+  geçmişine, yorumlarına ve eklerine erişemiyor; olayı bildiren erişiyor.

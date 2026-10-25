@@ -12,5 +12,6 @@ export const workflowKeys = {
     ["workflow", "comments", record.contentType, record.objectId] as const,
   history: (record: RecordRef) =>
     ["workflow", "history", record.contentType, record.objectId] as const,
-  mentionable: (search: string) => ["workflow", "mentionable", search] as const,
+  mentionable: (record: RecordRef, search: string) =>
+    ["workflow", "mentionable", record.contentType, record.objectId, search] as const,
 };

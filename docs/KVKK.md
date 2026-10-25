@@ -35,6 +35,11 @@ yalnızca VPN üzerinden açılır; trafik HTTPS ile şifrelidir.
   kayıtları gibi hassas alanlar ayrıca daraltılmıştır.
 - Personel kartları ve değişiklik geçmişleri yalnızca admin ve yönetime açıktır; kayıtlara bağlı genel
   geçmiş ve yorum uç noktaları personel kartını kabul etmez.
+- Kayda bağlı yorumlar, değişiklik geçmişi ve dosya ekleri kaydın kendi ekranındaki okuma kuralına uyar
+  (`core.records`): kaydı göremeyen (ör. başkasının bildirdiği İSG olayı) yorumunu, geçmişini ve ekini de
+  göremez; böyle bir kişiden yorumda bahsedilirse bildirim gitmez. Kaydı görüp tutarı göremeyen (lot
+  maliyeti, satın alma tutarı) geçmişte de tutarı görmez. Kurala kayıtlı olmayan türler bu uç noktalarda
+  hiç açılmaz.
 - Şifre politikası (en az 10 karakter, harf ve rakam), hatalı girişte hesap kilidi, hareketsizlik süresi,
   admin ve yönetim rollerinde iki aşamalı doğrulama (docs/DECISIONS.md, "Giriş güvenliği").
 - Trafik HTTPS (TLS 1.2+), güvenlik başlıkları; sunucu yalnızca iç ağ ve VPN'den erişilebilir; yönetim paneli

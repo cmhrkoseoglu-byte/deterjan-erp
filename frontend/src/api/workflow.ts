@@ -167,9 +167,13 @@ export async function fetchRecordHistory(record: RecordRef): Promise<AuditEntry[
   return data.results;
 }
 
-export async function fetchMentionableUsers(search: string): Promise<UserBrief[]> {
+/** @bahsetme önerisi; kayıt verilirse yalnızca o kaydı görebilen kişiler önerilir. */
+export async function fetchMentionableUsers(
+  search: string,
+  record?: RecordRef,
+): Promise<UserBrief[]> {
   const { data } = await api.get<UserBrief[]>("/workflow/mentionable-users/", {
-    params: { search },
+    params: { search, ...(record ? recordParams(record) : {}) },
   });
   return data;
 }

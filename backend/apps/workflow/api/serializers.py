@@ -185,9 +185,18 @@ class RecordQuerySerializer(serializers.Serializer):
 
 
 class RecordHistorySerializer(AuditLogSerializer):
-    """Yorum panelindeki kayıt geçmişi: herkese açık olduğu için IP adresi gösterilmez."""
+    """Yorum panelindeki kayıt geçmişi: herkese açık olduğu için IP adresi gösterilmez.
+    `context["hidden_fields"]` alanları (kullanıcıya gösterilmeyen tutarlar) değişikliklerden
+    çıkarılır."""
 
     action_label = serializers.CharField(source="get_action_display", read_only=True)
+
+    def to_representation(self, instance: Any) -> Any:
+        data = super().to_representation(instance)
+        hidden = self.context.get("hidden_fields")
+        if hidden and isinstance(data.get("changes"), dict):
+            data["changes"] = {k: v for k, v in data["changes"].items() if k not in hidden}
+        return data
 
     class Meta(AuditLogSerializer.Meta):
         fields = [

@@ -22,6 +22,7 @@ from typing import Any
 
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.db.models import QuerySet
 from django.utils import timezone
 
 from apps.core import event_names as ev
@@ -150,6 +151,14 @@ def can_attach_incident(user: User, incident: Any) -> bool:
     return user_has_role(user, HSE_ROLES) or (
         user.is_authenticated and getattr(incident, "created_by_id", None) == user.pk
     )
+
+
+def incidents_visible_to(user: Any, queryset: QuerySet[Incident]) -> QuerySet[Incident]:
+    """Olay görünürlüğü (olay ekranı ve kayda bağlı yorum, geçmiş, ek için aynı kural): yönetim ve
+    admin bütün olayları, diğer roller yalnızca kendi bildirdiklerini görür."""
+    if user_has_role(user, HSE_ROLES):
+        return queryset
+    return queryset.filter(created_by=getattr(user, "pk", None))
 
 
 # --- ayarlar -----------------------------------------------------------------------------------

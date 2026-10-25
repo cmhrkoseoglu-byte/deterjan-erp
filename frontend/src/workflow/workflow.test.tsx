@@ -183,7 +183,11 @@ describe("kayıt yorum paneli", () => {
     await userEvent.type(input, "Merhaba @meh");
     await userEvent.click(await screen.findByRole("option", { name: /@mehmet/ }));
     expect(input).toHaveValue("Merhaba @mehmet ");
-    expect(workflowApi.fetchMentionableUsers).toHaveBeenCalledWith("meh");
+    // Öneriler yalnızca bu kaydı görebilenlerden gelir.
+    expect(workflowApi.fetchMentionableUsers).toHaveBeenCalledWith("meh", {
+      contentType: "inventory.lot",
+      objectId: 5,
+    });
 
     await userEvent.type(input, "bakar mısın?");
     await userEvent.click(screen.getByRole("button", { name: "Gönder" }));

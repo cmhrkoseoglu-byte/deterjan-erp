@@ -21,7 +21,7 @@ from django.db.models import F, Q, QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 
-from apps.core import attachments, events, security
+from apps.core import attachments, events, records, security
 from apps.core.audit import EXCLUDED_FIELDS, diff, log_change
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import Attachment, AuditLog, DocumentModel, DocumentSequence, User
@@ -538,9 +538,12 @@ def logout_user(request: HttpRequest) -> None:
 # --- ekler ---------------------------------------------------------------------------------------
 
 
-def attachment_target(label: str, object_id: int) -> tuple[ContentType, models.Model]:
+def attachment_target(
+    label: str, object_id: int, user: User | None = None
+) -> tuple[ContentType, models.Model]:
     """`"app_label.model"` + kimlik → (ContentType, kayıt). Ek alamayan tür ya da olmayan kayıtta
-    `BusinessRuleError`."""
+    `BusinessRuleError`. `user` verilirse kaydı kendi ekranında göremeyen için de kayıt yokmuş gibi
+    `record_not_found` (`core.records`)."""
     label = (label or "").strip().lower()
     if not attachments.is_attachment_target(label):
         raise BusinessRuleError("invalid_record_type", "Bu kayıt türüne dosya eklenemez.")
@@ -552,7 +555,7 @@ def attachment_target(label: str, object_id: int) -> tuple[ContentType, models.M
     model_class = content_type.model_class()
     assert model_class is not None
     target = model_class._base_manager.filter(pk=object_id).first()
-    if target is None:
+    if target is None or (user is not None and not records.can_view(user, target)):
         raise BusinessRuleError("record_not_found", "Dosya eklenecek kayıt bulunamadı.")
     return content_type, target
 
@@ -569,7 +572,7 @@ def add_attachment(
 ) -> Attachment:
     """Kayda dosya ekler. Uzantı izinli listede ve boyut sınırın altında olmalı; yorum gibi
     bazı türlere yalnızca sahibi ekleyebilir (`core.attachments`)."""
-    content_type, target = attachment_target(target_type, object_id)
+    content_type, target = attachment_target(target_type, object_id, actor)
     if not attachments.can_add_attachment(actor, target_type, target):
         raise BusinessRuleError("attachment_forbidden", "Bu kayda dosya ekleme yetkiniz yok.")
     name = os.path.basename(file.name or "dosya")[:255]

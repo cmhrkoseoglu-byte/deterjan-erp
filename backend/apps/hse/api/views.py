@@ -16,7 +16,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import HasRole, user_has_role
+from apps.core.permissions import HasRole
 from apps.hse import exports, selectors, services
 from apps.hse.api import serializers as s
 from apps.hse.models import (
@@ -498,9 +498,7 @@ class IncidentViewSet(
 
     def get_queryset(self) -> QuerySet[Incident]:
         queryset = Incident.objects.select_related("location", "equipment", "created_by")
-        if not user_has_role(self.request.user, services.HSE_ROLES):
-            queryset = queryset.filter(created_by=self.request.user.pk)
-        return queryset
+        return services.incidents_visible_to(self.request.user, queryset)
 
     def _respond(self, incident: Incident, code: int = status.HTTP_200_OK) -> Response:
         fresh = Incident.objects.select_related("location", "equipment", "created_by").get(
