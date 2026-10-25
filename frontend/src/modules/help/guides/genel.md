@@ -20,7 +20,7 @@ Bu kılavuz her rol için ortaktır. Giriş, menü, görevler, bildirimler, yoru
 
 ## Üst çubuk ve menü
 
-- Üst çubuğun rengi rolünüzü gösterir: yönetim altın, planlama mavi, depo turuncu, üretim çivit, laboratuvar yeşil, dolum camgöbeği, sevkiyat mor, satın alma pembe, sistem yöneticisi lacivert. **INNCOS** yazısının altında panelinizin adı yazar. Ortak tablette hangi birimin ekranında olduğunuzu renkten anlarsınız.
+- Üst çubuğun rengi rolünüzü gösterir: yönetim altın, planlama mavi, depo turuncu, üretim çivit, laboratuvar yeşil, dolum camgöbeği, sevkiyat mor, satın alma pembe, sistem yöneticisi lacivert. Sol üstte INNCOS logosu durur; logonun yazısının altında panelinizin adı yazar (telefonda yalnız logonun işareti görünür). Logoya basınca açılış ekranınıza dönersiniz. Ortak tablette hangi birimin ekranında olduğunuzu renkten anlarsınız.
 - Sol menüde yalnızca rolünüzün kullandığı ekranlar görünür. Bir ekranı göremiyorsanız rolünüzde yoktur.
 - Telefonda ya da dikey tutulan küçük tablette menü gizlenir. Sol üstteki üç çizgili düğmeyle açıp kapatın.
 - Adınıza tıklayınca hangi rollere sahip olduğunuzu görürsünüz. Bir kişinin birden fazla rolü olabilir.

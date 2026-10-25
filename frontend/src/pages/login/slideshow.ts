@@ -36,6 +36,7 @@ export interface Palette {
 const SLIDE_MS = 7000; // bir slaytın ekranda kalma süresi
 const TYPING_PAUSE_MS = 4000; // yazarken otomatik geçiş son girdiden bu kadar sonra
 const WHITE: Rgb = [255, 255, 255];
+const NAVY: Rgb = [2, 34, 92]; // Inncos logosunun laciverti (#02225c)
 const BUTTON_VARS = ["--lp-accent", "--lp-accent-2", "--lp-accent-text"];
 const EDGE_BANDS = 10;
 
@@ -248,7 +249,9 @@ export function buildPalette(a: ImageAnalysis): Palette {
     button2 = fromHsl(hd[0], ds, Math.min(0.92, Math.max(0.06, hd[2] + dir * 0.04)));
     if (contrast(button2, buttonText) < 4.5) button2 = button;
   }
-  const brand = contrast(button, z) >= 3 ? button : text;
+  // Logo zeminin üstünde durur: açık zeminde kendi laciverti, koyu zeminde beyaz (hangisi daha
+  // okunaklıysa; ikisinden biri her zeminde en az ~4:1).
+  const brand = contrast(NAVY, z) >= contrast(WHITE, z) ? NAVY : WHITE;
   // Odak çerçevesi (WCAG 1.4.11 / 2.4.7): kart, bant ve odaklı alana karşı ≥ 3:1; olmuyorsa ana yazı.
   const focusLine = [cardSeen, bandSeen, focusSeen].every((bgc) => contrast(button, bgc) >= 3)
     ? button
@@ -315,6 +318,7 @@ function ratios(d: Record<string, Rgba>): [number, number][] {
   const o = d["--lp-focus-line"].c;
   const v = d["--lp-accent"].c;
   return [
+    [contrast(d["--lp-brand"].c, z), 3],
     [contrast(m, cardSeen), 4.5],
     [contrast(m2, cardSeen), 4.5],
     [contrast(m2, bandSeen), 3],

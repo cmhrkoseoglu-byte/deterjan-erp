@@ -57,6 +57,13 @@ describe("palet", () => {
     expect(contrast(rgb(v["--lp-accent"]), rgb(v["--lp-accent-text"]))).toBeGreaterThanOrEqual(4.5);
     expect(contrast(rgb(v["--lp-accent"]), card)).toBeGreaterThanOrEqual(2);
     expect(contrast(rgb(v["--lp-focus-line"]), card)).toBeGreaterThanOrEqual(3);
+    expect(contrast(rgb(v["--lp-brand"]), rgb(v["--lp-bg"]))).toBeGreaterThanOrEqual(3);
+  });
+
+  it("logo açık zeminde kendi laciverti, koyu zeminde beyaz", () => {
+    expect(buildPalette(LIGHT).vars["--lp-brand"]).toBe("#02225c");
+    expect(buildPalette(PEACH).vars["--lp-brand"]).toBe("#02225c");
+    expect(buildPalette(DARK).vars["--lp-brand"]).toBe("#ffffff");
   });
 
   it("parlaklığa göre açık ya da koyu kart", () => {

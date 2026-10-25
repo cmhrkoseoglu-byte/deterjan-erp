@@ -1429,3 +1429,21 @@ değiştirme zorunlu, yalnızca admin):
 - **Korunanlar:** iki aşamalı doğrulama adımı (2FA'sı açık kullanıcıda), Caps Lock uyarısı, oturum
   kapandı notu, girişten sonra güvenli dönüş adresi (`safeAppPath`), geçici şifreyle girişte Güvenlik
   sayfası. Backend ve CSP değişmedi (satır içi betik yok; fotoğraf analizi tarayıcıda, dış istek yok).
+
+## 2026-10-25 — Uygulama logosu: Inncos logosu
+
+- **Karar (CUMHUR, "uygulamanın logosu bu olacak"; yerler için "Ekranlar ve simgeler", renk için
+  "Zemine göre", dosya için "Yok, resimden çizin"):** gönderilen INNCOS logosu (yuvarlak köşeli
+  çerçeve içinde "inn" işareti, altında INNCOS yazısı, lacivert #02225c) uygulamanın logosu olur.
+- **Yerler:** giriş ekranının sol üstü (işaret, INNCOS yazısı ve "ERP"), üst çubuk (işaret ve INNCOS
+  yazısı, yazının altında panel adı; telefonda yalnız işaret), tarayıcı sekmesi simgesi ve tablette ana
+  ekran simgesi. Basılı belgeler (analiz sertifikası, irsaliye, satın alma siparişi) ve Django yönetim
+  paneli bu kararın dışında; başlıkları olduğu gibi kalır.
+- **Renk:** renkli üst çubukta ve koyu zeminde beyaz, açık zeminde logonun laciverti. Giriş ekranında
+  fotoğrafın zeminine hangisi daha okunaklıysa o (ikisinden biri her zeminde en az ~4:1). Sekme ve ana
+  ekran simgesinde beyaz zemin üstünde lacivert; koyu sekme çubuğunda da görünür.
+- **Çizim:** vektör dosyası olmadığı için logo resmi (1254 px) izlenerek SVG'ye çevrildi; yeniden
+  çizilen logo orijinalle piksel bazında %99,6 örtüşüyor. Kaynak `components/brand/InncosLogo.tsx`
+  (işaret ve yazı ayrı parçalar, renk `currentColor`). Asıl vektör dosyası gelirse yalnızca bu bileşen
+  ve `public/` altındaki simgeler değişir.
+- **Temizlik:** yalnızca eski INNCOS yazısı için yüklenen Manrope yazı tipi kaldırıldı.

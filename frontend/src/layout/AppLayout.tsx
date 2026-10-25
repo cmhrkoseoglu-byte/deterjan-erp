@@ -18,6 +18,7 @@ import { useAuth } from "../auth/AuthContext";
 import { SECURITY_PATH } from "../auth/paths";
 import { displayName } from "../auth/roles";
 import { tr } from "../i18n/tr";
+import { InncosLogo } from "../components/brand/InncosLogo";
 import { ProblemReportButton } from "../components/problem/ProblemReportButton";
 import { NotificationBell } from "../workflow/NotificationBell";
 import { RealtimeProvider } from "../workflow/realtime";
@@ -76,8 +77,11 @@ export function AppLayout() {
                 aria-label={tr.layout.openMenu}
               />
               <Link to="/" className={classes.brand} aria-label={tr.appName}>
-                <span className={classes.wordmark}>{tr.brand.wordmark}</span>
-                <span className={classes.panel}>{tr.layout.panels[bar.role]}</span>
+                <InncosLogo part="mark" className={classes.logoMark} />
+                <span className={classes.brandText}>
+                  <InncosLogo part="wordmark" className={classes.logoWord} />
+                  <span className={classes.panel}>{tr.layout.panels[bar.role]}</span>
+                </span>
               </Link>
               <HeaderSearch />
             </Group>

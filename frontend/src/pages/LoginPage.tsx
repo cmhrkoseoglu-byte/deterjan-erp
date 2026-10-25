@@ -5,6 +5,7 @@ import { getErrorCode, getErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { safeAppPath } from "../auth/safePath";
 import { LoadingScreen } from "../components/LoadingScreen";
+import { InncosLogo } from "../components/brand/InncosLogo";
 import { tr } from "../i18n/tr";
 import c from "./login/login.module.css";
 import { startSlideshow } from "./login/slideshow";
@@ -198,20 +199,11 @@ function LoginScreen({ next, expired }: { next: string; expired: boolean }) {
       <h1 className={c["login-sr-only"]}>{tr.auth.pageTitle}</h1>
       <Slides />
       <div className={c.brand} aria-hidden="true">
-        {/* Inncos damla ve köpük işareti; rengi fotoğrafın paletinden (--lp-brand). */}
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M11 3C8 7.5 6 10.2 6 13a5 5 0 0 0 10 0c0-2.8-2-5.5-5-10z" />
-          <circle cx="18" cy="6.5" r="1.8" />
-        </svg>
-        <span className={c["brand-text"]}>
-          <span>{tr.brand.wordmark}</span> {tr.brand.tag}
+        {/* Inncos logosu; rengi fotoğrafa göre: açık zeminde lacivert, koyuda beyaz (--lp-brand). */}
+        <InncosLogo part="mark" className={c["brand-mark"]} />
+        <span className={c["brand-name"]}>
+          <InncosLogo part="wordmark" className={c["brand-word"]} />
+          <span className={c["brand-tag"]}>{tr.brand.tag}</span>
         </span>
       </div>
 
