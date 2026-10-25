@@ -1393,3 +1393,18 @@ değiştirme zorunlu, yalnızca admin):
   bildirimindeki sayfa bağlantısı bundan geçer; geçmeyen adres ana sayfaya düşer ya da düz yazı kalır.
 - **Backend:** sorun bildiriminin `page_url` alanı yalnızca uygulama içi yol kabul eder (400
   `validation_error`). Önceden her adres kaydedilip admin ekranında bağlantı olarak gösteriliyordu.
+
+## 2026-10-25 — İki aşamalı doğrulama canlıda geçici olarak zorunlu değil
+
+- **Karar (CUMHUR, "sisteme girişi şimdilik tek adımlı doğrulama yapalım sonrasında iki adımlı
+  doğrulamaya geçeriz"; mevcut kurulum için "Onu da kaldır"):** canlıda giriş şimdilik yalnızca
+  şifreyle. Önceki kararın (admin ve yönetim rollerinde 2FA zorunlu, D-21 kurulumu) yerine geçici.
+- **Uygulama (kod değişmedi):** canlı `.env.prod` içinde `OTP_REQUIRED_ROLES=` (boş); servisler yeniden
+  başlatıldı. `yonetici` hesabındaki doğrulayıcı ve kurtarma kodları sunucu kabuğundan
+  `security.reset_otp` ile silindi (denetim günlüğünde "İki aşamalı doğrulama sıfırlandı"). Öncesinde
+  `.env.prod.yedek-20261025-093733` ve veritabanı yedeği `20261025T093733` alındı.
+- **Etkisi:** kimse 2FA kurmaya zorlanmaz; isteyen kullanıcı Güvenlik sayfasından kendisi açabilir
+  (açan her girişte kod girer). Yönetim paneli girişi de şifreyle.
+- **Geri dönüş (iki adıma geçildiğinde):** `.env.prod` içinde `OTP_REQUIRED_ROLES=admin,yonetim`, ardından
+  `scripts/prod-compose.sh up -d --wait`. Bu rollerdeki kullanıcılar bir sonraki girişte kurulumu yapar
+  (Güvenlik sayfası); kontrol listesi madde 22 ve 25 o zaman yeniden işaretlenir.
