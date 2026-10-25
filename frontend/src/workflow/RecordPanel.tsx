@@ -81,12 +81,15 @@ function renderBody(body: string, mentions: UserBrief[]): ReactNode {
 }
 
 function MentionTextarea({
+  record,
   value,
   onChange,
   onSubmit,
   placeholder,
   autoFocus,
 }: {
+  /** Öneriler yalnızca bu kaydı görebilen kişilerden gelir. */
+  record: RecordRef;
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -101,8 +104,8 @@ function MentionTextarea({
   const partial = TRAILING_MENTION_RE.exec(value.slice(0, caret))?.[1] ?? null;
   const [search] = useDebouncedValue(partial, 200);
   const suggestions = useQuery({
-    queryKey: workflowKeys.mentionable(search ?? ""),
-    queryFn: () => fetchMentionableUsers(search ?? ""),
+    queryKey: workflowKeys.mentionable(record, search ?? ""),
+    queryFn: () => fetchMentionableUsers(search ?? "", record),
     enabled: search !== null,
     staleTime: 60_000,
   });
@@ -266,6 +269,7 @@ function CommentItem({ comment, record }: { comment: Comment; record: RecordRef 
         {editing ? (
           <Stack gap="xs">
             <MentionTextarea
+              record={record}
               value={draft}
               onChange={setDraft}
               onSubmit={() => save.mutate()}
@@ -436,6 +440,7 @@ export function RecordPanel({ contentType, objectId }: Props) {
               </Stack>
             </ScrollArea.Autosize>
             <MentionTextarea
+              record={record}
               value={body}
               onChange={setBody}
               onSubmit={submit}

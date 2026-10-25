@@ -1466,3 +1466,24 @@ değiştirme zorunlu, yalnızca admin):
   kaydını kabul etmez; aksi halde her kullanıcı değişiklik geçmişinden kişisel veriyi okuyabilirdi. KVKK
   envanterine iki satır eklendi.
 - **Modül:** `apps/personnel` (yalnızca core ve masterdata'ya bağlı); CLAUDE.md modül tablosuna eklendi.
+
+## 2026-10-25 — Kayda bağlı yorum, geçmiş ve eklerde erişim denetimi
+
+- **Bulgu:** kayda bağlı yorum, değişiklik geçmişi ve dosya eki uç noktaları kayıt türünü parametre
+  olarak alıyor ve yalnızca girişi denetliyordu. Kaydın kendi ekranında göremeyen kullanıcı (ör.
+  başkasının bildirdiği İSG olayı, yalnızca yönetimin gördüğü maliyet) bu uç noktalardan kaydın
+  geçmişine, yorumlarına ve eklerine ulaşabiliyordu. Lot maliyeti ve satın alma tutarı, kaydı gören ama
+  tutarı göremeyen rollere geçmişte görünüyordu.
+- **Karar (CUMHUR, "Kayıt geçmişi ve yorumlardaki erişim düzeltmesini bu oturumda yap"; plan için "Plan
+  uygun; başla"):** bu uç noktalar kaydın kendi ekranındaki okuma kuralına uyar.
+- **Kural:** `core.records` kayıt defteri. Modüller `AppConfig.ready()` içinde yorum, geçmiş ya da ek
+  açılan türlerini kendi okuma kuralıyla kaydeder: roller, kayıt bazlı süzgeç (olay: bildiren ve
+  yönetim; sorun bildirimi: bildiren ve admin), geçmişte gizli alanlar. Kayıtlı olmayan tür kabul
+  edilmez. Kaydı göremeyene kayıt yokmuş gibi yanıt verilir (`record_not_found`, tek kayıtta 404).
+- **Alan gizleme:** lot maliyeti (`unit_cost`, `cost_is_estimated`) yalnızca yönetime (Karar D-15),
+  satın alma siparişi tutarları satın alma ve yönetime (sipariş ekranıyla aynı). Yalnızca gizli
+  alanları değiştiren geçmiş satırı notuyla birlikte gösterilmez.
+- **@bahsetme:** kaydı göremeyen kişi önerilmez; adı yazılırsa bahsedilmiş sayılmaz, bildirim gitmez.
+- **Tek kural:** olay ve sorun bildirimi görünürlüğü tek fonksiyonda
+  (`hse.services.incidents_visible_to`, `golive.selectors.problem_reports_visible_to`); ekran ve
+  kayda bağlı uç noktalar aynı fonksiyonu kullanır.

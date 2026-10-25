@@ -3,7 +3,8 @@
 Tüm uç noktalar giriş yapmış her kullanıcıya açıktır (her rolün görevi/bildirimi vardır); kimin
 neyi göreceği satır düzeyinde süzülür: bildirimler yalnızca alıcısına, görevler
 `selectors.tasks_visible_to` kuralına göre. Görev üstlenme/tamamlama yetkisi servis katmanında
-denetlenir (yetkisizse 403).
+denetlenir (yetkisizse 403). Kayda bağlı yorum ve geçmiş, kaydın kendi ekranındaki okuma kuralına
+uyar (`core.records`): kaydı göremeyen için kayıt yokmuş gibi davranılır.
 """
 
 from typing import Any
@@ -14,9 +15,11 @@ from django.db.models import QuerySet
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from apps.core import records
 from apps.core.models import AuditLog, User
 from apps.workflow import selectors, services
 from apps.workflow.api.serializers import (
@@ -43,11 +46,18 @@ def _user(request: Request) -> User:
 
 
 def _record_from_query(request: Request) -> tuple[ContentType, int]:
-    """`?content_type=inventory.lot&object_id=5` parametrelerini doğrular."""
+    """`?content_type=inventory.lot&object_id=5` parametrelerini doğrular; kayıt yoksa ya da
+    kullanıcı kaydın kendi ekranında göremiyorsa `record_not_found`."""
     query = RecordQuerySerializer(data=request.query_params)
     query.is_valid(raise_exception=True)
     content_type = selectors.commentable_content_type(query.validated_data["content_type"])
-    return content_type, query.validated_data["object_id"]
+    object_id = query.validated_data["object_id"]
+    selectors.visible_record_for(_user(request), content_type, object_id)
+    return content_type, object_id
+
+
+def _label(content_type: ContentType) -> str:
+    return f"{content_type.app_label}.{content_type.model}"
 
 
 class _ContentTypeFilterMixin:
@@ -182,6 +192,13 @@ class CommentViewSet(
             "mentions", "attachments__created_by"
         )
 
+    def get_object(self) -> Comment:
+        """Tek yorum (okuma, düzenleme): yorumun kaydını göremeyene yorum yokmuş gibi."""
+        comment: Comment = super().get_object()
+        if not records.can_view(self.request.user, comment):
+            raise NotFound("Yorum bulunamadı.")
+        return comment
+
     @extend_schema(parameters=_RECORD_PARAMS)
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return super().list(request, *args, **kwargs)
@@ -208,7 +225,11 @@ class CommentViewSet(
 
 
 class RecordHistoryView(generics.ListAPIView):
-    """Bir kaydın denetim geçmişi (yorum panelindeki "Geçmiş" sekmesi)."""
+    """Bir kaydın denetim geçmişi (yorum panelindeki "Geçmiş" sekmesi).
+
+    Kaydın kendi ekranında bu kullanıcıya gösterilmeyen alanlar (ör. lot maliyeti, sipariş tutarı)
+    geçmişte de gösterilmez; yalnızca bu alanları değiştiren kayıtlar (notlarıyla) hiç listelenmez.
+    """
 
     serializer_class = RecordHistorySerializer
     filter_backends: list = []
@@ -219,11 +240,24 @@ class RecordHistoryView(generics.ListAPIView):
 
     @extend_schema(parameters=_RECORD_PARAMS)
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        return super().get(request, *args, **kwargs)
+        content_type, object_id = _record_from_query(request)
+        hidden = records.hidden_fields_for(request.user, _label(content_type))
+        entries: Any = selectors.record_history(content_type, object_id)
+        if hidden:
+            entries = [e for e in entries if not e.changes or set(e.changes) - hidden]
+        page = self.paginate_queryset(entries)
+        context = {**self.get_serializer_context(), "hidden_fields": hidden}
+        serializer = RecordHistorySerializer(
+            page if page is not None else entries, many=True, context=context
+        )
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
 
 class MentionableUserView(generics.ListAPIView):
-    """@bahsetme önerisi: kullanıcı adı ya da ad soyadla arama, en fazla 10 kişi (sayfasız)."""
+    """@bahsetme önerisi: kullanıcı adı ya da ad soyadla arama, en fazla 10 kişi (sayfasız).
+    `content_type` ve `object_id` verilirse yalnızca o kaydı görebilen kişiler önerilir."""
 
     serializer_class = UserBriefSerializer
     filter_backends: list = []
@@ -232,6 +266,18 @@ class MentionableUserView(generics.ListAPIView):
     def get_queryset(self) -> QuerySet[User]:
         return selectors.mentionable_users(self.request.query_params.get("search", ""))
 
-    @extend_schema(parameters=[OpenApiParameter("search", str)])
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("search", str),
+            OpenApiParameter("content_type", str, required=False),
+            OpenApiParameter("object_id", int, required=False),
+        ]
+    )
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        return super().get(request, *args, **kwargs)
+        search = request.query_params.get("search", "")
+        if not request.query_params.get("content_type"):
+            return super().get(request, *args, **kwargs)
+        content_type, object_id = _record_from_query(request)
+        record = selectors.visible_record_for(_user(request), content_type, object_id)
+        users = selectors.mentionable_users_for(record, search)
+        return Response(UserBriefSerializer(users, many=True).data)

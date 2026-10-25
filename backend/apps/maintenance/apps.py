@@ -8,7 +8,10 @@ class MaintenanceConfig(AppConfig):
 
     def ready(self) -> None:
         from apps.core.attachments import register_attachment_target
-        from apps.maintenance import services  # noqa: F401 - ekipman kancasını kaydeder
+        from apps.core.records import register_record_type
+        from apps.maintenance import services
 
         # Servis raporu, fotoğraf, kalibrasyon sertifikası.
         register_attachment_target("maintenance.maintenanceworkorder")
+        # Yorum, geçmiş, ek: iş emrini bakım ekranlarını açabilen roller okur.
+        register_record_type("maintenance.maintenanceworkorder", roles=services.READ_ROLES)

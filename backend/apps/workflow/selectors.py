@@ -1,44 +1,24 @@
 """İş akışı okuma sorguları ve yetki yardımcıları."""
 
-from django.apps import apps as django_apps
 from django.contrib.contenttypes.models import ContentType
+from django.db import models
 from django.db.models import Q, QuerySet
 
-from apps.core.exceptions import BusinessRuleError
+from apps.core import records
 from apps.core.models import AuditLog, User
 from apps.core.roles import YONETIM
 from apps.workflow.models import Comment, Notification, Task
 
-# Yorum yapılamayan / geçmişi panelde gösterilmeyen kayıt türleri.
-_NOT_COMMENTABLE = frozenset(
-    {
-        "core.user",
-        "core.auditlog",
-        "core.documentsequence",
-        "workflow.notification",
-        "workflow.comment",
-        # Kişisel veri: geçmişi yalnız admin ve yönetime açık personel uç noktasında.
-        "personnel.employee",
-    }
-)
-
 
 def commentable_content_type(label: str) -> ContentType:
-    """`"app_label.model"` → ContentType. Yalnızca proje modülleri (`apps.*`) kabul edilir;
-    kullanıcı, denetim günlüğü, bildirim gibi iç kayıtlar reddedilir."""
-    label = (label or "").strip().lower()
-    app_label, _, model = label.partition(".")
-    invalid = BusinessRuleError("invalid_record_type", "Geçersiz kayıt türü.")
-    if label in _NOT_COMMENTABLE or not model:
-        raise invalid
-    try:
-        app_config = django_apps.get_app_config(app_label)
-        content_type = ContentType.objects.get_by_natural_key(app_label, model)
-    except (LookupError, ContentType.DoesNotExist):
-        raise invalid from None
-    if not app_config.name.startswith("apps.") or content_type.model_class() is None:
-        raise invalid
-    return content_type
+    """`"app_label.model"` → ContentType. Yalnızca yorum ve geçmiş paneli açılabilen, okuma
+    kuralıyla kayıtlı türler kabul edilir (`core.records`); diğerleri `invalid_record_type`."""
+    return records.content_type_for(label, commentable=True)
+
+
+def visible_record_for(user: User, content_type: ContentType, object_id: int) -> models.Model:
+    """Kullanıcının görebildiği kayıt; yoksa ya da göremiyorsa `record_not_found`."""
+    return records.visible_record(user, content_type, object_id)
 
 
 def user_can_act_on_task(user: User, task: Task) -> bool:
@@ -105,3 +85,9 @@ def mentionable_users(search: str = "", limit: int = 10) -> QuerySet[User]:
     if search:
         queryset = queryset.filter(Q(username__istartswith=search) | Q(full_name__icontains=search))
     return queryset.order_by("username")[:limit]
+
+
+def mentionable_users_for(record: models.Model, search: str = "", limit: int = 10) -> list[User]:
+    """Bu kayıtta @bahsedilebilecek kişiler: kaydı kendi ekranında görebilen aktif kullanıcılar."""
+    candidates = mentionable_users(search, limit=limit * 5).prefetch_related("groups")
+    return [user for user in candidates if records.can_view(user, record)][:limit]

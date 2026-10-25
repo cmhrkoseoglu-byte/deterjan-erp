@@ -14,7 +14,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.core import events
+from apps.core import events, records
 from apps.core.audit import log_change
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
@@ -490,24 +490,28 @@ def _notify_mentions(comment: Comment, users: Iterable[User]) -> None:
 def add_comment(actor: User, *, content_type: str, object_id: int, body: str) -> Comment:
     """Kayda yorum ekler; bahsedilen kullanıcılara bildirim gider.
 
-    `content_type` "app_label.model" biçimindedir (ör. "inventory.lot"). Kayıt yoksa ya da
-    yorum yapılabilen bir tür değilse `BusinessRuleError`.
+    `content_type` "app_label.model" biçimindedir (ör. "inventory.lot"). Kayıt yoksa, yazan kaydı
+    kendi ekranında göremiyorsa ya da yorum yapılabilen bir tür değilse `BusinessRuleError`.
+    Kaydı göremeyen kişiden bahsedilmez (bildirim gitmez).
     """
     ct = commentable_content_type(content_type)
-    model_class = ct.model_class()
-    assert model_class is not None
-    target = model_class._base_manager.filter(pk=object_id).first()
-    if target is None:
-        raise BusinessRuleError("record_not_found", "Yorum yapılacak kayıt bulunamadı.")
+    target = records.visible_record(
+        actor, ct, object_id, message="Yorum yapılacak kayıt bulunamadı."
+    )
     body = _clean_body(body)
     with transaction.atomic():
         comment = save_with_audit(
             Comment(content_type=ct, object_id=object_id, author=actor, body=body), actor
         )
-        mentioned = parse_mentions(body)
+        mentioned = _visible_mentions(body, target)
         comment.mentions.set(mentioned)
         _notify_mentions(comment, mentioned)
     return comment
+
+
+def _visible_mentions(body: str, record: Any) -> list[User]:
+    """Metinde bahsedilenlerden kaydı kendi ekranında görebilenler (diğerlerine bildirim gitmez)."""
+    return [user for user in parse_mentions(body) if records.can_view(user, record)]
 
 
 def edit_comment(actor: User, comment: Comment, *, body: str) -> Comment:
@@ -523,7 +527,7 @@ def edit_comment(actor: User, comment: Comment, *, body: str) -> Comment:
         comment.body = body
         comment.edited_at = timezone.now()
         save_with_audit(comment, actor, note="Yorum düzenlendi")
-        mentioned = parse_mentions(body)
+        mentioned = _visible_mentions(body, comment.related_object)
         comment.mentions.set(mentioned)
         _notify_mentions(comment, [u for u in mentioned if u.pk not in previous])
     return comment
