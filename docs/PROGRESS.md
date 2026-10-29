@@ -812,3 +812,17 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   kaldırma kartın geçmişine yazıldı, kaldırılan belge 404; 375 px'te taşma yok.
 - Kılavuz: `yonetim.md` "Personel" bölümü ve "Özlük belgeleri", görsel `yonetim-personel-belgeler.jpg`.
   KVKK envanterine üç satır ve teknik tedbir maddesi eklendi.
+
+## 2026-10-29 — Bildirim bağlantısı (WebSocket) kopmuyor
+
+- Bulgu: canlıda ve yerelde `/ws/notifications/` bağlantısı her ~8 sn'de kopup yeniden bağlanıyordu
+  (`Timeout reading from redis`). channels_redis kanalı Redis'te 5 sn bekleyerek dinler (BZPOPMIN);
+  redis-py 8 bağlantı okuma süresini varsayılan 5 sn yaptığı için her bekleme zaman aşımıyla bitiyordu.
+  Tarayıcı her yeniden bağlanışta görev ve bildirim sorgularını baştan çekiyordu; bağlantı kopukken
+  gelen anlık bildirimin uyarısı görünmüyordu.
+- Düzeltme: `CHANNEL_LAYERS` Redis adresine okuma süresi 15 sn (`socket_timeout`). Önbellek, Celery ve
+  sağlık kontrolü uzun bekleyen komut kullanmadığı için değişmedi.
+- Kanıt: `workflow/tests/test_channel_layer.py` üretim ayarını gerçek Redis'le dener (boş kanalda 7 sn
+  bekleme hatasız; okuma süresi bekleme süresinden uzun); eski ayarla canlıdaki hatanın aynısını verdi.
+  Bütün backend testleri, ruff ve mypy. Yerelde tarayıcıda 7 dakikadan uzun tek bağlantı, zaman aşımı yok;
+  gönderilen bildirim anında geldi.
