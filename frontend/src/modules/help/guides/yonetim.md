@@ -96,6 +96,36 @@ Kimlik fotokopisi, bordro, sözleşme ve diploma kartın **Belgeler** bölümün
 
 > Eski tip nüfus cüzdanında din hanesi bulunur; din özel nitelikli kişisel veridir. Fotokopiyi taramadan önce bu haneyi kapatmanız önerilir. Belgeleri de yalnızca yönetim ve sistem yöneticisi görür.
 
+## Puantaj
+
+**Personel > Puantaj** sekmesinde her ayın puantajı tutulur. Ay takvimden dolu açılır: iş günleri **Ç** (çalıştı), hafta tatilleri **HT**, resmi tatiller **RT**. Yalnızca istisnaları girersiniz.
+
+1. Ayı oklarla seçin; gerekirse birim süzgecini kullanın.
+2. Bir güne basın. **Durum**'u seçin, varsa **Fazla mesai (saat)** ve not girin, **Kaydet**'e basın.
+3. Birkaç günlük izin ya da rapor için **Aralık gir**'e basın: kişiyi, birimi ya da herkesi seçin; başlangıç, bitiş ve durumu girin.
+4. Ay bitince **Ayı onayla**'ya basın. Değiştirilmemiş günler takvimdeki haliyle yazılır ve ay kilitlenir.
+5. **Excel** aylık tabloyu, toplamları ve günlük fazla mesaiyi indirir; bordroya bu dosyayı verin.
+
+![Puantaj](/kilavuz/yonetim-puantaj.jpg)
+
+- Kodlar: **Ç** çalıştı, **HT** hafta tatili, **RT** resmi tatil, **Yİ** yıllık izin, **Mİ** mazeret izni (ücretli), **Üİ** ücretsiz izin, **R** raporlu, **D** devamsız. Kalın kod elle değiştirilmiş gündür.
+- Aralıkla girişte yıllık izin, mazeret izni ve devamsızlık hafta tatili ve resmi tatil günlerine yazılmaz; rapor ve ücretsiz izin her güne yazılır.
+- Fazla mesai yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir. Tatilde çalışan kişinin günü HT ya da RT kalır; çalıştığı saat fazla mesai olarak girilir.
+- Devamsızlık ve fazla mesai ileri bir güne girilemez; izin ve rapor önceden girilebilir.
+- Toplamlarda **Eksik**, ücretsiz izin, rapor ve devamsızlık günlerinin toplamıdır; **FM** fazla mesai saatidir. Excel'de fazla mesai iş günü, hafta tatili ve resmi tatil olarak ayrı sütunlardadır.
+- Onaylı ayda düzeltme gerekirse **Yeniden aç**'a basıp gerekçeyi yazın. Günler onaydaki haliyle kalır.
+
+### Tatil takvimi
+
+1. **Personel > Tatil takvimi**'nde yılı seçin.
+2. **Yılın sabit tatillerini ekle**'ye basın: 1 Ocak, 23 Nisan, 1 Mayıs, 19 Mayıs, 15 Temmuz, 30 Ağustos, 28 Ekim (yarım gün) ve 29 Ekim eklenir.
+3. Ramazan ve Kurban Bayramı günlerini **Tatil ekle** ile girin; arifelerde **Yarım gün**'ü işaretleyin.
+4. **Varsayılan hafta tatili günleri**'nde hafta tatilini seçin (başlangıçta pazar) ve **Kaydet**'e basın.
+
+![Tatil takvimi](/kilavuz/yonetim-tatil-takvimi.jpg)
+
+> Rapor bilgisi sağlık verisidir; puantajı yalnızca yönetim ve sistem yöneticisi görür. Onaylı aya düşen tatil değiştirilemez; önce ay yeniden açılır.
+
 ## Firma bilgileri
 
 Firmanın ticari bilgileri **Ana veriler > Firma bilgileri** sekmesindedir. Sevk irsaliyesinde satıcı, satın alma siparişinde alıcı olarak bu bilgiler basılır; tedarikçiye giden sipariş e-postası da ticari unvanla imzalanır.

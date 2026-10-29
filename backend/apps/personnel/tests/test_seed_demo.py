@@ -1,11 +1,13 @@
+from datetime import timedelta
 from io import StringIO
 
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import override_settings
+from django.utils import timezone
 
-from apps.personnel.models import Employee
+from apps.personnel.models import AttendanceEntry, AttendanceMonth, Employee, PublicHoliday
 
 pytestmark = pytest.mark.django_db
 
@@ -26,6 +28,19 @@ def test_seed_personnel_demo(roles: None) -> None:
     kinds = sorted(profile.documents.values_list("kind", flat=True))
     assert kinds == ["CONTRACT", "DIPLOMA", "ID_COPY", "PAYROLL", "PAYROLL"]
     assert not Employee.objects.exclude(national_id="").exists()
+    # Sabit tatiller ve geçen ayın örnek puantajı (ay açık kalır).
+    today = timezone.localdate()
+    assert PublicHoliday.objects.filter(is_active=True, date__year=today.year).count() == 8
+    last = today.replace(day=1) - timedelta(days=1)
+    entries = AttendanceEntry.objects.filter(date__year=last.year, date__month=last.month)
+    assert set(entries.values_list("status", flat=True)) == {
+        "ANNUAL_LEAVE",
+        "SICK_LEAVE",
+        "WORKED",
+        "ABSENT",
+    }
+    assert entries.filter(overtime_hours__gt=0).count() == 3
+    assert not AttendanceMonth.objects.filter(status="APPROVED").exists()
 
 
 @override_settings(DEBUG=False, TRAINING_MODE=False)

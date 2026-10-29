@@ -28,7 +28,8 @@ import {
 } from "../../api/personnel";
 import { formatDate } from "../../i18n/format";
 import { EmployeeFormModal } from "./EmployeeFormModal";
-import { employeePath, pe, PERSONNEL_KEY } from "./strings";
+import { PersonnelTabs } from "./PersonnelTabs";
+import { employeePath, pe, PERSONNEL_BASE, PERSONNEL_KEY } from "./strings";
 
 type Status = "active" | "left" | "all";
 const STATUS_FILTER: Record<Status, boolean | undefined> = {
@@ -95,6 +96,7 @@ export function PersonnelPage() {
           {pe.newEmployee}
         </Button>
       </Group>
+      <PersonnelTabs active={PERSONNEL_BASE} />
       <Alert color="blue" variant="light" icon={<IconInfoCircle size={18} />}>
         <Text size="sm">{pe.intro}</Text>
       </Alert>

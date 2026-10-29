@@ -944,6 +944,26 @@ const SHOTS = [
       await scrollTo(page, "Mezuniyet");
     },
   },
+  {
+    // Geçen ayın örnek puantajı ve sabit tatiller seed_personnel_demo'dan gelir.
+    name: "yonetim-puantaj",
+    user: "yonetim",
+    run: async (page) => {
+      const last = new Date();
+      last.setDate(0);
+      const month = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, "0")}`;
+      await go(page, `/personel/puantaj?ay=${month}`, "Aralık gir");
+      await page.getByTestId("attendance").waitFor({ timeout: 15000 });
+    },
+  },
+  {
+    name: "yonetim-tatil-takvimi",
+    user: "yonetim",
+    run: async (page) => {
+      await go(page, "/personel/tatiller", "Tatil ekle");
+      await page.getByTestId("holidays").waitFor({ timeout: 15000 });
+    },
+  },
 
   // admin.md
   {

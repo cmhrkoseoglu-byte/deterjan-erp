@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Any
 
 from django.urls import reverse
@@ -5,7 +6,18 @@ from rest_framework import serializers
 
 from apps.core.api.serializers import AuditLogSerializer
 from apps.core.models import User
-from apps.personnel.models import Employee, EmployeeDocument
+from apps.personnel.models import (
+    ATTENDANCE_CODES,
+    AttendanceEntry,
+    AttendanceMonth,
+    AttendanceSettings,
+    AttendanceStatus,
+    Employee,
+    EmployeeDocument,
+    PublicHoliday,
+)
+from apps.personnel.selectors import AttendanceGrid
+from apps.personnel.state import attendance_month_states
 
 
 def _blank(**kwargs: Any) -> serializers.CharField:
@@ -158,3 +170,178 @@ class EmployeeHistorySerializer(AuditLogSerializer):
             "note",
         ]
         read_only_fields = fields
+
+
+# --- puantaj ------------------------------------------------------------------------------------
+
+
+def _hours(**kwargs: Any) -> serializers.DecimalField:
+    return serializers.DecimalField(max_digits=7, decimal_places=2, **kwargs)
+
+
+class AttendanceColumnSerializer(serializers.Serializer):
+    """Tablonun bir günü: hafta tatili mi, resmi tatil mi."""
+
+    date = serializers.DateField()
+    weekday = serializers.IntegerField(help_text="pazartesi 0 … pazar 6")
+    rest = serializers.BooleanField(help_text="varsayılan hafta tatili günü")
+    holiday_name = serializers.CharField()
+    half_day = serializers.BooleanField()
+
+
+class AttendanceCellSerializer(serializers.Serializer):
+    date = serializers.DateField()
+    status = serializers.CharField(help_text="boşsa kişi o gün işte değil")
+    code = serializers.CharField()
+    overtime_hours = _hours()
+    note = serializers.CharField()
+    explicit = serializers.BooleanField(help_text="kayıtlı gün; değilse takvimden varsayılan")
+    editable = serializers.BooleanField()
+
+
+class AttendanceTotalsSerializer(serializers.Serializer):
+    days = serializers.DictField(child=serializers.IntegerField(), help_text="durum → gün")
+    missing_days = serializers.IntegerField(help_text="ücretsiz izin + rapor + devamsız")
+    overtime = serializers.DictField(child=_hours(), help_text="günün durumu → saat")
+    overtime_total = _hours()
+
+
+class AttendanceEmployeeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Employee
+        fields = ["id", "employee_no", "full_name", "department", "is_active"]
+        read_only_fields = fields
+
+
+class AttendanceRowSerializer(serializers.Serializer):
+    employee = AttendanceEmployeeSerializer()
+    cells = AttendanceCellSerializer(many=True)
+    totals = AttendanceTotalsSerializer()
+
+
+class AttendanceMonthSerializer(serializers.ModelSerializer):
+    status_display = serializers.SerializerMethodField()
+    approved_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AttendanceMonth
+        fields = [
+            "id",
+            "number",
+            "year",
+            "month",
+            "status",
+            "status_display",
+            "approved_at",
+            "approved_by_name",
+        ]
+        read_only_fields = fields
+
+    def get_status_display(self, obj: AttendanceMonth) -> str:
+        return attendance_month_states.label(obj.status)
+
+    def get_approved_by_name(self, obj: AttendanceMonth) -> str | None:
+        return str(obj.approved_by) if obj.approved_by_id else None
+
+
+class AttendanceGridSerializer(serializers.Serializer):
+    """Aylık puantaj tablosu. `month_record` ay hiç yazılmadıysa boştur (durum: açık)."""
+
+    year = serializers.IntegerField()
+    month = serializers.IntegerField()
+    period_label = serializers.CharField(source="label")
+    status = serializers.CharField()
+    finished = serializers.BooleanField(help_text="ay bitti (onay ancak ay bitince)")
+    month_record = serializers.SerializerMethodField()
+    days = AttendanceColumnSerializer(many=True)
+    rows = AttendanceRowSerializer(many=True)
+
+    def get_month_record(self, obj: AttendanceGrid) -> dict[str, Any] | None:
+        return AttendanceMonthSerializer(obj.record).data if obj.record else None
+
+
+class AttendanceEntrySerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    code = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AttendanceEntry
+        fields = [
+            "id",
+            "employee",
+            "date",
+            "status",
+            "status_display",
+            "code",
+            "overtime_hours",
+            "note",
+        ]
+        read_only_fields = fields
+
+    def get_code(self, obj: AttendanceEntry) -> str:
+        return ATTENDANCE_CODES.get(obj.status, "")
+
+
+class AttendanceDayInputSerializer(serializers.Serializer):
+    employee = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), label="personel")
+    date = serializers.DateField(label="tarih")
+    status = serializers.ChoiceField(choices=AttendanceStatus.choices, label="durum")
+    overtime_hours = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        min_value=Decimal(0),
+        required=False,
+        default=Decimal(0),
+        label="fazla mesai (saat)",
+    )
+    note = _blank(max_length=200, label="not")
+
+
+class AttendanceRangeSerializer(serializers.Serializer):
+    """Aralık girişi: tek kişi (`employee`), birim (`department`) ya da ikisi de boşsa herkes."""
+
+    employee = serializers.PrimaryKeyRelatedField(
+        queryset=Employee.objects.all(),
+        allow_null=True,
+        required=False,
+        default=None,
+        label="personel",
+    )
+    department = _blank(max_length=64, label="birim")
+    start = serializers.DateField(label="başlangıç")
+    end = serializers.DateField(label="bitiş")
+    status = serializers.ChoiceField(choices=AttendanceStatus.choices, label="durum")
+    note = _blank(max_length=200, label="not")
+
+
+class AttendanceRangeResultSerializer(serializers.Serializer):
+    updated = serializers.IntegerField(help_text="değişen gün sayısı")
+
+
+class AttendanceReopenSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=500, label="gerekçe")
+
+
+class PublicHolidaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PublicHoliday
+        fields = ["id", "date", "name", "half_day"]
+        # Aynı tarihte tek tatil kuralı servis katmanında (Türkçe mesaj, hata kodu).
+        validators: list = []
+
+
+class FixedHolidaysSerializer(serializers.Serializer):
+    year = serializers.IntegerField(min_value=2000, max_value=2100, label="yıl")
+
+
+class AttendanceSettingsSerializer(serializers.ModelSerializer):
+    rest_weekdays = serializers.ListField(
+        child=serializers.IntegerField(min_value=0, max_value=6),
+        allow_empty=True,
+        help_text="hafta tatili günleri: pazartesi 0 … pazar 6",
+    )
+
+    class Meta:
+        model = AttendanceSettings
+        fields = ["rest_weekdays", "updated_at"]
+        read_only_fields = ["updated_at"]

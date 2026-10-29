@@ -1,10 +1,11 @@
 """Personel demo verisi: demo kullanıcıların kartları, sistemi kullanmayan saha çalışanları,
-ayrılmış bir personel ve özlük bilgisi ile belgeleri dolu örnek bir kart. `seed_demo` sonunda
-çağrılır; tekrar çalıştırmak güvenlidir (var olan sicil no ve belgesi olan kart atlanır). Adlar,
-telefonlar ve belgeler örnektir; TC kimlik no girilmez (eğitim ortamına gerçek kişi bilgisi
-girilmez)."""
+ayrılmış bir personel, özlük bilgisi ile belgeleri dolu örnek bir kart ve geçen ayın puantajı.
+`seed_demo` sonunda çağrılır; tekrar çalıştırmak güvenlidir (var olan sicil no, belgesi olan kart ve
+kaydı olan ay atlanır). Adlar, telefonlar ve belgeler örnektir; TC kimlik no girilmez (eğitim
+ortamına gerçek kişi bilgisi girilmez)."""
 
 from datetime import date, timedelta
+from decimal import Decimal
 from io import BytesIO
 from typing import Any
 
@@ -28,8 +29,8 @@ from apps.core.roles import (
     URETIM,
     YONETIM,
 )
-from apps.personnel import services
-from apps.personnel.models import Employee, EmployeeDocument
+from apps.personnel import selectors, services
+from apps.personnel.models import AttendanceEntry, AttendanceStatus, Employee, EmployeeDocument
 
 # demo kullanıcı (rol kodu): (sicil no, birim, görev, kaç gün önce işe girdi)
 USER_CARDS = {
@@ -54,6 +55,8 @@ FIELD_CARDS = [
 LEFT_CARD = ("S-0010", "Demo Eski Operatör", "Üretim", "Karıştırma operatörü", 1500, 90)
 # Kimlik, mezuniyet ve belgeleri dolu örnek kart (kılavuzdaki görsel bu karttan).
 PROFILE_CARD = "S-0012"
+# Geçen ayın puantajında izin, rapor, devamsızlık ve fazla mesaisi olan saha çalışanları.
+ATTENDANCE_CARDS = ("S-0011", "S-0012", "S-0013", "S-0014")
 
 
 def _phone(number: int) -> str:
@@ -161,7 +164,61 @@ def seed(write: Any = print) -> None:
     profile = Employee.objects.filter(employee_no=PROFILE_CARD).first()
     if profile is not None:
         _profile(actor, profile, today)
+    _attendance(actor, today)
     write(f"Personel demo verisi: {created} yeni kart.")
+
+
+def _attendance(actor: User, today: date) -> None:
+    """Bu yılın ve geçen ayın yılının sabit tatilleri; geçen ayın puantajında birkaç izin, rapor,
+    devamsızlık ve fazla mesai. Ay açık bırakılır (eğitimde onaylanabilsin). Geçen ayda kayıt
+    varsa puantaja dokunulmaz."""
+    last = today.replace(day=1) - timedelta(days=1)
+    first = last.replace(day=1)
+    for year in sorted({last.year, today.year}):
+        services.add_fixed_holidays(actor, year)
+    if AttendanceEntry.objects.filter(date__range=(first, last)).exists():
+        return
+    holidays = selectors.holidays_between(first, last)
+    rest = selectors.rest_weekdays()
+    workdays = [
+        day
+        for day in selectors.days_between(first, last)
+        if selectors.default_status(day, holidays.get(day), rest) == AttendanceStatus.WORKED
+    ]
+    people = {
+        person.employee_no: person
+        for person in Employee.objects.filter(employee_no__in=ATTENDANCE_CARDS)
+        if all(selectors.employed_on(person, day) for day in (first, last))
+    }
+    status = AttendanceStatus
+    if "S-0012" in people:
+        services.set_attendance_range(
+            actor,
+            start=workdays[4],
+            end=workdays[6],
+            status=status.ANNUAL_LEAVE,
+            employee=people["S-0012"],
+        )
+    if "S-0013" in people:
+        services.set_attendance_range(
+            actor,
+            start=workdays[10],
+            end=workdays[11],
+            status=status.SICK_LEAVE,
+            employee=people["S-0013"],
+        )
+    if "S-0011" in people:
+        for day in workdays[1:4]:
+            services.set_attendance_day(
+                actor,
+                people["S-0011"],
+                day,
+                status=status.WORKED,
+                overtime_hours=Decimal(2),
+                note="Sipariş yüklemesi",
+            )
+    if "S-0014" in people:
+        services.set_attendance_day(actor, people["S-0014"], workdays[15], status=status.ABSENT)
 
 
 class Command(BaseCommand):

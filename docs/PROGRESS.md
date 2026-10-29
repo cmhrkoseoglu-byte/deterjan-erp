@@ -826,3 +826,29 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   bekleme hatasız; okuma süresi bekleme süresinden uzun); eski ayarla canlıdaki hatanın aynısını verdi.
   Bütün backend testleri, ruff ve mypy. Yerelde tarayıcıda 7 dakikadan uzun tek bağlantı, zaman aşımı yok;
   gönderilen bildirim anında geldi.
+
+## 2026-10-29 — Personel puantajı
+
+- Backend (`apps/personnel`, göç `0003_puantaj`): `AttendanceMonth` (belge `PU-`, durum makinesi
+  `attendance_month` Açık ⇄ Onaylandı), `AttendanceEntry` (kişi + gün tekil; durum, fazla mesai, not;
+  CHECK kısıtları), `PublicHoliday` (ana veri), `AttendanceSettings` (hafta tatili günleri).
+  Seçici `attendance_grid` açık ayda değiştirilmemiş günleri takvimden hesaplar; servisler gün ve
+  aralık girişi, onay (günleri yazar ve kilitler), gerekçeyle yeniden açma, tatiller (sabit tatiller
+  dahil) ve ayarlar. API `/api/v1/personnel/attendance/` (ay tablosu, `days`, `ranges`, `approve`,
+  `reopen`, `export` Excel, `holidays`, `settings`). Olaylar `attendance_month.created/approved/open`.
+  `seed_personnel_demo` sabit tatilleri ve geçen ayın örnek puantajını ekler.
+- Ön yüz: Personel'e sekmeler (Personel kartları, Puantaj, Tatil takvimi). Puantaj: ay seçici, birim
+  süzgeci, renkli kodlu tablo (kişi sütunu sabit, yatay kaydırma), gün ve aralık pencereleri, Excel,
+  onay ve yeniden açma. Tatil takvimi: yıl seçici, sabit tatiller, tatil ekleme/düzenleme/kaldırma,
+  varsayılan hafta tatili günleri.
+- Kanıt: `personnel/tests/test_attendance.py` (takvimden varsayılanlar ve işe giriş/çıkış sınırı,
+  ayar, tatiller, gün kuralları, fazla mesai ve toplamlar, aralık kuralları, onay ve kilit, olaylar,
+  yeniden açma, durum makinesi geçişleri, yetki, API ve Excel), `test_seed_demo.py`,
+  `modules/personnel/attendance.test.tsx`; bütün backend ve ön yüz testleri, ruff, mypy, şema, lint,
+  biçim, tip denetimi ve derleme.
+- Tarayıcıda yönetimle: demo ayında yıllık izin pazarı atladı, rapor pazarı kapsadı; hücreden fazla
+  mesai ve not girildi; ay onaylandı (bütün günler yazıldı, hücreler kilitlendi) ve gerekçeyle yeniden
+  açıldı; Excel indi; bitmemiş ayda onay kapalı; 375 px'te iki sayfada da taşma yok.
+- Kılavuz: `yonetim.md` "Puantaj" ve "Tatil takvimi", `admin.md`; görseller `yonetim-puantaj.jpg`,
+  `yonetim-tatil-takvimi.jpg`. KVKK envanteri, DECISIONS ve CLAUDE.md modül tablosu güncellendi.
+

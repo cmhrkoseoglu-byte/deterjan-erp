@@ -132,6 +132,12 @@ INCIDENT_CLOSED = "incident.closed"
 INCIDENT_CANCELLED = "incident.cancelled"
 STORAGE_LIMIT_EXCEEDED = "hse.storage_limit_exceeded"
 
+# personnel (2026-10-29): aylık puantaj (`attendance_month.<durum>`); payload'da `year`, `month`.
+# Yeniden açmada durum yine `open` olur ve payload'a `reason` eklenir.
+ATTENDANCE_MONTH_CREATED = "attendance_month.created"
+ATTENDANCE_MONTH_APPROVED = "attendance_month.approved"
+ATTENDANCE_MONTH_REOPENED = "attendance_month.open"
+
 # reporting (Faz 4, Adım 4.3). Arka plan rapor işi bitti ya da hata verdi. Payload:
 # `{"model": "reporting.reportjob", "id", "repr", "report_code", "title", "file_format",
 # "row_count", "requested_by_id", "error"}`; bildirim yalnızca raporu isteyen kişiye gider.
