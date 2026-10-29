@@ -1,8 +1,10 @@
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
+from typing import Any
 
 import pytest
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.utils import timezone
 
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
@@ -79,6 +81,68 @@ def test_linking_a_user(manager: User, make_user: Callable[..., User]) -> None:
     assert exc.value.code == "inactive_user"
     assert list(selectors.linkable_users()) == [manager]
     assert set(selectors.linkable_users(card)) == {manager, operator}
+
+
+def test_identity_and_education_fields(manager: User) -> None:
+    card = employee(
+        manager,
+        national_id=" 100 000 001 46 ",
+        birth_date=date(1990, 5, 17),
+        birth_place="  Kadıköy   İstanbul ",
+        education_level=Employee.EducationLevel.BACHELOR,
+        school=" Ege Üniversitesi ",
+        field_of_study="Kimya Mühendisliği",
+        graduation_year=2012,
+    )
+    assert card.national_id == "10000000146" and card.birth_place == "Kadıköy İstanbul"
+    assert card.school == "Ege Üniversitesi" and card.get_education_level_display() == "Lisans"
+    log = AuditLog.objects.get(object_id=card.pk, action=AuditLog.Action.CREATE)
+    # Kartta açık; denetim günlüğünde maskeli (docs/KVKK.md).
+    assert log.changes["national_id"] == [None, "*******0146"]
+    assert log.changes["graduation_year"] == [None, 2012]
+
+    services.update_employee(manager, card, {"national_id": "10000000078"})
+    log = AuditLog.objects.filter(object_id=card.pk).latest("timestamp")
+    assert log.changes["national_id"] == ["*******0146", "*******0078"]
+    assert "10000000078" not in str(log.changes)
+    services.update_employee(manager, card, {"national_id": ""})
+    card.refresh_from_db()
+    assert card.national_id == ""
+
+
+def test_national_id_is_checked_and_unique(manager: User) -> None:
+    for number in ("12345678901", "1000000014", "01000000146", "1000000014A"):
+        with pytest.raises(BusinessRuleError) as exc:
+            employee(manager, national_id=number)
+        assert exc.value.code == "invalid_national_id"
+        assert number not in exc.value.message
+    employee(manager, national_id="")
+    employee(manager, full_name="Can Kaya", national_id="")  # boş no tekrarlanabilir
+    first = employee(manager, full_name="Ece Ak", national_id="10000000146")
+    with pytest.raises(BusinessRuleError) as exc:
+        employee(manager, full_name="Deniz Su", national_id="100 000 00146")
+    assert exc.value.code == "national_id_taken"
+    assert "Ece Ak" in exc.value.message and "10000000146" not in exc.value.message
+    # Aynı kartı kendi numarasıyla kaydetmek sorun değil.
+    services.update_employee(manager, first, {"national_id": "10000000146", "title": "Şef"})
+
+
+def test_birth_date_and_graduation_year_ranges(manager: User) -> None:
+    today = timezone.localdate()
+    cases: list[tuple[dict[str, Any], str]] = [
+        ({"birth_date": today + timedelta(days=1)}, "invalid_birth_date"),
+        ({"birth_date": date(1899, 12, 31)}, "invalid_birth_date"),
+        ({"graduation_year": today.year + 1}, "invalid_graduation_year"),
+        ({"graduation_year": 1939}, "invalid_graduation_year"),
+    ]
+    for data, code in cases:
+        with pytest.raises(BusinessRuleError) as exc:
+            employee(manager, **data)
+        assert exc.value.code == code
+    card = employee(manager, birth_date=today, graduation_year=1940)
+    assert card.birth_date == today and card.graduation_year == 1940
+    with pytest.raises(ValidationError):
+        employee(manager, full_name="Can Kaya", education_level="UNIVERSITY")
 
 
 def test_update_logs_old_and_new_values(manager: User) -> None:

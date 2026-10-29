@@ -790,3 +790,25 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   düzeltildi); planlamada alanlar kapalı, Kaydet düğmesi yok.
 - Kılavuz: `yonetim.md` "Firma bilgileri", görsel `yonetim-firma-bilgileri.jpg`. `KURULUM.md`,
   `.env*.example` ve `KVKK.md` güncellendi.
+
+## 2026-10-29 — Personel özlük bilgileri ve belgeleri
+
+- Backend: `Employee`'ye TC kimlik no (koşullu benzersiz, kontrol haneli, denetim günlüğünde maskeli),
+  doğum tarihi ve yeri, en son mezuniyet (öğrenim durumu, okul, bölüm, yıl). Yeni `EmployeeDocument`
+  (kimlik fotokopisi, bordro, sözleşme, diploma; türe göre tarih alanları CHECK kısıtıyla). Göç
+  `personnel.0002_ozluk_bilgileri_ve_belgeler`. Servisler `add_document`, `remove_document`,
+  `record_document_access`; API `/api/v1/personnel/documents/` (liste `?employee=`, yükleme,
+  `download`, `remove`). `seed_personnel_demo` bir örnek karta özlük bilgisi ve beş örnek belge ekler.
+- Ön yüz: kart düzenleme penceresi bölümlere ayrıldı (Görev, Kimlik bilgileri, İletişim, Mezuniyet).
+  Kartta yeni bölümler ve **Belgeler**: türe göre gruplu liste, sona eren sözleşme işareti, belge ekleme
+  ve nedeniyle kaldırma.
+- Kanıt: `personnel/tests/test_documents.py` (tür kuralları, dosya türü ve boyutu, kaldırma, sıralama,
+  yetki, indirme başlıkları ve geçmiş kaydı, genel ek uç noktasının reddi); `test_services.py` ve
+  `test_api.py` (TC kimlik no kontrolü, tekrarı ve maskelenmesi, tarih aralıkları); `test_seed_demo.py`;
+  ön yüz `personnel.test.tsx`. Bütün backend ve ön yüz testleri, ruff, mypy, lint, biçim, tip denetimi ve
+  derleme.
+- Tarayıcıda yönetimle: hatalı TC kimlik no reddedildi (hata kaydet düğmesinin yanında), boşluklu yazım
+  düzeltildi, geçmişte maskeli; bordro dönemsiz yüklenmedi, dönemle yüklendi; belge açılışı ve nedeniyle
+  kaldırma kartın geçmişine yazıldı, kaldırılan belge 404; 375 px'te taşma yok.
+- Kılavuz: `yonetim.md` "Personel" bölümü ve "Özlük belgeleri", görsel `yonetim-personel-belgeler.jpg`.
+  KVKK envanterine üç satır ve teknik tedbir maddesi eklendi.

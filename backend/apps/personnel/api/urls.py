@@ -7,6 +7,7 @@ app_name = "personnel"
 
 router = SimpleRouter()
 router.register("employees", views.EmployeeViewSet, basename="employee")
+router.register("documents", views.EmployeeDocumentViewSet, basename="document")
 
 urlpatterns = [
     path("departments/", views.DepartmentListView.as_view(), name="departments"),

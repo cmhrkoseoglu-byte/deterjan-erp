@@ -1,9 +1,9 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../api/auth";
 import * as personnelApi from "../../api/personnel";
-import type { Employee } from "../../api/personnel";
+import type { Employee, EmployeeDocument } from "../../api/personnel";
 import * as workflowApi from "../../api/workflow";
 import type { AuditEntry } from "../../api/workflow";
 import { page, userWith } from "../../test/fixtures";
@@ -25,6 +25,14 @@ function employee(extra: Partial<Employee> = {}): Employee {
     phone: "0500 000 00 12",
     emergency_contact_name: "Ali Demir",
     emergency_contact_phone: "0500 000 01 12",
+    national_id: "",
+    birth_date: null,
+    birth_place: "",
+    education_level: "",
+    education_level_display: "",
+    school: "",
+    field_of_study: "",
+    graduation_year: null,
     user: null,
     user_info: null,
     is_active: true,
@@ -36,6 +44,26 @@ function employee(extra: Partial<Employee> = {}): Employee {
 
 const LINKED = { id: 9, username: "dolum1", full_name: "Ayşe Demir", is_active: true };
 
+function document(extra: Partial<EmployeeDocument> = {}): EmployeeDocument {
+  return {
+    id: 1,
+    employee: 5,
+    kind: "PAYROLL",
+    kind_display: "Bordro",
+    original_name: "eylul.pdf",
+    size: 2048,
+    mime_type: "application/pdf",
+    period: "2026-09-01",
+    valid_from: null,
+    valid_until: null,
+    note: "",
+    uploaded_by_name: "Demo Yönetim",
+    created_at: "2026-10-01T10:00:00+03:00",
+    download_url: "/api/v1/personnel/documents/1/download/",
+    ...extra,
+  };
+}
+
 beforeEach(() => {
   vi.mocked(authApi.fetchCsrf).mockResolvedValue();
   vi.mocked(workflowApi.fetchTasks).mockResolvedValue(page([]));
@@ -45,6 +73,7 @@ beforeEach(() => {
   vi.mocked(personnelApi.listDepartments).mockResolvedValue(["Depo", "Dolum"]);
   vi.mocked(personnelApi.listLinkableUsers).mockResolvedValue([LINKED]);
   vi.mocked(personnelApi.fetchEmployeeHistory).mockResolvedValue([]);
+  vi.mocked(personnelApi.listEmployeeDocuments).mockResolvedValue([]);
 });
 
 describe("yetki", () => {
@@ -110,6 +139,22 @@ describe("personel listesi", () => {
     await user.type(within(dialog).getByLabelText(/Ad soyad/), "  Ayşe Demir ");
     await user.type(within(dialog).getByLabelText(/^Birim/), "Dolum");
     await user.type(within(dialog).getByLabelText("Sicil no"), "S-0012");
+    const nationalId = within(dialog).getByLabelText("TC kimlik no");
+    const graduationYear = within(dialog).getByLabelText("Mezuniyet yılı");
+    await user.type(nationalId, "12345");
+    await user.type(graduationYear, "12");
+    await user.click(within(dialog).getByRole("button", { name: "Kartı aç" }));
+    expect(within(dialog).getByText("11 haneli bir sayı olmalı.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Dört haneli bir yıl yazın.")).toBeInTheDocument();
+    expect(personnelApi.createEmployee).not.toHaveBeenCalled();
+
+    await user.clear(nationalId);
+    await user.type(nationalId, "100 000 001 46");
+    await user.clear(graduationYear);
+    await user.type(graduationYear, "2012");
+    await user.type(within(dialog).getByLabelText("Doğum yeri"), "İzmir");
+    await user.click(within(dialog).getByRole("textbox", { name: "Öğrenim durumu" }));
+    await user.click(await screen.findByRole("option", { name: "Lisans" }));
     await user.click(within(dialog).getByRole("button", { name: "Kartı aç" }));
     await waitFor(() =>
       expect(personnelApi.createEmployee).toHaveBeenCalledWith({
@@ -121,6 +166,13 @@ describe("personel listesi", () => {
         phone: "",
         emergency_contact_name: "",
         emergency_contact_phone: "",
+        national_id: "10000000146",
+        birth_date: null,
+        birth_place: "İzmir",
+        education_level: "BACHELOR",
+        school: "",
+        field_of_study: "",
+        graduation_year: 2012,
         user: null,
       }),
     );
@@ -132,7 +184,19 @@ describe("personel listesi", () => {
 describe("personel kartı", () => {
   it("bilgileri ve Türkçe alan adlarıyla geçmişi gösterir", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
-    vi.mocked(personnelApi.getEmployee).mockResolvedValue(employee({ user_info: LINKED, user: 9 }));
+    vi.mocked(personnelApi.getEmployee).mockResolvedValue(
+      employee({
+        user_info: LINKED,
+        user: 9,
+        national_id: "10000000146",
+        birth_date: "1990-05-17",
+        birth_place: "İzmir",
+        education_level: "BACHELOR",
+        education_level_display: "Lisans",
+        school: "Ege Üniversitesi",
+        graduation_year: 2012,
+      }),
+    );
     const entry: AuditEntry = {
       id: 1,
       timestamp: "2026-10-25T11:00:00+03:00",
@@ -140,7 +204,12 @@ describe("personel kartı", () => {
       actor_name: "Demo Yönetim",
       action: "update",
       action_label: "Güncelleme",
-      changes: { hire_date: ["2024-02-01", "2024-03-01"], user: [null, 9] },
+      changes: {
+        hire_date: ["2024-02-01", "2024-03-01"],
+        user: [null, 9],
+        national_id: [null, "*******0146"],
+        education_level: ["HIGH_SCHOOL", "BACHELOR"],
+      },
       note: "",
     };
     vi.mocked(personnelApi.fetchEmployeeHistory).mockResolvedValue([entry]);
@@ -152,6 +221,14 @@ describe("personel kartı", () => {
       await screen.findByText("İşe giriş tarihi: 01.02.2024 → 01.03.2024"),
     ).toBeInTheDocument();
     expect(screen.getByText("Sistem kullanıcısı: — → dolum1")).toBeInTheDocument();
+    // Kartta TC kimlik no açık, geçmişte maskeli.
+    expect(screen.getByText("10000000146")).toBeInTheDocument();
+    expect(screen.getByText("TC kimlik no: — → *******0146")).toBeInTheDocument();
+    expect(screen.getByText("17.05.1990")).toBeInTheDocument();
+    expect(screen.getByText("Lisans")).toBeInTheDocument();
+    expect(screen.getByText("Ege Üniversitesi")).toBeInTheDocument();
+    expect(screen.getByText("Öğrenim durumu: Lise → Lisans")).toBeInTheDocument();
+    expect(await screen.findByText("Henüz belge eklenmedi.")).toBeInTheDocument();
   });
 
   it("işten ayrılışı kaydeder ve açık hesabı hatırlatır", async () => {
@@ -193,5 +270,140 @@ describe("personel kartı", () => {
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Yeniden işe başladı" }));
     await waitFor(() => expect(personnelApi.reinstateEmployee).toHaveBeenCalledWith(5));
+  });
+});
+
+describe("özlük belgeleri", () => {
+  beforeEach(() => {
+    vi.mocked(personnelApi.uploadEmployeeDocument).mockClear();
+    vi.mocked(personnelApi.removeEmployeeDocument).mockClear();
+  });
+
+  it("türüne göre gruplar; sona eren sözleşmeyi işaretler", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    vi.mocked(personnelApi.getEmployee).mockResolvedValue(employee());
+    vi.mocked(personnelApi.listEmployeeDocuments).mockResolvedValue([
+      document(),
+      document({
+        id: 2,
+        kind: "CONTRACT",
+        kind_display: "Sözleşme",
+        original_name: "sozlesme-2024.pdf",
+        period: null,
+        valid_from: "2024-03-01",
+        valid_until: "2025-02-28",
+        download_url: "/api/v1/personnel/documents/2/download/",
+      }),
+      document({
+        id: 3,
+        kind: "CONTRACT",
+        kind_display: "Sözleşme",
+        original_name: "sozlesme-2025.pdf",
+        period: null,
+        valid_from: "2025-03-01",
+        download_url: "/api/v1/personnel/documents/3/download/",
+      }),
+    ]);
+    renderApp("/personel/5");
+    const payrolls = await screen.findByTestId("documents-PAYROLL");
+    expect(within(payrolls).getByText("Bordro (1)")).toBeInTheDocument();
+    expect(within(payrolls).getByText("Eylül 2026")).toBeInTheDocument();
+    expect(within(payrolls).getByRole("link", { name: "eylul.pdf" })).toHaveAttribute(
+      "href",
+      "/api/v1/personnel/documents/1/download/",
+    );
+    const contracts = screen.getByTestId("documents-CONTRACT");
+    expect(within(contracts).getByText("Sözleşme (2)")).toBeInTheDocument();
+    expect(within(contracts).getByText("01.03.2024 – 28.02.2025")).toBeInTheDocument();
+    expect(within(contracts).getByText("01.03.2025 – belirsiz süreli")).toBeInTheDocument();
+    expect(within(contracts).getAllByText("Sona erdi")).toHaveLength(1);
+    expect(screen.queryByTestId("documents-ID_COPY")).not.toBeInTheDocument();
+  });
+
+  it("bordroyu dönemiyle yükler; dosya ve dönem zorunlu", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    vi.mocked(personnelApi.getEmployee).mockResolvedValue(employee());
+    vi.mocked(personnelApi.uploadEmployeeDocument).mockResolvedValue(document());
+    renderApp("/personel/5");
+    await user.click(await screen.findByRole("button", { name: "Belge ekle" }));
+    const dialog = await screen.findByRole("dialog", { name: "Ayşe Demir · belge ekle" });
+    await user.click(within(dialog).getByRole("textbox", { name: "Belge türü" }));
+    await user.click(await screen.findByRole("option", { name: "Bordro" }));
+    await user.click(within(dialog).getByRole("button", { name: "Yükle" }));
+    expect(within(dialog).getAllByText("Bu alan zorunlu.")).toHaveLength(2);
+
+    expect(personnelApi.uploadEmployeeDocument).not.toHaveBeenCalled();
+
+    const file = new File(["%PDF-1.4"], "ekim.pdf", { type: "application/pdf" });
+    await userEvent.upload(dialog.querySelector("input[type=file]") as HTMLInputElement, file);
+    fireEvent.change(within(dialog).getByLabelText(/Dönem/), { target: { value: "2026-10" } });
+    await user.type(within(dialog).getByLabelText(/Not/), "Ekim bordrosu");
+    await user.click(within(dialog).getByRole("button", { name: "Yükle" }));
+    await waitFor(() =>
+      expect(personnelApi.uploadEmployeeDocument).toHaveBeenCalledWith(5, {
+        kind: "PAYROLL",
+        file,
+        period: "2026-10",
+        note: "Ekim bordrosu",
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("sözleşmede bitiş başlangıçtan önce olamaz", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    vi.mocked(personnelApi.getEmployee).mockResolvedValue(employee());
+    vi.mocked(personnelApi.uploadEmployeeDocument).mockResolvedValue(document());
+    renderApp("/personel/5");
+    await user.click(await screen.findByRole("button", { name: "Belge ekle" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("textbox", { name: "Belge türü" }));
+    await user.click(await screen.findByRole("option", { name: "Sözleşme" }));
+    const file = new File(["%PDF-1.4"], "sozlesme.pdf", { type: "application/pdf" });
+    await userEvent.upload(dialog.querySelector("input[type=file]") as HTMLInputElement, file);
+    await user.type(within(dialog).getByLabelText(/Başlangıç tarihi/), "2025-03-01");
+    await user.type(within(dialog).getByLabelText(/Bitiş tarihi/), "2025-02-28");
+    await user.click(within(dialog).getByRole("button", { name: "Yükle" }));
+    expect(within(dialog).getByText("Bitiş tarihi başlangıçtan önce olamaz.")).toBeInTheDocument();
+    expect(personnelApi.uploadEmployeeDocument).not.toHaveBeenCalled();
+
+    await user.clear(within(dialog).getByLabelText(/Bitiş tarihi/));
+    await user.click(within(dialog).getByRole("button", { name: "Yükle" }));
+    await waitFor(() =>
+      expect(personnelApi.uploadEmployeeDocument).toHaveBeenCalledWith(5, {
+        kind: "CONTRACT",
+        file,
+        valid_from: "2025-03-01",
+      }),
+    );
+  });
+
+  it("belgeyi nedeniyle kaldırır", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    vi.mocked(personnelApi.getEmployee).mockResolvedValue(employee());
+    vi.mocked(personnelApi.listEmployeeDocuments).mockResolvedValue([document()]);
+    vi.mocked(personnelApi.removeEmployeeDocument).mockResolvedValue(document());
+    renderApp("/personel/5");
+    await user.click(await screen.findByRole("button", { name: "Kaldır: eylul.pdf" }));
+    const dialog = await screen.findByRole("dialog", { name: "Belgeyi kaldır" });
+    expect(within(dialog).getByText("Bordro · eylul.pdf")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Kaldır" }));
+    expect(within(dialog).getByText("Bu alan zorunlu.")).toBeInTheDocument();
+    expect(personnelApi.removeEmployeeDocument).not.toHaveBeenCalled();
+
+    await user.type(within(dialog).getByLabelText(/Kaldırma nedeni/), "  Yanlış ay ");
+    const loads = vi.mocked(personnelApi.listEmployeeDocuments).mock.calls.length;
+    await user.click(within(dialog).getByRole("button", { name: "Kaldır" }));
+    await waitFor(() =>
+      expect(personnelApi.removeEmployeeDocument).toHaveBeenCalledWith(1, "Yanlış ay"),
+    );
+    await waitFor(() =>
+      expect(vi.mocked(personnelApi.listEmployeeDocuments).mock.calls.length).toBeGreaterThan(
+        loads,
+      ),
+    );
   });
 });

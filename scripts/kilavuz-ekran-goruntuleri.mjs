@@ -934,6 +934,16 @@ const SHOTS = [
       await page.getByTestId("employees").waitFor({ timeout: 15000 });
     },
   },
+  {
+    // Özlük bilgisi ve belgeleri dolu örnek kart (S-0012) seed_personnel_demo'dan gelir.
+    name: "yonetim-personel-belgeler",
+    user: "yonetim",
+    run: async (page) => {
+      await openRow(page, "/personel", "S-0012", /\/personel\/\d+/);
+      await page.getByTestId("documents-PAYROLL").waitFor({ timeout: 15000 });
+      await scrollTo(page, "Mezuniyet");
+    },
+  },
 
   // admin.md
   {

@@ -20,6 +20,12 @@ def test_seed_personnel_demo(roles: None) -> None:
     assert Employee.objects.get(user__username="depo").department == "Depo"
     former = Employee.objects.get(employee_no="S-0010")
     assert not former.is_active and former.termination_date is not None
+    # Özlük bilgisi ve belgesi dolu örnek kart; TC kimlik no demo verisine girilmez.
+    profile = Employee.objects.get(employee_no="S-0012")
+    assert profile.school and profile.graduation_year and profile.national_id == ""
+    kinds = sorted(profile.documents.values_list("kind", flat=True))
+    assert kinds == ["CONTRACT", "DIPLOMA", "ID_COPY", "PAYROLL", "PAYROLL"]
+    assert not Employee.objects.exclude(national_id="").exists()
 
 
 @override_settings(DEBUG=False, TRAINING_MODE=False)

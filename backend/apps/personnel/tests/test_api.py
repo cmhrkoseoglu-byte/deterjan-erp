@@ -76,6 +76,44 @@ def test_validation_errors_have_codes(manager: APIClient) -> None:
     assert response.status_code == 400 and response.json()["code"] == "employee_no_taken"
 
 
+def test_identity_and_education_fields(manager: APIClient) -> None:
+    response = manager.post(
+        f"{BASE}/employees/",
+        {
+            "full_name": "Ayşe Demir",
+            "department": "Laboratuvar",
+            "national_id": "100 000 001 46",
+            "birth_date": "1990-05-17",
+            "birth_place": "İzmir",
+            "education_level": "BACHELOR",
+            "school": "Ege Üniversitesi",
+            "field_of_study": "Kimya",
+            "graduation_year": 2012,
+        },
+    )
+    assert response.status_code == 201, response.json()
+    card = response.json()
+    # Yönetim kartta numaranın tamamını görür; günlükte maskelidir.
+    assert card["national_id"] == "10000000146"
+    assert card["education_level_display"] == "Lisans" and card["graduation_year"] == 2012
+    url = f"{BASE}/employees/{card['id']}/"
+    body = {"education_level": "MASTER", "graduation_year": None}
+    response = manager.patch(url, body, format="json")
+    assert response.status_code == 200, response.json()
+    assert response.json()["education_level_display"] == "Yüksek lisans"
+    assert response.json()["graduation_year"] is None
+    assert response.json()["national_id"] == "10000000146"  # gönderilmeyen alan değişmez
+    history = manager.get(f"{url}history/").json()
+    assert history[-1]["changes"]["national_id"] == [None, "*******0146"]
+
+    response = manager.patch(url, {"national_id": "12345678901"})
+    assert response.status_code == 400 and response.json()["code"] == "invalid_national_id"
+    response = manager.patch(url, {"education_level": "UNIVERSITY"})
+    assert response.status_code == 400 and response.json()["code"] == "validation_error"
+    response = manager.patch(url, {"birth_date": "2999-01-01"})
+    assert response.status_code == 400 and response.json()["code"] == "invalid_birth_date"
+
+
 def test_update_terminate_reinstate_and_history(manager: APIClient, manager_user: User) -> None:
     card = employee(manager_user, hire_date=None)
     url = f"{BASE}/employees/{card.pk}/"

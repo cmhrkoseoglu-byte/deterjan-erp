@@ -31,12 +31,14 @@ import {
   getEmployee,
   reinstateEmployee,
   terminateEmployee,
+  type EducationLevel,
   type Employee,
 } from "../../api/personnel";
 import type { AuditEntry } from "../../api/workflow";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { Info } from "../inventory/shared";
+import { EmployeeDocuments } from "./EmployeeDocuments";
 import { EmployeeFormModal } from "./EmployeeFormModal";
 import { EmployeeStatus } from "./PersonnelPage";
 import { PERSONNEL_BASE, pe, PERSONNEL_KEY } from "./strings";
@@ -49,12 +51,16 @@ function today(): string {
   return local.toISOString().slice(0, 10);
 }
 
-/** Geçmişteki değer: tarih gün.ay.yıl, evet/hayır, bağlı kullanıcı adı. */
+/** Geçmişteki değer: tarih gün.ay.yıl, evet/hayır, bağlı kullanıcı adı, öğrenim durumu adı.
+ * TC kimlik no günlükte maskelidir (`*******0146`). */
 function formatValue(field: string, value: unknown, employee: Employee): string {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "boolean") return value ? pe.yes : pe.no;
   if (field === "user") {
     return value === employee.user_info?.id ? employee.user_info.username : `#${String(value)}`;
+  }
+  if (field === "education_level") {
+    return pe.educationLevels[value as EducationLevel] ?? String(value);
   }
   if (typeof value === "string" && ISO_DATE.test(value)) return formatDate(value);
   return String(value);
@@ -278,6 +284,18 @@ export function EmployeePage() {
               )}
             </Info>
           </SimpleGrid>
+          <Text fw={600}>{pe.sectionIdentity}</Text>
+          <SimpleGrid cols={{ base: 1, xs: 2, sm: 3 }}>
+            <Info label={pe.nationalId}>
+              <Text size="sm">{employee.national_id}</Text>
+            </Info>
+            <Info label={pe.birthDate}>
+              <Text size="sm">{formatDate(employee.birth_date)}</Text>
+            </Info>
+            <Info label={pe.birthPlace}>
+              <Text size="sm">{employee.birth_place}</Text>
+            </Info>
+          </SimpleGrid>
           <Text fw={600}>{pe.sectionContact}</Text>
           <SimpleGrid cols={{ base: 1, xs: 2, sm: 3 }}>
             <Info label={pe.phone}>
@@ -290,8 +308,24 @@ export function EmployeePage() {
               <Text size="sm">{employee.emergency_contact_phone}</Text>
             </Info>
           </SimpleGrid>
+          <Text fw={600}>{pe.sectionEducation}</Text>
+          <SimpleGrid cols={{ base: 1, xs: 2, sm: 3 }}>
+            <Info label={pe.educationLevel}>
+              <Text size="sm">{employee.education_level_display}</Text>
+            </Info>
+            <Info label={pe.school}>
+              <Text size="sm">{employee.school}</Text>
+            </Info>
+            <Info label={pe.fieldOfStudy}>
+              <Text size="sm">{employee.field_of_study}</Text>
+            </Info>
+            <Info label={pe.graduationYear}>
+              <Text size="sm">{employee.graduation_year ?? ""}</Text>
+            </Info>
+          </SimpleGrid>
         </Stack>
       </Paper>
+      <EmployeeDocuments employee={employee} />
       <Paper withBorder p="md" radius="md">
         <Stack gap="md">
           <Text fw={600}>{pe.history}</Text>

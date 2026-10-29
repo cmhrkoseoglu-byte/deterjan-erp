@@ -1,10 +1,10 @@
 """Personel okuma sorguları."""
 
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Q, QuerySet
+from django.db.models import F, Q, QuerySet
 
 from apps.core.models import AuditLog, User
-from apps.personnel.models import Employee
+from apps.personnel.models import Employee, EmployeeDocument
 
 
 def fold(text: str) -> str:
@@ -31,6 +31,21 @@ def employee_history(employee: Employee) -> QuerySet[AuditLog]:
         AuditLog.objects.filter(content_type=content_type, object_id=employee.pk)
         .select_related("actor")
         .order_by("-timestamp", "-id")
+    )
+
+
+def employee_documents(employee: Employee) -> QuerySet[EmployeeDocument]:
+    """Kartın kaldırılmamış belgeleri: bordrolar dönemine, sözleşmeler başlangıcına, diğerleri
+    eklenme zamanına göre en yenisi önce."""
+    return (
+        employee.documents.filter(is_active=True)
+        .select_related("created_by")
+        .order_by(
+            F("period").desc(nulls_last=True),
+            F("valid_from").desc(nulls_last=True),
+            "-created_at",
+            "-id",
+        )
     )
 
 
