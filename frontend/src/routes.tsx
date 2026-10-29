@@ -20,7 +20,9 @@ import { RunPage } from "./modules/filling/RunPage";
 import { SpecPage } from "./modules/filling/SpecPage";
 import { HsePage } from "./modules/hse/HsePage";
 import { IncidentPage } from "./modules/hse/IncidentPage";
+import { AttendancePage } from "./modules/personnel/AttendancePage";
 import { EmployeePage } from "./modules/personnel/EmployeePage";
+import { HolidaysPage } from "./modules/personnel/HolidaysPage";
 import { PersonnelPage } from "./modules/personnel/PersonnelPage";
 import { MaintenancePage } from "./modules/maintenance/MaintenancePage";
 import { WorkOrderPage } from "./modules/maintenance/WorkOrderPage";
@@ -183,6 +185,8 @@ const pageRoutes: RouteObject[] = [
   { path: "isg/:tab?", element: hsePage(<HsePage />) },
   // Personel: kişisel veri, yalnızca yönetim ve admin (backend de aynı rolle süzer).
   { path: "personel", element: personnelPage(<PersonnelPage />) },
+  { path: "personel/puantaj", element: personnelPage(<AttendancePage />) },
+  { path: "personel/tatiller", element: personnelPage(<HolidaysPage />) },
   { path: "personel/:employeeId", element: personnelPage(<EmployeePage />) },
   // Panolar ve raporlar: menü herkese açık; panolar ve raporlar rolle daralır (backend listesi).
   { path: "raporlar/:tab?", element: <ReportingPage /> },

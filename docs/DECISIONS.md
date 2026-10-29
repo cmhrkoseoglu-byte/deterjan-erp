@@ -1528,3 +1528,33 @@ değiştirme zorunlu, yalnızca admin):
   listede küçük resim gösterilmez (her gösterim bir açılış sayılırdı).
 - **Açık konular:** belgelerin ve ayrılan personelin özlük bilgilerinin saklama süresi ile eski tip nüfus
   cüzdanındaki din hanesi (özel nitelikli veri) firma İK ve hukuk birimiyle netleşecek (docs/KVKK.md).
+
+## 2026-10-29 — Personel puantajı
+
+- **Karar (CUMHUR, "Uygulamaya personel puantaj sistemi ekleyelim"; kapsam için "Durum ve fazla
+  mesai", yetki için "Admin ve yönetim", ay kapama için "Onayla kilitlensin", tatiller için
+  "Takvimden otomatik"; plan için "Plan uygun; başla"):** personel bölümüne aylık puantaj ve tatil
+  takvimi eklenir (`apps/personnel`; yeni modül açılmadı).
+- **Günlük durumlar:** Ç çalıştı, HT hafta tatili, RT resmi tatil, Yİ yıllık izin, Mİ mazeret izni
+  (ücretli), Üİ ücretsiz izin, R raporlu, D devamsız. Fazla mesai saat olarak (0–24) yalnızca Ç, HT
+  ve RT günlerine girilir; tatilde çalışan kişinin günü HT/RT kalır, çalıştığı saat fazla mesaidir.
+  Devamsızlık ve fazla mesai ileri bir güne girilemez; izin ve rapor önceden girilebilir.
+- **Varsayılan günler:** ay takvimden dolu açılır: tam gün resmi tatil RT (hafta tatiline denk gelse
+  de), varsayılan hafta tatili günü HT (başlangıçta pazar; ayardan değişir), diğer günler (yarım gün
+  tatil dahil) Ç. Kişinin işe girişinden önceki ve çıkışından sonraki günler boştur. Açık ayda
+  yalnızca değiştirilen günler saklanır; takvim ya da ayar değişirse diğer günler yeniden hesaplanır.
+- **Aralık girişi:** kişi, birim ya da herkes. Yıllık izin, mazeret izni ve devamsızlık HT ve RT
+  günlerine yazılmaz (İş Kanunu m.56); rapor ve ücretsiz izin her takvim gününe yazılır.
+- **Onay:** ay bitmeden onaylanamaz. Onayda değiştirilmemiş günler varsayılan durumlarıyla yazılır
+  (toplu, ayın denetim kaydında sayısıyla) ve ay kilitlenir; gün, aralık ve o aya düşen tatil
+  değişmez. Yeniden açma gerekçeyle yapılır; günler onaydaki haliyle kalır. Ay `PU-` numaralı belge,
+  durum makinesi Açık ⇄ Onaylandı; geçişler olay yayınlar (`attendance_month.approved`/`.open`).
+- **Toplamlar:** durum başına gün, eksik gün (Üİ + R + D), fazla mesai iş günü / hafta tatili /
+  resmi tatil ayrı. Ücret ve bordro hesaplanmaz; Excel bordroyu hazırlayana verilir.
+- **Tatil takvimi:** sabit tatiller (2429 sayılı Kanun) düğmeyle eklenir; Ramazan ve Kurban Bayramı
+  günleri her yıl elle girilir, arifeler yarım gün. Tatil silinmez, takvimden kaldırılır.
+- **Kapsam dışı:** giriş-çıkış saatleri, vardiya planı, yıllık izin hakkı ve bakiyesi, ücret hesabı,
+  birim sorumlusu girişi, yıllık 270 saat fazla mesai sınırı uyarısı.
+- **CLAUDE.md:** modül tablosunda `personnel` satırı "özlük bilgileri ve belgeleri, puantaj" ile
+  güncellendi (planla onaylandı).
+

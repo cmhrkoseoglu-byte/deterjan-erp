@@ -1,7 +1,10 @@
 // Personel ekranlarının metinleri (CLAUDE.md §6: arayüz Türkçe).
+import type { AttendanceStatus } from "../../api/attendance";
 import type { EducationLevel, EmployeeDocumentKind } from "../../api/personnel";
 
 export const PERSONNEL_BASE = "/personel";
+export const ATTENDANCE_BASE = `${PERSONNEL_BASE}/puantaj`;
+export const HOLIDAYS_BASE = `${PERSONNEL_BASE}/tatiller`;
 
 export const employeePath = (id: number) => `${PERSONNEL_BASE}/${id}`;
 
@@ -163,4 +166,124 @@ export const pe = {
   } as Record<string, string>,
   yes: "Evet",
   no: "Hayır",
+};
+
+/** Puantaj ve tatil takvimi metinleri. */
+export const at = {
+  tabs: { cards: "Personel kartları", attendance: "Puantaj", holidays: "Tatil takvimi" },
+  intro:
+    "Ay takvimden dolu açılır: iş günleri “Ç”, hafta tatilleri “HT”, resmi tatiller “RT”. Yalnızca izin, rapor, devamsızlık ve fazla mesaiyi girin. Ay bitince onaylayın; onaylı ay değiştirilemez.",
+  previousMonth: "Önceki ay",
+  nextMonth: "Sonraki ay",
+  statusOpen: "Açık",
+  statusApproved: "Onaylandı",
+  approvedBy: (name: string, when: string) => `Onaylayan: ${name} · ${when}`,
+  rangeEntry: "Aralık gir",
+  excel: "Excel",
+  approve: "Ayı onayla",
+  reopen: "Yeniden aç",
+  notFinished: "Ay bitmeden onaylanamaz.",
+  confirmApprove: (label: string) =>
+    `${label} puantajı onaylansın mı? Değiştirilmemiş günler takvimdeki haliyle yazılır ve ay kilitlenir; düzeltme için ay gerekçeyle yeniden açılır.`,
+  approved: (label: string) => `${label} puantajı onaylandı.`,
+  reopened: (label: string) => `${label} puantajı yeniden açıldı.`,
+  reopenTitle: (label: string) => `${label} · yeniden aç`,
+  reopenIntro:
+    "Onaylı puantaj düzeltme için açılır; günler onaydaki haliyle kalır. Gerekçe geçmişe yazılır.",
+  reason: "Gerekçe",
+  empty: "Bu ayda işte olan personel yok.",
+  person: "Personel",
+  weekdays: ["Pt", "Sa", "Ça", "Pe", "Cu", "Ct", "Pz"],
+  weekdayNames: ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"],
+  months: [
+    "Ocak",
+    "Şubat",
+    "Mart",
+    "Nisan",
+    "Mayıs",
+    "Haziran",
+    "Temmuz",
+    "Ağustos",
+    "Eylül",
+    "Ekim",
+    "Kasım",
+    "Aralık",
+  ],
+  codes: {
+    WORKED: "Ç",
+    WEEKLY_REST: "HT",
+    PUBLIC_HOLIDAY: "RT",
+    ANNUAL_LEAVE: "Yİ",
+    PAID_LEAVE: "Mİ",
+    UNPAID_LEAVE: "Üİ",
+    SICK_LEAVE: "R",
+    ABSENT: "D",
+  } as Record<AttendanceStatus, string>,
+  labels: {
+    WORKED: "Çalıştı",
+    WEEKLY_REST: "Hafta tatili",
+    PUBLIC_HOLIDAY: "Resmi tatil",
+    ANNUAL_LEAVE: "Yıllık izin",
+    PAID_LEAVE: "Mazeret izni (ücretli)",
+    UNPAID_LEAVE: "Ücretsiz izin",
+    SICK_LEAVE: "Raporlu",
+    ABSENT: "Devamsız",
+  } as Record<AttendanceStatus, string>,
+  missing: "Eksik",
+  missingHelp: "Eksik gün: ücretsiz izin + rapor + devamsız",
+  overtimeShort: "FM",
+  overtimeTotalHelp: "Fazla mesai toplamı (saat)",
+  halfDay: "yarım gün",
+  halfDayLegend: "½ yarım gün tatil",
+  dayTitle: (name: string, day: string) => `${name} · ${day}`,
+  dayStatus: "Durum",
+  overtime: "Fazla mesai (saat)",
+  overtimeHelp: "Yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir.",
+  overtimeInvalid: "0 ile 24 arasında bir sayı yazın (ör. 2,5).",
+  note: "Not (isteğe bağlı)",
+  calendarDefault: (label: string) => `Takvime göre: ${label}`,
+  holidayOn: (name: string) => `Resmi tatil: ${name}`,
+  daySaved: "Gün kaydedildi.",
+  rangeTitle: "Aralık gir",
+  scope: "Kimler",
+  scopePerson: "Kişi",
+  scopeDepartment: "Birim",
+  scopeAll: "Herkes",
+  start: "Başlangıç",
+  end: "Bitiş",
+  rangeRule:
+    "Yıllık izin, mazeret izni ve devamsızlık hafta tatili ve resmi tatil günlerine yazılmaz; rapor ve ücretsiz izin her güne yazılır. Kişinin işte olmadığı günler atlanır.",
+  rangeApplied: (count: number) => (count === 0 ? "Değişen gün yok." : `${count} gün güncellendi.`),
+  apply: "Uygula",
+  endBeforeStart: "Bitiş başlangıçtan önce olamaz.",
+  required: "Bu alan zorunlu.",
+  cancel: "Vazgeç",
+  save: "Kaydet",
+
+  holidaysIntro:
+    "Resmi tatiller puantaja “RT” olarak dolu gelir; yarım gün tatil “Ç” açılır ve işaretli görünür. Sabit tatilleri düğmeyle ekleyin; Ramazan ve Kurban Bayramı günlerini (arifeler yarım gün) her yıl girin.",
+  previousYear: "Önceki yıl",
+  nextYear: "Sonraki yıl",
+  addHoliday: "Tatil ekle",
+  addFixed: "Yılın sabit tatillerini ekle",
+  fixedAdded: (count: number) =>
+    count === 0
+      ? "Eklenecek sabit tatil yok; hepsi zaten takvimde."
+      : `${count} sabit tatil eklendi.`,
+  holidayDate: "Tarih",
+  holidayName: "Ad",
+  halfDayLabel: "Yarım gün (ör. arife)",
+  noHolidays: "Bu yıl için tatil girilmemiş.",
+  editHoliday: "Düzenle",
+  removeHoliday: "Kaldır",
+  confirmRemoveHoliday: (name: string, day: string) => `${day} ${name} takvimden kaldırılsın mı?`,
+  holidaySaved: "Tatil kaydedildi.",
+  holidayRemoved: "Tatil kaldırıldı.",
+  newHolidayTitle: "Tatil ekle",
+  editHolidayTitle: "Tatili düzenle",
+  restDays: "Varsayılan hafta tatili günleri",
+  restDaysHelp:
+    "Ay açılırken bu günler “HT” gelir. Açık aylarda değiştirilmemiş günler yeni ayara göre hesaplanır; onaylı aylar değişmez.",
+  restDaysInvalid: "En az bir, en çok altı gün seçin.",
+  settingsSaved: "Hafta tatili günleri kaydedildi.",
 };

@@ -54,7 +54,7 @@ Tek Django projesi, her iş alanı ayrı bir Django uygulaması (`backend/apps/<
 | `costing` | Malzeme maliyeti, şarj ve ürün maliyeti | 4 |
 | `maintenance` | Ekipman bakım planı, iş emri, duruş | 4 |
 | `hse` | GBF arşivi, tehlikeli madde limitleri, atık | 4 |
-| `personnel` | Personel kartı (kimlik ve görev bilgileri, isteğe bağlı sistem kullanıcısı); yalnız admin ve yönetim | canlı sonrası |
+| `personnel` | Personel kartı (kimlik ve görev bilgileri, isteğe bağlı sistem kullanıcısı), özlük bilgileri ve belgeleri, puantaj ve tatil takvimi; yalnız admin ve yönetim | canlı sonrası |
 | `reporting` | Panolar, raporlar, Excel çıktıları | 4 |
 
 ### Modül sınırları

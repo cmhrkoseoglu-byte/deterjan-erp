@@ -194,6 +194,7 @@ SPECTACULAR_SETTINGS = {
         "SampleStageEnum": "apps.quality.models.SampleStage",
         "AttachmentKindEnum": "apps.core.models.Attachment.Kind",
         "EmployeeDocumentKindEnum": "apps.personnel.models.EmployeeDocument.Kind",
+        "AttendanceStatusEnum": "apps.personnel.models.AttendanceStatus",
         "LotLabelKindEnum": "apps.inventory.api.serializers.LOT_LABEL_KINDS",
         "FillingOrderStatusEnum": "apps.filling.models.FillingOrder.Status",
         "PackagingSpecStatusEnum": "apps.filling.models.PackagingSpec.Status",

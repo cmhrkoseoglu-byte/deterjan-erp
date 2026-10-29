@@ -21,7 +21,7 @@ Kullanıcılar **Sistem > Kullanıcılar** ekranında yönetilir. Bu ekranı yal
 - **Kilidi aç**: çok sayıda hatalı deneme yüzünden kilitlenen hesabı hemen açar.
 - **2FA sıfırla**: telefonunu kaybeden kişinin iki aşamalı doğrulamasını sıfırlar; kişi sonraki girişte yeniden kurar.
 - **Geçici şifre** rozeti kişinin henüz kendi şifresini belirlemediğini gösterir.
-- **Personel kartı**: çalışanın sicil no, birim, görev, kimlik, iletişim ve mezuniyet bilgileri ile özlük belgeleri **Personel** ekranındaki kartındadır (Yönetim kılavuzu, "Personel"). Hesabı açtıktan sonra kişinin kartında **Sistem kullanıcısı** olarak bu hesabı seçin. İşten ayrılan kişinin hesabını pasife alırken kartına da **İşten ayrıldı**'yı kaydedin.
+- **Personel kartı**: çalışanın sicil no, birim, görev, kimlik, iletişim ve mezuniyet bilgileri ile özlük belgeleri **Personel** ekranındaki kartındadır; aylık puantaj ve tatil takvimi aynı bölümün sekmelerindedir (Yönetim kılavuzu, "Personel" ve "Puantaj"). Hesabı açtıktan sonra kişinin kartında **Sistem kullanıcısı** olarak bu hesabı seçin. İşten ayrılan kişinin hesabını pasife alırken kartına da **İşten ayrıldı**'yı kaydedin.
 - Rollerin kendisi sabittir ve `seed_roles` komutuyla oluşur; eklenmez ya da silinmez.
 - Bu ekrandaki her değişiklik denetim günlüğüne yazılır; şifreler günlüğe yazılmaz.
 - Yönetim paneli (/admin/) yalnızca iç ağdan açılır; kullanıcı işleri için gerekmez.
