@@ -65,16 +65,36 @@ Onay limitini aşan satın alma siparişi size görev olarak gelir.
 1. **Yeni personel**'e basın.
 2. **Ad soyad** ve **Birim** zorunludur. Birimi listeden seçin ya da yeni birimi yazın; aynı birim farklı yazılırsa (depo / Depo) var olan yazım kullanılır.
 3. Varsa **Sicil no**, **Görev**, **İşe giriş tarihi**, **Telefon** ve acil durumda aranacak kişiyi girin. Aynı sicil no iki kişide olamaz.
-4. Kişinin sisteme giriş hesabı varsa **Sistem kullanıcısı** alanında seçin. Hesabı sistem yöneticisi **Sistem > Kullanıcılar**'dan açar.
-5. **Kartı aç**'a basın.
+4. **Kimlik bilgileri** bölümüne TC kimlik no, doğum tarihi ve doğum yerini girin. TC kimlik no kontrol haneleriyle denetlenir; yanlış yazılırsa kaydedilmez. Aynı numara iki kartta olamaz.
+5. **Mezuniyet** bölümüne en son mezuniyeti girin: öğrenim durumu, okul, bölüm ve mezuniyet yılı. Diplomayı kart açıldıktan sonra belge olarak ekleyin.
+6. Kişinin sisteme giriş hesabı varsa **Sistem kullanıcısı** alanında seçin. Hesabı sistem yöneticisi **Sistem > Kullanıcılar**'dan açar.
+7. **Kartı aç**'a basın.
 
 ![Personel listesi](/kilavuz/yonetim-personel.jpg)
 
 - Arama kutusu ad, sicil no, birim ve görevde arar; birim ve **Çalışanlar / Ayrılanlar / Tümü** süzgeçleri vardır. Satıra basınca kart açılır.
-- Kartta **Düzenle** bilgileri değiştirir. **Geçmiş** bölümünde her değişiklik kimin yaptığı, tarihi, eski ve yeni değeriyle yazılıdır.
+- Kartta **Düzenle** bilgileri değiştirir. **Geçmiş** bölümünde her değişiklik kimin yaptığı, tarihi, eski ve yeni değeriyle yazılıdır. TC kimlik no kartta açık görünür, geçmişte yalnızca son dört hanesiyle yazılır.
 - Kart silinmez. Ayrılan çalışanın kartında **İşten ayrıldı**'ya basıp çıkış tarihini girin; kart **Ayrılanlar**'a geçer. Yeniden işe başlarsa **Yeniden işe başladı**'ya basın.
 
 > Personel kartı kişisel veridir; diğer roller göremez. Kişinin sistem hesabı ayrılışla kendiliğinden kapanmaz: kartta uyarı çıkar, hesabı sistem yöneticisi **Sistem > Kullanıcılar**'dan pasife alır.
+
+### Özlük belgeleri
+
+Kimlik fotokopisi, bordro, sözleşme ve diploma kartın **Belgeler** bölümündedir.
+
+1. Kartta **Belge ekle**'ye basın.
+2. **Belge türü**'nü ve dosyayı seçin: PDF, JPG ya da PNG, en çok 20 MB.
+3. Bordroda **Dönem**'i (ay ve yıl), sözleşmede **Başlangıç tarihi**'ni girin. Belirsiz süreli sözleşmede **Bitiş tarihi**'ni boş bırakın.
+4. **Yükle**'ye basın.
+
+![Personel kartında mezuniyet ve belgeler](/kilavuz/yonetim-personel-belgeler.jpg)
+
+- Belgeler türüne göre gruplanır; bordrolar en yeni dönem başta sıralanır. Bitiş tarihi geçmiş sözleşmede **Sona erdi** yazar.
+- Dosya adına basınca belge yeni sekmede açılır. Her açılış kartın **Geçmiş** bölümüne yazılır.
+- Yanlış belgeyi çöp kutusu simgesiyle kaldırın ve nedenini yazın. Belge silinmez ama artık açılamaz.
+- Ayrılan çalışanın kartına da belge eklenebilir, ör. son bordro.
+
+> Eski tip nüfus cüzdanında din hanesi bulunur; din özel nitelikli kişisel veridir. Fotokopiyi taramadan önce bu haneyi kapatmanız önerilir. Belgeleri de yalnızca yönetim ve sistem yöneticisi görür.
 
 ## Firma bilgileri
 

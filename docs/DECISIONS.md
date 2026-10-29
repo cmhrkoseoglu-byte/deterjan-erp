@@ -1507,3 +1507,24 @@ değiştirme zorunlu, yalnızca admin):
   eder.
 - **Geçiş:** kayıt ilk açılışta `COMPANY_*` değerleriyle oluşur. Canlıda bu değerler boştu; ilk girişte
   formdan doldurulur.
+
+## 2026-10-29 — Personel özlük bilgileri ve belgeleri
+
+- **Karar (CUMHUR, "Personel listesine personelin doğum tarihi, TC kimlik no, doğum yeri, mezuniyet
+  bilgileri, kimlik fotokopisi, bordro, sözleşmeler alanı ekleyelim"; TC kimlik no için "Her zaman
+  açık", mezuniyet için "En son mezuniyet", belgeler için "Admin ve yönetim"):** personel kartına
+  kimlik ve mezuniyet bilgileri ile özlük belgeleri eklenir. Bilgiler listede sütun değil, kartta durur.
+- **Kimlik:** TC kimlik no isteğe bağlı; doluysa 11 hane ve kontrol haneleri tutmalı, iki kartta aynı
+  olamaz. Hata mesajında numara tekrarlanmaz. Kartta açık görünür; denetim günlüğüne ve kart geçmişine
+  maskeli yazılır (`*******0146`). Doğum tarihi bugünden ileri ya da 1900'den önce olamaz.
+- **Mezuniyet:** yalnızca en son mezuniyet tutulur: öğrenim durumu (ilkokul … doktora), okul, bölüm,
+  mezuniyet yılı (1940 – bu yıl). Diploma belge olarak eklenir.
+- **Belgeler:** kimlik fotokopisi, bordro (dönem: ay ve yıl, zorunlu), sözleşme (başlangıç zorunlu;
+  belirsiz süreli sözleşmede bitiş boş), diploma. PDF, JPG ya da PNG; en çok 20 MB. Ayrılan personele de
+  belge eklenebilir (son bordro). Belge silinmez: nedeniyle kaldırılır, artık açılamaz.
+- **Gizlilik:** belgeler ayrı modelde (`EmployeeDocument`) tutulur ve yalnızca personel uç noktalarından
+  admin ve yönetime verilir; genel ek uç noktaları personel kartını kabul etmez. Dosya adı rastgeledir,
+  yanıt tarayıcı önbelleğine alınmaz. Ekleme, kaldırma ve her açılış kartın geçmişine yazılır; bu yüzden
+  listede küçük resim gösterilmez (her gösterim bir açılış sayılırdı).
+- **Açık konular:** belgelerin ve ayrılan personelin özlük bilgilerinin saklama süresi ile eski tip nüfus
+  cüzdanındaki din hanesi (özel nitelikli veri) firma İK ve hukuk birimiyle netleşecek (docs/KVKK.md).
