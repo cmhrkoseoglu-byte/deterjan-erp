@@ -119,10 +119,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Redis / Channels / Celery
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 
+# channels_redis kanalı Redis'te 5 sn bekleyerek dinler (BZPOPMIN). redis-py 8 bağlantı okuma
+# süresini varsayılan 5 sn yaptı; okuma süresi bundan uzun olmazsa her bekleme "Timeout reading
+# from redis" ile biter ve bildirim WebSocket'i kopar (apps/workflow/tests/test_channel_layer.py).
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [REDIS_URL]},
+        "CONFIG": {"hosts": [{"address": REDIS_URL, "socket_timeout": 15}]},
     },
 }
 
