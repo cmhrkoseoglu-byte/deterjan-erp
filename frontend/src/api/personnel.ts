@@ -142,15 +142,21 @@ export async function updateEmployee(
   return data;
 }
 
-/** İşten ayrılış. Hata kodları: already_terminated, termination_before_hire. */
+/**
+ * İşten ayrılış. Çıkıştan sonra puantajda kayıtlı günler yalnızca `removeAttendance` ile kaldırılır.
+ * Hata kodları: already_terminated, termination_before_hire, attendance_after_exit (günler
+ * listelenir, onayla yeniden gönderilir), approved_attendance_after_exit (önce ay yeniden açılır).
+ */
 export async function terminateEmployee(
   id: number,
   terminationDate: string,
   note = "",
+  removeAttendance = false,
 ): Promise<Employee> {
   const { data } = await api.post<Employee>(`/personnel/employees/${id}/terminate/`, {
     termination_date: terminationDate,
     note,
+    remove_attendance: removeAttendance,
   });
   return data;
 }

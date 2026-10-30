@@ -43,7 +43,7 @@ import { listDepartments } from "../../api/personnel";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { DayModal, RangeModal, ReopenModal } from "./AttendanceModals";
-import { formatHours } from "./attendanceFormat";
+import { formatHours, monthParam } from "./attendanceFormat";
 import { PersonnelTabs } from "./PersonnelTabs";
 import { at, ATTENDANCE_BASE, pe, PERSONNEL_KEY } from "./strings";
 
@@ -102,10 +102,6 @@ function parseMonth(text: string | null): { year: number; month: number } {
   if (match && month >= 1 && month <= 12) return { year: Number(match[1]), month };
   const now = new Date();
   return { year: now.getFullYear(), month: now.getMonth() + 1 };
-}
-
-function monthParam(year: number, month: number): string {
-  return `${year}-${String(month).padStart(2, "0")}`;
 }
 
 function totalValue(row: AttendanceRow, key: (typeof TOTALS)[number]["key"]): string | number {

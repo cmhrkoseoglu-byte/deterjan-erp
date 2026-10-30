@@ -6,7 +6,7 @@ import * as personnelApi from "../../api/personnel";
 import type { Employee, EmployeeDocument } from "../../api/personnel";
 import * as workflowApi from "../../api/workflow";
 import type { AuditEntry } from "../../api/workflow";
-import { page, userWith } from "../../test/fixtures";
+import { httpError, page, userWith } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
 
 vi.mock("../../api/auth");
@@ -248,13 +248,124 @@ describe("personel kartı", () => {
     const loads = vi.mocked(personnelApi.getEmployee).mock.calls.length;
     await user.click(within(dialog).getByRole("button", { name: "İşten ayrıldı" }));
     await waitFor(() =>
-      expect(personnelApi.terminateEmployee).toHaveBeenCalledWith(5, "2026-09-30", ""),
+      expect(personnelApi.terminateEmployee).toHaveBeenCalledWith(5, "2026-09-30", "", false),
     );
     // Kayıttan sonra pencere kapanır ve kart yenilenir.
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() =>
       expect(vi.mocked(personnelApi.getEmployee).mock.calls.length).toBeGreaterThan(loads),
     );
+  });
+
+  const AFTER_EXIT =
+    "Çıkış tarihinden (30.09.2026) sonra puantajda kayıtlı 2 gün var: Ekim 2026: 05–06.10 Yİ. " +
+    "Kaydederseniz bu günler puantajdan kaldırılır; kişi yeniden işe başlatılsa da geri gelmez.";
+
+  async function openTerminate(user: ReturnType<typeof userEvent.setup>, day = "2026-09-30") {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    vi.mocked(personnelApi.getEmployee).mockResolvedValue(employee());
+    renderApp("/personel/5");
+    await user.click(await screen.findByRole("button", { name: "İşten ayrıldı" }));
+    const dialog = await screen.findByRole("dialog");
+    const date = within(dialog).getByLabelText(/İşten çıkış tarihi/);
+    await user.clear(date);
+    await user.type(date, day);
+    return { dialog, date };
+  }
+
+  it("çıkıştan sonraki puantaj günlerini listeler ve onayla kaldırır", async () => {
+    const user = userEvent.setup();
+    const terminate = vi.mocked(personnelApi.terminateEmployee);
+    terminate.mockReset();
+    terminate
+      .mockRejectedValueOnce(httpError(400, { code: "attendance_after_exit", detail: AFTER_EXIT }))
+      .mockResolvedValueOnce(employee({ is_active: false, termination_date: "2026-09-30" }));
+    const { dialog } = await openTerminate(user);
+    expect(within(dialog).getByText("Son çalışma günü (o gün dahil).")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "İşten ayrıldı" }));
+    // Günler bir kez (uyarı olarak) listelenir; düğme onay ister.
+    expect(await within(dialog).findAllByText(/Ekim 2026: 05–06\.10 Yİ/)).toHaveLength(1);
+    await user.click(within(dialog).getByRole("button", { name: "Kaydet ve günleri kaldır" }));
+    await waitFor(() => expect(terminate).toHaveBeenLastCalledWith(5, "2026-09-30", "", true));
+    expect(terminate).toHaveBeenNthCalledWith(1, 5, "2026-09-30", "", false);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("tarih değişince kaldırma onayı düşer; yeni tarih onaysız gönderilir", async () => {
+    const user = userEvent.setup();
+    const terminate = vi.mocked(personnelApi.terminateEmployee);
+    terminate.mockReset();
+    terminate
+      .mockRejectedValueOnce(httpError(400, { code: "attendance_after_exit", detail: AFTER_EXIT }))
+      .mockResolvedValueOnce(employee({ is_active: false, termination_date: "2026-09-29" }));
+    const { dialog, date } = await openTerminate(user);
+    await user.click(within(dialog).getByRole("button", { name: "İşten ayrıldı" }));
+    expect(await within(dialog).findByText(/05–06\.10 Yİ/)).toBeInTheDocument();
+    fireEvent.change(date, { target: { value: "2026-09-29" } });
+    expect(within(dialog).queryByText(/05–06\.10 Yİ/)).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "İşten ayrıldı" }));
+    await waitFor(() => expect(terminate).toHaveBeenLastCalledWith(5, "2026-09-29", "", false));
+    expect(terminate).toHaveBeenCalledTimes(2);
+  });
+
+  it("onaylı kayıt reddedilince onay düşer; günler yeniden sorulur", async () => {
+    const user = userEvent.setup();
+    const terminate = vi.mocked(personnelApi.terminateEmployee);
+    terminate.mockReset();
+    terminate
+      .mockRejectedValueOnce(httpError(400, { code: "attendance_after_exit", detail: AFTER_EXIT }))
+      .mockRejectedValueOnce(
+        httpError(400, {
+          code: "approved_attendance_after_exit",
+          detail: "Ayşe Demir, çıkış tarihinden (30.09.2026) sonra da onaylı puantajda görünüyor.",
+          months: ["2026-10"],
+        }),
+      )
+      .mockResolvedValueOnce(employee({ is_active: false, termination_date: "2026-09-30" }));
+    const { dialog } = await openTerminate(user);
+    await user.click(within(dialog).getByRole("button", { name: "İşten ayrıldı" }));
+    await user.click(
+      await within(dialog).findByRole("button", { name: "Kaydet ve günleri kaldır" }),
+    );
+    expect(await within(dialog).findByText(/onaylı puantajda görünüyor/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/05–06\.10 Yİ/)).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "İşten ayrıldı" }));
+    await waitFor(() => expect(terminate).toHaveBeenLastCalledWith(5, "2026-09-30", "", false));
+  });
+
+  it("istek sürerken tarih ve not değiştirilemez", async () => {
+    const user = userEvent.setup();
+    const terminate = vi.mocked(personnelApi.terminateEmployee);
+    terminate.mockReset();
+    terminate.mockReturnValueOnce(new Promise(() => {}));
+    const { dialog, date } = await openTerminate(user);
+    await user.click(within(dialog).getByRole("button", { name: "İşten ayrıldı" }));
+    await waitFor(() => expect(date).toBeDisabled());
+    expect(within(dialog).getByLabelText(/Not/)).toBeDisabled();
+  });
+
+  it("onaylı ay için sunucunun bildirdiği aya bağlantı verir, kaydetmez", async () => {
+    const user = userEvent.setup();
+    const terminate = vi.mocked(personnelApi.terminateEmployee);
+    terminate.mockReset();
+    terminate.mockRejectedValueOnce(
+      httpError(400, {
+        code: "approved_attendance_after_exit",
+        detail:
+          "Ayşe Demir, çıkış tarihinden (20.08.2026) sonra da onaylı puantajda görünüyor: Eylül 2026 (01–30.09).",
+        months: ["2026-09"],
+      }),
+    );
+    const { dialog } = await openTerminate(user, "2026-08-20");
+    await user.click(within(dialog).getByRole("button", { name: "İşten ayrıldı" }));
+    expect(await within(dialog).findByText(/onaylı puantajda görünüyor/)).toBeInTheDocument();
+    // Çıkıştan sonraki günün ayı (Ağustos) açık olabilir; bağlantı onaylı aya gider.
+    expect(within(dialog).getByRole("link", { name: "Puantajı aç" })).toHaveAttribute(
+      "href",
+      "/personel/puantaj?ay=2026-09",
+    );
+    expect(within(dialog).getByRole("button", { name: "İşten ayrıldı" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("ayrılan personeli onayla yeniden çalışır yapar", async () => {

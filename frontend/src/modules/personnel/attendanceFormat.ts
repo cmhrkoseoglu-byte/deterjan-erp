@@ -29,6 +29,18 @@ export function formatHours(value: string): string {
   return hours ? String(hours).replace(".", ",") : "";
 }
 
+/** Puantaj sayfasının `?ay=` değeri: "2026-10". */
+export function monthParam(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+/** Günden sonraki günün ayı: "2026-09-30" → "2026-10" (çıkıştan sonraki ilk gün). */
+export function monthAfterDay(iso: string): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + 1));
+  return monthParam(next.getUTCFullYear(), next.getUTCMonth() + 1);
+}
+
 /** "05.10.2026 Pazartesi" */
 export function dayLabel(iso: string): string {
   const [year, month, day] = iso.split("-").map(Number);

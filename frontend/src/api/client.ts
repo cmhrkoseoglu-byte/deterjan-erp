@@ -80,3 +80,14 @@ export function getErrorCode(error: unknown): string {
   }
   return "";
 }
+
+/** Hata yanıtındaki ek metin listesi (ör. onaylı aylar `months`); yoksa boş liste. */
+export function getErrorList(error: unknown, field: string): string[] {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as Record<string, unknown> | undefined;
+    const value = data && typeof data === "object" ? data[field] : undefined;
+    if (Array.isArray(value))
+      return value.filter((item): item is string => typeof item === "string");
+  }
+  return [];
+}

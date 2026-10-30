@@ -174,6 +174,7 @@ def test_other_roles_cannot_see_personnel(
         f"{BASE}/employees/{card.pk}/terminate/", {"termination_date": "2026-01-01"}
     )
     assert response.status_code == 403
+    assert client.post(f"{BASE}/employees/{card.pk}/reinstate/").status_code == 403
     # Genel kayıt geçmişi ve yorum uç noktaları personel kartını hiç kabul etmez.
     params = {"content_type": "personnel.employee", "object_id": str(card.pk)}
     response = client.get("/api/v1/workflow/record-history/", params)

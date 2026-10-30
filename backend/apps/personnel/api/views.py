@@ -8,7 +8,7 @@ from django.db.models import QuerySet
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
@@ -72,18 +72,37 @@ class EmployeeViewSet(
         employee = services.update_employee(_user(request), instance, body.validated_data)
         return Response(s.EmployeeSerializer(employee).data)
 
-    @extend_schema(request=s.TerminateSerializer, responses=s.EmployeeSerializer)
+    @extend_schema(
+        request=s.TerminateSerializer,
+        responses={
+            200: s.EmployeeSerializer,
+            400: OpenApiResponse(
+                description="attendance_after_exit; approved_attendance_after_exit "
+                '(gövdede `months`, ör. "2026-09")'
+            ),
+        },
+    )
     @action(detail=True, methods=["post"])
     def terminate(self, request: Request, pk: str | None = None) -> Response:
-        """İşten ayrılışı kaydeder: kart pasife alınır, çıkış tarihi yazılır."""
+        """İşten ayrılışı kaydeder: kart pasife alınır, çıkış tarihi yazılır. Çıkıştan sonra
+        kayıtlı puantaj günleri `remove_attendance` ile kaldırılır (yoksa `attendance_after_exit`;
+        onaylı aydaysa `approved_attendance_after_exit`)."""
         body = s.TerminateSerializer(data=request.data)
         body.is_valid(raise_exception=True)
-        employee = services.terminate_employee(
-            _user(request),
-            self.get_object(),
-            body.validated_data["termination_date"],
-            note=body.validated_data["note"],
-        )
+        try:
+            employee = services.terminate_employee(
+                _user(request),
+                self.get_object(),
+                body.validated_data["termination_date"],
+                note=body.validated_data["note"],
+                remove_attendance=body.validated_data["remove_attendance"],
+            )
+        except services.ApprovedAttendanceAfterExit as exc:
+            # Onaylı aylar ("2026-09") yanıta eklenir; pencere ilk aya bağlantı verir.
+            return Response(
+                {"code": exc.code, "detail": exc.message, "months": exc.months},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(s.EmployeeSerializer(employee).data)
 
     @extend_schema(request=None, responses=s.EmployeeSerializer)
