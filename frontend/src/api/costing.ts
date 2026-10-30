@@ -265,3 +265,187 @@ export function reportExcelUrl(name: ReportName, params: ReportParams = {}): str
   ).toString();
   return `/api/v1/costing/reports/${name}/xlsx/${query ? `?${query}` : ""}`;
 }
+
+// --- personel maliyeti -----------------------------------------------------------------------
+// Brüt ücret + puantajdan aylık maliyet ve işçilik oranı önerisi (docs/DECISIONS.md "Personel
+// maliyeti"). Ücretler kişisel veridir (docs/KVKK.md); yalnızca yönetim ve admin erişir.
+
+/** Birimin maliyet aşaması; boş = genel gider. */
+export type CostCenterStage = CostStage | "";
+
+export interface CostEmployee {
+  id: number;
+  employee_no: string;
+  full_name: string;
+  department: string;
+  hire_date: string | null;
+  /** Ayrılmışsa çıkış tarihi. */
+  termination_date: string | null;
+  is_active: boolean;
+}
+
+export interface PersonnelCostRow {
+  employee: CostEmployee;
+  stage: CostCenterStage;
+  /** Ayda işte olunan son gün geçerli brüt aylık ücret; o gün için ücret yoksa boş. */
+  gross_monthly: string | null;
+  employed_days: number;
+  unpaid_days: number;
+  /** 30 gün usulü: tam ayda 30 − ücretsiz gün (hiç ücretli gün yoksa 0; 30 ya da daha çok
+   * ücretsiz günde ücretli takvim günü); ay içinde giren ya da ayrılanda ücretli takvim günü. */
+  paid_days: number;
+  overtime_hours: string;
+  gross_salary: string;
+  overtime_pay: string;
+  gross_total: string;
+  employer_share: string;
+  total_cost: string;
+  /** Ayın en az bir günü için ücret yok (o günler sıfır sayıldı). */
+  missing_wage: boolean;
+}
+
+export interface StageCost {
+  stage: CostCenterStage;
+  cost: string;
+  employee_count: number;
+  /** Ay içinde üretilen kg (genel giderde boş). */
+  kg: string | null;
+  /** Yoğunluğu girilmediği için üretimi kg'a çevrilemeyen malzeme sayısı. */
+  unconverted: number;
+  current_rate: string | null;
+  /** Gerçekleşen işçilik (TL/kg); genel giderde, üretim ya da maliyet yokken boş. */
+  suggested_rate: string | null;
+  /** Aşamada ücreti eksik kişi sayısı. */
+  missing_wage_count: number;
+}
+
+export interface PersonnelCostReport {
+  year: number;
+  month: number;
+  period_label: string;
+  attendance_status: "OPEN" | "APPROVED";
+  attendance_number: string;
+  attendance_approved: boolean;
+  employer_rate: string;
+  missing_wage_count: number;
+  gross_salary: string;
+  overtime_pay: string;
+  employer_share: string;
+  total_cost: string;
+  stages: StageCost[];
+  rows: PersonnelCostRow[];
+}
+
+export interface EmployeeWage {
+  id: number;
+  employee: number;
+  employee_name: string;
+  gross_monthly: string;
+  valid_from: string;
+  note: string;
+  is_active: boolean;
+  removal_reason: string;
+  created_at: string;
+  created_by_name: string | null;
+}
+
+export interface WageSummaryRow {
+  employee: CostEmployee;
+  stage: CostCenterStage;
+  /** Bugün geçerli ücret; yoksa (hiç girilmedi ya da gelecek tarihli) boş. */
+  current_wage: string | null;
+  current_valid_from: string | null;
+  /** Kaldırılmamış ücretler, en yenisi önce. */
+  history: EmployeeWage[];
+}
+
+export interface CostCenter {
+  department: string;
+  stage: CostCenterStage;
+}
+
+export interface PersonnelCostSettings {
+  employer_rate: string;
+  /** Ayar hiç kaydedilmediyse boş (varsayılan oran). */
+  updated_at: string | null;
+}
+
+export const personnelCostKeys = {
+  all: ["costing", "personnel-cost"] as const,
+  report: (year: number, month: number) => ["costing", "personnel-cost", year, month] as const,
+  wages: ["costing", "wages"] as const,
+  wageList: (includeFormer: boolean) => ["costing", "wages", includeFormer] as const,
+  costCenters: ["costing", "cost-centers"] as const,
+  settings: ["costing", "personnel-cost-settings"] as const,
+};
+
+const personnelMonth = (year: number, month: number) => `/costing/personnel-costs/${year}/${month}`;
+
+export async function getPersonnelCost(year: number, month: number): Promise<PersonnelCostReport> {
+  const { data } = await api.get<PersonnelCostReport>(`${personnelMonth(year, month)}/`);
+  return data;
+}
+
+export function personnelCostExcelUrl(year: number, month: number): string {
+  return `/api/v1${personnelMonth(year, month)}/xlsx/`;
+}
+
+/** Onaylı ayın gerçekleşen işçiliğinden yeni işçilik oranı. Hata kodları: invalid_stage,
+ * attendance_not_approved, no_labor_rate, duplicate_rate. */
+export async function addLaborRateFromPersonnelCost(
+  year: number,
+  month: number,
+  payload: { stage: CostStage; valid_from: string },
+): Promise<CostRate> {
+  const { data } = await api.post<CostRate>(`${personnelMonth(year, month)}/labor-rate/`, payload);
+  return data;
+}
+
+/** Çalışanlar (çıkış tarihi bugün ya da sonra olanlar dahil); `includeFormer` ile ayrılanlar da. */
+export async function getWageSummary(includeFormer = false): Promise<WageSummaryRow[]> {
+  const { data } = await api.get<WageSummaryRow[]>("/costing/wages/summary/", {
+    params: includeFormer ? { include_former: true } : undefined,
+  });
+  return data;
+}
+
+/** Hata kodları: employee_required, valid_from_required, invalid_valid_from, invalid_wage,
+ * duplicate_wage. */
+export async function addWage(payload: {
+  employee: number;
+  gross_monthly: string;
+  valid_from: string;
+  note: string;
+}): Promise<EmployeeWage> {
+  const { data } = await api.post<EmployeeWage>("/costing/wages/", payload);
+  return data;
+}
+
+export async function removeWage(id: number, reason: string): Promise<EmployeeWage> {
+  const { data } = await api.post<EmployeeWage>(`/costing/wages/${id}/remove/`, { reason });
+  return data;
+}
+
+export async function listCostCenters(): Promise<CostCenter[]> {
+  const { data } = await api.get<CostCenter[]>("/costing/cost-centers/");
+  return data;
+}
+
+export async function setCostCenter(payload: CostCenter): Promise<CostCenter> {
+  const { data } = await api.put<CostCenter>("/costing/cost-centers/", payload);
+  return data;
+}
+
+export async function getPersonnelCostSettings(): Promise<PersonnelCostSettings> {
+  const { data } = await api.get<PersonnelCostSettings>("/costing/personnel-cost-settings/");
+  return data;
+}
+
+export async function updatePersonnelCostSettings(
+  employerRate: string,
+): Promise<PersonnelCostSettings> {
+  const { data } = await api.patch<PersonnelCostSettings>("/costing/personnel-cost-settings/", {
+    employer_rate: employerRate,
+  });
+  return data;
+}

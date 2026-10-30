@@ -1,8 +1,19 @@
+from typing import Any
+
 from rest_framework import serializers
 
-from apps.costing.models import CostRate, LotCost, LotCostLine, StandardCost
+from apps.costing.models import (
+    CostRate,
+    CostStage,
+    EmployeeWage,
+    LotCost,
+    LotCostLine,
+    PersonnelCostSettings,
+    StandardCost,
+)
 from apps.inventory.api.serializers import UserNameField
 from apps.masterdata.models import Material
+from apps.personnel.models import Employee
 
 MATERIAL_TYPES = Material.Type.choices
 
@@ -248,3 +259,139 @@ class StockValueSerializer(serializers.Serializer):
     total_value = serializers.DecimalField(max_digits=18, decimal_places=2)
     by_type = StockValueTypeSerializer(many=True)
     rows = StockValueRowSerializer(many=True)
+
+
+# --- personel maliyeti -----------------------------------------------------------------------
+
+
+def _money(**kwargs: Any) -> serializers.DecimalField:
+    return serializers.DecimalField(max_digits=18, decimal_places=2, **kwargs)
+
+
+def _unit(**kwargs: Any) -> serializers.DecimalField:
+    return serializers.DecimalField(max_digits=18, decimal_places=4, **kwargs)
+
+
+class CostEmployeeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Employee
+        fields = [
+            "id",
+            "employee_no",
+            "full_name",
+            "department",
+            "hire_date",
+            "termination_date",
+            "is_active",
+        ]
+        read_only_fields = fields
+
+
+class PersonnelCostRowSerializer(serializers.Serializer):
+    employee = CostEmployeeSerializer()
+    stage = serializers.CharField(help_text="PRODUCTION, FILLING ya da boş (genel gider)")
+    gross_monthly = _money(allow_null=True)
+    employed_days = serializers.IntegerField()
+    unpaid_days = serializers.IntegerField()
+    paid_days = serializers.IntegerField()
+    overtime_hours = serializers.DecimalField(max_digits=9, decimal_places=2)
+    gross_salary = _money()
+    overtime_pay = _money()
+    gross_total = _money()
+    employer_share = _money()
+    total_cost = _money()
+    missing_wage = serializers.BooleanField()
+
+
+class StageCostSerializer(serializers.Serializer):
+    stage = serializers.CharField()
+    cost = _money()
+    employee_count = serializers.IntegerField()
+    kg = _unit(allow_null=True)
+    unconverted = serializers.IntegerField()
+    current_rate = _unit(allow_null=True)
+    suggested_rate = _unit(allow_null=True)
+    missing_wage_count = serializers.IntegerField()
+
+
+class PersonnelCostReportSerializer(serializers.Serializer):
+    year = serializers.IntegerField()
+    month = serializers.IntegerField()
+    period_label = serializers.CharField(source="label")
+    attendance_status = serializers.CharField()
+    attendance_number = serializers.CharField()
+    attendance_approved = serializers.BooleanField()
+    employer_rate = serializers.DecimalField(max_digits=5, decimal_places=2)
+    missing_wage_count = serializers.IntegerField()
+    gross_salary = _money()
+    overtime_pay = _money()
+    employer_share = _money()
+    total_cost = _money()
+    stages = StageCostSerializer(many=True)
+    rows = PersonnelCostRowSerializer(many=True)
+
+
+class LaborRateFromPersonnelSerializer(serializers.Serializer):
+    stage = serializers.ChoiceField(choices=CostStage.choices, label="aşama")
+    valid_from = serializers.DateField(label="geçerlilik başlangıcı")
+
+
+class EmployeeWageSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source="employee.full_name", read_only=True)
+    created_by_name = UserNameField(source="created_by")
+
+    class Meta:
+        model = EmployeeWage
+        fields = [
+            "id",
+            "employee",
+            "employee_name",
+            "gross_monthly",
+            "valid_from",
+            "note",
+            "is_active",
+            "removal_reason",
+            "created_at",
+            "created_by_name",
+        ]
+        read_only_fields = ["is_active", "removal_reason", "created_at"]
+        # Aynı kişi ve tarihte tek ücret kuralı servis katmanında (Türkçe mesaj, hata kodu).
+        validators: list = []
+
+
+class WageRemoveSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=500, label="kaldırma nedeni")
+
+
+class WageSummaryQuerySerializer(serializers.Serializer):
+    include_former = serializers.BooleanField(
+        default=False, help_text="Ayrılan personeli de listele."
+    )
+
+
+class WageSummarySerializer(serializers.Serializer):
+    employee = CostEmployeeSerializer()
+    stage = serializers.CharField()
+    current_wage = _money(allow_null=True)
+    current_valid_from = serializers.DateField(allow_null=True)
+    history = EmployeeWageSerializer(many=True)
+
+
+# Birim → maliyet aşaması; boş = genel gider.
+COST_CENTER_STAGES = [("", "Genel gider"), *CostStage.choices]
+
+
+class CostCenterSerializer(serializers.Serializer):
+    department = serializers.CharField(max_length=64, label="birim")
+    stage = serializers.ChoiceField(choices=COST_CENTER_STAGES, allow_blank=True, label="aşama")
+
+
+class PersonnelCostSettingsSerializer(serializers.ModelSerializer):
+    # Ayar hiç kaydedilmediyse varsayılan döner ve tarihi boştur.
+    updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
+
+    class Meta:
+        model = PersonnelCostSettings
+        fields = ["employer_rate", "updated_at"]
+        read_only_fields = ["updated_at"]
+        extra_kwargs = {"employer_rate": {"required": True}}

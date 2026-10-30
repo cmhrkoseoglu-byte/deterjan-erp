@@ -53,10 +53,34 @@ Onay limitini aşan satın alma siparişi size görev olarak gelir.
 - **Raporlar**: şarj maliyeti, fire ve stok değeri raporları (Excel).
 - **Gider oranları**: üretim (bulk) ve dolum (mamul) için kg başına enerji, işçilik ve amortisman oranı. Oran değişince **Oran ekle** ile yeni geçerlilik tarihiyle girin; eski oranı değiştirmeyin.
 - **Standart maliyetler**: fiyatı ve son alış maliyeti bilinmeyen lotlar için TL / temel birim tahmini maliyet. **Standart maliyet ekle** ile girin.
+- **Personel maliyeti**: brüt ücret ve puantajdan ayın işveren maliyeti; üretim ve dolumda gerçekleşen işçilik (TL/kg).
+- **Personel ücretleri**: çalışanların brüt aylık ücreti, birimlerin maliyet aşaması ve işveren payı.
 
 ![Gider oranları](/kilavuz/yonetim-maliyet.jpg)
 
 > **Tahmini** işaretli maliyet gerçek alış fiyatından değil, son alıştan ya da standart maliyetten gelir. Mal kabulde fiyat girilmesini satın almadan isteyin.
+
+### Personel maliyeti
+
+Personel maliyeti brüt ücretten ve puantajdan hesaplanır. Bordro değildir; vergi ve kesintiler hesaplanmaz.
+
+1. **Maliyet > Personel ücretleri**'nde çalışanın satırında **Ücret ekle**'ye basın. **Brüt aylık (TL)** ve **Geçerlilik başlangıcı**'nı girin, **Kaydet**'e basın. Tutarı 45.000 ya da 45000 diye yazabilirsiniz; kutunun altında kaydedilecek tutar görünür. İlk ücretin başlangıcı varsayılan olarak işe giriş tarihidir (kartta yoksa geçen ayın 1'i). Daha geç bir tarih seçerseniz aradaki günler raporda **Ücret eksik** görünür.
+2. Aynı sekmede **Birimlerin maliyet aşaması** bölümünde üretim birimine **Üretim (bulk)**, dolum birimine **Dolum (mamul)** seçin. Eşleştirilmeyen birim genel giderdir.
+3. **İşveren payı**'nı kontrol edin (teşvikli varsayılan %17,75).
+4. Ay bitip puantaj onaylanınca **Maliyet > Personel maliyeti**'nde ayı seçin. Toplamlar, aşamalar ve kişiler görünür; **Excel** tabloyu indirir.
+5. Üretim ya da dolum satırında **Oran olarak ekle**'ye basın. Başlangıç tarihini (varsayılan: ertesi ayın ilk günü) kontrol edip onaylayın. Gerçekleşen işçilik **Gider oranları**'na yeni işçilik oranı olarak eklenir. Lot maliyetinde şarjın ya da partinin bittiği gün geçerli oran kullanılır: oran, başlangıç tarihinde ya da sonra biten lotlara uygulanır. Bunlardan maliyeti önceden hesaplanmış olanlar için lot sayfasında **Yeniden hesapla**'ya basın; daha önce biten lotlar eski oranla kalır.
+
+![Personel maliyeti](/kilavuz/yonetim-personel-maliyeti.jpg)
+
+- Tam ay 30 gün sayılır. Ücretsiz izin, devamsızlık ve rapor günleri günlük ücretle (brüt / 30) düşülür; yıllık izin ve mazeret izni ücretlidir. Ay içinde giren ya da ayrılan, işte olduğu takvim günü kadar alır. Ayın hiç ücretli günü yoksa ücret sıfırdır.
+- Fazla mesai saat ücreti brüt / 225'tir: iş günü ve hafta tatilinde 1,5 kat, resmi tatilde ayrıca 1 kat.
+- Gerçekleşen işçilik, aşamanın personel maliyetinin o ay üretilen kg'a bölümüdür: üretimde biten şarjların çıktısı, dolumda dolan bulk (fire hariç).
+- Zam yeni geçerlilik tarihiyle eklenir; eski ücret geçmişte kalır. Yanlış kaydı **Geçmiş**'ten gerekçeyle kaldırın.
+- Ücreti girilmemiş kişi raporda **Ücret eksik** diye işaretlenir; o günler sıfır sayılır. Ayrılan bir kişinin ücretini girmek ya da düzeltmek için ücretler sekmesinde **Ayrılanları da göster**'i açın.
+- Oran penceresi, aşamada ücreti eksik kişi ya da kg'a çevrilemeyen malzeme varsa uyarır; önce eksikleri tamamlayın.
+- Puantaj onaylanmadan tutarlar taslaktır ve oran eklenemez.
+
+> Ücretler kişisel veridir; yalnızca yönetim ve sistem yöneticisi görür. Rapor saklanmaz: ücret, kişinin birimi ya da işe giriş ve çıkış tarihi, birim eşleştirmesi ya da işveren payı değişirse geçmiş aylar (onaylılar dahil) yeniden hesaplanır. Yeniden işe alımda işe giriş tarihini ileri alırsanız önceki dönem geçmiş aylardan düşer; böyle bir değişiklikten önce geçmiş ayların Excel'ini indirin. Daha önce eklenen işçilik oranları değişmez.
 
 ## Personel
 

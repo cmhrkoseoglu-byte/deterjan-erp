@@ -6,23 +6,38 @@ Raporlama modülü (Adım 4.3) lot maliyeti ve stok değeri için bu fonksiyonla
 - `lot_unit_cost(lot)`: lotun güncel birim maliyeti (TL / temel birim) ve tahmini mi.
 - `stock_value(...)`: stok değeri (bakiye × lot birim maliyeti), malzeme bazında ve toplam.
 - `cost_trend`, `batch_variance`, `scrap_cost`, `top_materials`: maliyet raporları.
+- `personnel_cost_report(year, month)`: aylık personel maliyeti ve işçilik oranı önerisi.
 
 Tutarlar yalnızca yonetim ve admin rolüne gösterilir; bu kontrol API katmanındadır.
 """
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 
 from django.db.models import Case, Count, F, Q, QuerySet, Sum, Value, When
 from django.db.models.functions import TruncMonth
+from django.utils import timezone
 
-from apps.costing.models import LotCost, LotCostLine
-from apps.costing.services import known_unit_cost, money, unit_amount
+from apps.costing.models import (
+    CostRate,
+    CostStage,
+    DepartmentCostCenter,
+    EmployeeWage,
+    LotCost,
+    LotCostLine,
+    PersonnelCostSettings,
+    default_employer_rate,
+)
+from apps.costing.services import known_unit_cost, money, to_kg, unit_amount
+from apps.filling.models import ConsumptionKind, FillingConsumption, FillingRun
 from apps.inventory.models import Lot, StockBalance
 from apps.masterdata.models import Material
+from apps.personnel import selectors as personnel
+from apps.personnel.models import AttendanceStatus, Employee
 from apps.production.models import ProductionBatch
 from apps.production.services import batch_line_quantity
 
@@ -369,4 +384,357 @@ def stock_value_lots(**filters: Any) -> list[dict[str, Any]]:
             "is_estimated": b.lot.cost_is_estimated,
         }
         for b in qs.order_by("material__code", "lot__lot_no", "location__code")
+    ]
+
+
+# --- personel maliyeti (docs/DECISIONS.md "Personel maliyeti") ----------------------------------
+
+# Bordroda ay 30 gün; saat ücreti brüt / 225 (haftalık 45 saat).
+PAYROLL_DAYS = Decimal(30)
+MONTHLY_HOURS = Decimal(225)
+# Fazla mesai: iş günü ve hafta tatilinde saat ücretinin 1,5 katı (İş Kanunu m.41); resmi tatilde
+# çalışılan saate ayrıca 1 kat (m.47: bir günlük ücret ilave). Aylık ücret tatil günlerini içerir.
+OVERTIME_MULTIPLIERS: dict[str, Decimal] = {
+    AttendanceStatus.WORKED: Decimal("1.5"),
+    AttendanceStatus.WEEKLY_REST: Decimal("1.5"),
+    AttendanceStatus.PUBLIC_HOLIDAY: Decimal(1),
+}
+# Ücret ödenmeyen günler: ücretsiz izin, devamsızlık, rapor (raporda SGK öder).
+UNPAID_STATUSES = (
+    AttendanceStatus.UNPAID_LEAVE,
+    AttendanceStatus.ABSENT,
+    AttendanceStatus.SICK_LEAVE,
+)
+GENERAL = ""  # genel gider: üretim ya da dolum aşamasına bağlanmamış birimler
+
+
+@dataclass(frozen=True)
+class PersonnelCostRow:
+    """Kişinin ay maliyeti. `gross_monthly` ayın son çalışılan günündeki brüt ücret (yoksa None);
+    `missing_wage`: işte olduğu bir gün için geçerli ücret yok (o günler sıfır sayıldı)."""
+
+    employee: Employee
+    stage: str
+    gross_monthly: Decimal | None
+    employed_days: int
+    unpaid_days: int
+    paid_days: int
+    overtime_hours: Decimal
+    gross_salary: Decimal
+    overtime_pay: Decimal
+    employer_share: Decimal
+    total_cost: Decimal
+    missing_wage: bool
+
+    @property
+    def gross_total(self) -> Decimal:
+        return self.gross_salary + self.overtime_pay
+
+
+@dataclass(frozen=True)
+class ProducedKg:
+    """Ayda üretilen kg; `unconverted` kg'a çevrilemeyen (yoğunluğu girilmemiş) malzeme sayısı."""
+
+    kg: Decimal
+    unconverted: int
+
+
+@dataclass(frozen=True)
+class StageCost:
+    """Aşamanın (üretim, dolum, genel gider) ay maliyeti, üretilen kg ve işçilik oranı önerisi."""
+
+    stage: str
+    cost: Decimal
+    employee_count: int
+    kg: Decimal | None
+    unconverted: int
+    current_rate: Decimal | None
+    missing_wage_count: int
+
+    @property
+    def suggested_rate(self) -> Decimal | None:
+        """Gerçekleşen işçilik (TL/kg); genel giderde, kg ya da maliyet yokken None."""
+        if not self.stage or not self.kg or self.cost <= 0:
+            return None
+        return unit_amount(self.cost / self.kg)
+
+
+@dataclass(frozen=True)
+class PersonnelCostReport:
+    year: int
+    month: int
+    label: str
+    attendance_status: str
+    attendance_number: str
+    employer_rate: Decimal
+    rows: list[PersonnelCostRow]
+    stages: list[StageCost]
+
+    @property
+    def attendance_approved(self) -> bool:
+        return self.attendance_status == "APPROVED"
+
+    @property
+    def missing_wage_count(self) -> int:
+        return sum(1 for row in self.rows if row.missing_wage)
+
+    @property
+    def gross_salary(self) -> Decimal:
+        return sum((row.gross_salary for row in self.rows), ZERO)
+
+    @property
+    def overtime_pay(self) -> Decimal:
+        return sum((row.overtime_pay for row in self.rows), ZERO)
+
+    @property
+    def employer_share(self) -> Decimal:
+        return sum((row.employer_share for row in self.rows), ZERO)
+
+    @property
+    def total_cost(self) -> Decimal:
+        return sum((row.total_cost for row in self.rows), ZERO)
+
+    def stage_cost(self, stage: str) -> StageCost:
+        return next(item for item in self.stages if item.stage == stage)
+
+
+def _month_range(year: int, month: int) -> tuple[datetime, datetime]:
+    """Ayın başı ve bir sonraki ayın başı (Türkiye saatiyle)."""
+    first, last = personnel.month_bounds(year, month)
+    start = timezone.make_aware(datetime.combine(first, time.min))
+    end = timezone.make_aware(datetime.combine(last + timedelta(days=1), time.min))
+    return start, end
+
+
+def _sum_kg(rows: Iterable[tuple[Material, Decimal]]) -> ProducedKg:
+    kg, unconverted = ZERO, 0
+    for material, quantity in rows:
+        converted = to_kg(material, quantity)
+        if converted is None:
+            unconverted += 1
+        else:
+            kg += converted
+    return ProducedKg(kg=kg, unconverted=unconverted)
+
+
+def monthly_produced_kg(year: int, month: int) -> dict[str, ProducedKg]:
+    """Ayda üretilen kg; lot maliyetinde işçilik oranının uygulandığı tabanla aynı: üretimde
+    tamamlanan şarjların gerçek çıktısı, dolumda tamamlanan partilerde dolan bulk (fire hariç).
+    Ay, şarjın / partinin bitiş zamanına göre (Türkiye saati) belirlenir."""
+    start, end = _month_range(year, month)
+    outputs = (
+        ProductionBatch.objects.filter(
+            status=ProductionBatch.Status.COMPLETED, finished_at__gte=start, finished_at__lt=end
+        )
+        .values("order__product")
+        .annotate(total=Sum("actual_output_quantity"))
+    )
+    filled = (
+        FillingConsumption.objects.filter(
+            kind=ConsumptionKind.BULK,
+            run__status=FillingRun.Status.COMPLETED,
+            run__finished_at__gte=start,
+            run__finished_at__lt=end,
+        )
+        .values("lot__material")
+        .annotate(total=Sum("quantity"))
+    )
+    materials = Material.objects.select_related("base_unit").in_bulk(
+        [row["order__product"] for row in outputs] + [row["lot__material"] for row in filled]
+    )
+    return {
+        CostStage.PRODUCTION: _sum_kg(
+            (materials[row["order__product"]], row["total"]) for row in outputs if row["total"]
+        ),
+        CostStage.FILLING: _sum_kg(
+            (materials[row["lot__material"]], row["total"]) for row in filled if row["total"]
+        ),
+    }
+
+
+def _wages_by_employee(employee_ids: list[int], last: date) -> dict[int, list[EmployeeWage]]:
+    """Kişi başına ay sonuna kadar başlamış geçerli ücretler, eskiden yeniye."""
+    rows = EmployeeWage.objects.filter(
+        employee_id__in=employee_ids, is_active=True, valid_from__lte=last
+    ).order_by("employee_id", "valid_from", "id")
+    result: dict[int, list[EmployeeWage]] = defaultdict(list)
+    for wage in rows:
+        result[wage.employee_id].append(wage)
+    return result
+
+
+def _wage_on(wages: list[EmployeeWage], day: date) -> Decimal | None:
+    current = None
+    for wage in wages:
+        if wage.valid_from > day:
+            break
+        current = wage.gross_monthly
+    return current
+
+
+def _employee_cost(
+    row: personnel.AttendanceRow,
+    wages: list[EmployeeWage],
+    days_in_month: int,
+    employer_rate: Decimal,
+    stage: str,
+) -> PersonnelCostRow | None:
+    """Kişinin ay maliyeti (30 gün usulü). Yalnızca işte olduğu günler (işe giriş ve çıkış tarihi
+    arası) sayılır. Ayın tamamında işte olan 30 gün alır, ücret ödenmeyen her gün için günlük
+    ücret (brüt / 30) düşülür. Ay içinde giren ya da ayrılan, ücretli takvim günü kadar alır. Hiç
+    ücretli günü olmayan ay ücretsizdir (Şubat'ta 30 - 28 = 2 gün kalmaz); 30 gün usulü sıfıra
+    düşerken ücretli günü olan (31 çeken ayda 30 gün ücretsiz) ücretli günleri kadar alır. Her gün
+    o gün geçerli ücretle hesaplanır (ay içinde zam)."""
+    cells = [
+        cell for cell in row.cells if cell.status and personnel.employed_on(row.employee, cell.date)
+    ]
+    if not cells:
+        return None
+    daily = {cell.date: _wage_on(wages, cell.date) for cell in cells}
+    unpaid = [cell for cell in cells if cell.status in UNPAID_STATUSES]
+    paid_count = len(cells) - len(unpaid)
+    # Bilinen ücretlerin toplamları kesindir (2 ondalık); her tutar tek bölmeyle bulunur, yarım
+    # kuruşta yuvarlama kaymaz.
+    known = sum((wage for wage in daily.values() if wage is not None), ZERO)
+    unpaid_known = sum(
+        (wage for wage in (daily[cell.date] for cell in unpaid) if wage is not None), ZERO
+    )
+    count = len(cells)
+    if count == days_in_month and paid_count and len(unpaid) < PAYROLL_DAYS:
+        # Tam ay: takvim günleri 30'a ölçeklenir (31 ve 28 çeken aylarda da ücret aylık brüttür).
+        raw = (PAYROLL_DAYS * known - count * unpaid_known) / (PAYROLL_DAYS * count)
+        paid_days = int(PAYROLL_DAYS) - len(unpaid)
+    else:
+        raw = (known - unpaid_known) / PAYROLL_DAYS
+        paid_days = paid_count
+    gross_salary = money(max(ZERO, raw))
+    hours, overtime = ZERO, ZERO
+    for cell in cells:
+        if not cell.overtime_hours:
+            continue
+        hours += cell.overtime_hours
+        wage = daily[cell.date]
+        if wage is not None:
+            # Puantajda fazla mesai yalnızca Ç, HT ve RT günlerine girilir (veritabanı kısıtı).
+            overtime += cell.overtime_hours * wage * OVERTIME_MULTIPLIERS[cell.status]
+    overtime_pay = money(overtime / MONTHLY_HOURS)
+    employer_share = money((gross_salary + overtime_pay) * employer_rate / 100)
+    return PersonnelCostRow(
+        employee=row.employee,
+        stage=stage,
+        gross_monthly=daily[cells[-1].date],
+        employed_days=count,
+        unpaid_days=len(unpaid),
+        paid_days=paid_days,
+        overtime_hours=hours,
+        gross_salary=gross_salary,
+        overtime_pay=overtime_pay,
+        employer_share=employer_share,
+        total_cost=gross_salary + overtime_pay + employer_share,
+        missing_wage=any(wage is None for wage in daily.values()),
+    )
+
+
+def _labor_rate_on(stage: str, day: date) -> Decimal | None:
+    rate = (
+        CostRate.objects.filter(stage=stage, kind=CostRate.Kind.LABOR, valid_from__lte=day)
+        .order_by("-valid_from", "-id")
+        .first()
+    )
+    return rate.rate_per_kg if rate else None
+
+
+def personnel_cost_report(year: int, month: int) -> PersonnelCostReport:
+    """Ayın personel maliyeti: puantajdan (açık ayda takvim varsayılanlarıyla, onaylı ayda kayıtlı
+    günlerle) ve ücretlerden kişi başına maliyet; birim eşleştirmesine göre üretim, dolum ve genel
+    gider toplamları; üretim ve dolumda o ay üretilen kg ile gerçekleşen işçilik (TL/kg).
+    Rapor saklanmaz, her açılışta hesaplanır: geçmiş aylar da (onaylılar dahil) bugünkü ücret
+    kayıtları, kişinin bugünkü birimi ile işe giriş ve çıkış tarihi, bugünkü eşleştirme ve işveren
+    payıyla hesaplanır."""
+    grid = personnel.attendance_grid(year, month)
+    settings = PersonnelCostSettings.objects.order_by("pk").first()
+    employer_rate = settings.employer_rate if settings else default_employer_rate()
+    centers = _center_stages()
+    last = grid.days[-1].date
+    wages = _wages_by_employee([row.employee.pk for row in grid.rows], last)
+    rows = []
+    for row in grid.rows:
+        stage = centers.get(personnel.fold(row.employee.department), GENERAL)
+        cost = _employee_cost(
+            row, wages.get(row.employee.pk, []), len(grid.days), employer_rate, stage
+        )
+        if cost is not None:
+            rows.append(cost)
+    produced = monthly_produced_kg(year, month)
+    stages = []
+    for stage in (CostStage.PRODUCTION, CostStage.FILLING, GENERAL):
+        members = [row for row in rows if row.stage == stage]
+        made = produced.get(stage)
+        stages.append(
+            StageCost(
+                stage=stage,
+                cost=sum((row.total_cost for row in members), ZERO),
+                employee_count=len(members),
+                kg=made.kg if made else None,
+                unconverted=made.unconverted if made else 0,
+                current_rate=_labor_rate_on(stage, last) if stage else None,
+                missing_wage_count=sum(1 for row in members if row.missing_wage),
+            )
+        )
+    record = grid.record
+    return PersonnelCostReport(
+        year=year,
+        month=month,
+        label=grid.label,
+        attendance_status=grid.status,
+        attendance_number=record.number if record else "",
+        employer_rate=employer_rate,
+        rows=rows,
+        stages=stages,
+    )
+
+
+def _center_stages() -> dict[str, str]:
+    """Katlanmış birim adı → maliyet aşaması."""
+    return {center.key: center.stage for center in DepartmentCostCenter.objects.all()}
+
+
+def wage_summary(day: date | None = None, *, include_former: bool = False) -> list[dict[str, Any]]:
+    """Personel ve ücretleri: her biri için maliyet aşaması, `day` (varsayılan bugün) tarihinde
+    geçerli ücret ve ücret geçmişi (kaldırılanlar hariç, en yenisi önce). Varsayılan olarak
+    çalışanlar (çıkış tarihi `day` ya da sonrası olanlar dahil); `include_former` ile ayrılanlar da
+    (raporda görünen eski personelin ücreti girilebilsin)."""
+    day = day or timezone.localdate()
+    centers = _center_stages()
+    people = Employee.objects.all()
+    if not include_former:
+        people = people.filter(Q(is_active=True) | Q(termination_date__gte=day))
+    employees = list(people.order_by("-is_active", "full_name", "id"))
+    history: dict[int, list[EmployeeWage]] = defaultdict(list)
+    wages = EmployeeWage.objects.filter(employee__in=employees, is_active=True)
+    wages = wages.select_related("created_by", "employee")
+    for wage in wages.order_by("employee_id", "-valid_from", "-id"):
+        history[wage.employee_id].append(wage)
+    rows = []
+    for employee in employees:
+        items = history.get(employee.pk, [])
+        current = next((wage for wage in items if wage.valid_from <= day), None)
+        rows.append(
+            {
+                "employee": employee,
+                "stage": centers.get(personnel.fold(employee.department), GENERAL),
+                "current_wage": current.gross_monthly if current else None,
+                "current_valid_from": current.valid_from if current else None,
+                "history": items,
+            }
+        )
+    return rows
+
+
+def cost_centers() -> list[dict[str, str]]:
+    """Personel birimleri ve maliyet aşamaları; eşleştirilmemiş birim genel giderdir (boş)."""
+    mapping = _center_stages()
+    return [
+        {"department": name, "stage": mapping.get(personnel.fold(name), GENERAL)}
+        for name in personnel.departments()
     ]

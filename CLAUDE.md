@@ -51,7 +51,7 @@ Tek Django projesi, her iş alanı ayrı bir Django uygulaması (`backend/apps/<
 | `returns` | Müşteri iadesi (karantina, iade numunesi, QC kararına göre yönlendirme) | 3 |
 | `traceability` | Geri / ileri izleme raporu, geri çağırma simülasyonu (Excel/PDF) | 3 |
 | `purchasing` | Satın alma talebi/siparişi | 4 |
-| `costing` | Malzeme maliyeti, şarj ve ürün maliyeti | 4 |
+| `costing` | Malzeme maliyeti, şarj ve ürün maliyeti; personel maliyeti (brüt ücret + puantaj) ve işçilik oranı önerisi | 4 |
 | `maintenance` | Ekipman bakım planı, iş emri, duruş | 4 |
 | `hse` | GBF arşivi, tehlikeli madde limitleri, atık | 4 |
 | `personnel` | Personel kartı (kimlik ve görev bilgileri, isteğe bağlı sistem kullanıcısı), özlük bilgileri ve belgeleri, puantaj ve tatil takvimi; yalnız admin ve yönetim | canlı sonrası |
@@ -66,7 +66,8 @@ Tek Django projesi, her iş alanı ayrı bir Django uygulaması (`backend/apps/<
   olayları dinler; üretim modülü depoya görev açmayı bilmez.
 - Döngüsel import yasak. Bağımlılık yönü: `core ← masterdata ← recipes/inventory ← production ← quality/filling ← sales/returns ← traceability`.
   `workflow` herkesi dinleyebilir, kimse `workflow`'a doğrudan bağımlı olmaz (sadece olay).
-  `personnel` yalnızca `core` ve `masterdata`'ya bağlıdır.
+  `personnel` yalnızca `core` ve `masterdata`'ya bağlıdır; `costing` personel maliyeti için `personnel`'i
+  okur (kartlar, puantaj), `personnel` maliyeti bilmez.
 
 ### Katmanlar (her modülde)
 

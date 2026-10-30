@@ -1550,7 +1550,9 @@ değiştirme zorunlu, yalnızca admin):
   değişmez. Yeniden açma gerekçeyle yapılır; günler onaydaki haliyle kalır. Ay `PU-` numaralı belge,
   durum makinesi Açık ⇄ Onaylandı; geçişler olay yayınlar (`attendance_month.approved`/`.open`).
 - **Toplamlar:** durum başına gün, eksik gün (Üİ + R + D), fazla mesai iş günü / hafta tatili /
-  resmi tatil ayrı. Ücret ve bordro hesaplanmaz; Excel bordroyu hazırlayana verilir.
+  resmi tatil ayrı. Ücret ve bordro hesaplanmaz; Excel bordroyu hazırlayana verilir. (Güncelleme
+  2026-10-29: ücretten personel maliyeti maliyet modülünde hesaplanır, bordro yine hesaplanmaz; bkz.
+  "Personel maliyeti".)
 - **Tatil takvimi:** sabit tatiller (2429 sayılı Kanun) düğmeyle eklenir; Ramazan ve Kurban Bayramı
   günleri her yıl elle girilir, arifeler yarım gün. Tatil silinmez, takvimden kaldırılır.
 - **Kapsam dışı:** giriş-çıkış saatleri, vardiya planı, yıllık izin hakkı ve bakiyesi, ücret hesabı,
@@ -1558,3 +1560,60 @@ değiştirme zorunlu, yalnızca admin):
 - **CLAUDE.md:** modül tablosunda `personnel` satırı "özlük bilgileri ve belgeleri, puantaj" ile
   güncellendi (planla onaylandı).
 
+## 2026-10-29 — Personel maliyeti
+
+- **Karar (CUMHUR, "Personel maliyetlerini hesaplayalım. Maliyet alanına ekleyelim."; temel için
+  "Brüt ücret + puantaj", kullanım için "Rapor + işçilik önerisi", rapor günleri için "Ücretten
+  düşülsün", işveren payı için "%17,75 teşvikli"; plan için "Plan uygun; başla"):** personel maliyeti
+  maliyet modülünde (`apps/costing`) hesaplanır; yeni modül açılmadı. `costing`, `personnel`'i okur
+  (kartlar ve puantaj tablosu); `personnel` maliyeti bilmez.
+- **Ücret:** kişi başına brüt aylık ücret, geçerlilik tarihli (`EmployeeWage`). Zam yeni tarihle
+  eklenir; kayıt değiştirilmez ve silinmez, yanlışsa gerekçeyle kaldırılır. Aynı kişi ve tarihte tek
+  ücret (kaldırılan hariç). Yazım hatasına karşı başlangıç 2000–2100 arası, tutar en çok
+  100.000.000 TL. Ücretler sekmesi çalışanları (çıkışı ileride olanlar dahil) listeler; "Ayrılanları
+  da göster" ile raporda görünen eski personelin ücreti de girilir ve düzeltilir. Yeni ücretin
+  varsayılan başlangıcı: ilk ücrette işe giriş tarihi (yoksa geçen ayın 1'i), zamda bu ayın 1'i.
+- **Aylık hesap (30 gün usulü):** puantajın günleri kullanılır (açık ayda takvim varsayılanları, onaylı
+  ayda kayıtlı günler); yalnızca işe giriş ve çıkış tarihi arasındaki günler sayılır (çıkıştan sonra
+  kayıtlı kalmış puantaj günü de sayılmaz). Her gün o gün geçerli ücretle hesaplanır (ay içinde zam).
+  Ayın tamamında işte olan 30 gün alır (ay 28, 30 ya da 31 gün olsa da); ay içinde giren ya da
+  ayrılan işte olduğu takvim günü kadar alır (brüt / 30 × gün). Ücretsiz izin, devamsızlık ve rapor
+  günleri brüt / 30 ile düşülür; yıllık izin ve mazeret izni ücretlidir. Uç durumlar (inceleme
+  sonrası, 2026-10-29): hiç ücretli günü olmayan ay ücretsizdir (Şubat'ta 30 − 28 = 2 gün kalmaz);
+  30 gün usulü sıfıra düşerken ücretli günü olan (31 çeken ayda 30 gün ücretsiz) ücretli takvim günü
+  kadar alır. Ücreti girilmemiş günler sıfır sayılır ve kişi "ücret eksik" diye işaretlenir. Kişi
+  tutarı tek bölmeyle bulunur, yarım kuruş yukarı yuvarlanır.
+- **Fazla mesai:** saat ücreti brüt / 225. İş günü ve hafta tatilinde 1,5 kat; resmi tatilde çalışılan
+  saate ayrıca 1 kat (günün ücreti zaten aylığın içinde).
+- **İşveren payı:** (brüt ücret + fazla mesai) × oran; varsayılan %17,75 (teşvikli SGK işveren primi ve
+  işsizlik sigortası işveren payı), ayardan değişir. Tek ayardır; rapor saklanmadığı için değişince
+  geçmiş ayların raporu da yeni oranla hesaplanır, eklenmiş işçilik oranları değişmez. Bordro değildir:
+  gelir ve damga vergisi, SGK tavanı, kıdem ve izin karşılığı hesaplanmaz.
+- **Aşamalar:** personel birimi maliyet aşamasına eşlenir: Üretim (bulk), Dolum (mamul) ya da genel
+  gider (eşleştirilmemiş birim). Birim adında Türkçe büyük/küçük harf farkı gözetilmez; bir birim için
+  tek eşleştirme kaydı vardır.
+- **Rapor saklanmaz:** her açılışta hesaplanır. Geçmiş aylar da (onaylılar dahil) bugünkü ücret
+  kayıtları, kişinin bugünkü birimi ile işe giriş ve çıkış tarihi, bugünkü eşleştirme ve bugünkü
+  işveren payıyla hesaplanır; ay içinde birim değiştirenin bütün ayı yeni birime yazılır. Kartta tek
+  bir çalışma dönemi tutulduğu için yeniden işe alımda işe giriş tarihi ileri alınırsa önceki dönem
+  geçmiş aylardan düşer; "Yeniden işe başladı" çıkış tarihini sildiği için eski çıkıştan sonra kayıtlı
+  kalmış günler yeniden sayılır. Eklenmiş işçilik oranları ve hesaplanmış lot maliyetleri değişmez.
+  Onay anındaki dağılımı ve çalışma dönemlerini saklamak ayrı bir tasarım konusudur.
+- **İşçilik oranı önerisi:** aşamanın personel maliyeti / o ay üretilen kg (4 ondalık). Kg, lot
+  maliyetindeki işçilik tabanıyla aynıdır: üretimde ay içinde biten şarjların kg'a çevrilmiş çıktısı,
+  dolumda ay içinde biten partilerde tüketilen bulk (fire hariç); yoğunluğu girilmemiş malzemenin
+  üretimi sayılmaz, kaç malzeme olduğu ekranda gösterilir. Öneri yalnızca puantajı onaylı ay için yeni
+  işçilik oranı (`CostRate`, tür İşçilik) olarak eklenir; başlangıç tarihi seçilir (varsayılan ertesi
+  ayın ilk günü), aynı aşama, tür ve tarihte oran varsa reddedilir. Aşamada ücreti eksik kişi ya da
+  kg'a çevrilemeyen malzeme varsa pencere uyarır, oran yine eklenebilir. Lot maliyetinde şarjın ya da
+  partinin bittiği gün geçerli oran kullanılır: oran, başlangıç tarihinde ya da sonra biten lotlara
+  uygulanır; bunlardan maliyeti önceden hesaplanmış olanlar "Yeniden hesapla" ile güncellenir, daha
+  önce biten lotlar eski oranla kalır. Eski oranlar ve hesaplanmış lot maliyetleri kendiliğinden
+  değişmez.
+- **Yetki:** yalnızca yönetim ve admin (maliyet modülünün kuralı, D-15). Ücretler kişisel veridir
+  (docs/KVKK.md).
+- **Kapsam dışı:** bordro ve net ücret, prim ve ikramiye, yol ve yemek yardımı, kıdem tazminatı
+  karşılığı, bütçe ve plan maliyeti, işveren payının tarihli değişimi, onaylı ayın dağılımının
+  saklanması. Puantajda çıkış tarihinden sonra kayıtlı kalan günlerin personel modülünde düzeltilmesi
+  ayrı iştir (maliyet bunları saymaz).
+- **CLAUDE.md:** modül tablosunda `costing` satırı ve bağımlılık notu güncellendi (planla onaylandı).

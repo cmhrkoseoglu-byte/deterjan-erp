@@ -130,14 +130,15 @@ class Command(BaseCommand):
         call_command("seed_filling_demo", stdout=self.stdout)
         # Müşteriler, mamul açılış stoku ve örnek siparişler (Faz 3, Adım 3.1).
         call_command("seed_sales_demo", stdout=self.stdout)
-        # Standart maliyetler, gider oranları ve lot maliyetleri (Faz 4, Adım 4.1).
-        call_command("seed_costing_demo", stdout=self.stdout)
         # Teraziler, kalibrasyon ve bakım planları (Faz 4, Adım 4.4).
         call_command("seed_maintenance_demo", stdout=self.stdout)
         # Tehlike bilgisi, GBF, depolama limitleri, atık ve olay örneği (Faz 4, Adım 4.5).
         call_command("seed_hse_demo", stdout=self.stdout)
         # Personel kartları: demo kullanıcılar, saha çalışanları, ayrılmış bir personel.
         call_command("seed_personnel_demo", stdout=self.stdout)
+        # Standart maliyetler, gider oranları, lot maliyetleri (Faz 4, Adım 4.1) ve personel
+        # ücretleri (kartlardan sonra).
+        call_command("seed_costing_demo", stdout=self.stdout)
         # Paralel çalışma stok karşılaştırması örneği (Faz 5, Adım 5.6).
         call_command("seed_golive_demo", stdout=self.stdout)
         self.stdout.write(self.style.SUCCESS("Demo verisi hazır."))
