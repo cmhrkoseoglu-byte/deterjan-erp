@@ -3,7 +3,13 @@
 Kart silinmez (CLAUDE.md kural 6): işten ayrılış `terminate_employee` ile kaydedilir (kart pasife
 alınır, çıkış tarihi yazılır), yeniden işe başlayan `reinstate_employee` ile açılır. Her değişiklik
 eski → yeni değerleriyle denetim günlüğüne yazılır (kural 7). Özlük belgelerinin eklenmesi,
-açılması ve kaldırılması kartın geçmişine de yazılır. Puantaj ayı onayla kilitlenir.
+açılması ve kaldırılması kartın geçmişine de yazılır. Puantaj ayı onayla kilitlenir; ayrılışta
+çıkış tarihinden sonraki puantaj günleri kaldırılır (docs/DECISIONS.md "Puantajda çıkıştan sonraki
+günler").
+
+Kilit sırası (kilitlenme olmasın diye her yazımda aynı): personel kartları (kimlik sırasıyla),
+puantaj ayları (yıl, ay sırasıyla), puantaj günleri. Gün ve aralık girişi ile ay onayı önce
+kartları kilitler; böylece aynı anda kaydedilen bir ayrılış çıkıştan sonraya gün bırakamaz.
 """
 
 import os
@@ -17,10 +23,11 @@ from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.core.files.uploadedfile import UploadedFile
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.core import attachments
-from apps.core.audit import log_change
+from apps.core.audit import log_change, snapshot
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
 from apps.core.permissions import user_has_role
@@ -182,11 +189,86 @@ def update_employee(actor: User, employee: Employee, data: Mapping[str, Any]) ->
     return masterdata.update_record(actor, employee, values)
 
 
+class ApprovedAttendanceAfterExit(BusinessRuleError):
+    """Çıkıştan sonraki günlerden biri onaylı aydadır. Onaylı aylar ("2026-09") API yanıtına
+    eklenir; pencere ilk aya bağlantı verir."""
+
+    def __init__(self, message: str, months: list[str]) -> None:
+        super().__init__("approved_attendance_after_exit", message)
+        self.months = months
+
+
+def _lock_attendance_after(employee: Employee, day: date) -> list[AttendanceEntry]:
+    """Kişinin `day`den sonraki kayıtlı puantaj günleri; önce ayları, sonra günleri kilitlenir
+    (kilit sırası). Kart kilitliyken başka bir yazım bu kişiye gün ekleyemez."""
+    later = AttendanceEntry.objects.filter(employee=employee, date__gt=day)
+    months = {
+        record.pk: record
+        for record in AttendanceMonth.objects.select_for_update()
+        .filter(pk__in=later.values("month_id"))
+        .order_by("year", "month")
+    }
+    entries = list(later.select_for_update().order_by("date", "id"))
+    for entry in entries:
+        entry.month = months.get(entry.month_id) or entry.month
+    return entries
+
+
+def _approved_after_exit(employee: Employee, day: date, entries: Sequence[AttendanceEntry]) -> str:
+    """Onaylı aylarda çıkıştan sonra kayıtlı günler için Türkçe hata metni (aylar ve günleri)."""
+    spans: dict[tuple[int, int], tuple[date, date]] = {}
+    for entry in entries:
+        key = (entry.date.year, entry.date.month)
+        first, last = spans.get(key, (entry.date, entry.date))
+        spans[key] = (min(first, entry.date), max(last, entry.date))
+    months = ", ".join(
+        f"{selectors.month_label(year, month)} ({selectors.day_span(first, last)})"
+        for (year, month), (first, last) in sorted(spans.items())
+    )
+    which, again = ("bu ayları", "ayları") if len(spans) > 1 else ("bu ayı", "ayı")
+    return (
+        f"{employee.full_name}, çıkış tarihinden ({day:%d.%m.%Y}) sonra da onaylı puantajda "
+        f"görünüyor: {months}. Bordroya giden rakam değişeceği için önce {which} Puantaj'da "
+        f"gerekçeyle yeniden açın, sonra ayrılışı kaydedin; ardından {again} yeniden onaylayıp "
+        "yeni Excel'i bordroya verin."
+    )
+
+
+def _remove_attendance(actor: User, employee: Employee, entries: Sequence[AttendanceEntry]) -> None:
+    """Çıkıştan sonraki günleri kaldırır. Her gün silinmeden önce bütün alanlarıyla ayın denetim
+    kaydına yazılır (taslak reçete satırı gibi; docs/DECISIONS.md)."""
+    for entry in entries:
+        log_change(
+            actor,
+            entry.month,
+            AuditLog.Action.UPDATE,
+            {"entry": [{"id": entry.pk, **snapshot(entry)}, None]},
+            f"Çıkış tarihinden sonraki puantaj günü kaldırıldı: {employee.full_name} "
+            f"{entry.date:%d.%m.%Y}",
+        )
+    if entries:
+        AttendanceEntry.objects.filter(pk__in=[entry.pk for entry in entries]).delete()
+
+
 @transaction.atomic
 def terminate_employee(
-    actor: User, employee: Employee, termination_date: date, *, note: str = ""
+    actor: User,
+    employee: Employee,
+    termination_date: date,
+    *,
+    note: str = "",
+    remove_attendance: bool = False,
 ) -> Employee:
     """İşten ayrılışı kaydeder: kart pasife alınır ve çıkış tarihi yazılır (kart silinmez).
+
+    Çıkış tarihi kişinin son iş günüdür; puantajda bu tarihten sonra kayıtlı gün kalmaz:
+
+    - Günlerden biri onaylı bir aydaysa ayrılış kaydedilmez (`approved_attendance_after_exit`):
+      bordroya giden rakam değişeceği için ay önce gerekçeyle yeniden açılır.
+    - Açık aylardaki günler yalnızca `remove_attendance` ile kaldırılır; verilmemişse hata
+      (`attendance_after_exit`) günleri listeler ve pencere onay ister.
+    - Kaldırılan her gün eski haliyle ayın denetim kaydına, tarihli özeti ayrılışın notuna (kartın
+      geçmişi) yazılır. "Yeniden işe başladı" bu günleri geri getirmez.
 
     Bağlı sistem hesabı kendiliğinden kapanmaz; Sistem > Kullanıcılar'dan pasife alınır.
     """
@@ -198,16 +280,36 @@ def terminate_employee(
         raise BusinessRuleError(
             "termination_before_hire", "İşten çıkış tarihi işe giriş tarihinden önce olamaz."
         )
+    later = _lock_attendance_after(locked, termination_date)
+    approved = [entry for entry in later if entry.month.status == AttendanceMonth.Status.APPROVED]
+    if approved:
+        raise ApprovedAttendanceAfterExit(
+            _approved_after_exit(locked, termination_date, approved),
+            sorted({f"{entry.date:%Y-%m}" for entry in approved}),
+        )
+    summary = selectors.summarize_days(later)
+    if later and not remove_attendance:
+        raise BusinessRuleError(
+            "attendance_after_exit",
+            f"Çıkış tarihinden ({termination_date:%d.%m.%Y}) sonra puantajda kayıtlı "
+            f"{len(later)} gün var: {summary}. Kaydederseniz bu günler puantajdan kaldırılır; "
+            "kişi yeniden işe başlatılsa da geri gelmez.",
+        )
     locked.is_active = False
     locked.termination_date = termination_date
     locked.full_clean(exclude=["created_by", "updated_by"])
-    return save_with_audit(locked, actor, note=_text(note) or "İşten ayrıldı")
+    text = _text(note) or "İşten ayrıldı"
+    if later:
+        text = f"{text} · çıkıştan sonraki {len(later)} puantaj günü kaldırıldı: {summary}"
+    saved = save_with_audit(locked, actor, note=text)
+    _remove_attendance(actor, saved, later)
+    return saved
 
 
 @transaction.atomic
 def reinstate_employee(actor: User, employee: Employee, *, note: str = "") -> Employee:
     """Ayrılan personeli yeniden çalışır yapar (ör. yeniden işe alım); çıkış tarihi boşalır, eski
-    tarih denetim günlüğünde kalır."""
+    tarih denetim günlüğünde kalır. Ayrılışta kaldırılan puantaj günleri geri gelmez."""
     _require_role(actor)
     locked = Employee.objects.select_for_update().get(pk=employee.pk)
     if locked.is_active:
@@ -549,6 +651,8 @@ def set_attendance_day(
     ileri bir güne girilemez (izin ve rapor girilebilir).
     """
     _require_role(actor)
+    # Kart kilitlenip yeniden okunur: aynı anda kaydedilen ayrılışın çıkış tarihi görülür.
+    employee = Employee.objects.select_for_update().get(pk=employee.pk)
     hours = Decimal(overtime_hours or 0)
     _check_day(employee, day, status, hours, today=timezone.localdate())
     record = _open_month(actor, day.year, day.month)
@@ -586,10 +690,15 @@ def set_attendance_range(
     today = timezone.localdate()
     if status == AttendanceStatus.ABSENT and end > today:
         raise BusinessRuleError("future_day", "Devamsızlık ileri bir güne girilemez.")
+    # Kartlar kimlik sırasıyla kilitlenip yeniden okunur (kilit sırası; güncel çıkış tarihleri).
     if employee is not None:
-        people = [employee]
+        people = [Employee.objects.select_for_update().get(pk=employee.pk)]
     else:
-        people = list(selectors.employees_between(start, end, _text(department)))
+        people = list(
+            selectors.employees_between(start, end, _text(department))
+            .select_for_update()
+            .order_by("pk")
+        )
     if not people:
         raise BusinessRuleError("no_employees", "Bu aralıkta işte olan personel yok.")
     days = selectors.days_between(start, end)
@@ -635,7 +744,12 @@ def set_attendance_range(
 @transaction.atomic
 def approve_attendance_month(actor: User, year: int, month: int) -> AttendanceMonth:
     """Ayın puantajını onaylar: değiştirilmemiş günler varsayılan durumlarıyla yazılır ve ay
-    kilitlenir (bordroya giden rakam sabitlenir). Ay bitmeden onaylanamaz."""
+    kilitlenir (bordroya giden rakam sabitlenir). Ay bitmeden onaylanamaz.
+
+    Ayın kişileri (o ay işte olanlar ve kayıtlı günü olanlar) aydan önce kilitlenir: varsayılan
+    günler güncel giriş ve çıkış tarihleriyle yazılır, aynı anda kaydedilen ayrılışla çakışmaz.
+    Kilitten sonra tabloya yeni bir kart girerse (ör. o sırada yeniden işe başlatılan ya da açılan
+    kart) onay geri alınır (`attendance_cards_changed`); yeniden onaylanınca kart da kilitlenir."""
     _require_role(actor)
     first, last = selectors.month_bounds(year, month)
     if last >= timezone.localdate():
@@ -643,9 +757,23 @@ def approve_attendance_month(actor: User, year: int, month: int) -> AttendanceMo
             "month_not_finished",
             f"{selectors.month_label(year, month)} bitmeden puantaj onaylanamaz.",
         )
+    holders = AttendanceEntry.objects.filter(date__range=(first, last)).values("employee_id")
+    in_month = selectors.employees_between(first, last).values("pk")
+    locked = {
+        card.pk
+        for card in Employee.objects.select_for_update()
+        .filter(Q(pk__in=in_month) | Q(pk__in=holders))
+        .order_by("pk")
+        .only("pk")
+    }
     record = _open_month(actor, year, month)
     attendance_month_states.assert_can_transition(record.status, AttendanceMonth.Status.APPROVED)
     grid = selectors.attendance_grid(year, month)
+    if any(row.employee.pk not in locked for row in grid.rows):
+        raise BusinessRuleError(
+            "attendance_cards_changed",
+            "Onay sırasında personel kartları değişti; ayı yeniden onaylayın.",
+        )
     defaults = [
         AttendanceEntry(
             month=record,

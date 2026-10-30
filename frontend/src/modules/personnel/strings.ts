@@ -126,9 +126,15 @@ export const pe = {
   note: "Not (isteğe bağlı)",
   accountStillActive: (username: string) =>
     `Bu kişinin sistem hesabı (${username}) hâlâ açık. Hesabı Sistem > Kullanıcılar'dan pasife alın.`,
+  terminationDateHint: "Son çalışma günü (o gün dahil).",
+  terminateAndRemove: "Kaydet ve günleri kaldır",
+  openAttendance: "Puantajı aç",
   confirmReinstate: (name: string) =>
-    `${name} yeniden çalışıyor olarak işaretlensin mi? Çıkış tarihi silinir; eski tarih geçmişte kalır.`,
-  terminated: (name: string) => `${name} için işten ayrılış kaydedildi.`,
+    `${name} yeniden çalışıyor olarak işaretlensin mi? Çıkış tarihi silinir; eski tarih geçmişte kalır. Ayrılışta kaldırılan puantaj günleri geri gelmez.`,
+  terminated: (name: string, removed = false) =>
+    removed
+      ? `${name} için işten ayrılış kaydedildi; çıkıştan sonraki puantaj günleri kaldırıldı.`
+      : `${name} için işten ayrılış kaydedildi.`,
   reinstated: (name: string) => `${name} yeniden çalışıyor olarak işaretlendi.`,
   created: (name: string) => `${name} için personel kartı açıldı.`,
   saved: (name: string) => `${name} kaydedildi.`,
@@ -184,7 +190,7 @@ export const at = {
   reopen: "Yeniden aç",
   notFinished: "Ay bitmeden onaylanamaz.",
   confirmApprove: (label: string) =>
-    `${label} puantajı onaylansın mı? Değiştirilmemiş günler takvimdeki haliyle yazılır ve ay kilitlenir; düzeltme için ay gerekçeyle yeniden açılır.`,
+    `${label} puantajı onaylansın mı? Değiştirilmemiş günler takvimdeki haliyle yazılır ve ay kilitlenir; düzeltme için ay gerekçeyle yeniden açılır. Bu ay işten ayrılan varsa önce çıkışını kaydedin.`,
   approved: (label: string) => `${label} puantajı onaylandı.`,
   reopened: (label: string) => `${label} puantajı yeniden açıldı.`,
   reopenTitle: (label: string) => `${label} · yeniden aç`,

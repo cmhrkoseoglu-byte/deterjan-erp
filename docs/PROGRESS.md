@@ -891,4 +891,46 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   `yonetim-maliyet.jpg` (yeni sekmelerle). KVKK envanteri, DECISIONS (puantaj kararına not) ve
   CLAUDE.md modül tablosu güncellendi.
 - Ayrı iş: puantajda çıkış tarihinden sonra kayıtlı kalan günler personel modülünde düzeltilmeli
-  (maliyet bunları saymaz).
+  (maliyet bunları saymaz). 2026-10-30'da yapıldı (aşağıda).
+
+## 2026-10-30 — Puantajda çıkıştan sonraki günler
+
+- Sorun: ayrılış, çıkış tarihinden sonra kayıtlı puantaj günlerine dokunmuyordu (önceden girilmiş izin,
+  ayrılıştan önce onaylanmış ayın günleri). Bu günler tabloda, toplamlarda ve Excel'de kalıyor,
+  düzenlenemiyordu; maliyet onları saymıyordu.
+- Backend (`apps/personnel`, göç yok): `terminate_employee(..., remove_attendance=False)` çıkıştan
+  sonraki günleri kilitler; onaylı aydaysa `approved_attendance_after_exit` (`ApprovedAttendanceAfterExit`;
+  mesaj aylar ve günler, API yanıtında `months`), açık aydaysa onay olmadan `attendance_after_exit`
+  (günlerin özeti), onayla aynı işlemde kaldırır. Her gün silinmeden önce bütün alanlarıyla ayın
+  denetim kaydına, tarihli özet ayrılışın notuna yazılır. Seçiciler `summarize_days` (durum, fazla
+  mesai, not işareti), `day_span`, `format_hours`. Gün ve aralık girişi ile ay onayı önce kartları
+  kilitler (kilit sırası kart → ay → gün); onayda kilitten sonra tabloya giren kart varsa
+  `attendance_cards_changed`. API: `terminate/` isteğine `remove_attendance`.
+- Ön yüz: çıkış penceresi tarih alanında "Son çalışma günü (o gün dahil)", çıkıştan sonraki günleri
+  turuncu uyarıda listeler ve düğmeyi "Kaydet ve günleri kaldır" yapar (tarih değişince ya da onaylı
+  kayıt iş kuralıyla reddedilince onay düşer; istek sürerken tarih ve not kilitli); onaylı ayda
+  kırmızı uyarı ve sunucunun bildirdiği ilk onaylı aya "Puantajı aç" bağlantısı (`getErrorList`). Ay
+  onayı ve yeniden başlatma onayı metinleri güncellendi; `monthParam` ortak yardımcıya taşındı.
+- İnceleme: çok ajanlı tur (dört eksen, her bulgu ayrı ajanla çürütülmeye çalışıldı): 17 bulgudan 13'ü
+  doğrulandı (hepsi düşük önemde), 4'ü çürütüldü; doğrulananların hepsi düzeltildi. Başlıcaları: ay
+  onayında kilitlenmeyen kart için gün yazılabiliyordu; "Puantajı aç" onaylı olmayan aya
+  gidebiliyordu; onaylı kayıt reddedilince eski liste ve onay kalıyordu; istek sürerken tarih
+  değişince düğme açılıyordu; özette fazla mesai ve not yoktu; çıkışı ileri alırken onaylı ayın boş
+  kalan günleri ve silme gerekçesi belgelerde yanlış/eksikti; bazı testler zayıftı (maliyet testindeki
+  giriş tarihi, kendisiyle karşılaştırılan kimlik, tek aralıklı özet, tarih değişince yeniden gönderim).
+  İkinci tur düzeltmeleri inceledi: 5 bulgudan 3'ü doğrulandı (düşük), hepsi düzeltildi (OpenAPI'de
+  `terminate/` 400 yanıtı ve `months`, özet testinde yalnız fazla mesai farkı, sonradan giren kartın
+  yeniden onayda kilitlenip günlerinin yazılması).
+- Kanıt: `personnel/tests/test_termination.py` (açık ayda onayla kaldırma ve çıkış günü sınırı, onaysız
+  ret ve değişmeyen durum, ayın ve kartın denetim kayıtları ve günün kimliği, tablo ve toplamlar, ileri
+  tarihli çıkış, tarih düzeltme ve yeniden başlatma, çıkışı ileri alınca onaylı ayın yeniden onayla
+  dolması, onaylı ayda ret → yeniden aç → kaydet → yeniden onay, çok aylı mesaj ve `months`, gün özeti
+  aralıkları, bayat kart nesnesi, kilit sırası, onayda sonradan giren kart, bütün diğer roller ve admin,
+  API), `test_api.py` (yeniden başlatmada 403), `costing/tests/test_personnel_cost.py` (onaylı aya
+  düşen ayrılış akışı; eski kayıtların maliyete girmemesi), `modules/personnel/personnel.test.tsx`
+  (onay akışı, tarih değişince onaysız yeniden gönderim, reddedilen onaylı kayıt, istek sürerken
+  kilitli alanlar, sunucunun bildirdiği aya bağlantı).
+- Mevcut veri: canlıda ve yerelde çıkıştan sonra kayıtlı gün yoktu (salt okunur sayım); temizlik
+  gerekmedi.
+- Kılavuz `yonetim.md` (Personel ve Puantaj), DECISIONS ("Puantajda çıkıştan sonraki günler" ve
+  önceki kararlara notlar), KVKK güncellendi.

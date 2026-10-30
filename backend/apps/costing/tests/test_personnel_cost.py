@@ -30,7 +30,7 @@ from apps.costing.models import (
 from apps.costing.tests.factories import build_chain
 from apps.filling.models import FillingRun
 from apps.personnel import services as personnel
-from apps.personnel.models import AttendanceStatus, Employee
+from apps.personnel.models import AttendanceMonth, AttendanceStatus, Employee
 from apps.personnel.tests.factories import employee
 from apps.production.models import ProductionBatch
 
@@ -348,22 +348,45 @@ def test_produced_kg_follows_istanbul_month_and_completed_status(
 
 
 def test_approved_month_uses_stored_days_within_employment(manager: User) -> None:
-    """Onaylı ay kayıtlı günlerle hesaplanır: onaydan sonra açılan kart o aya girmez. Sonradan
-    girilen çıkış tarihinden sonraki kayıtlı günler sayılmaz (işte olduğu takvim günü kadar)."""
+    """Onaylı ay kayıtlı günlerle hesaplanır: onaydan sonra açılan kart o aya girmez. Onaylı aya
+    düşen ayrılış ay yeniden açılınca kaydedilir; yeniden onayda çıkıştan sonraki günler yoktur."""
     person = employee(manager)
     _wage(manager, person, "30000", date(2020, 1, 1))
     personnel.set_attendance_day(manager, person, date(2026, 9, 3), status=S.UNPAID_LEAVE)
     personnel.approve_attendance_month(manager, 2026, 9)
+    # Giriş tarihi yok: onaylı aydan onu yalnızca onay kuralı (kayıtlı günler) dışarıda tutar.
     newcomer = employee(manager, full_name="Can Kaya")
     report = selectors.personnel_cost_report(2026, 9)
     assert [row.employee.pk for row in report.rows] == [person.pk]
     assert report.rows[0].gross_salary == D("29000.00")
-    personnel.terminate_employee(manager, person, date(2026, 9, 20))
+    with pytest.raises(BusinessRuleError) as exc:
+        personnel.terminate_employee(manager, person, date(2026, 9, 20), remove_attendance=True)
+    assert exc.value.code == "approved_attendance_after_exit"
+    record = AttendanceMonth.objects.get(year=2026, month=9)
+    personnel.reopen_attendance_month(manager, record, "Geç bildirilen ayrılış")
+    personnel.terminate_employee(manager, person, date(2026, 9, 20), remove_attendance=True)
+    personnel.approve_attendance_month(manager, 2026, 9)
     row = _row(2026, 9, person)
     assert (row.employed_days, row.unpaid_days, row.paid_days) == (20, 1, 19)
     assert row.gross_salary == D("19000.00")
     october = selectors.personnel_cost_report(2026, 10)
     assert [row.employee.pk for row in october.rows] == [newcomer.pk]
+
+
+def test_stored_days_after_exit_are_not_costed(manager: User) -> None:
+    """Çıkıştan sonra kayıtlı kalmış eski günler (ör. bu kural yokken onaylanmış ay) maliyete
+    girmez: yalnızca işte olduğu takvim günleri sayılır."""
+    person = employee(manager)
+    _wage(manager, person, "30000", date(2020, 1, 1))
+    personnel.approve_attendance_month(manager, 2026, 9)
+    # Eski kayıt: kart, servisi atlayarak ayrılmış gösterilir; onaylı ayda 21–30.09 kayıtlı kalır.
+    Employee.objects.filter(pk=person.pk).update(
+        is_active=False, termination_date=date(2026, 9, 20)
+    )
+    person.refresh_from_db()
+    row = _row(2026, 9, person)
+    assert (row.employed_days, row.paid_days) == (20, 20)
+    assert row.gross_salary == D("20000.00")
 
 
 # --- ücretler, ayarlar, yetki ----------------------------------------------------------------
