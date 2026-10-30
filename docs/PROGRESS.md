@@ -852,3 +852,43 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
 - Kılavuz: `yonetim.md` "Puantaj" ve "Tatil takvimi", `admin.md`; görseller `yonetim-puantaj.jpg`,
   `yonetim-tatil-takvimi.jpg`. KVKK envanteri, DECISIONS ve CLAUDE.md modül tablosu güncellendi.
 
+## 2026-10-29 — Personel maliyeti
+
+- Backend (`apps/costing`, göç `0002_personel_maliyeti`): `EmployeeWage` (brüt aylık ücret,
+  geçerlilik tarihli; kaldırma gerekçeli, CHECK ve kişi + tarih tekil kısıtı), `DepartmentCostCenter`
+  (birim → maliyet aşaması; Türkçe katlanmış birim adı tekil), `PersonnelCostSettings` (işveren payı,
+  varsayılan %17,75; ilk değişiklikte denetimle açılan tek kayıt). Seçici `personnel_cost_report`
+  puantaj tablosundan 30 gün usulüyle kişi maliyeti (yalnızca işe giriş ve çıkış arasındaki günler;
+  tek bölmeli tutar), aşama toplamları, ayda üretilen kg ve gerçekleşen işçilik (TL/kg) hesaplar;
+  `wage_summary` (ayrılanlar isteğe bağlı), `cost_centers`. Servisler ücret ekleme/kaldırma (tarih ve
+  tutar sınırı), birim eşleştirmesi, işveren payı ve onaylı aydan işçilik oranı. API
+  `/api/v1/costing/personnel-costs/<yıl>/<ay>/` (rapor, `xlsx/`, `labor-rate/`), `wages/`
+  (`summary?include_former=`, `remove`), `cost-centers/`, `personnel-cost-settings/`.
+  `seed_costing_demo` örnek ücretleri ve birim eşleştirmesini ekler (`seed_demo`'da personel
+  demosundan sonra).
+- Ön yüz: Maliyet'e iki sekme. Personel maliyeti: ay seçici, puantaj durumu, hesap kuralları, özet
+  kartları, aşama tablosu (gerçekleşen ve geçerli işçilik, "Oran olarak ekle" ve neden yapılamadığı),
+  kişi tablosu, Excel; oran penceresi eksik ücret ve kg'a çevrilemeyen malzeme için uyarır. Personel
+  ücretleri: güncel ücretler ("Ayrılanları da göster"), ücret ekleme (binlik ayraçlı tutar ve
+  önizleme; ilk ücret işe giriş tarihinden), geçmiş ve gerekçeyle kaldırma, birim eşleştirmesi,
+  işveren payı.
+- İnceleme: iki çok ajanlı tur (dört eksen, her bulgu ayrı ajanla çürütülmeye çalışıldı). İlk tur 36
+  doğrulanmış bulgu verdi (tekrarlar ayıklanınca ~20 konu); hepsi düzeltildi. Başlıcaları: ayrılan
+  personelin ücreti girilemiyordu; çıkıştan sonra kayıtlı kalan puantaj günleri ücretli sayılıyordu;
+  ayın tamamı ücretsizken Şubat'ta 2 gün ücret kalıyordu; tam yarım kuruşta 1 kuruş sapma; ayar
+  isteğinde 500 hatası ve okumada kayıt açılması; ay değişince oran penceresinin eski rakamları
+  göstermesi. İkinci tur düzeltmelerin 40'ını doğruladı, 11 küçük yeni bulgu verdi (geçmiş ücretlerde
+  kişi başına sorgu, eşzamanlı aynı ücrette 500, pencerenin kendiliğinden açılması, dokunmatikte
+  görünmeyen neden, belgede oranın lotlara uygulanma zamanı); hepsi düzeltildi.
+- Kanıt: `costing/tests/test_personnel_cost.py` (tam ve kısmi ay, 28/30/31 günlük aylar, ayın tamamı
+  ücretsiz, 31 günde 30 gün ücretsiz, yarım kuruş, iş dışı kayıtlı günler, onaylı ayda kayıtlı günler,
+  ücretsiz gün kesintisi, gün türüne göre fazla mesai, işveren payı ayarı, ay içinde zam, eksik ve
+  kaldırılan ücret, ayrılanlar, aşama toplamları ve Türkçe birim eşleştirmesi, İstanbul ay sınırı ve
+  tamamlanmamış şarj, oran önerisi ve notu, onay kuralı, sınırlar, denetim kayıtları, sorgu sayısı,
+  bütün diğer roller 403, admin ve anonim, API ve Excel içeriği), `test_seed_demo.py`,
+  `modules/costing/personnelCost.test.tsx`.
+- Kılavuz: `yonetim.md` "Personel maliyeti"; görseller `yonetim-personel-maliyeti.jpg` (yeni),
+  `yonetim-maliyet.jpg` (yeni sekmelerle). KVKK envanteri, DECISIONS (puantaj kararına not) ve
+  CLAUDE.md modül tablosu güncellendi.
+- Ayrı iş: puantajda çıkış tarihinden sonra kayıtlı kalan günler personel modülünde düzeltilmeli
+  (maliyet bunları saymaz).

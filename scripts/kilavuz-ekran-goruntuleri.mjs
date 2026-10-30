@@ -919,6 +919,17 @@ const SHOTS = [
     run: async (page) => go(page, "/maliyet/oranlar", "Oran ekle"),
   },
   {
+    // Ücretler ve birim eşleştirmesi seed_costing_demo'dan gelir. Bu ay biten demo şarjları
+    // sayesinde üretim satırında gerçekleşen işçilik görünür (puantaj açık, oran eklenemez).
+    name: "yonetim-personel-maliyeti",
+    user: "yonetim",
+    run: async (page) => {
+      const now = new Date();
+      const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      await go(page, `/maliyet/personel?ay=${month}`, "Aşamalara göre");
+    },
+  },
+  {
     // Demo verisinde firma bilgileri .env'deki örnek değerlerle başlar.
     name: "yonetim-firma-bilgileri",
     user: "yonetim",

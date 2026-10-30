@@ -13,6 +13,9 @@ Fiili maliyet lot bazında hesaplanır ve `LotCost` sürümü olarak saklanır:
 Hesap olayla tetiklenir (bkz. `handlers.py`); üretim ve dolum modülleri maliyeti bilmez. Girdi
 lotunun maliyeti henüz yoksa önce o hesaplanır. Lotun güncel birim maliyeti
 `inventory.services.set_lot_cost` ile `Lot.unit_cost`'a yazılır.
+
+Personel maliyeti (2026-10-29): ücret, birim eşleştirmesi ve işveren payı burada yazılır; aylık
+hesap `selectors.personnel_cost_report`'tadır ve puantajı (personnel) yalnızca okur.
 """
 
 from collections import defaultdict
@@ -22,14 +25,27 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from django.db import transaction
+from django.core.exceptions import PermissionDenied
+from django.db import IntegrityError, transaction
 from django.db.models import Max, Sum
 from django.utils import timezone
 
 from apps.core.exceptions import BusinessRuleError
+from apps.core.formatting import format_money
 from apps.core.models import User
+from apps.core.permissions import user_has_role
+from apps.core.roles import YONETIM
 from apps.core.services import save_with_audit
-from apps.costing.models import CostRate, CostStage, LotCost, LotCostLine, StandardCost
+from apps.costing.models import (
+    CostRate,
+    CostStage,
+    DepartmentCostCenter,
+    EmployeeWage,
+    LotCost,
+    LotCostLine,
+    PersonnelCostSettings,
+    StandardCost,
+)
 from apps.filling.models import ConsumptionKind, FillingRun, ScrapRecord
 from apps.inventory import services as inventory
 from apps.inventory.models import GoodsReceiptExtraCost, GoodsReceiptLine, Lot, LotLink
@@ -61,6 +77,9 @@ OVERHEAD_CATEGORIES = tuple(RATE_CATEGORY.values())
 ESTIMATED_INBOUND_TYPES = (Movement.Type.RECEIPT, Movement.Type.OPENING, Movement.Type.RETURN)
 
 RATE_FIELDS = ("stage", "kind", "rate_per_kg", "valid_from", "note")
+WAGE_FIELDS = ("employee", "gross_monthly", "valid_from", "note")
+# Ücret ve personel maliyeti kişisel veridir: yalnızca yönetim (ve admin) görür ve yazar.
+PERSONNEL_COST_ROLES = (YONETIM,)
 STANDARD_COST_FIELDS = ("material", "unit_cost", "note", "is_active")
 
 
@@ -659,3 +678,178 @@ def update_standard_cost(
         setattr(cost, name, value)
     _validate_standard_cost(cost)
     return save_with_audit(cost, actor)
+
+
+# --- personel maliyeti (docs/DECISIONS.md "Personel maliyeti") ----------------------------------
+
+
+def _require_personnel_cost_role(actor: User | None) -> None:
+    if not user_has_role(actor, PERSONNEL_COST_ROLES):
+        raise PermissionDenied(
+            "Ücret ve personel maliyetini yalnızca yönetim ve sistem yöneticisi görür."
+        )
+
+
+def _clean_text(value: Any) -> str:
+    return " ".join(str(value or "").split())
+
+
+# Akla yatkınlık sınırları: hatalı yazılan tarih (ör. 0026 yılı) ya da tutar raporu bozmasın.
+WAGE_DATE_MIN, WAGE_DATE_MAX = date(2000, 1, 1), date(2100, 12, 31)
+MAX_MONTHLY_WAGE = Decimal("100000000")
+
+
+@transaction.atomic
+def add_wage(actor: User, data: Mapping[str, Any]) -> EmployeeWage:
+    """Kişiye brüt aylık ücret girer, `valid_from` tarihinden itibaren geçerli. Zam yeni tarihle
+    eklenir; aynı kişide aynı tarihte iki geçerli ücret olamaz. Ücret sıfırdan büyük olmalı."""
+    _require_personnel_cost_role(actor)
+    wage = EmployeeWage(**_pick(data, WAGE_FIELDS))
+    if wage.employee_id is None:
+        raise BusinessRuleError("employee_required", "Personel seçilmelidir.")
+    if wage.valid_from is None:
+        raise BusinessRuleError("valid_from_required", "Geçerlilik başlangıcı girilmelidir.")
+    if not WAGE_DATE_MIN <= wage.valid_from <= WAGE_DATE_MAX:
+        raise BusinessRuleError(
+            "invalid_valid_from", "Geçerlilik başlangıcı 2000 ile 2100 yılları arasında olmalı."
+        )
+    if wage.gross_monthly is None or not ZERO < wage.gross_monthly <= MAX_MONTHLY_WAGE:
+        raise BusinessRuleError(
+            "invalid_wage",
+            f"Brüt ücret sıfırdan büyük ve en çok {format_money(MAX_MONTHLY_WAGE)} TL olmalı.",
+        )
+    duplicate = EmployeeWage.objects.filter(
+        employee_id=wage.employee_id, valid_from=wage.valid_from, is_active=True
+    )
+    if duplicate.exists():
+        raise BusinessRuleError(
+            "duplicate_wage",
+            f"Bu kişinin {wage.valid_from:%d.%m.%Y} tarihinden geçerli bir ücreti zaten var; "
+            "yanlışsa önce o kaydı kaldırın.",
+        )
+    wage.note = _clean_text(wage.note)[:200]
+    try:
+        with transaction.atomic():
+            return save_with_audit(wage, actor)
+    except IntegrityError:
+        # Aynı kişi ve tarihe aynı anda iki ücret girildi (tekil kısıt).
+        raise BusinessRuleError(
+            "duplicate_wage",
+            f"Bu kişinin {wage.valid_from:%d.%m.%Y} tarihinden geçerli bir ücreti zaten var; "
+            "yanlışsa önce o kaydı kaldırın.",
+        ) from None
+
+
+@transaction.atomic
+def remove_wage(actor: User, wage: EmployeeWage, reason: str) -> EmployeeWage:
+    """Yanlış ücret kaydını kaldırır (silinmez, pasife alınır; neden zorunlu)."""
+    _require_personnel_cost_role(actor)
+    reason = _clean_text(reason)[:500]
+    if not reason:
+        raise BusinessRuleError("reason_required", "Kaldırma nedeni girilmelidir.")
+    locked = EmployeeWage.objects.select_for_update().get(pk=wage.pk)
+    if not locked.is_active:
+        raise BusinessRuleError("already_removed", "Ücret kaydı zaten kaldırılmış.")
+    locked.is_active = False
+    locked.removed_at = timezone.now()
+    locked.removed_by = actor
+    locked.removal_reason = reason
+    return save_with_audit(locked, actor, note="Ücret kaydı kaldırıldı")
+
+
+def get_personnel_cost_settings() -> PersonnelCostSettings:
+    """Personel maliyeti ayarları (tek kayıt). Kayıt yoksa kaydedilmemiş varsayılan döner (işveren
+    payı %17,75); kayıt ilk değişiklikte denetim kaydıyla açılır."""
+    return PersonnelCostSettings.objects.order_by("pk").first() or PersonnelCostSettings()
+
+
+@transaction.atomic
+def update_personnel_cost_settings(actor: User, employer_rate: Decimal) -> PersonnelCostSettings:
+    """İşveren payını (yüzde, 0–100) değiştirir. Rapor saklanmaz, her açılışta hesaplanır; bu
+    yüzden bütün aylar yeni oranla görünür."""
+    _require_personnel_cost_role(actor)
+    if employer_rate is None or not ZERO <= employer_rate <= 100:
+        raise BusinessRuleError(
+            "invalid_employer_rate", "İşveren payı %0 ile %100 arasında olmalı."
+        )
+    instance = PersonnelCostSettings.objects.select_for_update().order_by("pk").first()
+    if instance is None:
+        try:
+            with transaction.atomic():
+                return save_with_audit(
+                    PersonnelCostSettings(pk=1, employer_rate=employer_rate), actor
+                )
+        except IntegrityError:
+            # Aynı anda ilk kaydı başka biri açtı: onu güncelle.
+            instance = PersonnelCostSettings.objects.select_for_update().get(pk=1)
+    instance.employer_rate = employer_rate
+    return save_with_audit(instance, actor)
+
+
+@transaction.atomic
+def set_department_cost_center(actor: User, department: str, stage: str) -> DepartmentCostCenter:
+    """Personel biriminin maliyet aşamasını yazar: PRODUCTION (bulk), FILLING (mamul) ya da boş
+    (genel gider). Birim adı büyük/küçük harf farkı gözetmeden eşleşir."""
+    from apps.personnel.selectors import fold
+
+    _require_personnel_cost_role(actor)
+    name = _clean_text(department)[:64]
+    if not name:
+        raise BusinessRuleError("department_required", "Birim girilmelidir.")
+    if stage and stage not in CostStage.values:
+        raise BusinessRuleError("invalid_stage", "Geçersiz aşama.")
+    key = fold(name)
+    center = DepartmentCostCenter.objects.select_for_update().filter(key=key).first()
+    if center is None:
+        try:
+            with transaction.atomic():
+                return save_with_audit(
+                    DepartmentCostCenter(department=name, key=key, stage=stage or ""), actor
+                )
+        except IntegrityError:
+            # Aynı birimi aynı anda başka biri eşleştirdi: onu güncelle.
+            center = DepartmentCostCenter.objects.select_for_update().get(key=key)
+    center.stage = stage or ""
+    return save_with_audit(center, actor)
+
+
+@transaction.atomic
+def add_labor_rate_from_personnel_cost(
+    actor: User, year: int, month: int, stage: str, valid_from: date
+) -> CostRate:
+    """Ayın gerçekleşen personel maliyetinden (aşamaya bağlı birimlerin toplam maliyeti ÷ o ay
+    üretilen kg) yeni işçilik oranı açar. Yalnızca puantajı onaylı ayda; oran sunucuda yeniden
+    hesaplanır. Eski oranlar ve hesaplanmış lot maliyetleri değişmez; aynı tarihte oran varsa
+    reddedilir (`duplicate_rate`)."""
+    from apps.costing.selectors import personnel_cost_report
+
+    _require_personnel_cost_role(actor)
+    if stage not in CostStage.values:
+        raise BusinessRuleError("invalid_stage", "Geçersiz aşama.")
+    report = personnel_cost_report(year, month)
+    if not report.attendance_approved:
+        raise BusinessRuleError(
+            "attendance_not_approved",
+            f"{report.label} puantajı onaylanmadan işçilik oranı eklenemez.",
+        )
+    summary = report.stage_cost(stage)
+    if summary.suggested_rate is None:
+        raise BusinessRuleError(
+            "no_labor_rate",
+            f"{report.label} için bu aşamada personel maliyeti ya da üretilen kg yok; oran "
+            "hesaplanamaz.",
+        )
+    note = (
+        f"Personel maliyeti {report.label}: {format_money(summary.cost)} TL / "
+        f"{format_money(summary.kg)} kg"
+    )
+    return create_rate(
+        actor,
+        {
+            "stage": stage,
+            "kind": CostRate.Kind.LABOR,
+            "rate_per_kg": summary.suggested_rate,
+            "valid_from": valid_from,
+            "note": note[:200],
+        },
+    )

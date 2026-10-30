@@ -3,8 +3,11 @@
 Lotun maliyeti oluştuğunda / şarj ya da dolum partisi bittiğinde bir kez hesaplanıp `LotCost`
 (kalem kalem `LotCostLine`) olarak saklanır; sonradan yeniden hesaplama yeni sürüm açar, eski
 sürümler kalır. Lotun güncel birim maliyeti `inventory.Lot.unit_cost`'a da yazılır. Tutarlar
-yalnızca yonetim ve admin rolüne gösterilir (Karar D-15). Bu dosyada iş mantığı yoktur.
+yalnızca yonetim ve admin rolüne gösterilir (Karar D-15). Personel maliyeti için ücret, birim
+eşleştirmesi ve işveren payı da burada tutulur (2026-10-29). Bu dosyada iş mantığı yoktur.
 """
+
+from decimal import Decimal
 
 from django.db import models
 from django.db.models import Q
@@ -12,6 +15,7 @@ from django.db.models import Q
 from apps.core.models import BaseModel, MasterDataModel, User
 from apps.inventory.models import Lot
 from apps.masterdata.models import Material
+from apps.personnel.models import Employee
 
 
 class CostStage(models.TextChoices):
@@ -189,3 +193,96 @@ class LotCostLine(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.lot_cost_id}/{self.line_no} {self.category} {self.amount}"
+
+
+# --- personel maliyeti (2026-10-29, docs/DECISIONS.md "Personel maliyeti") ----------------------
+
+
+class EmployeeWage(BaseModel):
+    """Kişinin brüt aylık ücreti, bir tarihten itibaren geçerli. Zam yeni tarihle eklenir; yanlış
+    kayıt silinmez, gerekçeyle kaldırılır. Kişisel veri: yalnızca yönetim ve admin görür
+    (docs/KVKK.md)."""
+
+    employee = models.ForeignKey(
+        Employee, verbose_name="personel", on_delete=models.PROTECT, related_name="wages"
+    )
+    gross_monthly = models.DecimalField("brüt aylık ücret (TL)", max_digits=18, decimal_places=2)
+    valid_from = models.DateField("geçerlilik başlangıcı")
+    note = models.CharField("not", max_length=200, blank=True)
+    is_active = models.BooleanField("aktif", default=True, db_index=True)
+    removed_at = models.DateTimeField("kaldırılma zamanı", null=True, blank=True)
+    removed_by = models.ForeignKey(
+        User,
+        verbose_name="kaldıran",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    removal_reason = models.CharField("kaldırma nedeni", max_length=500, blank=True)
+
+    class Meta:
+        verbose_name = "ücret"
+        verbose_name_plural = "ücretler"
+        ordering = ["employee", "-valid_from", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "valid_from"],
+                condition=Q(is_active=True),
+                name="costing_wage_employee_date_uniq",
+                violation_error_message="Bu kişinin bu tarihte başlayan bir ücreti zaten var.",
+            ),
+            models.CheckConstraint(
+                condition=Q(gross_monthly__gt=0),
+                name="costing_wage_positive",
+                violation_error_message="Brüt ücret sıfırdan büyük olmalı.",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.employee_id} {self.gross_monthly} ({self.valid_from})"
+
+
+class DepartmentCostCenter(BaseModel):
+    """Personel biriminin maliyet aşaması: üretim (bulk), dolum (mamul) ya da boşsa genel gider.
+    Eşleştirilmemiş birim genel gider sayılır. Birim adı Türkçe büyük/küçük harf farkı gözetmeden
+    eşleşir: `key`, adın katlanmış hali (`personnel.selectors.fold`) ve tekildir."""
+
+    department = models.CharField("birim", max_length=64)
+    key = models.CharField("eşleşme anahtarı", max_length=128, unique=True, editable=False)
+    stage = models.CharField("aşama", max_length=16, choices=CostStage.choices, blank=True)
+
+    class Meta:
+        verbose_name = "birim maliyet merkezi"
+        verbose_name_plural = "birim maliyet merkezleri"
+        ordering = ["department"]
+
+    def __str__(self) -> str:
+        return f"{self.department} → {self.stage or 'genel gider'}"
+
+
+def default_employer_rate() -> Decimal:
+    """SGK işveren payı %15,75 (5 puan teşvikli) + işsizlik %2."""
+    return Decimal("17.75")
+
+
+class PersonnelCostSettings(BaseModel):
+    """Personel maliyeti ayarları (tek kayıt): işveren payı (yüzde)."""
+
+    employer_rate = models.DecimalField(
+        "işveren payı (%)", max_digits=5, decimal_places=2, default=default_employer_rate
+    )
+
+    class Meta:
+        verbose_name = "personel maliyeti ayarları"
+        verbose_name_plural = "personel maliyeti ayarları"
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(employer_rate__gte=0, employer_rate__lte=100),
+                name="costing_employer_rate_range",
+                violation_error_message="İşveren payı %0 ile %100 arasında olmalı.",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return "Personel maliyeti ayarları"

@@ -1,5 +1,4 @@
 import {
-  Alert,
   Badge,
   Button,
   Checkbox,
@@ -20,9 +19,8 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconFileSpreadsheet, IconPlus, IconSearch } from "@tabler/icons-react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { getErrorMessage } from "../../api/client";
 import {
   createRate,
   getReport,
@@ -53,13 +51,18 @@ import { today } from "../inventory/config";
 import { Qty } from "../inventory/shared";
 import { COSTING_BASE, lotCostPath } from "./config";
 import { CostFlags } from "./CostFlags";
+import { PersonnelCostPanel } from "./PersonnelCostPanel";
+import { ErrorAlert, ReportTable } from "./ReportTable";
 import { kt } from "./strings";
+import { WagesPanel } from "./WagesPanel";
 
 const TABS = {
   lots: "lotlar",
   reports: "raporlar",
   rates: "oranlar",
   standard: "standart",
+  personnel: "personel",
+  wages: "ucretler",
 } as const;
 type TabKey = keyof typeof TABS;
 const PAGE_SIZE = 50;
@@ -68,16 +71,8 @@ function tabFromPath(value: string | undefined): TabKey {
   return (Object.keys(TABS) as TabKey[]).find((key) => TABS[key] === value) ?? "lots";
 }
 
-function ErrorAlert({ error }: { error: unknown }) {
-  return (
-    <Alert color="red" variant="light">
-      {getErrorMessage(error)}
-    </Alert>
-  );
-}
-
 /** Maliyet (yalnızca yönetim ve admin): lot maliyetleri, raporlar, gider oranları, standart
- * maliyetler. */
+ * maliyetler, personel maliyeti ve ücretleri. */
 export function CostingPage() {
   const tab = tabFromPath(useParams().tab);
   const navigate = useNavigate();
@@ -100,6 +95,8 @@ export function CostingPage() {
       {tab === "reports" && <ReportsPanel />}
       {tab === "rates" && <RatesPanel />}
       {tab === "standard" && <StandardCostsPanel />}
+      {tab === "personnel" && <PersonnelCostPanel />}
+      {tab === "wages" && <WagesPanel />}
     </Stack>
   );
 }
@@ -226,55 +223,6 @@ const TYPE_OPTIONS = (["RAW", "PACKAGING", "BULK", "FINISHED"] as const).map((va
   value,
   label: kt.materialType_[value],
 }));
-
-interface Cell<T> {
-  label: string;
-  render: (row: T) => ReactNode;
-  right?: boolean;
-}
-
-function ReportTable<T>({
-  rows,
-  cells,
-  rowKey,
-}: {
-  rows: T[];
-  cells: Cell<T>[];
-  rowKey: (row: T) => string;
-}) {
-  if (rows.length === 0)
-    return (
-      <Text size="sm" c="dimmed">
-        {ct.empty}
-      </Text>
-    );
-  return (
-    <Table.ScrollContainer minWidth={760}>
-      <Table striped>
-        <Table.Thead>
-          <Table.Tr>
-            {cells.map((cell) => (
-              <Table.Th key={cell.label} ta={cell.right ? "right" : undefined}>
-                {cell.label}
-              </Table.Th>
-            ))}
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {rows.map((row) => (
-            <Table.Tr key={rowKey(row)}>
-              {cells.map((cell) => (
-                <Table.Td key={cell.label} ta={cell.right ? "right" : undefined}>
-                  {cell.render(row)}
-                </Table.Td>
-              ))}
-            </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
-  );
-}
 
 const money = (value: string | null) => formatMoney(value);
 const lotLink = (lotId: number, lotNo: string) => <Link to={lotCostPath(lotId)}>{lotNo}</Link>;
