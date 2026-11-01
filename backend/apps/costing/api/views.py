@@ -11,7 +11,6 @@ from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
-from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
@@ -23,7 +22,7 @@ from apps.core.permissions import HasRole
 from apps.core.roles import YONETIM
 from apps.costing import exports, selectors, services
 from apps.costing.api import serializers as s
-from apps.costing.models import CostRate, EmployeeWage, LotCost, StandardCost
+from apps.costing.models import CostRate, LotCost, StandardCost
 from apps.inventory.models import Lot
 
 COST_ROLES = (YONETIM,)
@@ -369,48 +368,6 @@ class PersonnelLaborRateView(CostPermissionMixin, APIView):
             body.validated_data["valid_from"],
         )
         return Response(s.CostRateSerializer(rate).data, status=status.HTTP_201_CREATED)
-
-
-class EmployeeWageViewSet(
-    CostPermissionMixin,
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.CreateModelMixin,
-    viewsets.GenericViewSet,
-):
-    """Brüt aylık ücretler (geçerlilik tarihli). Silme ve düzeltme yok: zam yeni tarihle eklenir,
-    yanlış kayıt `remove` ile gerekçeyle kaldırılır. `summary` çalışan personeli güncel ücretiyle
-    verir."""
-
-    serializer_class = s.EmployeeWageSerializer
-    queryset = EmployeeWage.objects.select_related("employee", "created_by")
-    filterset_fields = ["employee", "is_active"]
-    ordering = ["employee", "-valid_from", "-id"]
-
-    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        body = self.get_serializer(data=request.data)
-        body.is_valid(raise_exception=True)
-        wage = services.add_wage(_user(request), body.validated_data)
-        return Response(self.get_serializer(wage).data, status=status.HTTP_201_CREATED)
-
-    @extend_schema(request=s.WageRemoveSerializer, responses=s.EmployeeWageSerializer)
-    @action(detail=True, methods=["post"])
-    def remove(self, request: Request, pk: str | None = None) -> Response:
-        body = s.WageRemoveSerializer(data=request.data)
-        body.is_valid(raise_exception=True)
-        reason = body.validated_data["reason"]
-        wage = services.remove_wage(_user(request), self.get_object(), reason)
-        return Response(self.get_serializer(wage).data)
-
-    @extend_schema(
-        parameters=[s.WageSummaryQuerySerializer], responses=s.WageSummarySerializer(many=True)
-    )
-    @action(detail=False, methods=["get"], pagination_class=None, filter_backends=[])
-    def summary(self, request: Request) -> Response:
-        query = s.WageSummaryQuerySerializer(data=request.query_params)
-        query.is_valid(raise_exception=True)
-        rows = selectors.wage_summary(include_former=query.validated_data["include_former"])
-        return Response(s.WageSummarySerializer(rows, many=True).data)
 
 
 class CostCenterView(CostPermissionMixin, APIView):

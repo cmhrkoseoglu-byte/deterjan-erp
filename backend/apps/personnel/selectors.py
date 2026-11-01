@@ -1,10 +1,12 @@
-"""Personel okuma sorguları: kartlar, belgeler ve puantaj tablosu."""
+"""Personel okuma sorguları: kartlar, belgeler, puantaj tablosu ve ücretler."""
 
 import calendar
-from collections.abc import Iterable
+from collections import defaultdict
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import F, Q, QuerySet
@@ -20,6 +22,7 @@ from apps.personnel.models import (
     AttendanceStatus,
     Employee,
     EmployeeDocument,
+    EmployeeWage,
     PublicHoliday,
     default_rest_weekdays,
 )
@@ -360,3 +363,58 @@ def attendance_grid(year: int, month: int, *, department: str = "") -> Attendanc
             )
         rows.append(AttendanceRow(employee=employee, cells=cells))
     return AttendanceGrid(year=year, month=month, record=record, days=days, rows=rows)
+
+
+# --- ücretler ------------------------------------------------------------------------------------
+
+
+def wages_by_employee(employee_ids: Iterable[int], last: date) -> dict[int, list[EmployeeWage]]:
+    """Kişi başına `last` tarihine kadar başlamış geçerli (kaldırılmamış) ücretler, eskiden
+    yeniye."""
+    rows = EmployeeWage.objects.filter(
+        employee_id__in=list(employee_ids), is_active=True, valid_from__lte=last
+    ).order_by("employee_id", "valid_from", "id")
+    result: dict[int, list[EmployeeWage]] = defaultdict(list)
+    for wage in rows:
+        result[wage.employee_id].append(wage)
+    return result
+
+
+def wage_on(wages: Sequence[EmployeeWage], day: date) -> Decimal | None:
+    """Eskiden yeniye sıralı ücretlerden `day` günü geçerli brüt aylık ücret; yoksa None."""
+    current = None
+    for wage in wages:
+        if wage.valid_from > day:
+            break
+        current = wage.gross_monthly
+    return current
+
+
+def wage_summary(day: date | None = None, *, include_former: bool = False) -> list[dict[str, Any]]:
+    """Personel ve ücretleri: her biri için `day` (varsayılan bugün) tarihinde geçerli ücret ve
+    ücret geçmişi (kaldırılanlar hariç, en yenisi önce). Varsayılan olarak çalışanlar (çıkış tarihi
+    `day` ya da sonrası olanlar dahil); `include_former` ile ayrılanlar da (hesapta görünen eski
+    personelin ücreti girilebilsin)."""
+    day = day or timezone.localdate()
+    people = Employee.objects.all()
+    if not include_former:
+        people = people.filter(Q(is_active=True) | Q(termination_date__gte=day))
+    employees = list(people.order_by("-is_active", "full_name", "id"))
+    history: dict[int, list[EmployeeWage]] = defaultdict(list)
+    wages = EmployeeWage.objects.filter(employee__in=employees, is_active=True)
+    wages = wages.select_related("created_by", "employee")
+    for wage in wages.order_by("employee_id", "-valid_from", "-id"):
+        history[wage.employee_id].append(wage)
+    rows = []
+    for employee in employees:
+        items = history.get(employee.pk, [])
+        current = next((wage for wage in items if wage.valid_from <= day), None)
+        rows.append(
+            {
+                "employee": employee,
+                "current_wage": current.gross_monthly if current else None,
+                "current_valid_from": current.valid_from if current else None,
+                "history": items,
+            }
+        )
+    return rows

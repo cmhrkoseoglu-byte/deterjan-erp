@@ -1,5 +1,5 @@
 """Personel kartları: kimlik ve görev bilgileri (2026-10-25), özlük bilgileri ve belgeleri,
-puantaj (2026-10-29, docs/DECISIONS.md).
+puantaj (2026-10-29), ücretler (2026-11-01, maliyet modülünden taşındı; docs/DECISIONS.md).
 
 Sistemi kullanmayan çalışanlar da kaydedilir; sistem hesabı olanın kartı kullanıcısına bağlanır.
 Kart silinmez: işten ayrılan pasife alınır ve çıkış tarihi yazılır. Kişisel veridir; yalnızca admin
@@ -336,3 +336,55 @@ class AttendanceEntry(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.employee} {self.date:%d.%m.%Y} {ATTENDANCE_CODES.get(self.status, '')}"
+
+
+# --- ücretler (docs/DECISIONS.md "Personel maliyeti", "Personel bordrosu") -----------------------
+
+
+class EmployeeWage(BaseModel):
+    """Kişinin brüt aylık ücreti, bir tarihten itibaren geçerli. Zam yeni tarihle eklenir; yanlış
+    kayıt silinmez, gerekçeyle kaldırılır. Kişisel veri: yalnızca yönetim ve admin görür
+    (docs/KVKK.md).
+
+    2026-10-29'da maliyet modülünde açıldı, 2026-11-01'de buraya taşındı: tablo ve kısıt adları
+    (`costing_employeewage`, `costing_wage_*`) taşınırken değiştirilmedi, kayıtlar yerinde kaldı."""
+
+    employee = models.ForeignKey(
+        Employee, verbose_name="personel", on_delete=models.PROTECT, related_name="wages"
+    )
+    gross_monthly = models.DecimalField("brüt aylık ücret (TL)", max_digits=18, decimal_places=2)
+    valid_from = models.DateField("geçerlilik başlangıcı")
+    note = models.CharField("not", max_length=200, blank=True)
+    is_active = models.BooleanField("aktif", default=True, db_index=True)
+    removed_at = models.DateTimeField("kaldırılma zamanı", null=True, blank=True)
+    removed_by = models.ForeignKey(
+        User,
+        verbose_name="kaldıran",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    removal_reason = models.CharField("kaldırma nedeni", max_length=500, blank=True)
+
+    class Meta:
+        db_table = "costing_employeewage"
+        verbose_name = "ücret"
+        verbose_name_plural = "ücretler"
+        ordering = ["employee", "-valid_from", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "valid_from"],
+                condition=Q(is_active=True),
+                name="costing_wage_employee_date_uniq",
+                violation_error_message="Bu kişinin bu tarihte başlayan bir ücreti zaten var.",
+            ),
+            models.CheckConstraint(
+                condition=Q(gross_monthly__gt=0),
+                name="costing_wage_positive",
+                violation_error_message="Brüt ücret sıfırdan büyük olmalı.",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.employee_id} {self.gross_monthly} ({self.valid_from})"

@@ -7,7 +7,6 @@ export const kt = {
     rates: "Gider oranları",
     standard: "Standart maliyetler",
     personnel: "Personel maliyeti",
-    wages: "Personel ücretleri",
   },
   onlyManagement: "Maliyet tutarlarını yalnızca yönetim görür.",
   search: "Lot no ya da malzeme ara",
@@ -135,7 +134,7 @@ export const kt = {
     "Ücretsiz izin, devamsızlık ve rapor günleri günlük ücretle (brüt / 30) düşülür; yıllık ve mazeret izni ücretlidir.",
     "Ay içinde zam varsa her gün o gün geçerli ücretle hesaplanır.",
     "Fazla mesai saat ücreti brüt / 225: iş günü ve hafta tatilinde 1,5 kat, resmi tatilde ayrıca 1 kat.",
-    "İşveren payı brüt ücret ve fazla mesainin üzerinden; oran Personel ücretleri sekmesinde.",
+    "İşveren payı brüt ücret ve fazla mesainin üzerinden; oran bu sayfanın altında. Ücretler Personel > Ücretler'de girilir.",
     "Gerçekleşen işçilik = aşamanın personel maliyeti / o ay üretilen kg (üretimde biten şarjların çıktısı, dolumda dolan bulk; fire hariç).",
     "Rapor saklanmaz: ücret, kişinin birimi ya da işe giriş ve çıkış tarihi, birim eşleştirmesi ya da işveren payı değişirse geçmiş aylar (onaylılar dahil) yeniden hesaplanır; eklenmiş işçilik oranları değişmez.",
   ],
@@ -188,32 +187,7 @@ export const kt = {
   employerShareShort: "İşveren payı (TL)",
   missingWage: "Ücret eksik",
   leftOn: (date: string) => `Çıkış · ${date}`,
-  // Personel ücretleri
-  wagesHint:
-    "Çalışan personelin brüt aylık ücreti. Zam yeni geçerlilik tarihiyle eklenir, eski ücret geçmişte kalır; yanlış kayıt silinmez, gerekçeyle kaldırılır. Ücretleri yalnızca yönetim görür.",
-  currentWage: "Güncel brüt (TL)",
-  noWage: "Girilmedi",
-  futureWage: "Gelecek tarihli",
-  showFormer: "Ayrılanları da göster",
-  addWage: "Ücret ekle",
-  history: (n: number) => `Geçmiş (${n})`,
-  wageTitle: (name: string) => `${name} · ücret ekle`,
-  wageNow: (amount: string, date: string) => `Güncel ücret ${amount} (${date} itibarıyla).`,
-  invalidAmount: "Geçerli bir tutar girin (en çok 2 ondalık).",
-  amountPreview: (amount: string) => `${amount} olarak kaydedilir.`,
-  firstWageHint: (hasHireDate: boolean) =>
-    hasHireDate
-      ? "İlk ücret: başlangıç varsayılan olarak işe giriş tarihidir. Daha geç bir tarih seçerseniz işe girişten o tarihe kadarki günler raporda ücret eksik görünür."
-      : "İlk ücret: kartta işe giriş tarihi olmadığı için başlangıç varsayılan olarak geçen ayın 1'idir. Maliyetini göreceğiniz ilk ayın 1'inden sonra olmamalı; yoksa o ay ücret eksik görünür.",
-  wageSaved: "Ücret kaydedildi.",
-  historyTitle: (name: string) => `${name} · ücret geçmişi`,
-  enteredBy: "Giren",
-  removeWage: "Kaldır",
-  removeWageLabel: (date: string, amount: string) => `Kaldır: ${date} · ${amount}`,
-  removeWageIntro:
-    "Kayıt silinmez; kaldırılır ve hesaba girmez. Kaldırma nedeniyle birlikte denetim günlüğüne yazılır.",
-  removeReason: "Kaldırma nedeni",
-  wageRemoved: "Ücret kaydı kaldırıldı.",
+  // Personel maliyeti ayarları (ücretler Personel > Ücretler'de)
   costCenters: "Birimlerin maliyet aşaması",
   costCentersHint:
     "Birimdeki personelin maliyeti seçilen aşamanın işçiliğine yazılır; eşleştirilmemiş birim genel giderdir. Birimler personel kartlarından gelir. Kişinin bugünkü birimi bütün aylara uygulanır: eşleştirme ya da birim değişirse geçmiş ayların dağılımı da değişir.",

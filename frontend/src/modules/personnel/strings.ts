@@ -4,6 +4,7 @@ import type { EducationLevel, EmployeeDocumentKind } from "../../api/personnel";
 
 export const PERSONNEL_BASE = "/personel";
 export const ATTENDANCE_BASE = `${PERSONNEL_BASE}/puantaj`;
+export const WAGES_BASE = `${PERSONNEL_BASE}/ucretler`;
 export const HOLIDAYS_BASE = `${PERSONNEL_BASE}/tatiller`;
 
 export const employeePath = (id: number) => `${PERSONNEL_BASE}/${id}`;
@@ -176,7 +177,12 @@ export const pe = {
 
 /** Puantaj ve tatil takvimi metinleri. */
 export const at = {
-  tabs: { cards: "Personel kartları", attendance: "Puantaj", holidays: "Tatil takvimi" },
+  tabs: {
+    cards: "Personel kartları",
+    attendance: "Puantaj",
+    wages: "Ücretler",
+    holidays: "Tatil takvimi",
+  },
   intro:
     "Ay takvimden dolu açılır: iş günleri “Ç”, hafta tatilleri “HT”, resmi tatiller “RT”. Yalnızca izin, rapor, devamsızlık ve fazla mesaiyi girin. Ay bitince onaylayın; onaylı ay değiştirilemez.",
   previousMonth: "Önceki ay",
@@ -292,4 +298,42 @@ export const at = {
     "Ay açılırken bu günler “HT” gelir. Açık aylarda değiştirilmemiş günler yeni ayara göre hesaplanır; onaylı aylar değişmez.",
   restDaysInvalid: "En az bir, en çok altı gün seçin.",
   settingsSaved: "Hafta tatili günleri kaydedildi.",
+};
+
+/** Ücret metinleri (Personel > Ücretler). */
+export const wt = {
+  intro:
+    "Çalışan personelin brüt aylık ücreti. Zam yeni geçerlilik tarihiyle eklenir, eski ücret geçmişte kalır; yanlış kayıt silinmez, gerekçeyle kaldırılır. Ücretleri yalnızca yönetim ve sistem yöneticisi görür; personel maliyeti bu ücretlerden hesaplanır.",
+  employeeNo: "Sicil no",
+  fullName: "Ad soyad",
+  department: "Birim",
+  currentWage: "Güncel brüt (TL)",
+  validFrom: "Geçerlilik başlangıcı",
+  grossMonthly: "Brüt aylık (TL)",
+  note: "Not",
+  noWage: "Girilmedi",
+  futureWage: "Gelecek tarihli",
+  showFormer: "Ayrılanları da göster",
+  leftOn: (date: string) => `Çıkış · ${date}`,
+  addWage: "Ücret ekle",
+  history: (n: number) => `Geçmiş (${n})`,
+  wageTitle: (name: string) => `${name} · ücret ekle`,
+  wageNow: (amount: string, date: string) => `Güncel ücret ${amount} (${date} itibarıyla).`,
+  invalidAmount: "Geçerli bir tutar girin (en çok 2 ondalık).",
+  amountPreview: (amount: string) => `${amount} olarak kaydedilir.`,
+  firstWageHint: (hasHireDate: boolean) =>
+    hasHireDate
+      ? "İlk ücret: başlangıç varsayılan olarak işe giriş tarihidir. Daha geç bir tarih seçerseniz işe girişten o tarihe kadarki günler hesapta ücret eksik görünür."
+      : "İlk ücret: kartta işe giriş tarihi olmadığı için başlangıç varsayılan olarak geçen ayın 1'idir. Hesabını göreceğiniz ilk ayın 1'inden sonra olmamalı; yoksa o ay ücret eksik görünür.",
+  wageSaved: "Ücret kaydedildi.",
+  historyTitle: (name: string) => `${name} · ücret geçmişi`,
+  enteredBy: "Giren",
+  removeWage: "Kaldır",
+  removeWageLabel: (date: string, amount: string) => `Kaldır: ${date} · ${amount}`,
+  removeWageIntro:
+    "Kayıt silinmez; kaldırılır ve hesaba girmez. Kaldırma nedeniyle birlikte denetim günlüğüne yazılır.",
+  removeReason: "Kaldırma nedeni",
+  wageRemoved: "Ücret kaydı kaldırıldı.",
+  cancel: "Vazgeç",
+  save: "Kaydet",
 };

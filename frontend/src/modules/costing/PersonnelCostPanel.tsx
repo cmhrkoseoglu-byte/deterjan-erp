@@ -40,7 +40,8 @@ import {
   type StageCost,
 } from "../../api/costing";
 import { formatDate, formatMoney, formatNumber } from "../../i18n/format";
-import { COSTING_BASE } from "./config";
+import { WAGES_BASE } from "../personnel/strings";
+import { CostCentersSection, EmployerRateSection } from "./PersonnelCostSettings";
 import {
   monthLabel,
   nextMonthStart,
@@ -148,7 +149,7 @@ function ReportView({
             <Text size="sm">{kt.missingWages(report.missing_wage_count)}</Text>
             <Anchor
               component={Link}
-              to={`${COSTING_BASE}/ucretler${formerMissing ? "?ayrilanlar=1" : ""}`}
+              to={`${WAGES_BASE}${formerMissing ? "?ayrilanlar=1" : ""}`}
               size="sm"
             >
               {kt.goToWages}
@@ -443,6 +444,8 @@ export function PersonnelCostPanel() {
           onClose={() => setRating(null)}
         />
       )}
+      <CostCentersSection />
+      <EmployerRateSection />
     </Stack>
   );
 }

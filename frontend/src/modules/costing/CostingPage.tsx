@@ -20,7 +20,7 @@ import { notifications } from "@mantine/notifications";
 import { IconFileSpreadsheet, IconPlus, IconSearch } from "@tabler/icons-react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   createRate,
   getReport,
@@ -49,12 +49,12 @@ import { ct } from "../common/strings";
 import { useOptions } from "../common/useOptions";
 import { today } from "../inventory/config";
 import { Qty } from "../inventory/shared";
+import { WAGES_BASE } from "../personnel/strings";
 import { COSTING_BASE, lotCostPath } from "./config";
 import { CostFlags } from "./CostFlags";
 import { PersonnelCostPanel } from "./PersonnelCostPanel";
 import { ErrorAlert, ReportTable } from "./ReportTable";
 import { kt } from "./strings";
-import { WagesPanel } from "./WagesPanel";
 
 const TABS = {
   lots: "lotlar",
@@ -62,20 +62,25 @@ const TABS = {
   rates: "oranlar",
   standard: "standart",
   personnel: "personel",
-  wages: "ucretler",
 } as const;
 type TabKey = keyof typeof TABS;
 const PAGE_SIZE = 50;
+// Eski "Personel ücretleri" sekmesi: ücretler Personel > Ücretler'e taşındı (2026-11-01).
+const OLD_WAGES_TAB = "ucretler";
 
 function tabFromPath(value: string | undefined): TabKey {
   return (Object.keys(TABS) as TabKey[]).find((key) => TABS[key] === value) ?? "lots";
 }
 
 /** Maliyet (yalnızca yönetim ve admin): lot maliyetleri, raporlar, gider oranları, standart
- * maliyetler, personel maliyeti ve ücretleri. */
+ * maliyetler ve personel maliyeti. */
 export function CostingPage() {
-  const tab = tabFromPath(useParams().tab);
+  const param = useParams().tab;
+  const { search } = useLocation();
+  const tab = tabFromPath(param);
   const navigate = useNavigate();
+  // Yer imi ya da eski bağlantı: ayrılanlar süzgeciyle birlikte yeni sekmeye.
+  if (param === OLD_WAGES_TAB) return <Navigate to={`${WAGES_BASE}${search}`} replace />;
   return (
     <Stack>
       <Title order={2}>{kt.title}</Title>
@@ -96,7 +101,6 @@ export function CostingPage() {
       {tab === "rates" && <RatesPanel />}
       {tab === "standard" && <StandardCostsPanel />}
       {tab === "personnel" && <PersonnelCostPanel />}
-      {tab === "wages" && <WagesPanel />}
     </Stack>
   );
 }

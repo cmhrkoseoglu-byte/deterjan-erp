@@ -1,5 +1,6 @@
-"""Personel maliyeti: ücretler, 30 gün usulü aylık hesap, fazla mesai, aşama toplamları, üretilen kg
-ve işçilik oranı önerisi (docs/DECISIONS.md "Personel maliyeti")."""
+"""Personel maliyeti: 30 gün usulü aylık hesap, fazla mesai, aşama toplamları, üretilen kg ve
+işçilik oranı önerisi (docs/DECISIONS.md "Personel maliyeti"). Ücretlerin kendisi personel
+modülündedir (personnel/tests/test_wages.py)."""
 
 from collections.abc import Callable
 from datetime import UTC, date, datetime, time, timedelta
@@ -10,7 +11,6 @@ from typing import Any
 
 import pytest
 from django.core.exceptions import PermissionDenied
-from django.db import IntegrityError
 from django.utils import timezone
 from openpyxl import load_workbook
 from rest_framework.test import APIClient
@@ -19,18 +19,16 @@ from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
 from apps.core.roles import ADMIN, ALL_ROLES, YONETIM
 from apps.costing import selectors, services
-from apps.costing.api.serializers import WageSummarySerializer
 from apps.costing.models import (
     CostRate,
     CostStage,
     DepartmentCostCenter,
-    EmployeeWage,
     PersonnelCostSettings,
 )
 from apps.costing.tests.factories import build_chain
 from apps.filling.models import FillingRun
 from apps.personnel import services as personnel
-from apps.personnel.models import AttendanceMonth, AttendanceStatus, Employee
+from apps.personnel.models import AttendanceMonth, AttendanceStatus, Employee, EmployeeWage
 from apps.personnel.tests.factories import employee
 from apps.production.models import ProductionBatch
 
@@ -49,7 +47,7 @@ def manager(staff: dict[str, User]) -> User:
 
 
 def _wage(actor: User, person: Employee, amount: str, valid_from: date) -> EmployeeWage:
-    return services.add_wage(
+    return personnel.add_wage(
         actor, {"employee": person, "gross_monthly": D(amount), "valid_from": valid_from}
     )
 
@@ -389,53 +387,21 @@ def test_stored_days_after_exit_are_not_costed(manager: User) -> None:
     assert row.gross_salary == D("20000.00")
 
 
-# --- ücretler, ayarlar, yetki ----------------------------------------------------------------
+# --- ayarlar, yetki --------------------------------------------------------------------------
 
 
-def test_wage_rules(manager: User) -> None:
+def test_removed_wage_is_not_costed(manager: User) -> None:
+    """Kaldırılan ücret hesaba girmez; aynı tarihe yeniden girilen ücret kullanılır."""
     person = employee(manager)
     wage = _wage(manager, person, "30000", date(2026, 1, 1))
-    assert wage.created_by == manager and wage.is_active
-
-    def add(**values: Any) -> Callable[[], Any]:
-        data = {"employee": person, "gross_monthly": D(1), "valid_from": date(2026, 1, 1)}
-        return lambda: services.add_wage(manager, {**data, **values})
-
-    assert _code(add()) == "duplicate_wage"
-    assert _code(add(gross_monthly=D(0), valid_from=date(2026, 2, 1))) == "invalid_wage"
-    assert _code(add(gross_monthly=D("100000000.01"), valid_from=date(2026, 2, 1))) == (
-        "invalid_wage"
-    )
-    assert _code(add(valid_from=date(1999, 12, 31))) == "invalid_valid_from"
-    assert _code(add(valid_from=date(2101, 1, 1))) == "invalid_valid_from"
-    assert _code(add(valid_from=date(26, 9, 1))) == "invalid_valid_from"
-    assert _code(add(valid_from=None)) == "valid_from_required"
-    assert _code(add(employee=None)) == "employee_required"
-    top = _wage(manager, person, "100000000", date(2026, 2, 1))
-    services.remove_wage(manager, top, "Deneme")
-    created = AuditLog.objects.get(
-        content_type__model="employeewage", object_id=wage.pk, action=AuditLog.Action.CREATE
-    )
-    assert created.actor == manager
-    assert _code(lambda: services.remove_wage(manager, wage, " ")) == "reason_required"
-    removed = services.remove_wage(manager, wage, "Yanlış tutar")
-    assert not removed.is_active and removed.removed_by == manager
-    assert AuditLog.objects.filter(
-        content_type__model="employeewage",
-        object_id=wage.pk,
-        action=AuditLog.Action.UPDATE,
-        note="Ücret kaydı kaldırıldı",
-    ).exists()
-    assert _code(lambda: services.remove_wage(manager, removed, "Tekrar")) == "already_removed"
-    # Kaldırılan ücret hesaba ve geçmişe girmez.
+    personnel.remove_wage(manager, wage, "Yanlış tutar")
     assert _row(2026, 3, person).missing_wage
-    assert selectors.wage_summary(date(2026, 3, 1))[0]["history"] == []
-    _wage(manager, person, "31000", date(2026, 1, 1))  # kaldırılan tarihe yeniden girilebilir
-    summary = selectors.wage_summary(date(2026, 3, 1))
-    assert [row["current_wage"] for row in summary] == [D("31000.00")]
-    assert [item.gross_monthly for item in summary[0]["history"]] == [D("31000.00")]
-    assert _row(2026, 3, person).gross_salary == D("31000.00")
+    _wage(manager, person, "31000", date(2026, 1, 1))
+    row = _row(2026, 3, person)
+    assert row.gross_salary == D("31000.00") and not row.missing_wage
 
+
+def test_settings_and_cost_center_rules(manager: User) -> None:
     for rate in (D("-1"), D("100.01")):
         code = _code(partial(services.update_personnel_cost_settings, manager, rate))
         assert code == "invalid_employer_rate"
@@ -455,60 +421,12 @@ def test_wage_rules(manager: User) -> None:
     )
 
 
-def test_wage_summary_lists_leavers_on_request(
-    client_for: Callable[..., APIClient],
-    manager: User,
-    django_assert_max_num_queries: Callable[..., Any],
-) -> None:
-    today = timezone.localdate()
-    working = employee(manager)
-    leaving = employee(manager, full_name="Can Kaya")
-    left = employee(manager, full_name="Ece Ak", hire_date=date(2020, 1, 1))
-    personnel.terminate_employee(manager, leaving, today + timedelta(days=10))
-    personnel.terminate_employee(manager, left, today - timedelta(days=40))
-    names = [row["employee"].full_name for row in selectors.wage_summary()]
-    assert names == ["Ayşe Demir", "Can Kaya"]  # çıkışı ileride olan listede kalır
-    names = [row["employee"].full_name for row in selectors.wage_summary(include_former=True)]
-    assert sorted(names) == ["Ayşe Demir", "Can Kaya", "Ece Ak"]
-    client = client_for(YONETIM)
-    rows = client.get(f"{URL}/wages/summary/", {"include_former": "true"}).json()
-    ece = next(row for row in rows if row["employee"]["full_name"] == "Ece Ak")
-    assert ece["employee"]["is_active"] is False
-    assert ece["employee"]["termination_date"] == str(today - timedelta(days=40))
-    # Ayrılan kişiye ücret girilebilir (raporda eksik görünen geçmiş ay için).
-    _wage(manager, left, "30000", date(2020, 1, 1))
-    _wage(manager, left, "32000", date(2021, 1, 1))
-    _wage(manager, working, "30000", date(2020, 1, 1))
-    assert working.is_active
-    # Geçmiş ücretler kişi başına ek sorgu açmaz.
-    with django_assert_max_num_queries(3):
-        data = WageSummarySerializer(selectors.wage_summary(include_former=True), many=True).data
-    assert [len(row["history"]) for row in data if row["employee"]["full_name"] == "Ece Ak"] == [2]
-
-
-def test_concurrent_duplicate_wage_is_a_business_error(
-    manager: User, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Aynı kişi ve tarihe aynı anda iki ücret: tekil kısıt 500 değil `duplicate_wage` verir."""
-    person = employee(manager)
-
-    def clash(*args: Any, **kwargs: Any) -> Any:
-        raise IntegrityError("costing_wage_employee_date_uniq")
-
-    monkeypatch.setattr(services, "save_with_audit", clash)
-    assert _code(lambda: _wage(manager, person, "30000", date(2026, 1, 1))) == "duplicate_wage"
-
-
 @pytest.mark.parametrize("role", OTHER_ROLES)
-def test_only_management_handles_wages(
+def test_only_management_handles_personnel_costs(
     make_user: Callable[..., User], manager: User, role: str
 ) -> None:
-    person = employee(manager)
-    wage = _wage(manager, person, "30000", date(2026, 1, 1))
     other = make_user(role)
     calls = [
-        lambda: _wage(other, person, "30000", date(2026, 2, 1)),
-        lambda: services.remove_wage(other, wage, "Neden"),
         lambda: services.update_personnel_cost_settings(other, D(10)),
         lambda: services.set_department_cost_center(other, "Dolum", CostStage.FILLING),
         lambda: services.add_labor_rate_from_personnel_cost(
@@ -523,29 +441,14 @@ def test_only_management_handles_wages(
 # --- API -------------------------------------------------------------------------------------
 
 
-def test_report_wages_centers_and_settings_api(
+def test_report_centers_and_settings_api(
     client_for: Callable[..., APIClient], manager: User
 ) -> None:
     client = client_for(YONETIM)
     person = employee(manager, employee_no="S-1", department="Dolum")
-    response = client.post(
-        f"{URL}/wages/",
-        {"employee": person.pk, "gross_monthly": "30000", "valid_from": "2020-01-01"},
-        format="json",
-    )
-    assert response.status_code == 201, response.json()
-    wage = response.json()
-    assert wage["employee_name"] == "Ayşe Demir" and wage["gross_monthly"] == "30000.00"
-    response = client.post(
-        f"{URL}/wages/",
-        {"employee": person.pk, "gross_monthly": "1", "valid_from": "2020-01-01"},
-        format="json",
-    )
-    assert response.status_code == 400 and response.json()["code"] == "duplicate_wage"
-    summary = client.get(f"{URL}/wages/summary/").json()
-    assert summary[0]["current_wage"] == "30000.00" and summary[0]["stage"] == ""
-    assert [item["id"] for item in summary[0]["history"]] == [wage["id"]]
-    assert client.delete(f"{URL}/wages/{wage['id']}/").status_code == 405
+    _wage(manager, person, "30000", date(2020, 1, 1))
+    # Ücretler personel modülüne taşındı: eski uç yok.
+    assert client.get(f"{URL}/wages/summary/").status_code == 404
 
     response = client.put(
         f"{URL}/cost-centers/", {"department": "dolum", "stage": "FILLING"}, format="json"
@@ -599,24 +502,16 @@ def test_report_wages_centers_and_settings_api(
         format="json",
     )
     assert response.status_code == 400 and response.json()["code"] == "attendance_not_approved"
-    response = client.post(f"{URL}/wages/{wage['id']}/remove/", {"reason": "Yanlış"})
-    assert response.status_code == 200 and response.json()["is_active"] is False
 
 
 def test_admin_reaches_personnel_costs_and_anonymous_is_rejected(
     client_for: Callable[..., APIClient], api_client: APIClient, manager: User
 ) -> None:
     person = employee(manager)
+    _wage(manager, person, "30000", date(2020, 1, 1))
     admin = client_for(ADMIN)
-    response = admin.post(
-        f"{URL}/wages/",
-        {"employee": person.pk, "gross_monthly": "30000", "valid_from": "2020-01-01"},
-        format="json",
-    )
-    assert response.status_code == 201
     assert admin.get(f"{URL}/personnel-costs/2026/9/").status_code == 200
     assert admin.get(f"{URL}/personnel-costs/2026/9/xlsx/").status_code == 200
-    assert admin.get(f"{URL}/wages/summary/").status_code == 200
     response = admin.put(
         f"{URL}/cost-centers/", {"department": "Dolum", "stage": "FILLING"}, format="json"
     )
@@ -627,7 +522,6 @@ def test_admin_reaches_personnel_costs_and_anonymous_is_rejected(
     assert response.status_code == 200
     for url in (
         f"{URL}/personnel-costs/2026/9/",
-        f"{URL}/wages/summary/",
         f"{URL}/cost-centers/",
         f"{URL}/personnel-cost-settings/",
     ):
@@ -639,7 +533,7 @@ def test_other_roles_cannot_reach_personnel_costs(
     client_for: Callable[..., APIClient], manager: User, role: str
 ) -> None:
     person = employee(manager)
-    wage = _wage(manager, person, "30000", date(2026, 1, 1))
+    _wage(manager, person, "30000", date(2026, 1, 1))
     client = client_for(role)
     checks = [
         client.get(f"{URL}/personnel-costs/2026/9/"),
@@ -648,14 +542,11 @@ def test_other_roles_cannot_reach_personnel_costs(
             f"{URL}/personnel-costs/2026/9/labor-rate/",
             {"stage": "PRODUCTION", "valid_from": "2026-10-01"},
         ),
-        client.get(f"{URL}/wages/"),
-        client.get(f"{URL}/wages/summary/"),
-        client.post(f"{URL}/wages/", {"employee": person.pk, "gross_monthly": "1"}),
-        client.post(f"{URL}/wages/{wage.pk}/remove/", {"reason": "X"}),
         client.get(f"{URL}/cost-centers/"),
         client.put(f"{URL}/cost-centers/", {"department": "Dolum", "stage": "FILLING"}),
         client.get(f"{URL}/personnel-cost-settings/"),
         client.patch(f"{URL}/personnel-cost-settings/", {"employer_rate": "10"}),
     ]
     assert [response.status_code for response in checks] == [403] * len(checks)
-    assert EmployeeWage.objects.count() == 1
+    assert not DepartmentCostCenter.objects.exists()
+    assert not PersonnelCostSettings.objects.exists()

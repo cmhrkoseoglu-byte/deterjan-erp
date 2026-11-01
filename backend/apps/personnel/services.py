@@ -1,4 +1,5 @@
-"""Personel yazma işlemleri (yalnızca admin ve yönetim): kartlar, özlük belgeleri, puantaj.
+"""Personel yazma işlemleri (yalnızca admin ve yönetim): kartlar, özlük belgeleri, puantaj,
+ücretler.
 
 Kart silinmez (CLAUDE.md kural 6): işten ayrılış `terminate_employee` ile kaydedilir (kart pasife
 alınır, çıkış tarihi yazılır), yeniden işe başlayan `reinstate_employee` ile açılır. Her değişiklik
@@ -29,6 +30,7 @@ from django.utils import timezone
 from apps.core import attachments
 from apps.core.audit import log_change, snapshot
 from apps.core.exceptions import BusinessRuleError
+from apps.core.formatting import format_money
 from apps.core.models import AuditLog, User
 from apps.core.permissions import user_has_role
 from apps.core.roles import YONETIM
@@ -43,6 +45,7 @@ from apps.personnel.models import (
     AttendanceStatus,
     Employee,
     EmployeeDocument,
+    EmployeeWage,
     PublicHoliday,
 )
 from apps.personnel.state import attendance_month_states
@@ -821,3 +824,70 @@ def reopen_attendance_month(actor: User, record: AttendanceMonth, reason: str) -
         note=reason,
         event_payload={"year": locked.year, "month": locked.month, "reason": reason},
     )
+
+
+# --- ücretler (docs/DECISIONS.md "Personel maliyeti", "Personel bordrosu") -----------------------
+
+WAGE_FIELDS = ("employee", "gross_monthly", "valid_from", "note")
+# Akla yatkınlık sınırları: hatalı yazılan tarih (ör. 0026 yılı) ya da tutar hesabı bozmasın.
+WAGE_DATE_MIN, WAGE_DATE_MAX = date(2000, 1, 1), date(2100, 12, 31)
+MAX_MONTHLY_WAGE = Decimal("100000000")
+
+
+def _duplicate_wage(day: date) -> BusinessRuleError:
+    return BusinessRuleError(
+        "duplicate_wage",
+        f"Bu kişinin {day:%d.%m.%Y} tarihinden geçerli bir ücreti zaten var; yanlışsa önce o "
+        "kaydı kaldırın.",
+    )
+
+
+@transaction.atomic
+def add_wage(actor: User, data: Mapping[str, Any]) -> EmployeeWage:
+    """Kişiye brüt aylık ücret girer, `valid_from` tarihinden itibaren geçerli. Zam yeni tarihle
+    eklenir; aynı kişide aynı tarihte iki geçerli ücret olamaz. Ücret sıfırdan büyük olmalı.
+    Ayrılan kişiye de girilir (geçmiş ayın hesabı için)."""
+    _require_role(actor)
+    wage = EmployeeWage(**_pick(data, WAGE_FIELDS))
+    if wage.employee_id is None:
+        raise BusinessRuleError("employee_required", "Personel seçilmelidir.")
+    if wage.valid_from is None:
+        raise BusinessRuleError("valid_from_required", "Geçerlilik başlangıcı girilmelidir.")
+    if not WAGE_DATE_MIN <= wage.valid_from <= WAGE_DATE_MAX:
+        raise BusinessRuleError(
+            "invalid_valid_from", "Geçerlilik başlangıcı 2000 ile 2100 yılları arasında olmalı."
+        )
+    if wage.gross_monthly is None or not Decimal(0) < wage.gross_monthly <= MAX_MONTHLY_WAGE:
+        raise BusinessRuleError(
+            "invalid_wage",
+            f"Brüt ücret sıfırdan büyük ve en çok {format_money(MAX_MONTHLY_WAGE)} TL olmalı.",
+        )
+    duplicate = EmployeeWage.objects.filter(
+        employee_id=wage.employee_id, valid_from=wage.valid_from, is_active=True
+    )
+    if duplicate.exists():
+        raise _duplicate_wage(wage.valid_from)
+    wage.note = _text(wage.note)[:200]
+    try:
+        with transaction.atomic():
+            return save_with_audit(wage, actor)
+    except IntegrityError:
+        # Aynı kişi ve tarihe aynı anda iki ücret girildi (tekil kısıt).
+        raise _duplicate_wage(wage.valid_from) from None
+
+
+@transaction.atomic
+def remove_wage(actor: User, wage: EmployeeWage, reason: str) -> EmployeeWage:
+    """Yanlış ücret kaydını kaldırır (silinmez, pasife alınır; neden zorunlu)."""
+    _require_role(actor)
+    reason = _text(reason)[:500]
+    if not reason:
+        raise BusinessRuleError("reason_required", "Kaldırma nedeni girilmelidir.")
+    locked = EmployeeWage.objects.select_for_update().get(pk=wage.pk)
+    if not locked.is_active:
+        raise BusinessRuleError("already_removed", "Ücret kaydı zaten kaldırılmış.")
+    locked.is_active = False
+    locked.removed_at = timezone.now()
+    locked.removed_by = actor
+    locked.removal_reason = reason
+    return save_with_audit(locked, actor, note="Ücret kaydı kaldırıldı")

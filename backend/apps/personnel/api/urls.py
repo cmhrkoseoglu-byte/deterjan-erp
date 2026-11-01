@@ -9,6 +9,7 @@ router = SimpleRouter()
 router.register("employees", views.EmployeeViewSet, basename="employee")
 router.register("documents", views.EmployeeDocumentViewSet, basename="document")
 router.register("attendance/holidays", views.PublicHolidayViewSet, basename="holiday")
+router.register("wages", views.EmployeeWageViewSet, basename="wage")
 
 MONTH = "attendance/<int:year>/<int:month>"
 

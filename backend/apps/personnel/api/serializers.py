@@ -14,6 +14,7 @@ from apps.personnel.models import (
     AttendanceStatus,
     Employee,
     EmployeeDocument,
+    EmployeeWage,
     PublicHoliday,
 )
 from apps.personnel.selectors import AttendanceGrid
@@ -349,3 +350,68 @@ class AttendanceSettingsSerializer(serializers.ModelSerializer):
         model = AttendanceSettings
         fields = ["rest_weekdays", "updated_at"]
         read_only_fields = ["updated_at"]
+
+
+# --- ücretler ------------------------------------------------------------------------------------
+
+
+def _money(**kwargs: Any) -> serializers.DecimalField:
+    return serializers.DecimalField(max_digits=18, decimal_places=2, **kwargs)
+
+
+class WageEmployeeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Employee
+        fields = [
+            "id",
+            "employee_no",
+            "full_name",
+            "department",
+            "hire_date",
+            "termination_date",
+            "is_active",
+        ]
+        read_only_fields = fields
+
+
+class EmployeeWageSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source="employee.full_name", read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EmployeeWage
+        fields = [
+            "id",
+            "employee",
+            "employee_name",
+            "gross_monthly",
+            "valid_from",
+            "note",
+            "is_active",
+            "removal_reason",
+            "created_at",
+            "created_by_name",
+        ]
+        read_only_fields = ["is_active", "removal_reason", "created_at"]
+        # Aynı kişi ve tarihte tek ücret kuralı servis katmanında (Türkçe mesaj, hata kodu).
+        validators: list = []
+
+    def get_created_by_name(self, obj: EmployeeWage) -> str | None:
+        return str(obj.created_by) if obj.created_by_id else None
+
+
+class WageRemoveSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=500, label="kaldırma nedeni")
+
+
+class WageSummaryQuerySerializer(serializers.Serializer):
+    include_former = serializers.BooleanField(
+        default=False, help_text="Ayrılan personeli de listele."
+    )
+
+
+class WageSummarySerializer(serializers.Serializer):
+    employee = WageEmployeeSerializer()
+    current_wage = _money(allow_null=True)
+    current_valid_from = serializers.DateField(allow_null=True)
+    history = EmployeeWageSerializer(many=True)

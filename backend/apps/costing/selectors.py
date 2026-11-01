@@ -26,7 +26,6 @@ from apps.costing.models import (
     CostRate,
     CostStage,
     DepartmentCostCenter,
-    EmployeeWage,
     LotCost,
     LotCostLine,
     PersonnelCostSettings,
@@ -37,7 +36,7 @@ from apps.filling.models import ConsumptionKind, FillingConsumption, FillingRun
 from apps.inventory.models import Lot, StockBalance
 from apps.masterdata.models import Material
 from apps.personnel import selectors as personnel
-from apps.personnel.models import AttendanceStatus, Employee
+from apps.personnel.models import AttendanceStatus, Employee, EmployeeWage
 from apps.production.models import ProductionBatch
 from apps.production.services import batch_line_quantity
 
@@ -552,26 +551,6 @@ def monthly_produced_kg(year: int, month: int) -> dict[str, ProducedKg]:
     }
 
 
-def _wages_by_employee(employee_ids: list[int], last: date) -> dict[int, list[EmployeeWage]]:
-    """Kişi başına ay sonuna kadar başlamış geçerli ücretler, eskiden yeniye."""
-    rows = EmployeeWage.objects.filter(
-        employee_id__in=employee_ids, is_active=True, valid_from__lte=last
-    ).order_by("employee_id", "valid_from", "id")
-    result: dict[int, list[EmployeeWage]] = defaultdict(list)
-    for wage in rows:
-        result[wage.employee_id].append(wage)
-    return result
-
-
-def _wage_on(wages: list[EmployeeWage], day: date) -> Decimal | None:
-    current = None
-    for wage in wages:
-        if wage.valid_from > day:
-            break
-        current = wage.gross_monthly
-    return current
-
-
 def _employee_cost(
     row: personnel.AttendanceRow,
     wages: list[EmployeeWage],
@@ -590,7 +569,7 @@ def _employee_cost(
     ]
     if not cells:
         return None
-    daily = {cell.date: _wage_on(wages, cell.date) for cell in cells}
+    daily = {cell.date: personnel.wage_on(wages, cell.date) for cell in cells}
     unpaid = [cell for cell in cells if cell.status in UNPAID_STATUSES]
     paid_count = len(cells) - len(unpaid)
     # Bilinen ücretlerin toplamları kesindir (2 ondalık); her tutar tek bölmeyle bulunur, yarım
@@ -656,7 +635,7 @@ def personnel_cost_report(year: int, month: int) -> PersonnelCostReport:
     employer_rate = settings.employer_rate if settings else default_employer_rate()
     centers = _center_stages()
     last = grid.days[-1].date
-    wages = _wages_by_employee([row.employee.pk for row in grid.rows], last)
+    wages = personnel.wages_by_employee([row.employee.pk for row in grid.rows], last)
     rows = []
     for row in grid.rows:
         stage = centers.get(personnel.fold(row.employee.department), GENERAL)
@@ -697,38 +676,6 @@ def personnel_cost_report(year: int, month: int) -> PersonnelCostReport:
 def _center_stages() -> dict[str, str]:
     """Katlanmış birim adı → maliyet aşaması."""
     return {center.key: center.stage for center in DepartmentCostCenter.objects.all()}
-
-
-def wage_summary(day: date | None = None, *, include_former: bool = False) -> list[dict[str, Any]]:
-    """Personel ve ücretleri: her biri için maliyet aşaması, `day` (varsayılan bugün) tarihinde
-    geçerli ücret ve ücret geçmişi (kaldırılanlar hariç, en yenisi önce). Varsayılan olarak
-    çalışanlar (çıkış tarihi `day` ya da sonrası olanlar dahil); `include_former` ile ayrılanlar da
-    (raporda görünen eski personelin ücreti girilebilsin)."""
-    day = day or timezone.localdate()
-    centers = _center_stages()
-    people = Employee.objects.all()
-    if not include_former:
-        people = people.filter(Q(is_active=True) | Q(termination_date__gte=day))
-    employees = list(people.order_by("-is_active", "full_name", "id"))
-    history: dict[int, list[EmployeeWage]] = defaultdict(list)
-    wages = EmployeeWage.objects.filter(employee__in=employees, is_active=True)
-    wages = wages.select_related("created_by", "employee")
-    for wage in wages.order_by("employee_id", "-valid_from", "-id"):
-        history[wage.employee_id].append(wage)
-    rows = []
-    for employee in employees:
-        items = history.get(employee.pk, [])
-        current = next((wage for wage in items if wage.valid_from <= day), None)
-        rows.append(
-            {
-                "employee": employee,
-                "stage": centers.get(personnel.fold(employee.department), GENERAL),
-                "current_wage": current.gross_monthly if current else None,
-                "current_valid_from": current.valid_from if current else None,
-                "history": items,
-            }
-        )
-    return rows
 
 
 def cost_centers() -> list[dict[str, str]]:

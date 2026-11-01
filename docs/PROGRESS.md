@@ -934,3 +934,35 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   gerekmedi.
 - Kılavuz `yonetim.md` (Personel ve Puantaj), DECISIONS ("Puantajda çıkıştan sonraki günler" ve
   önceki kararlara notlar), KVKK güncellendi.
+
+## 2026-11-01 — Personel bordrosu, 1. adım: ücretler Personel'de
+
+- Plan (onaylı; DECISIONS "Personel bordrosu (ön bordro)"): 1) ücretlerin Personel'e taşınması;
+  2) hesap motoru, bordro parametreleri, işveren maliyeti tablosu (PDF, Excel) ve Maliyet'in aynı
+  hesaba geçmesi; 3) brütten nete bordro, devir, ek ödeme, kesinti ve BES, bordro listesi;
+  4) onay, kilitler, ücret hesap pusulaları, belgeler ve demo verisi.
+- Backend: `EmployeeWage` personel modülüne taşındı (yalnızca model durumu: costing/0003 ve
+  personnel/0004; tablo ve kısıt adları korundu, içerik türü personele aktarıldı, geri alınabilir).
+  Servisler `personnel.services.add_wage` / `remove_wage`; seçiciler `wages_by_employee`, `wage_on`,
+  `wage_summary` (maliyet aşaması olmadan). API `/api/v1/personnel/wages/` (liste, kayıt, ekleme,
+  `remove`, `summary?include_former=`); maliyetteki `wages/` uçları kaldırıldı. Personel maliyeti
+  ücretleri personelden okur, hesap değişmedi. Örnek ücretler `seed_personnel_demo`'ya taşındı.
+- Ön yüz: Personel > Ücretler sekmesi (`/personel/ucretler`; eski `/maliyet/ucretler` adresi
+  "Ayrılanları da göster" süzgeciyle yönlenir). Birim eşleştirmesi ve işveren payı Maliyet > Personel
+  maliyeti'nin altında (`PersonnelCostSettings.tsx`). Ücret değişince personel maliyeti raporu da
+  yenilenir.
+- İnceleme: dört eksenli çok ajanlı tur, her bulgu ayrı ajanla çürütülmeye çalışıldı: 8 bulgudan 2'si
+  doğrulandı (düşük), 6'sı çürütüldü. Düzeltilenler: eski sekmenin kalktığını denetleyen test sayfa
+  yüklenmeden çalışıyordu (artık sekme listesi yüklendikten sonra denetlenir); kılavuz metinleri
+  (admin.md, yönetim "Personel") ve ekran görüntüsü betiğinin notu. Kılavuz ekran görüntüleri arayüz
+  4. adımda tamamlanınca bir kez yenilenecek. Ayrıca geçiş testi başarısız olsa da şemayı son geçişe
+  döndürür; geçiş notları netleştirildi.
+- Kanıt: `personnel/tests/test_wages.py` (kurallar, gün başına geçerli ücret, ayrılanlar, sorgu
+  sayısı, eşzamanlı ekleme, yetki, API), `test_wage_migration.py` (kayıtlar, kimlikler, denetim
+  geçmişi, geri alma, hedefte boş içerik türü), `test_seed_demo.py`;
+  `costing/tests/test_personnel_cost.py` (kaldırılan ücret hesapta yok, eski uç yok); ön yüz
+  `modules/personnel/wages.test.tsx` (yönlendirme dahil), `modules/costing/personnelCost.test.tsx`.
+  Backend 1343 test, ruff, mypy, göç kontrolü, OpenAPI; ön yüz 369 test, ESLint, Prettier, tsc,
+  derleme.
+- CLAUDE.md modül tablosu ve bağımlılık notu (planla onaylandı), DECISIONS, KVKK ve kılavuz
+  güncellendi.

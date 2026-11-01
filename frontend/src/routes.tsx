@@ -24,6 +24,7 @@ import { AttendancePage } from "./modules/personnel/AttendancePage";
 import { EmployeePage } from "./modules/personnel/EmployeePage";
 import { HolidaysPage } from "./modules/personnel/HolidaysPage";
 import { PersonnelPage } from "./modules/personnel/PersonnelPage";
+import { WagesPage } from "./modules/personnel/WagesPage";
 import { MaintenancePage } from "./modules/maintenance/MaintenancePage";
 import { WorkOrderPage } from "./modules/maintenance/WorkOrderPage";
 import { MasterDataPage } from "./modules/masterdata/MasterDataPage";
@@ -186,6 +187,7 @@ const pageRoutes: RouteObject[] = [
   // Personel: kişisel veri, yalnızca yönetim ve admin (backend de aynı rolle süzer).
   { path: "personel", element: personnelPage(<PersonnelPage />) },
   { path: "personel/puantaj", element: personnelPage(<AttendancePage />) },
+  { path: "personel/ucretler", element: personnelPage(<WagesPage />) },
   { path: "personel/tatiller", element: personnelPage(<HolidaysPage />) },
   { path: "personel/:employeeId", element: personnelPage(<EmployeePage />) },
   // Panolar ve raporlar: menü herkese açık; panolar ve raporlar rolle daralır (backend listesi).

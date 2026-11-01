@@ -1,15 +1,13 @@
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../api/auth";
 import * as costingApi from "../../api/costing";
 import type {
   CostEmployee,
-  EmployeeWage,
   PersonnelCostReport,
   PersonnelCostRow,
   StageCost,
-  WageSummaryRow,
 } from "../../api/costing";
 import * as workflowApi from "../../api/workflow";
 import { page, userWith } from "../../test/fixtures";
@@ -23,9 +21,6 @@ vi.mock("../../api/costing", async (importOriginal) => ({
   ...(await importOriginal<typeof costingApi>()),
   getPersonnelCost: vi.fn(),
   addLaborRateFromPersonnelCost: vi.fn(),
-  getWageSummary: vi.fn(),
-  addWage: vi.fn(),
-  removeWage: vi.fn(),
   listCostCenters: vi.fn(),
   setCostCenter: vi.fn(),
   getPersonnelCostSettings: vi.fn(),
@@ -145,44 +140,6 @@ function report(extra: Partial<PersonnelCostReport> = {}): PersonnelCostReport {
   };
 }
 
-function wage(extra: Partial<EmployeeWage> = {}): EmployeeWage {
-  return {
-    id: 5,
-    employee: 1,
-    employee_name: "Ayşe Demir",
-    gross_monthly: "45000.00",
-    valid_from: "2026-01-01",
-    note: "",
-    is_active: true,
-    removal_reason: "",
-    created_at: "2026-01-02T10:00:00+03:00",
-    created_by_name: "Yönetim",
-    ...extra,
-  };
-}
-
-function summary(includeFormer = false): WageSummaryRow[] {
-  const rows: WageSummaryRow[] = [
-    {
-      employee: AYSE,
-      stage: "PRODUCTION",
-      current_wage: "45000.00",
-      current_valid_from: "2026-01-01",
-      history: [wage()],
-    },
-    { employee: CAN, stage: "", current_wage: null, current_valid_from: null, history: [] },
-  ];
-  if (includeFormer)
-    rows.push({
-      employee: ECE,
-      stage: "FILLING",
-      current_wage: null,
-      current_valid_from: null,
-      history: [],
-    });
-  return rows;
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(authApi.fetchCsrf).mockResolvedValue();
@@ -191,7 +148,6 @@ beforeEach(() => {
   vi.mocked(workflowApi.fetchNotifications).mockResolvedValue(page([]));
   vi.mocked(workflowApi.fetchUnreadCount).mockResolvedValue(0);
   vi.mocked(costingApi.getPersonnelCost).mockResolvedValue(report());
-  vi.mocked(costingApi.getWageSummary).mockImplementation(async (former) => summary(former));
   vi.mocked(costingApi.listCostCenters).mockResolvedValue([
     { department: "Dolum", stage: "" },
     { department: "Üretim", stage: "PRODUCTION" },
@@ -220,7 +176,7 @@ describe("personel maliyeti", () => {
     expect(within(can).getByText("12,25")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ücretleri aç" })).toHaveAttribute(
       "href",
-      "/maliyet/ucretler",
+      "/personel/ucretler",
     );
     expect(screen.getByRole("link", { name: "Excel" })).toHaveAttribute(
       "href",
@@ -326,105 +282,7 @@ describe("personel maliyeti", () => {
     expect(within(row).getByText("Çıkış · 15.10.2026")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ücretleri aç" })).toHaveAttribute(
       "href",
-      "/maliyet/ucretler?ayrilanlar=1",
-    );
-  });
-});
-
-describe("personel ücretleri", () => {
-  it("ücret binlik ayraçla girilir; geçersiz tutar kaydedilmez", async () => {
-    const user = userEvent.setup();
-    vi.mocked(costingApi.addWage).mockResolvedValue(wage({ id: 6, gross_monthly: "48500.00" }));
-    renderApp("/maliyet/ucretler");
-    const ayse = (await screen.findByText("Ayşe Demir")).closest("tr")!;
-    expect(within(ayse).getByText("45.000,00")).toBeInTheDocument();
-    expect(costingApi.getWageSummary).toHaveBeenCalledWith(false);
-    const can = screen.getByText("Can Kaya").closest("tr")!;
-    expect(within(can).getByText("Girilmedi")).toBeInTheDocument();
-    expect(within(can).getByRole("button", { name: "Geçmiş (0): Can Kaya" })).toBeDisabled();
-
-    await user.click(screen.getByRole("button", { name: "Ücret ekle: Ayşe Demir" }));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/Güncel ücret 45.000,00 TL/)).toBeInTheDocument();
-    const amount = within(dialog).getByLabelText(/Brüt aylık/);
-    await user.type(amount, "48.500,123");
-    expect(within(dialog).getByText(/Geçerli bir tutar girin/)).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "Kaydet" })).toBeDisabled();
-    await user.clear(amount);
-    await user.type(amount, "48.500");
-    expect(within(dialog).getByText("48.500,00 TL olarak kaydedilir.")).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText(/Geçerlilik başlangıcı/), {
-      target: { value: "2026-11-01" },
-    });
-    await user.type(within(dialog).getByLabelText("Not"), "Zam");
-    await user.click(within(dialog).getByRole("button", { name: "Kaydet" }));
-    await waitFor(() =>
-      expect(costingApi.addWage).toHaveBeenCalledWith({
-        employee: 1,
-        gross_monthly: "48500",
-        valid_from: "2026-11-01",
-        note: "Zam",
-      }),
-    );
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    // Liste yeniden okunur.
-    await waitFor(() => expect(costingApi.getWageSummary).toHaveBeenCalledTimes(2));
-  });
-
-  it("ilk ücretin başlangıcı işe giriş tarihidir", async () => {
-    const user = userEvent.setup();
-    renderApp("/maliyet/ucretler");
-    await user.click(await screen.findByRole("button", { name: "Ücret ekle: Can Kaya" }));
-    const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByText(/İlk ücret: başlangıç varsayılan olarak işe giriş/),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText(/Geçerlilik başlangıcı/)).toHaveValue("2026-03-01");
-  });
-
-  it("liste değişince açık ücret penceresi kapanır ve kendiliğinden açılmaz", async () => {
-    const user = userEvent.setup();
-    const { router } = renderApp("/maliyet/ucretler");
-    await screen.findByText("Ayşe Demir");
-    await user.click(screen.getByLabelText("Ayrılanları da göster"));
-    await user.click(await screen.findByRole("button", { name: "Ücret ekle: Ece Ak" }));
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
-    await act(() => router.navigate(-1));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    await user.click(screen.getByLabelText("Ayrılanları da göster"));
-    expect(await screen.findByText("Ece Ak")).toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-
-  it("ayrılanlar anahtarıyla eski personel listelenir", async () => {
-    const user = userEvent.setup();
-    renderApp("/maliyet/ucretler");
-    await screen.findByText("Ayşe Demir");
-    expect(screen.queryByText("Ece Ak")).not.toBeInTheDocument();
-    await user.click(screen.getByLabelText("Ayrılanları da göster"));
-    const ece = (await screen.findByText("Ece Ak")).closest("tr")!;
-    expect(costingApi.getWageSummary).toHaveBeenCalledWith(true);
-    expect(within(ece).getByText("Çıkış · 15.10.2026")).toBeInTheDocument();
-    expect(within(ece).getByRole("button", { name: "Ücret ekle: Ece Ak" })).toBeEnabled();
-  });
-
-  it("ücret kaydı gerekçeyle kaldırılır", async () => {
-    const user = userEvent.setup();
-    vi.mocked(costingApi.removeWage).mockResolvedValue(wage({ is_active: false }));
-    renderApp("/maliyet/ucretler");
-    await user.click(await screen.findByRole("button", { name: "Geçmiş (1): Ayşe Demir" }));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/Yönetim/)).toBeInTheDocument();
-    await user.click(
-      within(dialog).getByRole("button", { name: "Kaldır: 01.01.2026 · 45.000,00 TL" }),
-    );
-    const submit = within(dialog).getByRole("button", { name: "Kaldır" });
-    expect(submit).toBeDisabled();
-    await user.type(within(dialog).getByLabelText(/Kaldırma nedeni/), "Yanlış tutar");
-    await user.click(submit);
-    await waitFor(() => expect(costingApi.removeWage).toHaveBeenCalledWith(5, "Yanlış tutar"));
-    await waitFor(() =>
-      expect(within(dialog).queryByLabelText(/Kaldırma nedeni/)).not.toBeInTheDocument(),
+      "/personel/ucretler?ayrilanlar=1",
     );
   });
 
@@ -435,7 +293,17 @@ describe("personel ücretleri", () => {
       employer_rate: "20.50",
       updated_at: "",
     });
-    renderApp("/maliyet/ucretler");
+    // Ücretler Personel'e taşındı; ayarlar personel maliyeti sekmesinin altında.
+    renderApp("/maliyet/personel?ay=2026-09");
+    // Sayfa yüklendikten sonra: eski "Personel ücretleri" sekmesi yok.
+    await screen.findByRole("tab", { name: "Personel maliyeti", selected: true });
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Lot maliyetleri",
+      "Raporlar",
+      "Gider oranları",
+      "Standart maliyetler",
+      "Personel maliyeti",
+    ]);
     await user.click(await screen.findByRole("textbox", { name: "Aşama: Dolum" }));
     await user.click(await screen.findByRole("option", { name: "Dolum (mamul)" }));
     await waitFor(() =>
@@ -467,8 +335,8 @@ describe("personel ücretleri", () => {
       vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("dolum"));
       renderApp(path);
       expect(await screen.findByText("Yetkiniz yok")).toBeInTheDocument();
-      expect(costingApi.getWageSummary).not.toHaveBeenCalled();
       expect(costingApi.getPersonnelCost).not.toHaveBeenCalled();
+      expect(costingApi.listCostCenters).not.toHaveBeenCalled();
     },
   );
 });

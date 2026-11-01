@@ -7,7 +7,13 @@ from django.core.management.base import CommandError
 from django.test import override_settings
 from django.utils import timezone
 
-from apps.personnel.models import AttendanceEntry, AttendanceMonth, Employee, PublicHoliday
+from apps.personnel.models import (
+    AttendanceEntry,
+    AttendanceMonth,
+    Employee,
+    EmployeeWage,
+    PublicHoliday,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -41,6 +47,12 @@ def test_seed_personnel_demo(roles: None) -> None:
     }
     assert entries.filter(overtime_hours__gt=0).count() == 3
     assert not AttendanceMonth.objects.filter(status="APPROVED").exists()
+    # Örnek ücretler: her karta bir ücret, bir kişiye geçen aydan zam; tekrar çalıştırmak eklemez.
+    assert EmployeeWage.objects.values("employee").distinct().count() == 14
+    assert EmployeeWage.objects.filter(employee__employee_no="S-0012").count() in (1, 2)
+    assert EmployeeWage.objects.count() == 14 + (
+        EmployeeWage.objects.filter(employee__employee_no="S-0012").count() - 1
+    )
 
 
 @override_settings(DEBUG=False, TRAINING_MODE=False)

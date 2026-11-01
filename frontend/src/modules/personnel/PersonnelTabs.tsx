@@ -1,14 +1,15 @@
 import { Tabs } from "@mantine/core";
 import { useNavigate } from "react-router-dom";
-import { at, ATTENDANCE_BASE, HOLIDAYS_BASE, PERSONNEL_BASE } from "./strings";
+import { at, ATTENDANCE_BASE, HOLIDAYS_BASE, PERSONNEL_BASE, WAGES_BASE } from "./strings";
 
 const TABS = [
   { value: PERSONNEL_BASE, label: at.tabs.cards },
   { value: ATTENDANCE_BASE, label: at.tabs.attendance },
+  { value: WAGES_BASE, label: at.tabs.wages },
   { value: HOLIDAYS_BASE, label: at.tabs.holidays },
 ];
 
-/** Personel bölümünün sekmeleri: kartlar, puantaj, tatil takvimi. */
+/** Personel bölümünün sekmeleri: kartlar, puantaj, ücretler, tatil takvimi. */
 export function PersonnelTabs({ active }: { active: string }) {
   const navigate = useNavigate();
   return (

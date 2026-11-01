@@ -1,5 +1,6 @@
 """Personel API'si: yalnızca admin ve yönetim (kişisel veri, docs/KVKK.md). Silme yoktur; ayrılış
-`terminate`, yeniden işe başlama `reinstate` ile kaydedilir, belge `remove` ile kaldırılır."""
+`terminate`, yeniden işe başlama `reinstate` ile kaydedilir, belge ve ücret `remove` ile
+kaldırılır."""
 
 from typing import Any
 
@@ -21,7 +22,7 @@ from apps.core.models import User
 from apps.core.permissions import HasRole
 from apps.personnel import exports, selectors, services
 from apps.personnel.api import serializers as s
-from apps.personnel.models import Employee, EmployeeDocument, PublicHoliday
+from apps.personnel.models import Employee, EmployeeDocument, EmployeeWage, PublicHoliday
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -407,3 +408,51 @@ class AttendanceSettingsView(APIView):
             _user(request), body.validated_data["rest_weekdays"]
         )
         return Response(s.AttendanceSettingsSerializer(instance).data)
+
+
+# --- ücretler ------------------------------------------------------------------------------------
+
+
+class EmployeeWageViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Brüt aylık ücretler (geçerlilik tarihli). Silme ve düzeltme yok: zam yeni tarihle eklenir,
+    yanlış kayıt `remove` ile gerekçeyle kaldırılır. `summary` çalışan personeli güncel ücretiyle
+    verir."""
+
+    serializer_class = s.EmployeeWageSerializer
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    queryset = EmployeeWage.objects.select_related("employee", "created_by")
+    filterset_fields = ["employee", "is_active"]
+    ordering = ["employee", "-valid_from", "-id"]
+
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Ücret girer (zam yeni geçerlilik tarihiyle)."""
+        body = self.get_serializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        wage = services.add_wage(_user(request), body.validated_data)
+        return Response(self.get_serializer(wage).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(request=s.WageRemoveSerializer, responses=s.EmployeeWageSerializer)
+    @action(detail=True, methods=["post"])
+    def remove(self, request: Request, pk: str | None = None) -> Response:
+        """Yanlış ücret kaydını kaldırır (neden zorunlu)."""
+        body = s.WageRemoveSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        reason = body.validated_data["reason"]
+        wage = services.remove_wage(_user(request), self.get_object(), reason)
+        return Response(self.get_serializer(wage).data)
+
+    @extend_schema(
+        parameters=[s.WageSummaryQuerySerializer], responses=s.WageSummarySerializer(many=True)
+    )
+    @action(detail=False, methods=["get"], pagination_class=None, filter_backends=[])
+    def summary(self, request: Request) -> Response:
+        """Çalışanlar (ayrılanlar isteğe bağlı), güncel ücretleri ve ücret geçmişleri."""
+        query = s.WageSummaryQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        rows = selectors.wage_summary(include_former=query.validated_data["include_former"])
+        return Response(s.WageSummarySerializer(rows, many=True).data)

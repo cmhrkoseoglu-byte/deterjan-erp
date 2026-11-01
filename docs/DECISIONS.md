@@ -1576,6 +1576,8 @@ değiştirme zorunlu, yalnızca admin):
   100.000.000 TL. Ücretler sekmesi çalışanları (çıkışı ileride olanlar dahil) listeler; "Ayrılanları
   da göster" ile raporda görünen eski personelin ücreti de girilir ve düzeltilir. Yeni ücretin
   varsayılan başlangıcı: ilk ücrette işe giriş tarihi (yoksa geçen ayın 1'i), zamda bu ayın 1'i.
+  (2026-11-01: ücretler kurallarıyla birlikte Personel > Ücretler'e taşındı; bkz. "Personel
+  bordrosu".)
 - **Aylık hesap (30 gün usulü):** puantajın günleri kullanılır (açık ayda takvim varsayılanları, onaylı
   ayda kayıtlı günler); yalnızca işe giriş ve çıkış tarihi arasındaki günler sayılır (çıkıştan sonra
   kayıtlı kalmış puantaj günü de sayılmaz). Her gün o gün geçerli ücretle hesaplanır (ay içinde zam).
@@ -1670,3 +1672,76 @@ değiştirme zorunlu, yalnızca admin):
 - **Kapsam dışı:** işe giriş tarihinden önce kayıtlı günler (yeniden işe alımda önceki dönem ya da
   ileri alınan giriş tarihi) bugünkü gibi kalır; ileri tarihli çıkışta kart yine hemen "Ayrıldı"
   görünür; ayrı çalışma dönemleri ayrı bir tasarım konusudur.
+
+## 2026-11-01 — Personel bordrosu (ön bordro)
+
+- **Karar (CUMHUR, 2026-11-01, "Personel modülüne maaş puantaj bilgilerine göre personelin işverene
+  maliyetini gösteren tablo yapalım. bordroyu yapalım ve çıktı alabilelim"; bordro türü için "Ön
+  bordro", başlangıç için "Ekim 2026", ek kalemler için "Kesinti (BES, avans, icra)", "Ek ödeme
+  (prim, yol, yemek)" ve "Özel durumlu çalışan", resmî tatil için "Günlük ücret"; plan için "Plan
+  uygun; başla"):** personel modülünde aylık bordro (brütten nete) ve işverene maliyet tablosu
+  yapılır; çıktılar PDF (işveren maliyeti tablosu, bordro listesi, ücret hesap pusulaları) ve Excel.
+  İş dört adımda yapılır (docs/PROGRESS.md).
+- **Ön bordro:** SGK (e-Bildirge, APHB) ve vergi (MUHSGK) bildirimini mali müşavir yapmaya devam
+  eder; ERP bordrosu ilk aylarda mali müşavirin bordrosuyla kalem kalem karşılaştırılır. Çıktılarda
+  "Ön bordrodur; SGK ve vergi bildirimi yerine geçmez" notu ve maskeli TC kimlik no bulunur; SGK
+  işyeri sicil no ve resmî bordro imza düzeni yoktur.
+- **Ücretler personel modülünde (adım 1):** ücretler (`EmployeeWage`) maliyet modülünden personel
+  modülüne taşındı; ekran Personel > Ücretler (eski Maliyet > Personel ücretleri adresi oraya
+  yönlenir, "Ayrılanları da göster" süzgeciyle). Yalnızca Django'nun model durumu taşındı: tablo ve
+  kısıt adları (`costing_employeewage`, `costing_wage_*`) değişmedi, kayıtlar ve kimlikleri yerinde
+  kaldı; içerik türü personele aktarıldığı için ücretlerin denetim geçmişi korunur (geçişler
+  costing/0003, personnel/0004; geri alınabilir). Personel modülü yine yalnızca `core` ve
+  `masterdata`'ya bağlıdır; `costing` ücretleri (ve bordroyu) `personnel`'den okur. Birimlerin
+  maliyet aşaması ve işveren payı Maliyet > Personel maliyeti sekmesinin altına geçti. Ücret kuralları
+  değişmedi ("Personel maliyeti").
+- **Hesap (2026 değerleri, parametreli):** yasal değerler vergi yılına bağlı tarihli parametre
+  setinde tutulur; bir yılın değerleri başka yıla uygulanmaz. 2026: asgari ücret brüt 33.030,00 TL
+  (net 28.075,50); SGK matrahı alt sınırı günlük 1.101,00, üst sınırı günlük 9.909,00 (9 kat); işçi
+  payı SGK %14 ve işsizlik %1; işveren payı SGK %21,75 eksi 5510 s. Kanun m.81/ı teşviki (imalat
+  işyerinde 5 puan, 2026 sonuna kadar) ve işsizlik %2, toplam %18,75; gelir vergisi dilimleri
+  190.000 / 400.000 / 1.500.000 / 5.300.000 TL (%15 / 20 / 27 / 35 / 40), yıl içinde kümülatif;
+  asgari ücret gelir ve damga vergisi istisnası; damga vergisi binde 7,59. Değerler ekranda hazır
+  gelir, mali müşavirle kontrol edilip kaydedilir; teşvik puanı işyerine göre seçilir.
+- **SGK günü ve alt sınır:** tam ayda 30 gün; eksik gün varsa takvim günü eksi eksik gün; ay içinde
+  giriş ya da çıkışta takvim günü. Ücret SGK matrahı alt sınırının altında kalırsa (ör. 31 çeken ayda
+  ücretsiz izin) farkın primini işçi payı dahil işveren öder (5510 s. Kanun m.82); işçinin kesintisi
+  ücretinden hesaplanır.
+- **Resmî tatil ("Günlük ücret"):** tatilde çalışana bir günlük ilave ücret (brüt / 30) ödenir, kısa
+  çalışsa da; 7,5 saati aşan saatler saat ücretinin 1,5 katı. Yarım gün tatilde (28 Ekim, arifeler)
+  öğleden sonra çalışana yarım günlük ilave ödenir; puantaja bunun için işaret eklenir. Önceki kural
+  (çalışılan saat × brüt / 225 × 1) bırakılır; personel maliyeti de aynı kuralı kullanır. Mali
+  müşavirle ilk karşılaştırmada teyit edilir.
+- **Rapor, ücretsiz izin, devamsızlık:** bugünkü gibi brüt / 30 ile düşülür ("Personel maliyeti",
+  "Ücretten düşülsün").
+- **Ek ödeme ve kesinti:** her ay kişiye elle ek ödeme (brüt; prim, ikramiye, yol, yemek; SGK'ya ve
+  vergiye tabi) ve net kesinti (avans, icra ya da nafaka, diğer) girilir; pusulada her biri ayrı
+  satırdır (İş Kanunu m.37). BES otomatik katılımı kartta işaretlenir; kesinti her ay SGK matrahının
+  %3'üdür. İstisnalı yemek ve yol kartı ilk sürümde yoktur.
+- **Özel durumlu çalışan:** emekli (SGDP), engelli, kısmi süreli, net ücretle anlaşılmış ya da başka
+  işyerinde de çalışan kişi kartta "Bordrosu mali müşavirde" diye işaretlenir ve ERP bordrosunda
+  hesaplanmaz. İşveren maliyeti tablosu eksik kalmasın diye o ay için mali müşavir bordrosundaki brüt
+  ve işveren maliyeti elle girilir. İşaretin nedeni yazılmaz (engellilik sağlık verisidir, KVKK m.6).
+- **Başlangıç Ekim 2026:** Ocak–Eylül'de çalışan herkes için Eylül sonu kümülatif gelir vergisi
+  matrahı mali müşavirin Eylül bordrosundan bir kez girilir (devir); asgari ücret istisnasının
+  uygulandığı ay sayısı işe giriş tarihinden önerilir. Bordro dönemi hak ediş ayıdır (Ekim ücreti
+  Kasım'da ödense de Ekim bordrosudur); ödeme tarihi onayda girilir.
+- **Onay (Puantaj'daki gibi):** bordro her ay canlı hesaplanır (taslak). Puantaj onaylandıktan sonra
+  onaylanır, BR- numarası alır ve satırlar o anki haliyle saklanır; çıktılar artık değişmez. Onaylıyken
+  o ayın puantajı yeniden açılamaz, o aya etki eden ücret, parametre, devir, ek ödeme ve kesinti
+  değiştirilemez. Düzeltme: bordro gerekçeyle yeniden açılır, düzeltilir ve yeniden onaylanır (eski
+  onay saklanır). Aylar sırayla onaylanır, sondan başa açılır. Taslak çıktılar "TASLAK" damgalıdır;
+  ücret hesap pusulası yalnızca onaylı bordrodan alınır.
+- **Maliyet aynı hesaba geçer:** Maliyet > Personel maliyeti bordro hesabını kullanır (onaylı ayda
+  saklanan satırlar, diğer aylarda aynı hesapla tahmin); tek %17,75 ayarı kalkar (2025 oranıydı;
+  2026'da imalat işyerinde %18,75). SGK alt sınırı ve 2026 oranı yüzünden rakamlar artar; eklenmiş
+  işçilik oranları ve hesaplanmış lot maliyetleri değişmez.
+- **Yetki ve KVKK:** yalnızca yönetim ve admin. Çıktılar tarayıcı önbelleğine alınmaz, her açılış kayda
+  geçer. Canlıda ücret ve bordro girilmeden önce yönetim ve admin için iki aşamalı doğrulamanın
+  yeniden zorunlu yapılması önerildi (2026-10-25 kararı geçicidir).
+- **Kapsam dışı:** SGK ve MUHSGK bildirgeleri, banka ödeme dosyası, kıdem ve ihbar tazminatı ile
+  çıkış ayındaki kullanılmamış izin ücreti (çıkış ayında uyarı verilir), netten brüte hesap, 5 puan
+  dışındaki teşvikler ve asgari ücret desteği, istisnalı yemek ve yol kartı, devamsızlık olan haftada
+  hafta tatili ücretinin kesilmesi (İş Kanunu m.46), aynı kişinin yeniden işe alınması.
+- **CLAUDE.md:** modül tablosunda `personnel` ve `costing` satırları ile bağımlılık notu güncellendi
+  (planla onaylandı).

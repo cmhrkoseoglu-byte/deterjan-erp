@@ -268,7 +268,8 @@ export function reportExcelUrl(name: ReportName, params: ReportParams = {}): str
 
 // --- personel maliyeti -----------------------------------------------------------------------
 // Brüt ücret + puantajdan aylık maliyet ve işçilik oranı önerisi (docs/DECISIONS.md "Personel
-// maliyeti"). Ücretler kişisel veridir (docs/KVKK.md); yalnızca yönetim ve admin erişir.
+// maliyeti"). Ücretler kişisel veridir (docs/KVKK.md); yalnızca yönetim ve admin erişir. Ücretlerin
+// kendisi personel modülündedir (api/wages.ts).
 
 /** Birimin maliyet aşaması; boş = genel gider. */
 export type CostCenterStage = CostStage | "";
@@ -336,29 +337,6 @@ export interface PersonnelCostReport {
   rows: PersonnelCostRow[];
 }
 
-export interface EmployeeWage {
-  id: number;
-  employee: number;
-  employee_name: string;
-  gross_monthly: string;
-  valid_from: string;
-  note: string;
-  is_active: boolean;
-  removal_reason: string;
-  created_at: string;
-  created_by_name: string | null;
-}
-
-export interface WageSummaryRow {
-  employee: CostEmployee;
-  stage: CostCenterStage;
-  /** Bugün geçerli ücret; yoksa (hiç girilmedi ya da gelecek tarihli) boş. */
-  current_wage: string | null;
-  current_valid_from: string | null;
-  /** Kaldırılmamış ücretler, en yenisi önce. */
-  history: EmployeeWage[];
-}
-
 export interface CostCenter {
   department: string;
   stage: CostCenterStage;
@@ -373,8 +351,6 @@ export interface PersonnelCostSettings {
 export const personnelCostKeys = {
   all: ["costing", "personnel-cost"] as const,
   report: (year: number, month: number) => ["costing", "personnel-cost", year, month] as const,
-  wages: ["costing", "wages"] as const,
-  wageList: (includeFormer: boolean) => ["costing", "wages", includeFormer] as const,
   costCenters: ["costing", "cost-centers"] as const,
   settings: ["costing", "personnel-cost-settings"] as const,
 };
@@ -398,31 +374,6 @@ export async function addLaborRateFromPersonnelCost(
   payload: { stage: CostStage; valid_from: string },
 ): Promise<CostRate> {
   const { data } = await api.post<CostRate>(`${personnelMonth(year, month)}/labor-rate/`, payload);
-  return data;
-}
-
-/** Çalışanlar (çıkış tarihi bugün ya da sonra olanlar dahil); `includeFormer` ile ayrılanlar da. */
-export async function getWageSummary(includeFormer = false): Promise<WageSummaryRow[]> {
-  const { data } = await api.get<WageSummaryRow[]>("/costing/wages/summary/", {
-    params: includeFormer ? { include_former: true } : undefined,
-  });
-  return data;
-}
-
-/** Hata kodları: employee_required, valid_from_required, invalid_valid_from, invalid_wage,
- * duplicate_wage. */
-export async function addWage(payload: {
-  employee: number;
-  gross_monthly: string;
-  valid_from: string;
-  note: string;
-}): Promise<EmployeeWage> {
-  const { data } = await api.post<EmployeeWage>("/costing/wages/", payload);
-  return data;
-}
-
-export async function removeWage(id: number, reason: string): Promise<EmployeeWage> {
-  const { data } = await api.post<EmployeeWage>(`/costing/wages/${id}/remove/`, { reason });
   return data;
 }
 
