@@ -966,3 +966,62 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   derleme.
 - CLAUDE.md modül tablosu ve bağımlılık notu (planla onaylandı), DECISIONS, KVKK ve kılavuz
   güncellendi.
+
+## 2026-11-02 — Personel bordrosu, 2. adım: hesap motoru, parametreler, işveren maliyeti
+
+- Backend (`apps/personnel`, göç 0005):
+  - Hesap motoru `payroll.py` (yalnızca standart kitaplık): 30 gün usulü ücret (her gün o gün geçerli
+    ücretle), SGK günü, SGK matrahının günlük alt ve üst sınırı, işçi payları ve işverenin üstlendiği
+    alt sınır farkı (5510 m.82), kümülatif gelir vergisi (tarife farkı), asgari ücret gelir ve damga
+    vergisi istisnası, BES (SGK matrahının %3'ü), fazla mesai ve resmî tatil ("günlük ücret", yarım
+    gün tatil). 2026 yasal değerleri ve kaynakları motorda.
+  - Modeller: `PayrollParameterSet` (yıl içinde ay başından geçerli, gerekçeyle kaldırılır),
+    `ExternalPayrollFigure`, puantajda `holiday_half_worked`, kartta `payroll_external` ve
+    `bes_enrolled`.
+  - Seçiciler `payroll_parameters` (kayıtlı set → o yılın yasal değerleri → en yakın yılın değerleri,
+    uyarıyla) ve `payroll_month` (satır uyarıları: ücret eksik, asgari ücretin altında, mali müşavir
+    rakamı yok, ay içinde çıkış, SGK günü yok).
+  - Çıktılar: `pdf.py` işveren maliyeti tablosu (A4 yatay, birim ara toplamları, Sayfa x/y, TASLAK
+    damgası); Excel "İşveren maliyeti" ve "Parametreler" (TASLAK). Dosyalar `no-store`, her açılış
+    denetim günlüğüne.
+  - API `/api/v1/personnel/payroll/<yıl>/<ay>/` (ve `employer-cost.pdf`, `xlsx/`, `external/`) ile
+    `payroll/parameters/` (liste, kayıt, düzeltme, `remove`, `defaults`).
+- Maliyet: Personel maliyeti aynı hesaptan beslenir (SGK alt sınırı, 2026 oranları, teşvik); tek işveren
+  payı ayarı ve ucu kalktı, model durur. Excel'de "Bordrosu mali müşavirde" ve "Mali müşavir rakamı
+  girilmedi"; Excel önbelleğe alınmaz, açılışı kayda geçer.
+- Ön yüz: Personel > Bordro sekmesi (ay seçici, durum rozetleri, uyarılar, işveren maliyeti tablosu, PDF
+  ve Excel, Parametreler penceresi, mali müşavir rakamları penceresi); puantajda yarım gün tatil kutusu
+  ve Ç½; kartta Bordro bölümü; Maliyet > Personel maliyeti'nde parametre rozeti, Bordro bağlantısı ve
+  ayrı eksik uyarıları.
+- İnceleme: dört eksenli çok ajanlı tur (bordro hukuku, arka uç, ön yüz, belgeler ve kurallar), her
+  bulgu ayrı ajanla çürütülmeye çalışıldı. Kullanım sınırında yarıda kalan tur kaldığı yerden
+  tamamlandı: 30 bulgudan 20'si doğrulandı (5'i orta, gerisi düşük önemde), 10'u çürütüldü; hepsi
+  düzeltildi. Başlıcaları:
+  - PDF'te mali müşavirdeki kişinin brütü notun altında kalıyordu; Excel'de TASLAK yoktu.
+  - Asgari ücret uyarısı ay içi giriş ve çıkışta verilmiyordu; tatil kaldırılınca tabloda Ç½ kalıyordu.
+  - Mali müşavir rakamı 0 girilemiyordu.
+  - Yasal değeri olmayan yılın parametre penceresi uyarısız eski yılla doluyordu; form noktalı oranı
+    binlik sayıyor, sunucu hatalarını alanın altında göstermiyordu; pencere istek sürerken kapanabiliyordu.
+  - Maliyet uyarısı mali müşavir rakamı eksiğini Ücretler'e yönlendiriyordu; maliyet Excel'i önbelleğe
+    alınabiliyordu; kılavuzda Bordro bölümü yoktu; motorun bazı kuralları test edilmiyordu.
+  İkinci tur düzeltmeleri inceledi: 9 bulgudan 7'si doğrulandı (1 orta), hepsi düzeltildi. Bunlar zam
+  ayında zamdan önceki ücretin uyarısı, maliyet Excel'indeki eksik etiketleri, alan düzeltilince genel
+  hata uyarısının yeniden çıkması, mali müşavir penceresinin geç yanıtla kapanması, iki metin ve zayıf
+  testlerdi.
+- Kanıt: `personnel/tests/test_payroll_engine.py` (ÇSGB asgari ücret maliyeti, 50.000 TL yıllık zincir,
+  SGK tavanı, kıst ay ve eksik gün, gün başına sınırlar, alt sınır farkı, Eylül devri, istisna dilimleri,
+  BES matrahı, resmî tatil, yuvarlama, modül sınırları), `test_payroll.py` (parametre kuralları ve
+  eşzamanlılık, yıl ve geçerlilik, puantajdan hesap, yarım gün işareti ve tatil değişikliği, uyarılar,
+  mali müşavir rakamları, yetki, PDF hücreleri ve TASLAK damgası, Excel, sorgu sayısı, API),
+  `costing/tests/test_personnel_cost.py`; ön yüz `modules/personnel/payroll.test.tsx`,
+  `attendance.test.tsx`, `personnel.test.tsx`, `modules/costing/personnelCost.test.tsx`.
+  Backend 1427 test, ruff, mypy, göç kontrolü, OpenAPI; ön yüz 384 test, ESLint, Prettier,
+  tsc, derleme. Bu Windows kopyasında git `core.autocrlf=true` olduğundan dosyalar CRLF açılıyor;
+  yerelde Prettier `--end-of-line auto` ile denetlendi (CI LF ile denetler).
+- Tasarım eleştirisi (3. adım için, kod yazılmadan önce, üç eksen): 47 bulgu; iş kuralı soruları
+  kullanıcıya soruldu, cevaplar DECISIONS "3. adım kararları"nda. Teknik bulgular 3. adımda uygulanacak
+  (devrin kaldırılabilmesi ve zincirin gerçek başlangıcına göre "devir eksik", mali müşavirde geçen ayın
+  zinciri kesmesi, aralık yükleyicili zincir ve sorgu sınırı, toplu giriş ve geçen aydan kopyalama,
+  bordro listesinde maskeli TC, istisna sütunları ve icmal sayfası, karşılaştırma sayfası).
+- DECISIONS ("2. adım", "İnceleme sonrası", "3. adım kararları"), KVKK (ön bordro satırı, teknik tedbir)
+  ve kılavuz (yönetim "Bordro", kartta Bordro adımı, puantajda Ç½; admin) güncellendi.

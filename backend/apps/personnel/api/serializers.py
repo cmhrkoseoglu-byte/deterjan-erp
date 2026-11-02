@@ -2,10 +2,12 @@ from decimal import Decimal
 from typing import Any
 
 from django.urls import reverse
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.core.api.serializers import AuditLogSerializer
 from apps.core.models import User
+from apps.personnel import payroll
 from apps.personnel.models import (
     ATTENDANCE_CODES,
     AttendanceEntry,
@@ -15,9 +17,16 @@ from apps.personnel.models import (
     Employee,
     EmployeeDocument,
     EmployeeWage,
+    ExternalPayrollFigure,
+    PayrollParameterSet,
     PublicHoliday,
 )
-from apps.personnel.selectors import AttendanceGrid
+from apps.personnel.selectors import (
+    AttendanceGrid,
+    PayrollMonth,
+    PayrollSettings,
+    engine_parameters,
+)
 from apps.personnel.state import attendance_month_states
 
 
@@ -75,6 +84,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "school",
             "field_of_study",
             "graduation_year",
+            "payroll_external",
+            "bes_enrolled",
             "user",
             "user_info",
             "is_active",
@@ -82,6 +93,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["termination_date", "is_active", "created_at", "updated_at"]
+        extra_kwargs = {
+            "payroll_external": {"required": False},
+            "bes_enrolled": {"required": False},
+        }
         # Sicil no, TC kimlik no ve kullanıcı benzersizliği servis katmanında (Türkçe mesaj, kod).
         validators: list = []
 
@@ -199,6 +214,9 @@ class AttendanceCellSerializer(serializers.Serializer):
     status = serializers.CharField(help_text="boşsa kişi o gün işte değil")
     code = serializers.CharField()
     overtime_hours = _hours()
+    holiday_half_worked = serializers.BooleanField(
+        help_text="yarım gün tatilde öğleden sonra da çalıştı"
+    )
     note = serializers.CharField()
     explicit = serializers.BooleanField(help_text="kayıtlı gün; değilse takvimden varsayılan")
     editable = serializers.BooleanField()
@@ -279,6 +297,7 @@ class AttendanceEntrySerializer(serializers.ModelSerializer):
             "status_display",
             "code",
             "overtime_hours",
+            "holiday_half_worked",
             "note",
         ]
         read_only_fields = fields
@@ -298,6 +317,9 @@ class AttendanceDayInputSerializer(serializers.Serializer):
         required=False,
         default=Decimal(0),
         label="fazla mesai (saat)",
+    )
+    holiday_half_worked = serializers.BooleanField(
+        required=False, default=False, label="yarım gün tatilde çalıştı"
     )
     note = _blank(max_length=200, label="not")
 
@@ -415,3 +437,368 @@ class WageSummarySerializer(serializers.Serializer):
     current_wage = _money(allow_null=True)
     current_valid_from = serializers.DateField(allow_null=True)
     history = EmployeeWageSerializer(many=True)
+
+
+# --- ön bordro (docs/DECISIONS.md "Personel bordrosu") -------------------------------------------
+
+
+def _rate(**kwargs: Any) -> serializers.DecimalField:
+    return serializers.DecimalField(max_digits=6, decimal_places=3, **kwargs)
+
+
+class PayrollEmployeeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Employee
+        fields = [
+            "id",
+            "employee_no",
+            "full_name",
+            "department",
+            "title",
+            "hire_date",
+            "termination_date",
+            "is_active",
+            "payroll_external",
+            "bes_enrolled",
+        ]
+        read_only_fields = fields
+
+
+class PayrollItemSerializer(serializers.Serializer):
+    kind = serializers.CharField()
+    description = serializers.CharField(source="label")
+    amount = _money()
+
+
+class PayrollLineSerializer(serializers.Serializer):
+    """Bordro satırının kalemleri (hesap motoru, `personnel.payroll.Result`)."""
+
+    employed_days = serializers.IntegerField()
+    paid_days = serializers.IntegerField(help_text="30 gün usulü ücretli gün")
+    unpaid_days = serializers.IntegerField(help_text="ücretsiz izin + rapor + devamsız")
+    sick_days = serializers.IntegerField()
+    unpaid_leave_days = serializers.IntegerField()
+    absent_days = serializers.IntegerField()
+    sgk_days = serializers.IntegerField()
+    monthly_wage = _money(allow_null=True, help_text="ayın son işte olunan günündeki brüt ücret")
+    missing_wage = serializers.BooleanField()
+    salary = _money()
+    overtime_worked_hours = _hours()
+    overtime_worked_pay = _money()
+    overtime_rest_hours = _hours()
+    overtime_rest_pay = _money()
+    holiday_days = serializers.IntegerField(help_text="çalışılan tam gün resmi tatil")
+    holiday_half_days = serializers.IntegerField(help_text="öğleden sonra çalışılan yarım gün")
+    holiday_hours = _hours()
+    holiday_extra_hours = _hours(help_text="tatilde 7,5 saati aşan saatler")
+    holiday_pay = _money()
+    extras = PayrollItemSerializer(many=True)
+    extras_total = _money()
+    gross_total = _money()
+    sgk_base = _money()
+    floor_applied = serializers.BooleanField()
+    ceiling_applied = serializers.BooleanField()
+    employee_sgk = _money()
+    employee_unemployment = _money()
+    tax_base = _money()
+    cumulative_tax_base_before = _money()
+    cumulative_tax_base_after = _money()
+    income_tax_computed = _money()
+    income_tax_exemption = _money()
+    income_tax = _money()
+    exemption_base_before = _money()
+    exemption_base_added = _money()
+    stamp_tax_computed = _money()
+    stamp_tax_exemption = _money()
+    stamp_tax = _money()
+    net_pay = _money()
+    bes_deduction = _money()
+    deductions = PayrollItemSerializer(many=True)
+    deductions_total = _money()
+    payable = _money()
+    employer_sgk_gross = _money()
+    incentive = _money()
+    employer_sgk = _money()
+    employer_unemployment = _money()
+    floor_gap = _money()
+    employer_cost = _money()
+
+
+class ExternalFigureSerializer(serializers.ModelSerializer):
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExternalPayrollFigure
+        fields = [
+            "id",
+            "employee",
+            "year",
+            "month",
+            "gross_total",
+            "employer_cost",
+            "note",
+            "updated_at",
+            "updated_by_name",
+        ]
+        read_only_fields = fields
+
+    def get_updated_by_name(self, obj: ExternalPayrollFigure) -> str | None:
+        return str(obj.updated_by) if obj.updated_by_id else None
+
+
+class ExternalFigureInputSerializer(serializers.Serializer):
+    employee = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), label="personel")
+    gross_total = _money(min_value=Decimal(0), label="brüt toplam (TL)")
+    employer_cost = _money(min_value=Decimal(0), label="işverene maliyet (TL)")
+    note = _blank(max_length=200, label="not")
+
+
+class PayrollRowSerializer(serializers.Serializer):
+    employee = PayrollEmployeeSerializer()
+    external = serializers.BooleanField(help_text="bordrosu mali müşavirde (rakamlar `figure`)")
+    figure = ExternalFigureSerializer(allow_null=True)
+    warnings = serializers.ListField(child=serializers.CharField())
+    line = PayrollLineSerializer()
+    gross_total = _money()
+    employer_cost = _money()
+
+
+class PayrollValuesSerializer(serializers.Serializer):
+    """Hesapta kullanılan değerler (kayıtlı set ya da yasal değerler)."""
+
+    minimum_wage = _money()
+    daily_floor = _money()
+    daily_ceiling = _money()
+    ceiling_multiplier = _money()
+    employee_sgk_rate = _money()
+    employee_unemployment_rate = _money()
+    employer_sgk_rate = _money()
+    employer_unemployment_rate = _money()
+    incentive_points = _money()
+    employer_rate = _money(help_text="SGK işveren − teşvik + işsizlik işveren")
+    stamp_tax_per_mille = _rate()
+    tax_brackets = serializers.ListField(child=_money())
+    tax_rates = serializers.ListField(child=_money())
+    exemption_base = _money(help_text="asgari ücretin gelir vergisi matrahı")
+    bes_rate = _money()
+
+
+def values_data(params: payroll.Parameters) -> dict[str, Any]:
+    return {
+        "minimum_wage": params.minimum_wage,
+        "daily_floor": params.daily_floor,
+        "daily_ceiling": params.daily_ceiling,
+        "ceiling_multiplier": params.ceiling_multiplier,
+        "employee_sgk_rate": params.employee_sgk_rate,
+        "employee_unemployment_rate": params.employee_unemployment_rate,
+        "employer_sgk_rate": params.employer_sgk_rate,
+        "employer_unemployment_rate": params.employer_unemployment_rate,
+        "incentive_points": params.incentive_points,
+        "employer_rate": params.employer_rate,
+        "stamp_tax_per_mille": params.stamp_tax_per_mille,
+        "tax_brackets": list(params.tax_brackets),
+        "tax_rates": list(params.tax_rates),
+        "exemption_base": params.exemption_base,
+        "bes_rate": params.bes_rate,
+    }
+
+
+class PayrollParametersInfoSerializer(serializers.Serializer):
+    origin = serializers.CharField(
+        help_text="saved: kayıtlı set; legal_default: yasal değerler (set kaydedilmedi); "
+        "fallback: başka yılın değerleriyle tahmin"
+    )
+    year = serializers.IntegerField(help_text="değerlerin ait olduğu yıl")
+    record = serializers.IntegerField(allow_null=True)
+    valid_from = serializers.DateField(allow_null=True)
+    values = PayrollValuesSerializer()
+
+
+def parameters_info(settings: PayrollSettings) -> dict[str, Any]:
+    record = settings.record
+    return {
+        "origin": settings.source,
+        "year": settings.year,
+        "record": record.pk if record else None,
+        "valid_from": record.valid_from if record else None,
+        "values": values_data(settings.params),
+    }
+
+
+TOTAL_FIELDS = (
+    "salary",
+    "overtime_worked_pay",
+    "overtime_rest_pay",
+    "holiday_pay",
+    "extras_total",
+    "sgk_base",
+    "employee_sgk",
+    "employee_unemployment",
+    "income_tax",
+    "stamp_tax",
+    "net_pay",
+    "bes_deduction",
+    "deductions_total",
+    "payable",
+    "employer_sgk_gross",
+    "incentive",
+    "employer_sgk",
+    "employer_unemployment",
+    "floor_gap",
+)
+
+
+class PayrollTotalsSerializer(serializers.Serializer):
+    """Toplamlar. `gross_total` ve `employer_cost` mali müşavirde hesaplananların girilmiş
+    rakamlarını da içerir; diğerleri yalnızca ERP'de hesaplanan satırların toplamıdır."""
+
+    employee_count = serializers.IntegerField()
+    external_count = serializers.IntegerField()
+    gross_total = _money()
+    employer_cost = _money()
+    salary = _money()
+    overtime_worked_pay = _money()
+    overtime_rest_pay = _money()
+    holiday_pay = _money()
+    extras_total = _money()
+    sgk_base = _money()
+    employee_sgk = _money()
+    employee_unemployment = _money()
+    income_tax = _money()
+    stamp_tax = _money()
+    net_pay = _money()
+    bes_deduction = _money()
+    deductions_total = _money()
+    payable = _money()
+    employer_sgk_gross = _money()
+    incentive = _money()
+    employer_sgk = _money()
+    employer_unemployment = _money()
+    floor_gap = _money()
+
+
+def totals_data(month: PayrollMonth) -> dict[str, Any]:
+    return {
+        "employee_count": len(month.rows),
+        "external_count": sum(1 for row in month.rows if row.external),
+        "gross_total": month.gross_total,
+        "employer_cost": month.employer_cost,
+        **{name: month.total(name) for name in TOTAL_FIELDS},
+    }
+
+
+class PayrollMonthSerializer(serializers.Serializer):
+    """Ayın ön bordrosu (canlı hesap). Puantaj açıkken girilmemiş günler takvimden sayılır."""
+
+    year = serializers.IntegerField()
+    month = serializers.IntegerField()
+    period_label = serializers.CharField(source="label")
+    attendance_status = serializers.CharField(source="grid.status")
+    attendance_number = serializers.CharField()
+    attendance_approved = serializers.BooleanField()
+    attendance_finished = serializers.BooleanField(source="grid.finished")
+    parameters = serializers.SerializerMethodField()
+    rows = PayrollRowSerializer(many=True)
+    totals = serializers.SerializerMethodField()
+
+    @extend_schema_field(PayrollParametersInfoSerializer)
+    def get_parameters(self, obj: PayrollMonth) -> dict[str, Any]:
+        return dict(PayrollParametersInfoSerializer(parameters_info(obj.settings)).data)
+
+    @extend_schema_field(PayrollTotalsSerializer)
+    def get_totals(self, obj: PayrollMonth) -> dict[str, Any]:
+        return dict(PayrollTotalsSerializer(totals_data(obj)).data)
+
+
+PARAMETER_VALUE_FIELDS = (
+    "minimum_wage",
+    "ceiling_multiplier",
+    "employee_sgk_rate",
+    "employee_unemployment_rate",
+    "employer_sgk_rate",
+    "employer_unemployment_rate",
+    "incentive_points",
+    "stamp_tax_per_mille",
+    "tax_bracket_1",
+    "tax_bracket_2",
+    "tax_bracket_3",
+    "tax_bracket_4",
+    "tax_rate_1",
+    "tax_rate_2",
+    "tax_rate_3",
+    "tax_rate_4",
+    "tax_rate_5",
+    "bes_rate",
+)
+
+
+class PayrollParameterSetSerializer(serializers.ModelSerializer):
+    """Bordro parametre seti. Geçerlilik "2026-01" (ay) ya da tarih olarak gelir; ayın ilk gününe
+    çekilir. Kurallar servis katmanında (Türkçe mesaj, hata kodu)."""
+
+    valid_from = serializers.DateField(input_formats=["%Y-%m", "iso-8601"], label="geçerlilik")
+    year = serializers.SerializerMethodField()
+    derived = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PayrollParameterSet
+        fields = [
+            "id",
+            "valid_from",
+            *PARAMETER_VALUE_FIELDS,
+            "source",
+            "note",
+            "year",
+            "derived",
+            "is_active",
+            "created_at",
+            "updated_at",
+            "updated_by_name",
+        ]
+        read_only_fields = ["id", "is_active", "created_at", "updated_at"]
+        validators: list = []
+
+    def get_year(self, obj: PayrollParameterSet) -> int:
+        return obj.valid_from.year
+
+    @extend_schema_field(PayrollValuesSerializer)
+    def get_derived(self, obj: PayrollParameterSet) -> dict[str, Any]:
+        """Setten hesaplanan değerler (günlük alt ve üst sınır, etkin işveren oranı, istisna
+        matrahı) ekranda kontrol içindir."""
+        return dict(PayrollValuesSerializer(values_data(engine_parameters(obj))).data)
+
+    def get_updated_by_name(self, obj: PayrollParameterSet) -> str | None:
+        return str(obj.updated_by) if obj.updated_by_id else None
+
+
+class ParameterDefaultsQuerySerializer(serializers.Serializer):
+    year = serializers.IntegerField(min_value=2000, max_value=2100, label="yıl")
+
+
+class ParameterDefaultsSerializer(serializers.Serializer):
+    """Yılın yasal değerleri (parametre formunu doldurmak için). `known` yanlışsa en yakın
+    yılın değerleri döner ve kaynak boştur: yeni yılın değerleri mali müşavirden teyit edilerek
+    girilir."""
+
+    year = serializers.IntegerField()
+    known = serializers.BooleanField()
+    values_year = serializers.IntegerField()
+    legal_source = serializers.CharField()
+    values = PayrollValuesSerializer()
+
+
+def defaults_data(year: int) -> dict[str, Any]:
+    known = payroll.legal_parameters(year) is not None
+    values_year = year if known else payroll.nearest_legal_year(year)
+    return {
+        "year": year,
+        "known": known,
+        "values_year": values_year,
+        "legal_source": payroll.LEGAL_SOURCES.get(year, "") if known else "",
+        "values": values_data(payroll.LEGAL_DEFAULTS[values_year]),
+    }
+
+
+class ReasonSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=500, label="neden")

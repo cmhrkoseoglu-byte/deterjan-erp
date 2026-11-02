@@ -24,6 +24,7 @@ from apps.costing import exports, selectors, services
 from apps.costing.api import serializers as s
 from apps.costing.models import CostRate, LotCost, StandardCost
 from apps.inventory.models import Lot
+from apps.personnel import services as personnel_services
 
 COST_ROLES = (YONETIM,)
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -343,11 +344,20 @@ class PersonnelCostView(CostPermissionMixin, APIView):
 
 
 class PersonnelCostExcelView(CostPermissionMixin, APIView):
+    """Personel maliyeti Excel'i. Kişi başına ön bordro rakamları taşıdığı için bordro çıktıları
+    gibi tarayıcı önbelleğine alınmaz ve açılışı denetim günlüğüne yazılır (docs/KVKK.md)."""
+
     @extend_schema(responses={(200, XLSX): OpenApiTypes.BINARY})
     def get(self, request: Request, year: int, month: int) -> HttpResponse:
         _check_month(year, month)
         report = selectors.personnel_cost_report(year, month)
-        return _xlsx(exports.personnel_cost_xlsx(report), f"personel-maliyeti-{year}-{month:02d}")
+        content = exports.personnel_cost_xlsx(report)
+        personnel_services.record_payroll_access(
+            _user(request), year, month, "Personel maliyeti (Excel)"
+        )
+        response = _xlsx(content, f"personel-maliyeti-{year}-{month:02d}")
+        response["Cache-Control"] = "no-store"
+        return response
 
 
 class PersonnelLaborRateView(CostPermissionMixin, APIView):
@@ -385,23 +395,3 @@ class CostCenterView(CostPermissionMixin, APIView):
             _user(request), body.validated_data["department"], body.validated_data["stage"]
         )
         return Response(s.CostCenterSerializer(center).data)
-
-
-class PersonnelCostSettingsView(CostPermissionMixin, APIView):
-    """Personel maliyeti ayarları: işveren payı (%)."""
-
-    @extend_schema(responses=s.PersonnelCostSettingsSerializer)
-    def get(self, request: Request) -> Response:
-        settings = services.get_personnel_cost_settings()
-        return Response(s.PersonnelCostSettingsSerializer(settings).data)
-
-    @extend_schema(
-        request=s.PersonnelCostSettingsSerializer, responses=s.PersonnelCostSettingsSerializer
-    )
-    def patch(self, request: Request) -> Response:
-        body = s.PersonnelCostSettingsSerializer(data=request.data)
-        body.is_valid(raise_exception=True)
-        settings = services.update_personnel_cost_settings(
-            _user(request), body.validated_data["employer_rate"]
-        )
-        return Response(s.PersonnelCostSettingsSerializer(settings).data)

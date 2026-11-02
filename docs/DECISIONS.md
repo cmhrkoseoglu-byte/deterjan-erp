@@ -1589,11 +1589,14 @@ değiştirme zorunlu, yalnızca admin):
   kadar alır. Ücreti girilmemiş günler sıfır sayılır ve kişi "ücret eksik" diye işaretlenir. Kişi
   tutarı tek bölmeyle bulunur, yarım kuruş yukarı yuvarlanır.
 - **Fazla mesai:** saat ücreti brüt / 225. İş günü ve hafta tatilinde 1,5 kat; resmi tatilde çalışılan
-  saate ayrıca 1 kat (günün ücreti zaten aylığın içinde).
+  saate ayrıca 1 kat (günün ücreti zaten aylığın içinde). (2026-11-02: resmi tatilde bir günlük ilave
+  ücret, 7,5 saati aşan saatler 1,5 kat; bkz. "Personel bordrosu".)
 - **İşveren payı:** (brüt ücret + fazla mesai) × oran; varsayılan %17,75 (teşvikli SGK işveren primi ve
   işsizlik sigortası işveren payı), ayardan değişir. Tek ayardır; rapor saklanmadığı için değişince
   geçmiş ayların raporu da yeni oranla hesaplanır, eklenmiş işçilik oranları değişmez. Bordro değildir:
-  gelir ve damga vergisi, SGK tavanı, kıdem ve izin karşılığı hesaplanmaz.
+  gelir ve damga vergisi, SGK tavanı, kıdem ve izin karşılığı hesaplanmaz. (2026-11-02: tek oran
+  kalktı; kişi maliyeti ön bordro hesabından gelir: SGK matrahının alt ve üst sınırı, 2026 oranları,
+  teşvik ve alt sınır farkıyla. Bkz. "Personel bordrosu".)
 - **Aşamalar:** personel birimi maliyet aşamasına eşlenir: Üretim (bulk), Dolum (mamul) ya da genel
   gider (eşleştirilmemiş birim). Birim adında Türkçe büyük/küçük harf farkı gözetilmez; bir birim için
   tek eşleştirme kaydı vardır.
@@ -1693,8 +1696,9 @@ değiştirme zorunlu, yalnızca admin):
   kaldı; içerik türü personele aktarıldığı için ücretlerin denetim geçmişi korunur (geçişler
   costing/0003, personnel/0004; geri alınabilir). Personel modülü yine yalnızca `core` ve
   `masterdata`'ya bağlıdır; `costing` ücretleri (ve bordroyu) `personnel`'den okur. Birimlerin
-  maliyet aşaması ve işveren payı Maliyet > Personel maliyeti sekmesinin altına geçti. Ücret kuralları
-  değişmedi ("Personel maliyeti").
+  maliyet aşaması ve işveren payı Maliyet > Personel maliyeti sekmesinin altına geçti (2. adımda işveren
+  payı ayarı kalktı; bordro parametrelerinden gelir). Ücret kuralları değişmedi ("Personel
+  maliyeti").
 - **Hesap (2026 değerleri, parametreli):** yasal değerler vergi yılına bağlı tarihli parametre
   setinde tutulur; bir yılın değerleri başka yıla uygulanmaz. 2026: asgari ücret brüt 33.030,00 TL
   (net 28.075,50); SGK matrahı alt sınırı günlük 1.101,00, üst sınırı günlük 9.909,00 (9 kat); işçi
@@ -1745,3 +1749,57 @@ değiştirme zorunlu, yalnızca admin):
   hafta tatili ücretinin kesilmesi (İş Kanunu m.46), aynı kişinin yeniden işe alınması.
 - **CLAUDE.md:** modül tablosunda `personnel` ve `costing` satırları ile bağımlılık notu güncellendi
   (planla onaylandı).
+- **2. adım (2026-11-02): hesap, parametreler, işveren maliyeti.**
+  - Hesap motoru (`personnel.payroll`) yalnızca Python standart kitaplığını kullanır (Django yok);
+    yayımlanmış 2026 örnekleri (ÇSGB asgari ücret maliyeti, 50.000 TL'lik yıllık zincir, SGK tavanı,
+    ay ortasında giriş, alt sınır farkı, Eylül devri, istisna dilimleri) testlerle sabitlendi. Her
+    kalem ayrı yuvarlanır; işveren SGK'sı "SGK işveren − teşvik" iki yuvarlanmış kalemdir.
+  - Parametre setleri (`PayrollParameterSet`): bir ayın ilk gününden geçerli, yalnızca kendi yılına
+    uygulanır; aynı aydan iki geçerli set olamaz; oranlar 0–100, teşvik SGK işveren payını aşmaz, dilim
+    sınırları artar. Silinmez, gerekçeyle kaldırılır. Kayıtlı set yoksa hesap o yılın yasal
+    değerleriyle yapılır (ekranda "Parametreler kaydedilmedi"); yasal değeri sistemde olmayan yılda
+    en yakın yılın değerleriyle tahmin gösterilir (kırmızı uyarı). Onay (4. adım) o yılın kayıtlı
+    setini ister.
+  - Yarım gün tatil çalışması puantajda gün başına işarettir (`holiday_half_worked`): yalnızca
+    takvimde yarım gün tatil olan, bugün ya da geçmiş, çalışılan güne (Ç) girilir; aralık girişi
+    çalışılmayan duruma geçen günün işaretini sıfırlar. Tatil sonradan kaldırılırsa işaret hesapta
+    sayılmaz. Excel'de "Ç½".
+  - Ücreti girilmemiş günü olan kişide SGK alt sınırı uygulanmaz (ücretsiz görünen kişiye prim
+    yazılmasın); satır "ücret eksik" uyarısı taşır.
+  - Kart işaretleri: "Bordrosu mali müşavirde" (`payroll_external`) ve "BES'e dahil"
+    (`bes_enrolled`); değişiklikleri kartın geçmişindedir. Mali müşavirde hesaplanan kişinin ay
+    rakamları (`ExternalPayrollFigure`: brüt toplam, işverene maliyet ≥ brüt) yalnızca işaretli ve o
+    ay işte olan kişiye girilir; tekrar girilince düzeltilir (denetim kaydıyla).
+  - İşveren maliyeti tablosu: ekran (Personel > Bordro), PDF (A4 yatay; birim ara toplamları, genel
+    toplam, parametre ve durum satırı, her sayfada ön bordro notu ve Sayfa x/y; onaya kadar çapraz
+    "TASLAK" damgası) ve Excel ("İşveren maliyeti", "Parametreler"). Dosyalar tarayıcı önbelleğine
+    alınmaz; her açılış denetim günlüğüne "Bordro çıktısı açıldı" diye yazılır (onaylı bordro
+    kaydı 4. adımda gelene kadar kayda bağlı olmadan).
+  - Maliyet > Personel maliyeti aynı hesaptan beslenir; tek işveren payı ayarı (uç, ekran) kalktı.
+    `PersonnelCostSettings` modeli ve tablosu geçmiş kayıtlar silinmesin diye durur (CLAUDE.md §4.6),
+    okunmaz.
+  - İnceleme sonrası (2026-11-02): Excel de onaya kadar taslaktır (başlıkta, ilk not satırında ve
+    Parametreler sayfasında "TASLAK"). Maliyet > Personel maliyeti Excel'i kişi başına ön bordro
+    rakamı taşıdığı için bordro çıktıları gibi önbelleğe alınmaz ve açılışı kayda geçer; Excel'de
+    "Ücret eksik" ile "Mali müşavir rakamı girilmedi" ayrıdır. "Asgari ücretin altında" uyarısı
+    ücretli günlerde geçerli aylık ücretlere bakar (ay içinde zamda zamdan önceki ücrete de), ay
+    içinde giriş ve çıkışta da verilir. Yarım gün tatil işareti tatil kaldırılınca ya da tam güne
+    çevrilince tabloda da görünmez (saklı işaret durur, tatil geri gelince yeniden sayılır). Mali
+    müşavir rakamları 0 / 0 olabilir (ayın tamamı raporlu ya da ücretsiz izinli kişi); notuna özel
+    durumun nedeni yazılmaz. Yasal değeri bilinmeyen yılın parametre penceresi kırmızı uyarıyla
+    açılır, düğme en yakın yılı söyler.
+- **3. adım kararları (CUMHUR, 2026-11-02; tasarım eleştirisinin açtığı sorular, hepsinde önerilen
+  seçenek):**
+  - **Devir her ay girilebilir** ("Her ay devir girilebilsin"): ERP ile mali müşavirin kümülatif gelir
+    vergisi matrahı ayrışırsa mali müşavirin kümülatifi o aya devir olarak girilir, ERP oradan sürer.
+    Önceki ayların ERP hesabının yerine geçtiği için ayrıca onay ister ve kayda geçer. Gerekçe:
+    paralel çalışılan aylarda her ay yalnızca o ayın farkı görünsün.
+  - **Neti aşan kesinti** ("Uyarsın, onayı engellesin"): satırda uyarı; bordro bu haliyle onaylanmaz
+    (4. adım). Kalan kendiliğinden devretmez, yönetici sonraki aya girer.
+  - **SGK tavanını aşan prim ve ikramiye** ("Uyarsın, hesaplamasın"): tavanı aşan kısmın izleyen iki
+    aya devri (5510 m.80) hesaplanmaz; satırda "mali müşavirle kontrol edin" uyarısı. Kapsam dışına
+    eklendi.
+  - **Nakit yemek parası** ("Parametreli istisna olsun"): yemek ek ödemesinin çalışılan gün × günlük
+    sınıra kadarki kısmı SGK matrahına girmez, gelir vergisine tabi kalır. Günlük sınır bordro
+    parametrelerindedir; mali müşavirden alınıp girilene kadar 0'dır (kaynaklar 2026 için 158 TL ve
+    300 TL diyor; 2026-11-01 kararındaki "SGK'ya ve vergiye tabi" yemek için bu kadar değişti).

@@ -5,6 +5,7 @@ import type { EducationLevel, EmployeeDocumentKind } from "../../api/personnel";
 export const PERSONNEL_BASE = "/personel";
 export const ATTENDANCE_BASE = `${PERSONNEL_BASE}/puantaj`;
 export const WAGES_BASE = `${PERSONNEL_BASE}/ucretler`;
+export const PAYROLL_BASE = `${PERSONNEL_BASE}/bordro`;
 export const HOLIDAYS_BASE = `${PERSONNEL_BASE}/tatiller`;
 
 export const employeePath = (id: number) => `${PERSONNEL_BASE}/${id}`;
@@ -48,6 +49,13 @@ export const pe = {
   sectionContact: "İletişim",
   sectionIdentity: "Kimlik bilgileri",
   sectionEducation: "Mezuniyet",
+  sectionPayroll: "Bordro",
+  payrollExternal: "Bordrosu mali müşavirde",
+  payrollExternalHelp:
+    "Emekli (SGDP), engelli, kısmi süreli, net ücretle anlaşılmış ya da başka işyerinde de çalışan kişinin bordrosu ERP'de hesaplanmaz; aylık rakamları Bordro sekmesinde girilir. Nedenini yazmayın (sağlık bilgisi).",
+  besEnrolled: "BES'e dahil",
+  besEnrolledHelp:
+    "Otomatik katılım: her ay SGK matrahının %3'ü netten kesilir. Cayma olursa işareti kaldırın.",
   nationalId: "TC kimlik no",
   nationalIdInvalid: "11 haneli bir sayı olmalı.",
   birthDate: "Doğum tarihi",
@@ -168,6 +176,8 @@ export const pe = {
     school: "Okul",
     field_of_study: "Bölüm",
     graduation_year: "Mezuniyet yılı",
+    payroll_external: "Bordrosu mali müşavirde",
+    bes_enrolled: "BES'e dahil",
     user: "Sistem kullanıcısı",
     is_active: "Çalışıyor",
   } as Record<string, string>,
@@ -181,6 +191,7 @@ export const at = {
     cards: "Personel kartları",
     attendance: "Puantaj",
     wages: "Ücretler",
+    payroll: "Bordro",
     holidays: "Tatil takvimi",
   },
   intro:
@@ -252,6 +263,9 @@ export const at = {
   overtime: "Fazla mesai (saat)",
   overtimeHelp: "Yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir.",
   overtimeInvalid: "0 ile 24 arasında bir sayı yazın (ör. 2,5).",
+  halfHolidayWorked: "Öğleden sonra da çalıştı (yarım gün tatil)",
+  halfHolidayWorkedHelp:
+    "Yalnızca çalışılan güne (Ç) girilir; bordroda yarım günlük ilave ücret ödenir. Tabloda Ç½ görünür.",
   note: "Not (isteğe bağlı)",
   calendarDefault: (label: string) => `Takvime göre: ${label}`,
   holidayOn: (name: string) => `Resmi tatil: ${name}`,
@@ -336,4 +350,138 @@ export const wt = {
   wageRemoved: "Ücret kaydı kaldırıldı.",
   cancel: "Vazgeç",
   save: "Kaydet",
+};
+
+/** Ön bordro metinleri (Personel > Bordro; docs/DECISIONS.md "Personel bordrosu"). */
+export const py = {
+  intro:
+    "Ön bordro: brüt ücret, puantaj ve bordro parametrelerinden ayın bordrosu ve işverene maliyeti. SGK ve vergi bildirimi yerine geçmez; ilk aylarda mali müşavirin bordrosuyla karşılaştırın.",
+  previousMonth: "Önceki ay",
+  nextMonth: "Sonraki ay",
+  attendanceApproved: (number: string) => `Puantaj onaylı · ${number}`,
+  attendanceOpen: "Puantaj açık (taslak)",
+  attendanceOpenHint:
+    "Ayın puantajı onaylanmadı: girilmemiş günler takvimden sayıldı, rakamlar değişebilir.",
+  openAttendance: "Puantajı aç",
+  parametersSaved: (since: string) => `Parametreler kayıtlı · ${since}`,
+  parametersDefault: "Parametreler kaydedilmedi",
+  parametersFallback: "Parametreler yok (tahmin)",
+  parametersDefaultHint: (year: number) =>
+    `Bu ay için geçerli kayıtlı parametre seti yok; hesap ${year} yasal değerleriyle yapıldı. Değerleri mali müşavirle kontrol edip bu aydan (ya da Ocak'tan) geçerli bir set kaydedin (özellikle teşvik puanı).`,
+  parametersFallbackHint: (year: number, used: number) =>
+    `${year} yılı için bordro parametreleri yok; ${used} değerleriyle tahmin edildi. Yeni yılın değerlerini mali müşavirden alıp girin.`,
+  parameters: "Parametreler",
+  openParameters: "Parametreleri gir",
+  employerCostPdf: "İşveren maliyeti (PDF)",
+  excel: "Excel",
+  missingWages: (n: number) =>
+    `${n} kişinin ücreti ayın tamamı ya da bir bölümü için girilmemiş; bu günler sıfır sayıldı.`,
+  goToWages: "Ücretleri aç",
+  externalMissing: (n: number) =>
+    `Bordrosu mali müşavirde olan ${n} kişinin bu ay rakamları girilmedi; işverene maliyete katılmadı.`,
+  totalCost: "Toplam işverene maliyet",
+  grossTotal: "Brüt toplam",
+  employerSgk: "SGK işveren (teşvik sonrası)",
+  employerUnemployment: "İşsizlik işveren",
+  employerRate: "Etkin işveren oranı",
+  empty: "Bu ay işte olan personel yok.",
+  employerCostTitle: "İşveren maliyeti",
+  employerCostHint:
+    "İşverene maliyet = brüt toplam + SGK işveren payı (teşvik sonrası) + işsizlik işveren payı + alt sınır farkı. Ücret SGK alt sınırının altındaysa farkın primini işçi payı dahil işveren öder (5510 s. Kanun m.82). Asgari ücret desteği düşülmez.",
+  col: {
+    employeeNo: "Sicil no",
+    fullName: "Ad soyad",
+    department: "Birim",
+    sgkDays: "SGK gün",
+    grossTotal: "Brüt toplam",
+    sgkBase: "SGK matrahı",
+    employerSgk: (rate: string) => `SGK işveren (%${rate})`,
+    incentive: (points: string) => `Teşvik (${points} puan)`,
+    employerUnemployment: (rate: string) => `İşsizlik işveren (%${rate})`,
+    floorGap: "Alt sınır farkı",
+    employerCost: "İşverene maliyet",
+    share: "Maliyet / brüt",
+  },
+  totals: "Genel toplam",
+  warning: {
+    missing_wage: "Ücret eksik",
+    below_minimum_wage: "Asgari ücretin altında",
+    external_missing: "Rakam girilmedi",
+    exit_in_month: "Ay içinde çıkış",
+    pay_without_sgk_days: "SGK günü yok",
+  } as Record<string, string>,
+  warningHelp: {
+    below_minimum_wage:
+      'Aylık brüt ücret asgari ücretin altında (İş Kanunu m.39); ücreti kontrol edin. Brüt SGK alt sınırının altında kalırsa matrah alt sınıra çıkarılır ("Alt sınır" etiketi).',
+    exit_in_month: "Kıdem, ihbar ve kullanılmamış izin ücreti hesaplanmaz; mali müşavire bildirin.",
+  } as Record<string, string>,
+  floorApplied: "Alt sınır",
+  ceilingApplied: "Tavan",
+  external: "Bordrosu mali müşavirde",
+  enterFigures: "Rakamları gir",
+  editFigures: "Rakamları düzelt",
+  figuresTitle: (name: string) => `${name} · mali müşavir bordrosu`,
+  figuresIntro: (period: string) =>
+    `${period} için mali müşavirin bordrosundaki brüt toplamı ve işverene maliyeti girin. İşveren maliyeti tablosu ve personel maliyeti bu rakamları kullanır.`,
+  figureGross: "Brüt toplam (TL)",
+  figureCost: "İşverene maliyet (TL)",
+  figureNote: "Not",
+  figureNoteHelp:
+    "Kısa açıklama (ör. hangi bordrodan alındığı). Özel durumun nedenini (emeklilik, engellilik gibi) yazmayın: engellilik sağlık verisidir ve not denetim günlüğünden silinmez.",
+  figureCostBelowGross: "İşverene maliyet brüt toplamdan az olamaz.",
+  invalidAmount: "Geçerli bir tutar girin (en çok 2 ondalık).",
+  figuresSaved: "Rakamlar kaydedildi.",
+  cancel: "Vazgeç",
+  save: "Kaydet",
+  // Parametreler penceresi
+  parametersTitle: "Bordro parametreleri",
+  parametersIntro:
+    "Bir yılın yasal değerleri; seçilen aydan geçerli olur (yıl içinde değişirse o aydan yeni set açın). Değerler yalnızca kendi yılına uygulanır. Kaydetmeden önce mali müşavirle kontrol edin.",
+  setLabel: (since: string) => `${since} itibarıyla`,
+  newSet: "Yeni set",
+  editing: "Set",
+  validFrom: "Geçerlilik (ay)",
+  fillLegal: (year: number) => `${year} yasal değerleriyle doldur`,
+  fillNearest: (used: number) => `En yakın yılın (${used}) değerleriyle doldur`,
+  legalUnknown: (year: number, used: number) =>
+    `${year} yılının yasal değerleri sistemde yok; ${used} değerleri dolduruldu. Yeni yılın değerlerini mali müşavirden alıp girin; ${used} değerleriyle kaydetmeyin.`,
+  yearUnknown: (year: number) =>
+    `${year} yılının yasal değerleri sistemde yok. Yeni yılın değerlerini mali müşavirden alıp girin.`,
+  groupWage: "Asgari ücret ve SGK sınırları",
+  groupRates: "Prim oranları",
+  groupTax: "Vergiler",
+  minimumWage: "Asgari ücret (aylık brüt, TL)",
+  ceilingMultiplier: "SGK üst sınır çarpanı",
+  employeeSgkRate: "SGK işçi payı (%)",
+  employeeUnemploymentRate: "İşsizlik işçi payı (%)",
+  employerSgkRate: "SGK işveren payı (%)",
+  employerUnemploymentRate: "İşsizlik işveren payı (%)",
+  incentivePoints: "SGK işveren teşviki",
+  incentiveOptions: [
+    { value: "5", label: "5 puan (imalat işyeri, NACE C)" },
+    { value: "2", label: "2 puan (diğer sektörler)" },
+    { value: "0", label: "Teşvik yok (şartlar sağlanmıyor)" },
+  ],
+  incentiveHelp:
+    "5510 s. Kanun m.81/ı: bildirge ve ödeme zamanında, prim borcu yoksa. İmalatta 5 puan 2026 sonuna kadar.",
+  stampTax: "Damga vergisi (binde)",
+  bracket: (n: number) => `${n}. dilim üst sınırı (TL)`,
+  rate: (n: number) => `${n}. dilim oranı (%)`,
+  besRate: "BES katkı payı (%)",
+  source: "Kaynak",
+  note: "Not",
+  derived: (floor: string, ceiling: string, rate: string) =>
+    `Günlük SGK alt / üst sınır ${floor} / ${ceiling} TL · etkin işveren oranı %${rate}`,
+  checkedAndSave: "Mali müşavirle kontrol ettim, kaydet",
+  parametersSaved_: "Parametreler kaydedildi.",
+  removeSet: "Seti kaldır",
+  removeSetIntro:
+    "Set silinmez; kaldırılır. O ay ve sonrası aynı yılın bir önceki setiyle, yoksa o yılın yasal değerleriyle hesaplanır; yılın yasal değerleri sistemde yoksa en yakın yılın değerleriyle tahmin edilir (kırmızı uyarıyla). Başka yılın kayıtlı seti kullanılmaz.",
+  removeReason: "Kaldırma nedeni",
+  setRemoved: "Parametre seti kaldırıldı.",
+  invalidNumber: "Geçerli bir sayı girin.",
+  invalidRate: "0 ile 100 arasında, en çok 2 ondalık (ör. 21,75).",
+  invalidStampTax: "0 ile 100 arasında, en çok 3 ondalık (ör. 7,59).",
+  invalidMultiplier: "En az 1, en çok 2 ondalık (ör. 9).",
+  updatedBy: (name: string, when: string) => `Son değişiklik: ${name} · ${when}`,
 };

@@ -53,7 +53,7 @@ Onay limitini aşan satın alma siparişi size görev olarak gelir.
 - **Raporlar**: şarj maliyeti, fire ve stok değeri raporları (Excel).
 - **Gider oranları**: üretim (bulk) ve dolum (mamul) için kg başına enerji, işçilik ve amortisman oranı. Oran değişince **Oran ekle** ile yeni geçerlilik tarihiyle girin; eski oranı değiştirmeyin.
 - **Standart maliyetler**: fiyatı ve son alış maliyeti bilinmeyen lotlar için TL / temel birim tahmini maliyet. **Standart maliyet ekle** ile girin.
-- **Personel maliyeti**: brüt ücret ve puantajdan ayın işveren maliyeti; üretim ve dolumda gerçekleşen işçilik (TL/kg). Birimlerin maliyet aşaması ve işveren payı bu sekmenin altındadır. Ücretler **Personel > Ücretler**'de girilir.
+- **Personel maliyeti**: brüt ücret ve puantajdan ayın işveren maliyeti; üretim ve dolumda gerçekleşen işçilik (TL/kg). Birimlerin maliyet aşaması bu sekmenin altındadır; işveren payı **Personel > Bordro > Parametreler**'deki bordro parametrelerinden gelir. Ücretler **Personel > Ücretler**'de girilir.
 
 ![Gider oranları](/kilavuz/yonetim-maliyet.jpg)
 
@@ -61,25 +61,26 @@ Onay limitini aşan satın alma siparişi size görev olarak gelir.
 
 ### Personel maliyeti
 
-Personel maliyeti brüt ücretten ve puantajdan hesaplanır. Bordro değildir; vergi ve kesintiler hesaplanmaz.
+Personel maliyeti **Personel > Bordro**'daki ön bordro hesabından gelir: brüt ücret, puantaj ve bordro parametreleri.
 
 1. **Personel > Ücretler**'de çalışanın satırında **Ücret ekle**'ye basın. **Brüt aylık (TL)** ve **Geçerlilik başlangıcı**'nı girin, **Kaydet**'e basın. Tutarı 45.000 ya da 45000 diye yazabilirsiniz; kutunun altında kaydedilecek tutar görünür. İlk ücretin başlangıcı varsayılan olarak işe giriş tarihidir (kartta yoksa geçen ayın 1'i). Daha geç bir tarih seçerseniz aradaki günler raporda **Ücret eksik** görünür.
 2. **Maliyet > Personel maliyeti** sekmesinin altındaki **Birimlerin maliyet aşaması** bölümünde üretim birimine **Üretim (bulk)**, dolum birimine **Dolum (mamul)** seçin. Eşleştirilmeyen birim genel giderdir.
-3. Aynı sekmede **İşveren payı**'nı kontrol edin (teşvikli varsayılan %17,75).
+3. İşveren payı **Personel > Bordro > Parametreler**'deki bordro parametrelerinden gelir (2026'da imalat işyerinde %18,75). Parametreleri mali müşavirle kontrol edip kaydedin.
 4. Ay bitip puantaj onaylanınca **Maliyet > Personel maliyeti**'nde ayı seçin. Toplamlar, aşamalar ve kişiler görünür; **Excel** tabloyu indirir.
 5. Üretim ya da dolum satırında **Oran olarak ekle**'ye basın. Başlangıç tarihini (varsayılan: ertesi ayın ilk günü) kontrol edip onaylayın. Gerçekleşen işçilik **Gider oranları**'na yeni işçilik oranı olarak eklenir. Lot maliyetinde şarjın ya da partinin bittiği gün geçerli oran kullanılır: oran, başlangıç tarihinde ya da sonra biten lotlara uygulanır. Bunlardan maliyeti önceden hesaplanmış olanlar için lot sayfasında **Yeniden hesapla**'ya basın; daha önce biten lotlar eski oranla kalır.
 
 ![Personel maliyeti](/kilavuz/yonetim-personel-maliyeti.jpg)
 
 - Tam ay 30 gün sayılır. Ücretsiz izin, devamsızlık ve rapor günleri günlük ücretle (brüt / 30) düşülür; yıllık izin ve mazeret izni ücretlidir. Ay içinde giren ya da ayrılan, işte olduğu takvim günü kadar alır. Ayın hiç ücretli günü yoksa ücret sıfırdır.
-- Fazla mesai saat ücreti brüt / 225'tir: iş günü ve hafta tatilinde 1,5 kat, resmi tatilde ayrıca 1 kat.
+- Fazla mesai saat ücreti brüt / 225'tir: iş günü ve hafta tatilinde 1,5 kat. Resmi tatilde çalışana bir günlük ilave ücret ödenir, 7,5 saati aşan saatler 1,5 kat; yarım gün tatilde öğleden sonra çalışana yarım gün.
+- İşveren payı SGK matrahı üzerinden hesaplanır: SGK işveren payı − teşvik + işsizlik işveren payı. Matrah günlük alt sınır (asgari ücret) ile üst sınır arasındadır; ücret alt sınırın altındaysa farkın primini işçi payı dahil işveren öder.
 - Gerçekleşen işçilik, aşamanın personel maliyetinin o ay üretilen kg'a bölümüdür: üretimde biten şarjların çıktısı, dolumda dolan bulk (fire hariç).
 - Zam yeni geçerlilik tarihiyle eklenir; eski ücret geçmişte kalır. Yanlış kaydı **Geçmiş**'ten gerekçeyle kaldırın.
 - Ücreti girilmemiş kişi raporda **Ücret eksik** diye işaretlenir; o günler sıfır sayılır. Ayrılan bir kişinin ücretini girmek ya da düzeltmek için **Personel > Ücretler**'de **Ayrılanları da göster**'i açın.
-- Oran penceresi, aşamada ücreti eksik kişi ya da kg'a çevrilemeyen malzeme varsa uyarır; önce eksikleri tamamlayın.
+- Oran penceresi, aşamada ücreti ya da mali müşavir rakamı eksik kişi ya da kg'a çevrilemeyen malzeme varsa uyarır; önce eksikleri tamamlayın.
 - Puantaj onaylanmadan tutarlar taslaktır ve oran eklenemez.
 
-> Ücretler kişisel veridir; yalnızca yönetim ve sistem yöneticisi görür. Rapor saklanmaz: ücret, kişinin birimi ya da işe giriş ve çıkış tarihi, birim eşleştirmesi ya da işveren payı değişirse geçmiş aylar (onaylılar dahil) yeniden hesaplanır. Yeniden işe alımda işe giriş tarihini ileri alırsanız önceki dönem geçmiş aylardan düşer; böyle bir değişiklikten önce geçmiş ayların Excel'ini indirin. Daha önce eklenen işçilik oranları değişmez.
+> Ücretler kişisel veridir; yalnızca yönetim ve sistem yöneticisi görür. Rapor saklanmaz: ücret, kişinin birimi ya da işe giriş ve çıkış tarihi, birim eşleştirmesi ya da bordro parametreleri değişirse geçmiş aylar (onaylılar dahil) yeniden hesaplanır. Yeniden işe alımda işe giriş tarihini ileri alırsanız önceki dönem geçmiş aylardan düşer; böyle bir değişiklikten önce geçmiş ayların Excel'ini indirin. Daha önce eklenen işçilik oranları değişmez. Excel kişi başına rakam içerir: tarayıcı önbelleğine alınmaz, her indirme denetim günlüğüne yazılır; dosyayı yalnızca yönetim içinde paylaşın.
 
 ## Personel
 
@@ -91,7 +92,8 @@ Personel maliyeti brüt ücretten ve puantajdan hesaplanır. Bordro değildir; v
 4. **Kimlik bilgileri** bölümüne TC kimlik no, doğum tarihi ve doğum yerini girin. TC kimlik no kontrol haneleriyle denetlenir; yanlış yazılırsa kaydedilmez. Aynı numara iki kartta olamaz.
 5. **Mezuniyet** bölümüne en son mezuniyeti girin: öğrenim durumu, okul, bölüm ve mezuniyet yılı. Diplomayı kart açıldıktan sonra belge olarak ekleyin.
 6. Kişinin sisteme giriş hesabı varsa **Sistem kullanıcısı** alanında seçin. Hesabı sistem yöneticisi **Sistem > Kullanıcılar**'dan açar.
-7. **Kartı aç**'a basın.
+7. **Bordro** bölümünde, bordrosu ERP'de hesaplanmayacak kişide (emekli, engelli, kısmi süreli, net ücretle anlaşılmış ya da başka işyerinde de çalışan) **Bordrosu mali müşavirde**'yi işaretleyin; nedenini yazmayın. BES otomatik katılımındaki kişide **BES'e dahil**'i işaretleyin: her ay SGK matrahının %3'ü netten kesilir. Cayma olursa işareti kaldırın.
+8. **Kartı aç**'a basın.
 
 ![Personel listesi](/kilavuz/yonetim-personel.jpg)
 
@@ -127,16 +129,16 @@ Kimlik fotokopisi, bordro, sözleşme ve diploma kartın **Belgeler** bölümün
 **Personel > Puantaj** sekmesinde her ayın puantajı tutulur. Ay takvimden dolu açılır: iş günleri **Ç** (çalıştı), hafta tatilleri **HT**, resmi tatiller **RT**. Yalnızca istisnaları girersiniz.
 
 1. Ayı oklarla seçin; gerekirse birim süzgecini kullanın.
-2. Bir güne basın. **Durum**'u seçin, varsa **Fazla mesai (saat)** ve not girin, **Kaydet**'e basın.
+2. Bir güne basın. **Durum**'u seçin, varsa **Fazla mesai (saat)** ve not girin, **Kaydet**'e basın. Yarım gün tatilde (28 Ekim, arifeler) öğleden sonra da çalışıldıysa gün **Ç** kalır; **Öğleden sonra da çalıştı (yarım gün tatil)**'ı işaretleyin.
 3. Birkaç günlük izin ya da rapor için **Aralık gir**'e basın: kişiyi, birimi ya da herkesi seçin; başlangıç, bitiş ve durumu girin.
 4. Ay bitince **Ayı onayla**'ya basın. Değiştirilmemiş günler takvimdeki haliyle yazılır ve ay kilitlenir. Bu ay işten ayrılan varsa önce kartında çıkışını kaydedin.
 5. **Excel** aylık tabloyu, toplamları ve günlük fazla mesaiyi indirir; bordroya bu dosyayı verin.
 
 ![Puantaj](/kilavuz/yonetim-puantaj.jpg)
 
-- Kodlar: **Ç** çalıştı, **HT** hafta tatili, **RT** resmi tatil, **Yİ** yıllık izin, **Mİ** mazeret izni (ücretli), **Üİ** ücretsiz izin, **R** raporlu, **D** devamsız. Kalın kod elle değiştirilmiş gündür.
+- Kodlar: **Ç** çalıştı, **HT** hafta tatili, **RT** resmi tatil, **Yİ** yıllık izin, **Mİ** mazeret izni (ücretli), **Üİ** ücretsiz izin, **R** raporlu, **D** devamsız, **Ç½** yarım gün tatilde öğleden sonra da çalıştı. Kalın kod elle değiştirilmiş gündür.
 - Aralıkla girişte yıllık izin, mazeret izni ve devamsızlık hafta tatili ve resmi tatil günlerine yazılmaz; rapor ve ücretsiz izin her güne yazılır.
-- Fazla mesai yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir. Tatilde çalışan kişinin günü HT ya da RT kalır; çalıştığı saat fazla mesai olarak girilir.
+- Fazla mesai yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir. Tatilde çalışan kişinin günü HT ya da RT kalır; çalıştığı saat fazla mesai olarak girilir. Yarım gün tatilde öğleden sonraki çalışma fazla mesai olarak değil, **Öğleden sonra da çalıştı** işaretiyle girilir; tatil sonradan kaldırılır ya da tam güne çevrilirse işaret sayılmaz ve tabloda **Ç** görünür.
 - Devamsızlık ve fazla mesai ileri bir güne girilemez; izin ve rapor önceden girilebilir.
 - Toplamlarda **Eksik**, ücretsiz izin, rapor ve devamsızlık günlerinin toplamıdır; **FM** fazla mesai saatidir. Excel'de fazla mesai iş günü, hafta tatili ve resmi tatil olarak ayrı sütunlardadır.
 - Onaylı ayda düzeltme gerekirse **Yeniden aç**'a basıp gerekçeyi yazın. Günler onaydaki haliyle kalır. Çıkış tarihinden sonraki kayıtlı günlerden biri onaylı bir aydaysa ayrılış da ancak o ay yeniden açılınca kaydedilir.
@@ -152,6 +154,22 @@ Kimlik fotokopisi, bordro, sözleşme ve diploma kartın **Belgeler** bölümün
 ![Tatil takvimi](/kilavuz/yonetim-tatil-takvimi.jpg)
 
 > Rapor bilgisi sağlık verisidir; puantajı yalnızca yönetim ve sistem yöneticisi görür. Onaylı aya düşen tatil değiştirilemez; önce ay yeniden açılır.
+
+## Bordro
+
+**Personel > Bordro** sekmesi ayın ön bordrosunu puantajdan ve ücretlerden hesaplar. Ön bordrodur: SGK (e-Bildirge) ve vergi (MUHSGK) bildirimini mali müşavir yapmaya devam eder. İlk aylarda rakamları mali müşavirin bordrosuyla karşılaştırın.
+
+1. Ayı oklarla seçin. Rozetler puantajın ve parametrelerin durumunu gösterir: **Puantaj onaylı** ya da **Puantaj açık (taslak)**; **Parametreler kayıtlı**, **Parametreler kaydedilmedi** (o yılın yasal değerleriyle hesaplandı) ya da kırmızı **Parametreler yok (tahmin)** (yeni yılın değerleri girilmedi; başka yılın değerleriyle tahmin edildi).
+2. **Parametreler**'e basın. Yeni set o yılın yasal değerleriyle dolu gelir. **SGK işveren teşviki**'ni (imalat işyerinde 5 puan) ve diğer değerleri mali müşavirle kontrol edip **Mali müşavirle kontrol ettim, kaydet**'e basın. Yıl içinde değişen değer için (ör. Temmuz'da asgari ücret) **Yeni set** seçip **Geçerlilik (ay)**'ı o ay yapın. Yanlış seti **Seti kaldır** ile gerekçeyle kaldırın.
+3. Kartında **Bordrosu mali müşavirde** işaretli kişinin satırında **Rakamları gir**'e basın. Mali müşavirin bordrosundaki **Brüt toplam** ve **İşverene maliyet**'i girin; ayın tamamını raporlu ya da ücretsiz izinli geçiren kişide 0 yazılabilir. **Rakamları düzelt** aynı ayın rakamlarını değiştirir.
+4. **İşveren maliyeti (PDF)** tabloyu yazdırılabilir açar; **Excel** aynı tabloyu ve parametreleri indirir.
+
+- Tabloda kişi başına SGK günü, brüt toplam, SGK matrahı, SGK işveren payı, teşvik, işsizlik işveren payı, alt sınır farkı ve işverene maliyet bulunur. PDF'te birim ara toplamları ve genel toplam vardır.
+- **Alt sınır**: brüt SGK alt sınırının altında kaldığı için matrah alt sınıra çıkarıldı; farkın primini işçi payı dahil işveren öder. **Tavan**: matrah üst sınırla kesildi.
+- Uyarılar: **Ücret eksik** (ücreti girilmemiş günler sıfır sayıldı; **Ücretleri aç**), **Asgari ücretin altında** (aylık ücret asgari ücretin altında; ay içinde giriş, çıkış ve zamda da), **Ay içinde çıkış** (kıdem, ihbar ve kullanılmamış izin ücreti hesaplanmaz; mali müşavire bildirin), **SGK günü yok**, **Rakam girilmedi**.
+- Puantaj onaylanana kadar girilmemiş günler takvimden sayılır. Çıktılar taslaktır: PDF'te çapraz **TASLAK** damgası, Excel'de başlıkta **TASLAK** yazar. Her PDF ve Excel açılışı denetim günlüğüne yazılır.
+
+> Bordro kişisel veridir; yalnızca yönetim ve sistem yöneticisi görür. **Bordrosu mali müşavirde** işaretinin nedenini (emeklilik, engellilik gibi) hiçbir alana ve nota yazmayın: engellilik sağlık verisidir ve not denetim günlüğünden silinmez.
 
 ## Firma bilgileri
 

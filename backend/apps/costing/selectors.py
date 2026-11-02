@@ -28,15 +28,13 @@ from apps.costing.models import (
     DepartmentCostCenter,
     LotCost,
     LotCostLine,
-    PersonnelCostSettings,
-    default_employer_rate,
 )
 from apps.costing.services import known_unit_cost, money, to_kg, unit_amount
 from apps.filling.models import ConsumptionKind, FillingConsumption, FillingRun
 from apps.inventory.models import Lot, StockBalance
 from apps.masterdata.models import Material
 from apps.personnel import selectors as personnel
-from apps.personnel.models import AttendanceStatus, Employee, EmployeeWage
+from apps.personnel.models import Employee
 from apps.production.models import ProductionBatch
 from apps.production.services import batch_line_quantity
 
@@ -386,31 +384,20 @@ def stock_value_lots(**filters: Any) -> list[dict[str, Any]]:
     ]
 
 
-# --- personel maliyeti (docs/DECISIONS.md "Personel maliyeti") ----------------------------------
+# --- personel maliyeti (docs/DECISIONS.md "Personel maliyeti", "Personel bordrosu") -------------
+# Kişi maliyeti personel modülünün ön bordro hesabından gelir (`personnel.selectors.payroll_month`):
+# 30 gün usulü brüt, fazla mesai ve resmi tatil çalışması, SGK matrahının alt ve üst sınırı, SGK ve
+# işsizlik işveren payları (teşvik sonrası) ve alt sınır farkı.
 
-# Bordroda ay 30 gün; saat ücreti brüt / 225 (haftalık 45 saat).
-PAYROLL_DAYS = Decimal(30)
-MONTHLY_HOURS = Decimal(225)
-# Fazla mesai: iş günü ve hafta tatilinde saat ücretinin 1,5 katı (İş Kanunu m.41); resmi tatilde
-# çalışılan saate ayrıca 1 kat (m.47: bir günlük ücret ilave). Aylık ücret tatil günlerini içerir.
-OVERTIME_MULTIPLIERS: dict[str, Decimal] = {
-    AttendanceStatus.WORKED: Decimal("1.5"),
-    AttendanceStatus.WEEKLY_REST: Decimal("1.5"),
-    AttendanceStatus.PUBLIC_HOLIDAY: Decimal(1),
-}
-# Ücret ödenmeyen günler: ücretsiz izin, devamsızlık, rapor (raporda SGK öder).
-UNPAID_STATUSES = (
-    AttendanceStatus.UNPAID_LEAVE,
-    AttendanceStatus.ABSENT,
-    AttendanceStatus.SICK_LEAVE,
-)
 GENERAL = ""  # genel gider: üretim ya da dolum aşamasına bağlanmamış birimler
 
 
 @dataclass(frozen=True)
 class PersonnelCostRow:
     """Kişinin ay maliyeti. `gross_monthly` ayın son çalışılan günündeki brüt ücret (yoksa None);
-    `missing_wage`: işte olduğu bir gün için geçerli ücret yok (o günler sıfır sayıldı)."""
+    `missing_wage`: işte olduğu bir gün için geçerli ücret yok (o günler sıfır sayıldı) ya da
+    bordrosu mali müşavirde olan kişinin (`payroll_external`) o ayın rakamları girilmedi.
+    `gross_salary` fazla mesai dışındaki brüt (ek ödemeler dahil)."""
 
     employee: Employee
     stage: str
@@ -424,6 +411,7 @@ class PersonnelCostRow:
     employer_share: Decimal
     total_cost: Decimal
     missing_wage: bool
+    payroll_external: bool = False
 
     @property
     def gross_total(self) -> Decimal:
@@ -465,7 +453,10 @@ class PersonnelCostReport:
     label: str
     attendance_status: str
     attendance_number: str
+    # Etkin işveren oranı (SGK işveren − teşvik + işsizlik işveren) ve parametrelerin kaynağı.
     employer_rate: Decimal
+    parameters_origin: str
+    parameters_year: int
     rows: list[PersonnelCostRow]
     stages: list[StageCost]
 
@@ -551,66 +542,42 @@ def monthly_produced_kg(year: int, month: int) -> dict[str, ProducedKg]:
     }
 
 
-def _employee_cost(
-    row: personnel.AttendanceRow,
-    wages: list[EmployeeWage],
-    days_in_month: int,
-    employer_rate: Decimal,
-    stage: str,
-) -> PersonnelCostRow | None:
-    """Kişinin ay maliyeti (30 gün usulü). Yalnızca işte olduğu günler (işe giriş ve çıkış tarihi
-    arası) sayılır. Ayın tamamında işte olan 30 gün alır, ücret ödenmeyen her gün için günlük
-    ücret (brüt / 30) düşülür. Ay içinde giren ya da ayrılan, ücretli takvim günü kadar alır. Hiç
-    ücretli günü olmayan ay ücretsizdir (Şubat'ta 30 - 28 = 2 gün kalmaz); 30 gün usulü sıfıra
-    düşerken ücretli günü olan (31 çeken ayda 30 gün ücretsiz) ücretli günleri kadar alır. Her gün
-    o gün geçerli ücretle hesaplanır (ay içinde zam)."""
-    cells = [
-        cell for cell in row.cells if cell.status and personnel.employed_on(row.employee, cell.date)
-    ]
-    if not cells:
-        return None
-    daily = {cell.date: personnel.wage_on(wages, cell.date) for cell in cells}
-    unpaid = [cell for cell in cells if cell.status in UNPAID_STATUSES]
-    paid_count = len(cells) - len(unpaid)
-    # Bilinen ücretlerin toplamları kesindir (2 ondalık); her tutar tek bölmeyle bulunur, yarım
-    # kuruşta yuvarlama kaymaz.
-    known = sum((wage for wage in daily.values() if wage is not None), ZERO)
-    unpaid_known = sum(
-        (wage for wage in (daily[cell.date] for cell in unpaid) if wage is not None), ZERO
-    )
-    count = len(cells)
-    if count == days_in_month and paid_count and len(unpaid) < PAYROLL_DAYS:
-        # Tam ay: takvim günleri 30'a ölçeklenir (31 ve 28 çeken aylarda da ücret aylık brüttür).
-        raw = (PAYROLL_DAYS * known - count * unpaid_known) / (PAYROLL_DAYS * count)
-        paid_days = int(PAYROLL_DAYS) - len(unpaid)
-    else:
-        raw = (known - unpaid_known) / PAYROLL_DAYS
-        paid_days = paid_count
-    gross_salary = money(max(ZERO, raw))
-    hours, overtime = ZERO, ZERO
-    for cell in cells:
-        if not cell.overtime_hours:
-            continue
-        hours += cell.overtime_hours
-        wage = daily[cell.date]
-        if wage is not None:
-            # Puantajda fazla mesai yalnızca Ç, HT ve RT günlerine girilir (veritabanı kısıtı).
-            overtime += cell.overtime_hours * wage * OVERTIME_MULTIPLIERS[cell.status]
-    overtime_pay = money(overtime / MONTHLY_HOURS)
-    employer_share = money((gross_salary + overtime_pay) * employer_rate / 100)
+def _cost_row(row: personnel.PayrollRow, stage: str) -> PersonnelCostRow:
+    """Ön bordro satırından kişi maliyeti. Bordrosu mali müşavirde olan kişide brüt ve işverene
+    maliyet o ayın girilmiş rakamlarıdır (girilmemişse sıfır ve eksik)."""
+    line = row.line
+    if row.external:
+        figure = row.figure
+        gross = figure.gross_total if figure else ZERO
+        cost = figure.employer_cost if figure else ZERO
+        return PersonnelCostRow(
+            employee=row.employee,
+            stage=stage,
+            gross_monthly=None,
+            employed_days=line.employed_days,
+            unpaid_days=line.unpaid_days,
+            paid_days=line.paid_days,
+            overtime_hours=ZERO,
+            gross_salary=gross,
+            overtime_pay=ZERO,
+            employer_share=cost - gross,
+            total_cost=cost,
+            missing_wage=figure is None,
+            payroll_external=True,
+        )
     return PersonnelCostRow(
         employee=row.employee,
         stage=stage,
-        gross_monthly=daily[cells[-1].date],
-        employed_days=count,
-        unpaid_days=len(unpaid),
-        paid_days=paid_days,
-        overtime_hours=hours,
-        gross_salary=gross_salary,
-        overtime_pay=overtime_pay,
-        employer_share=employer_share,
-        total_cost=gross_salary + overtime_pay + employer_share,
-        missing_wage=any(wage is None for wage in daily.values()),
+        gross_monthly=line.monthly_wage,
+        employed_days=line.employed_days,
+        unpaid_days=line.unpaid_days,
+        paid_days=line.paid_days,
+        overtime_hours=line.overtime_worked_hours + line.overtime_rest_hours + line.holiday_hours,
+        gross_salary=line.gross_total - line.overtime_pay,
+        overtime_pay=line.overtime_pay,
+        employer_share=line.employer_share,
+        total_cost=line.employer_cost,
+        missing_wage=line.missing_wage,
     )
 
 
@@ -624,26 +591,19 @@ def _labor_rate_on(stage: str, day: date) -> Decimal | None:
 
 
 def personnel_cost_report(year: int, month: int) -> PersonnelCostReport:
-    """Ayın personel maliyeti: puantajdan (açık ayda takvim varsayılanlarıyla, onaylı ayda kayıtlı
-    günlerle) ve ücretlerden kişi başına maliyet; birim eşleştirmesine göre üretim, dolum ve genel
-    gider toplamları; üretim ve dolumda o ay üretilen kg ile gerçekleşen işçilik (TL/kg).
-    Rapor saklanmaz, her açılışta hesaplanır: geçmiş aylar da (onaylılar dahil) bugünkü ücret
-    kayıtları, kişinin bugünkü birimi ile işe giriş ve çıkış tarihi, bugünkü eşleştirme ve işveren
-    payıyla hesaplanır."""
-    grid = personnel.attendance_grid(year, month)
-    settings = PersonnelCostSettings.objects.order_by("pk").first()
-    employer_rate = settings.employer_rate if settings else default_employer_rate()
+    """Ayın personel maliyeti: ön bordro hesabından (puantaj, ücretler ve bordro parametreleri)
+    kişi başına maliyet; birim eşleştirmesine göre üretim, dolum ve genel gider toplamları; üretim
+    ve dolumda o ay üretilen kg ile gerçekleşen işçilik (TL/kg). Rapor saklanmaz, her açılışta
+    hesaplanır: geçmiş aylar da (onaylılar dahil) bugünkü ücret kayıtları, kişinin bugünkü birimi
+    ile işe giriş ve çıkış tarihi, bugünkü eşleştirme ve o yılın bordro parametreleriyle
+    hesaplanır."""
+    payroll = personnel.payroll_month(year, month)
     centers = _center_stages()
-    last = grid.days[-1].date
-    wages = personnel.wages_by_employee([row.employee.pk for row in grid.rows], last)
-    rows = []
-    for row in grid.rows:
-        stage = centers.get(personnel.fold(row.employee.department), GENERAL)
-        cost = _employee_cost(
-            row, wages.get(row.employee.pk, []), len(grid.days), employer_rate, stage
-        )
-        if cost is not None:
-            rows.append(cost)
+    rows = [
+        _cost_row(row, centers.get(personnel.fold(row.employee.department), GENERAL))
+        for row in payroll.rows
+    ]
+    last = payroll.grid.days[-1].date
     produced = monthly_produced_kg(year, month)
     stages = []
     for stage in (CostStage.PRODUCTION, CostStage.FILLING, GENERAL):
@@ -660,14 +620,16 @@ def personnel_cost_report(year: int, month: int) -> PersonnelCostReport:
                 missing_wage_count=sum(1 for row in members if row.missing_wage),
             )
         )
-    record = grid.record
+    settings = payroll.settings
     return PersonnelCostReport(
         year=year,
         month=month,
-        label=grid.label,
-        attendance_status=grid.status,
-        attendance_number=record.number if record else "",
-        employer_rate=employer_rate,
+        label=payroll.label,
+        attendance_status=payroll.grid.status,
+        attendance_number=payroll.attendance_number,
+        employer_rate=settings.params.employer_rate,
+        parameters_origin=settings.source,
+        parameters_year=settings.year,
         rows=rows,
         stages=stages,
     )

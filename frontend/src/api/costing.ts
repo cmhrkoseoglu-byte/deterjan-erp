@@ -301,8 +301,11 @@ export interface PersonnelCostRow {
   gross_total: string;
   employer_share: string;
   total_cost: string;
-  /** Ayın en az bir günü için ücret yok (o günler sıfır sayıldı). */
+  /** Ayın en az bir günü için ücret yok (o günler sıfır sayıldı) ya da bordrosu mali müşavirde
+   * olan kişinin o ay rakamları girilmedi. */
   missing_wage: boolean;
+  /** Bordrosu mali müşavirde: brüt ve maliyet girilen rakamlardır. */
+  payroll_external: boolean;
 }
 
 export interface StageCost {
@@ -327,7 +330,11 @@ export interface PersonnelCostReport {
   attendance_status: "OPEN" | "APPROVED";
   attendance_number: string;
   attendance_approved: boolean;
+  /** Etkin işveren oranı: SGK işveren − teşvik + işsizlik işveren (bordro parametreleri). */
   employer_rate: string;
+  /** Bordro parametrelerinin kaynağı: kayıtlı set, yılın yasal değerleri ya da tahmin. */
+  parameters_origin: "saved" | "legal_default" | "fallback";
+  parameters_year: number;
   missing_wage_count: number;
   gross_salary: string;
   overtime_pay: string;
@@ -342,17 +349,10 @@ export interface CostCenter {
   stage: CostCenterStage;
 }
 
-export interface PersonnelCostSettings {
-  employer_rate: string;
-  /** Ayar hiç kaydedilmediyse boş (varsayılan oran). */
-  updated_at: string | null;
-}
-
 export const personnelCostKeys = {
   all: ["costing", "personnel-cost"] as const,
   report: (year: number, month: number) => ["costing", "personnel-cost", year, month] as const,
   costCenters: ["costing", "cost-centers"] as const,
-  settings: ["costing", "personnel-cost-settings"] as const,
 };
 
 const personnelMonth = (year: number, month: number) => `/costing/personnel-costs/${year}/${month}`;
@@ -384,19 +384,5 @@ export async function listCostCenters(): Promise<CostCenter[]> {
 
 export async function setCostCenter(payload: CostCenter): Promise<CostCenter> {
   const { data } = await api.put<CostCenter>("/costing/cost-centers/", payload);
-  return data;
-}
-
-export async function getPersonnelCostSettings(): Promise<PersonnelCostSettings> {
-  const { data } = await api.get<PersonnelCostSettings>("/costing/personnel-cost-settings/");
-  return data;
-}
-
-export async function updatePersonnelCostSettings(
-  employerRate: string,
-): Promise<PersonnelCostSettings> {
-  const { data } = await api.patch<PersonnelCostSettings>("/costing/personnel-cost-settings/", {
-    employer_rate: employerRate,
-  });
   return data;
 }

@@ -1,4 +1,4 @@
-"""Personel okuma sorguları: kartlar, belgeler, puantaj tablosu ve ücretler."""
+"""Personel okuma sorguları: kartlar, belgeler, puantaj tablosu, ücretler ve ön bordro."""
 
 import calendar
 from collections import defaultdict
@@ -13,6 +13,7 @@ from django.db.models import F, Q, QuerySet
 from django.utils import timezone
 
 from apps.core.models import AuditLog, User
+from apps.personnel import payroll
 from apps.personnel.models import (
     ATTENDANCE_CODES,
     OVERTIME_STATUSES,
@@ -23,6 +24,8 @@ from apps.personnel.models import (
     Employee,
     EmployeeDocument,
     EmployeeWage,
+    ExternalPayrollFigure,
+    PayrollParameterSet,
     PublicHoliday,
     default_rest_weekdays,
 )
@@ -235,7 +238,8 @@ class AttendanceDay:
 @dataclass(frozen=True)
 class AttendanceCell:
     """Kişinin bir günü. `status` boşsa kişi o gün işte değil. `explicit`: kayıtlı gün
-    (değiştirilmiş ya da onayla yazılmış); değilse varsayılan."""
+    (değiştirilmiş ya da onayla yazılmış); değilse varsayılan. `holiday_half_worked`: yarım gün
+    tatilde öğleden sonra da çalıştı."""
 
     date: date
     status: str
@@ -243,6 +247,7 @@ class AttendanceCell:
     note: str
     explicit: bool
     editable: bool
+    holiday_half_worked: bool = False
 
     @property
     def code(self) -> str:
@@ -359,6 +364,9 @@ def attendance_grid(year: int, month: int, *, department: str = "") -> Attendanc
                     note=note,
                     explicit=entry is not None,
                     editable=working and not approved,
+                    # İşaret yalnızca takvimde hâlâ yarım gün tatil olan günde sayılır; tatil
+                    # kaldırılırsa saklı işaret durur ama tabloda, Excel'de ve bordroda görünmez.
+                    holiday_half_worked=bool(entry and entry.holiday_half_worked and day.half_day),
                 )
             )
         rows.append(AttendanceRow(employee=employee, cells=cells))
@@ -418,3 +426,229 @@ def wage_summary(day: date | None = None, *, include_former: bool = False) -> li
             }
         )
     return rows
+
+
+# --- ön bordro (docs/DECISIONS.md "Personel bordrosu") -------------------------------------------
+
+# Parametrelerin kaynağı: kayıtlı set; o yılın yasal değerleri (set kaydedilmedi); yasal değerleri
+# bilinmeyen yıl için en yakın yılın değerleri (yalnızca tahmin; onay için o yılın seti gerekir).
+SAVED, LEGAL_DEFAULT, FALLBACK = "saved", "legal_default", "fallback"
+
+# Bordro satırı uyarıları (ön yüz Türkçe metinle gösterir).
+MISSING_WAGE = "missing_wage"
+BELOW_MINIMUM_WAGE = "below_minimum_wage"
+EXTERNAL_MISSING = "external_missing"
+EXIT_IN_MONTH = "exit_in_month"
+PAY_WITHOUT_SGK_DAYS = "pay_without_sgk_days"
+
+
+@dataclass(frozen=True)
+class PayrollSettings:
+    """Ayın bordro parametreleri, kaynağı ve değerlerin ait olduğu yıl."""
+
+    params: payroll.Parameters
+    source: str
+    record: PayrollParameterSet | None
+    year: int
+
+
+def engine_parameters(record: PayrollParameterSet) -> payroll.Parameters:
+    """Kayıtlı setin hesap motoru biçimi."""
+    return payroll.Parameters(
+        minimum_wage=record.minimum_wage,
+        ceiling_multiplier=record.ceiling_multiplier,
+        employee_sgk_rate=record.employee_sgk_rate,
+        employee_unemployment_rate=record.employee_unemployment_rate,
+        employer_sgk_rate=record.employer_sgk_rate,
+        employer_unemployment_rate=record.employer_unemployment_rate,
+        incentive_points=record.incentive_points,
+        stamp_tax_per_mille=record.stamp_tax_per_mille,
+        tax_brackets=(
+            record.tax_bracket_1,
+            record.tax_bracket_2,
+            record.tax_bracket_3,
+            record.tax_bracket_4,
+        ),
+        tax_rates=(
+            record.tax_rate_1,
+            record.tax_rate_2,
+            record.tax_rate_3,
+            record.tax_rate_4,
+            record.tax_rate_5,
+        ),
+        bes_rate=record.bes_rate,
+    )
+
+
+def payroll_parameters(year: int, month: int) -> PayrollSettings:
+    """Ayın parametreleri: aynı yılın, ayın ilk gününe kadar geçerli olmuş en son kayıtlı seti;
+    yoksa yılın yasal değerleri; o da yoksa en yakın yılın yasal değerleri (tahmin)."""
+    first = date(year, month, 1)
+    record = (
+        PayrollParameterSet.objects.filter(
+            is_active=True, valid_from__year=year, valid_from__lte=first
+        )
+        .order_by("-valid_from", "-id")
+        .first()
+    )
+    if record is not None:
+        return PayrollSettings(engine_parameters(record), SAVED, record, year)
+    legal = payroll.legal_parameters(year)
+    if legal is not None:
+        return PayrollSettings(legal, LEGAL_DEFAULT, None, year)
+    nearest = payroll.nearest_legal_year(year)
+    return PayrollSettings(payroll.LEGAL_DEFAULTS[nearest], FALLBACK, None, nearest)
+
+
+def parameter_sets() -> QuerySet[PayrollParameterSet]:
+    """Kayıtlı parametre setleri (kaldırılanlar hariç), en yenisi önce."""
+    return PayrollParameterSet.objects.filter(is_active=True).order_by("-valid_from", "-id")
+
+
+@dataclass(frozen=True)
+class PayrollRow:
+    """Bir kişinin ay bordrosu. `line` ERP hesabıdır; bordrosu mali müşavirde olan kişide
+    (`external`) para tutarları yerine mali müşavirin rakamları (`figure`) kullanılır, `line`
+    yalnızca günler içindir."""
+
+    employee: Employee
+    line: payroll.Result
+    external: bool
+    figure: ExternalPayrollFigure | None
+    warnings: tuple[str, ...]
+
+    @property
+    def gross_total(self) -> Decimal:
+        if self.external:
+            return self.figure.gross_total if self.figure else Decimal(0)
+        return self.line.gross_total
+
+    @property
+    def employer_cost(self) -> Decimal:
+        if self.external:
+            return self.figure.employer_cost if self.figure else Decimal(0)
+        return self.line.employer_cost
+
+
+@dataclass(frozen=True)
+class PayrollMonth:
+    """Ayın ön bordrosu: puantaj durumu, parametreler ve kişi satırları (canlı hesap)."""
+
+    year: int
+    month: int
+    grid: AttendanceGrid
+    settings: PayrollSettings
+    rows: list[PayrollRow]
+
+    @property
+    def label(self) -> str:
+        return self.grid.label
+
+    @property
+    def attendance_approved(self) -> bool:
+        return self.grid.approved
+
+    @property
+    def attendance_number(self) -> str:
+        return self.grid.record.number if self.grid.record else ""
+
+    @property
+    def computed(self) -> list[PayrollRow]:
+        """ERP'de hesaplanan satırlar (bordrosu mali müşavirde olanlar hariç)."""
+        return [row for row in self.rows if not row.external]
+
+    def total(self, field_name: str) -> Decimal:
+        """ERP'de hesaplanan satırların bir kalemi toplamı."""
+        return sum((getattr(row.line, field_name) for row in self.computed), Decimal(0))
+
+    @property
+    def gross_total(self) -> Decimal:
+        """Brüt toplam (mali müşavirde hesaplananların rakamları dahil)."""
+        return sum((row.gross_total for row in self.rows), Decimal(0))
+
+    @property
+    def employer_cost(self) -> Decimal:
+        """İşverene maliyet (mali müşavirde hesaplananların rakamları dahil)."""
+        return sum((row.employer_cost for row in self.rows), Decimal(0))
+
+
+def _month_input(
+    row: AttendanceRow, days: list[AttendanceDay], wages: Sequence[EmployeeWage]
+) -> payroll.MonthInput:
+    """Puantaj satırından hesap girdisi: yalnızca kişinin işte olduğu (durumu olan) günler, her gün
+    o gün geçerli ücretle; yarım gün tatil çalışması yalnızca takvimde yarım gün tatil olan güne
+    sayılır."""
+    half_days = {day.date for day in days if day.half_day}
+    items = tuple(
+        payroll.Day(
+            date=cell.date,
+            status=cell.status,
+            overtime_hours=cell.overtime_hours,
+            wage=wage_on(wages, cell.date),
+            half_holiday_worked=cell.holiday_half_worked and cell.date in half_days,
+        )
+        for cell in row.cells
+        if cell.status and employed_on(row.employee, cell.date)
+    )
+    return payroll.MonthInput(days=items, days_in_month=len(days), bes=row.employee.bes_enrolled)
+
+
+def _warnings(
+    employee: Employee,
+    line: payroll.Result,
+    days: tuple[payroll.Day, ...],
+    params: payroll.Parameters,
+    last: date,
+) -> tuple[str, ...]:
+    found = []
+    if line.missing_wage:
+        found.append(MISSING_WAGE)
+    # Ücretli bir günde geçerli aylık brüt ücretlerden biri asgari ücretin altında (İş Kanunu m.39):
+    # ay içinde giriş, çıkış ve zamda da (zamdan önceki günler dahil). Karşılaştırılan aylık
+    # ücrettir, kıst brüt değil; ücretli gün yoksa son ücrete bakılır. Brüt SGK alt sınırının
+    # altında kalırsa matrah alt sınıra çıkar ("Alt sınır"); fazla mesaiyle aşarsa çıkmaz.
+    paid = [
+        day.wage
+        for day in days
+        if day.wage is not None and day.status not in payroll.UNPAID_STATUSES
+    ]
+    lowest = min(paid, default=line.monthly_wage)
+    if lowest is not None and lowest < params.minimum_wage:
+        found.append(BELOW_MINIMUM_WAGE)
+    if employee.termination_date and employee.termination_date <= last:
+        found.append(EXIT_IN_MONTH)
+    if line.gross_total > 0 and not line.sgk_days:
+        found.append(PAY_WITHOUT_SGK_DAYS)
+    return tuple(found)
+
+
+def payroll_month(year: int, month: int, *, department: str = "") -> PayrollMonth:
+    """Ayın ön bordrosu (isteğe bağlı birim süzgeciyle): puantajın günleri (açık ayda takvim
+    varsayılanları, onaylı ayda kayıtlı günler) ve ücretlerden kişi başına brütten nete hesap ve
+    işverene maliyet. Bordrosu mali müşavirde olan kişide o ayın girilmiş rakamları kullanılır."""
+    grid = attendance_grid(year, month, department=department)
+    settings = payroll_parameters(year, month)
+    last = grid.days[-1].date
+    people = [row.employee.pk for row in grid.rows]
+    wages = wages_by_employee(people, last)
+    figures = {
+        figure.employee_id: figure
+        for figure in ExternalPayrollFigure.objects.filter(
+            year=year, month=month, employee_id__in=people
+        ).select_related("updated_by")
+    }
+    rows = []
+    for row in grid.rows:
+        month_input = _month_input(row, grid.days, wages.get(row.employee.pk, []))
+        if not month_input.days:
+            continue  # kişi bu ay işte değil (yalnızca işte olmadığı günlerde kaydı var)
+        line = payroll.compute(month_input, settings.params)
+        warnings: tuple[str, ...]
+        if row.employee.payroll_external:
+            figure = figures.get(row.employee.pk)
+            warnings = () if figure else (EXTERNAL_MISSING,)
+            rows.append(PayrollRow(row.employee, line, True, figure, warnings))
+            continue
+        warnings = _warnings(row.employee, line, month_input.days, settings.params, last)
+        rows.append(PayrollRow(row.employee, line, False, None, warnings))
+    return PayrollMonth(year=year, month=month, grid=grid, settings=settings, rows=rows)

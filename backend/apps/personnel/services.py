@@ -39,6 +39,7 @@ from apps.masterdata import services as masterdata
 from apps.personnel import selectors
 from apps.personnel.models import (
     OVERTIME_STATUSES,
+    PARAMETER_RATE_FIELDS,
     AttendanceEntry,
     AttendanceMonth,
     AttendanceSettings,
@@ -46,6 +47,8 @@ from apps.personnel.models import (
     Employee,
     EmployeeDocument,
     EmployeeWage,
+    ExternalPayrollFigure,
+    PayrollParameterSet,
     PublicHoliday,
 )
 from apps.personnel.state import attendance_month_states
@@ -69,6 +72,8 @@ EMPLOYEE_FIELDS = (
     "school",
     "field_of_study",
     "graduation_year",
+    "payroll_external",
+    "bes_enrolled",
     "user",
 )
 _TEXT_FIELDS = (
@@ -596,7 +601,15 @@ def _open_month(actor: User, year: int, month: int) -> AttendanceMonth:
     return record
 
 
-def _check_day(employee: Employee, day: date, status: str, hours: Decimal, *, today: date) -> None:
+def _check_day(
+    employee: Employee,
+    day: date,
+    status: str,
+    hours: Decimal,
+    *,
+    today: date,
+    half: bool = False,
+) -> None:
     if status not in AttendanceStatus.values:
         raise BusinessRuleError("invalid_status", "Geçersiz puantaj durumu.")
     if not selectors.employed_on(employee, day):
@@ -616,6 +629,21 @@ def _check_day(employee: Employee, day: date, status: str, hours: Decimal, *, to
         raise BusinessRuleError(
             "future_day", "Devamsızlık ve fazla mesai ileri bir güne girilemez."
         )
+    if half:
+        holiday = selectors.holidays_between(day, day).get(day)
+        if holiday is None or not holiday.half_day:
+            raise BusinessRuleError(
+                "not_half_holiday", f"{day:%d.%m.%Y} yarım gün tatil değil (Tatil takvimi)."
+            )
+        if status != AttendanceStatus.WORKED:
+            raise BusinessRuleError(
+                "half_holiday_not_worked",
+                "Yarım gün tatil çalışması yalnızca çalışılan güne (Ç) girilir.",
+            )
+        if day > today:
+            raise BusinessRuleError(
+                "future_day", "Yarım gün tatil çalışması ileri bir güne girilemez."
+            )
 
 
 def _write_day(
@@ -628,11 +656,13 @@ def _write_day(
     status: str,
     hours: Decimal,
     note: str,
+    half: bool = False,
 ) -> AttendanceEntry:
     if entry is None:
         entry = AttendanceEntry(month=record, employee=employee, date=day)
     entry.status = status
     entry.overtime_hours = hours
+    entry.holiday_half_worked = half
     entry.note = note
     return save_with_audit(entry, actor)
 
@@ -646,22 +676,34 @@ def set_attendance_day(
     status: str,
     overtime_hours: Decimal | None = None,
     note: str = "",
+    holiday_half_worked: bool = False,
 ) -> AttendanceEntry:
-    """Kişinin bir gününü yazar: durum, fazla mesai (saat) ve not.
+    """Kişinin bir gününü yazar: durum, fazla mesai (saat), yarım gün tatil çalışması ve not.
 
     Gün kişinin işe giriş ile çıkış tarihi arasında, ay açık olmalı. Fazla mesai 0–24 saattir ve
     yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir; devamsızlık ve fazla mesai
-    ileri bir güne girilemez (izin ve rapor girilebilir).
+    ileri bir güne girilemez (izin ve rapor girilebilir). Yarım gün tatilde (28 Ekim, arife) öğleden
+    sonra da çalışıldıysa `holiday_half_worked` işaretlenir: yalnızca takvimde yarım gün tatil olan,
+    geçmiş ya da bugünkü çalışılan güne girilir (bordroda yarım günlük ilave ücret).
     """
     _require_role(actor)
     # Kart kilitlenip yeniden okunur: aynı anda kaydedilen ayrılışın çıkış tarihi görülür.
     employee = Employee.objects.select_for_update().get(pk=employee.pk)
     hours = Decimal(overtime_hours or 0)
-    _check_day(employee, day, status, hours, today=timezone.localdate())
+    half = bool(holiday_half_worked)
+    _check_day(employee, day, status, hours, today=timezone.localdate(), half=half)
     record = _open_month(actor, day.year, day.month)
     entry = AttendanceEntry.objects.select_for_update().filter(employee=employee, date=day).first()
     return _write_day(
-        actor, record, employee, day, entry, status=status, hours=hours, note=_text(note)[:200]
+        actor,
+        record,
+        employee,
+        day,
+        entry,
+        status=status,
+        hours=hours,
+        note=_text(note)[:200],
+        half=half,
     )
 
 
@@ -681,7 +723,8 @@ def set_attendance_range(
 
     Yıllık izin, mazeret izni ve devamsızlık hafta tatili ve resmi tatil günlerine yazılmaz; rapor
     ve ücretsiz izin her takvim gününe yazılır. Kişinin işte olmadığı günler atlanır. Fazla mesai
-    alamayan duruma geçen günün fazla mesaisi sıfırlanır.
+    alamayan duruma geçen günün fazla mesaisi, çalışılmayan duruma geçen günün yarım gün tatil
+    çalışması işareti sıfırlanır.
     """
     _require_role(actor)
     if status not in AttendanceStatus.values:
@@ -729,17 +772,29 @@ def set_attendance_range(
             if status in WORKDAY_ONLY_STATUSES and current in REST_STATUSES:
                 continue
             hours = entry.overtime_hours if entry and status in OVERTIME_STATUSES else Decimal(0)
+            half = bool(entry and entry.holiday_half_worked and status == AttendanceStatus.WORKED)
             text = note or (entry.note if entry else "")
             if entry is None and status == current and not note:
                 continue  # zaten varsayılan; kayda gerek yok
-            if entry is not None and (entry.status, entry.overtime_hours, entry.note) == (
-                status,
-                hours,
-                text,
-            ):
+            if entry is not None and (
+                entry.status,
+                entry.overtime_hours,
+                entry.holiday_half_worked,
+                entry.note,
+            ) == (status, hours, half, text):
                 continue
             record = records[(day.year, day.month)]
-            _write_day(actor, record, person, day, entry, status=status, hours=hours, note=text)
+            _write_day(
+                actor,
+                record,
+                person,
+                day,
+                entry,
+                status=status,
+                hours=hours,
+                note=text,
+                half=half,
+            )
             changed += 1
     return changed
 
@@ -891,3 +946,220 @@ def remove_wage(actor: User, wage: EmployeeWage, reason: str) -> EmployeeWage:
     locked.removed_by = actor
     locked.removal_reason = reason
     return save_with_audit(locked, actor, note="Ücret kaydı kaldırıldı")
+
+
+# --- ön bordro (docs/DECISIONS.md "Personel bordrosu") -------------------------------------------
+
+PARAMETER_FIELDS = (
+    "valid_from",
+    "minimum_wage",
+    "ceiling_multiplier",
+    "employee_sgk_rate",
+    "employee_unemployment_rate",
+    "employer_sgk_rate",
+    "employer_unemployment_rate",
+    "incentive_points",
+    "stamp_tax_per_mille",
+    "tax_bracket_1",
+    "tax_bracket_2",
+    "tax_bracket_3",
+    "tax_bracket_4",
+    "tax_rate_1",
+    "tax_rate_2",
+    "tax_rate_3",
+    "tax_rate_4",
+    "tax_rate_5",
+    "bes_rate",
+    "source",
+    "note",
+)
+_OPTIONAL_PARAMETER_FIELDS = ("source", "note")
+MAX_CEILING_MULTIPLIER = Decimal(20)
+MAX_PAYROLL_AMOUNT = Decimal("100000000000")
+
+
+def _duplicate_parameters(day: date) -> BusinessRuleError:
+    return BusinessRuleError(
+        "duplicate_parameters",
+        f"{day:%m.%Y} ayından geçerli bir parametre seti zaten var; onu düzenleyin.",
+    )
+
+
+def _clean_parameters(
+    values: dict[str, Any], instance: PayrollParameterSet | None = None
+) -> dict[str, Any]:
+    """Parametre setinin kuralları: geçerlilik bir ayın ilk günü (gün ayın başına çekilir), bütün
+    değerler girilir, oranlar 0–100, teşvik SGK işveren payını aşmaz, dilim sınırları artar."""
+    merged = {name: getattr(instance, name) for name in PARAMETER_FIELDS} if instance else {}
+    merged.update(values)
+    for name in _OPTIONAL_PARAMETER_FIELDS:
+        merged[name] = _text(merged.get(name))[: 500 if name == "source" else 200]
+    if any(merged.get(name) is None for name in PARAMETER_FIELDS):
+        raise BusinessRuleError("parameters_incomplete", "Bütün parametreler girilmelidir.")
+    day = merged["valid_from"].replace(day=1)
+    merged["valid_from"] = day
+    if not MIN_YEAR <= day.year <= MAX_YEAR:
+        raise BusinessRuleError(
+            "invalid_valid_from", f"Geçerlilik yılı {MIN_YEAR} ile {MAX_YEAR} arasında olmalı."
+        )
+    if not Decimal(0) < merged["minimum_wage"] <= MAX_MONTHLY_WAGE:
+        raise BusinessRuleError("invalid_minimum_wage", "Asgari ücret sıfırdan büyük olmalı.")
+    if not Decimal(1) <= merged["ceiling_multiplier"] <= MAX_CEILING_MULTIPLIER:
+        raise BusinessRuleError(
+            "invalid_ceiling", "SGK üst sınır çarpanı 1 ile 20 arasında olmalı (2026'da 9)."
+        )
+    if any(not Decimal(0) <= merged[name] <= 100 for name in PARAMETER_RATE_FIELDS):
+        raise BusinessRuleError("invalid_rate", "Oranlar %0 ile %100 arasında olmalı.")
+    if merged["incentive_points"] > merged["employer_sgk_rate"]:
+        raise BusinessRuleError(
+            "invalid_incentive", "Teşvik puanı SGK işveren payından büyük olamaz."
+        )
+    if not Decimal(0) <= merged["stamp_tax_per_mille"] <= 100:
+        raise BusinessRuleError(
+            "invalid_stamp_tax", "Damga vergisi binde 0 ile 100 arasında olmalı."
+        )
+    brackets = [merged[f"tax_bracket_{index}"] for index in range(1, 5)]
+    if (
+        brackets[0] <= 0
+        or brackets[-1] > MAX_PAYROLL_AMOUNT
+        or any(upper <= lower for lower, upper in zip(brackets, brackets[1:], strict=False))
+    ):
+        raise BusinessRuleError(
+            "invalid_brackets", "Gelir vergisi dilim üst sınırları sıfırdan büyük ve artan olmalı."
+        )
+    others = PayrollParameterSet.objects.filter(is_active=True, valid_from=day)
+    if instance is not None:
+        others = others.exclude(pk=instance.pk)
+    if others.exists():
+        raise _duplicate_parameters(day)
+    return merged
+
+
+@transaction.atomic
+def create_parameter_set(actor: User, data: Mapping[str, Any]) -> PayrollParameterSet:
+    """Bordro parametre seti açar (ör. yeni yılın yasal değerleri; ekranda yasal değerlerle dolu
+    gelir, mali müşavirle kontrol edilip kaydedilir). Geçerlilik bir ayın ilk günüdür; aynı aydan
+    geçerli ikinci set açılamaz."""
+    _require_role(actor)
+    values = _clean_parameters(_pick(data, PARAMETER_FIELDS))
+    try:
+        with transaction.atomic():
+            return save_with_audit(PayrollParameterSet(**values), actor)
+    except IntegrityError:  # aynı ay eşzamanlı açıldı
+        raise _duplicate_parameters(values["valid_from"]) from None
+
+
+@transaction.atomic
+def update_parameter_set(
+    actor: User, instance: PayrollParameterSet, data: Mapping[str, Any]
+) -> PayrollParameterSet:
+    """Parametre setini düzeltir; değişen değerler eski → yeni denetim günlüğüne yazılır."""
+    _require_role(actor)
+    locked = PayrollParameterSet.objects.select_for_update().get(pk=instance.pk)
+    if not locked.is_active:
+        raise BusinessRuleError("parameters_removed", "Kaldırılmış parametre seti düzenlenemez.")
+    values = _clean_parameters(_pick(data, PARAMETER_FIELDS), locked)
+    for name, value in values.items():
+        setattr(locked, name, value)
+    try:
+        with transaction.atomic():
+            return save_with_audit(locked, actor)
+    except IntegrityError:
+        raise _duplicate_parameters(values["valid_from"]) from None
+
+
+@transaction.atomic
+def remove_parameter_set(
+    actor: User, instance: PayrollParameterSet, reason: str
+) -> PayrollParameterSet:
+    """Yanlış açılmış parametre setini kaldırır (silinmez, pasife alınır; neden zorunlu). O ay ve
+    sonrası bir önceki setle, yoksa yasal değerlerle hesaplanır."""
+    _require_role(actor)
+    reason = _text(reason)[:500]
+    if not reason:
+        raise BusinessRuleError("reason_required", "Kaldırma nedeni girilmelidir.")
+    locked = PayrollParameterSet.objects.select_for_update().get(pk=instance.pk)
+    if not locked.is_active:
+        raise BusinessRuleError("already_removed", "Parametre seti zaten kaldırılmış.")
+    locked.is_active = False
+    return save_with_audit(locked, actor, note=f"Parametre seti kaldırıldı. Neden: {reason}")
+
+
+def _check_period(year: int, month: int) -> None:
+    if not (1 <= month <= 12 and MIN_YEAR <= year <= MAX_YEAR):
+        raise BusinessRuleError("invalid_period", "Geçersiz ay.")
+
+
+@transaction.atomic
+def set_external_payroll(
+    actor: User,
+    employee: Employee,
+    year: int,
+    month: int,
+    *,
+    gross_total: Decimal,
+    employer_cost: Decimal,
+    note: str = "",
+) -> ExternalPayrollFigure:
+    """Bordrosu mali müşavirde olan kişinin ay rakamlarını yazar (yoksa açar, varsa düzeltir):
+    mali müşavirin bordrosundaki brüt toplam ve işverene maliyet. İşveren maliyeti tablosu ve
+    personel maliyeti bu rakamları kullanır."""
+    _require_role(actor)
+    _check_period(year, month)
+    employee = Employee.objects.select_for_update().get(pk=employee.pk)
+    if not employee.payroll_external:
+        raise BusinessRuleError(
+            "not_external",
+            f'{employee.full_name} kartında "Bordrosu mali müşavirde" işaretli değil; bordrosu '
+            "ERP'de hesaplanır.",
+        )
+    first, last = selectors.month_bounds(year, month)
+    if not selectors.employees_between(first, last).filter(pk=employee.pk).exists():
+        raise BusinessRuleError(
+            "not_employed",
+            f"{employee.full_name} {selectors.month_label(year, month)} ayında işte değil.",
+        )
+    if gross_total is None or employer_cost is None:
+        raise BusinessRuleError(
+            "external_incomplete", "Brüt toplam ve işverene maliyet girilmelidir."
+        )
+    if not Decimal(0) <= gross_total <= MAX_PAYROLL_AMOUNT:
+        raise BusinessRuleError("invalid_amount", "Brüt toplam negatif olamaz.")
+    if not gross_total <= employer_cost <= MAX_PAYROLL_AMOUNT:
+        raise BusinessRuleError(
+            "invalid_employer_cost", "İşverene maliyet brüt toplamdan az olamaz."
+        )
+    figure = (
+        ExternalPayrollFigure.objects.select_for_update()
+        .filter(employee=employee, year=year, month=month)
+        .first()
+    )
+    if figure is None:
+        figure = ExternalPayrollFigure(employee=employee, year=year, month=month)
+    figure.gross_total = gross_total
+    figure.employer_cost = employer_cost
+    figure.note = _text(note)[:200]
+    try:
+        with transaction.atomic():
+            return save_with_audit(figure, actor)
+    except IntegrityError:  # aynı kişi ve ay eşzamanlı açıldı: yeniden dene
+        figure = ExternalPayrollFigure.objects.select_for_update().get(
+            employee=employee, year=year, month=month
+        )
+        figure.gross_total = gross_total
+        figure.employer_cost = employer_cost
+        figure.note = _text(note)[:200]
+        return save_with_audit(figure, actor)
+
+
+def record_payroll_access(actor: User, year: int, month: int, output: str) -> None:
+    """Bordro çıktısının (PDF, Excel) açıldığını denetim günlüğüne yazar (ücret ve kimlik bilgisi
+    içeren kişisel veriye erişim izi, docs/KVKK.md)."""
+    _require_role(actor)
+    log_change(
+        actor,
+        None,
+        AuditLog.Action.CUSTOM,
+        {"year": year, "month": month},
+        f"Bordro çıktısı açıldı: {output} · {selectors.month_label(year, month)}",
+    )

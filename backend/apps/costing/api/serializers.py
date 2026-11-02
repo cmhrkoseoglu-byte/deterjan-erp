@@ -7,7 +7,6 @@ from apps.costing.models import (
     CostStage,
     LotCost,
     LotCostLine,
-    PersonnelCostSettings,
     StandardCost,
 )
 from apps.inventory.api.serializers import UserNameField
@@ -299,7 +298,10 @@ class PersonnelCostRowSerializer(serializers.Serializer):
     gross_total = _money()
     employer_share = _money()
     total_cost = _money()
-    missing_wage = serializers.BooleanField()
+    missing_wage = serializers.BooleanField(
+        help_text="ücret eksik ya da (bordrosu mali müşavirde olanda) rakam girilmedi"
+    )
+    payroll_external = serializers.BooleanField(help_text="bordrosu mali müşavirde")
 
 
 class StageCostSerializer(serializers.Serializer):
@@ -320,7 +322,15 @@ class PersonnelCostReportSerializer(serializers.Serializer):
     attendance_status = serializers.CharField()
     attendance_number = serializers.CharField()
     attendance_approved = serializers.BooleanField()
-    employer_rate = serializers.DecimalField(max_digits=5, decimal_places=2)
+    employer_rate = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        help_text="etkin işveren oranı: SGK işveren − teşvik + işsizlik işveren",
+    )
+    parameters_origin = serializers.CharField(
+        help_text="saved, legal_default ya da fallback (personel bordro parametreleri)"
+    )
+    parameters_year = serializers.IntegerField()
     missing_wage_count = serializers.IntegerField()
     gross_salary = _money()
     overtime_pay = _money()
@@ -342,14 +352,3 @@ COST_CENTER_STAGES = [("", "Genel gider"), *CostStage.choices]
 class CostCenterSerializer(serializers.Serializer):
     department = serializers.CharField(max_length=64, label="birim")
     stage = serializers.ChoiceField(choices=COST_CENTER_STAGES, allow_blank=True, label="aşama")
-
-
-class PersonnelCostSettingsSerializer(serializers.ModelSerializer):
-    # Ayar hiç kaydedilmediyse varsayılan döner ve tarihi boştur.
-    updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
-
-    class Meta:
-        model = PersonnelCostSettings
-        fields = ["employer_rate", "updated_at"]
-        read_only_fields = ["updated_at"]
-        extra_kwargs = {"employer_rate": {"required": True}}

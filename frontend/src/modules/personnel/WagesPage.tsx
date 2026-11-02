@@ -1,6 +1,7 @@
 // Personel > Ücretler: brüt aylık ücretler (geçerlilik tarihli). Ücretler kişisel veridir
 // (docs/KVKK.md); yalnızca yönetim ve admin görür. 2026-11-01'de Maliyet'ten taşındı; birimlerin
-// maliyet aşaması ve işveren payı Maliyet > Personel maliyeti'nde kaldı.
+// maliyet aşaması Maliyet > Personel maliyeti'nde kaldı, işveren payı bordro parametrelerinden
+// (Personel > Bordro) gelir.
 import {
   Alert,
   Badge,
@@ -21,6 +22,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { personnelCostKeys } from "../../api/costing";
+import { payrollKeys } from "../../api/payroll";
 import {
   addWage,
   getWageSummary,
@@ -39,9 +41,9 @@ import { pe, WAGES_BASE, wt } from "./strings";
 const EARLIEST_WAGE_DATE = "2000-01-01";
 const NO_WRAP = { whiteSpace: "nowrap" } as const;
 
-/** Ücret değişince ücret listeleri ve personel maliyeti raporu yeniden okunur. */
+/** Ücret değişince ücret listeleri, bordro ve personel maliyeti raporu yeniden okunur. */
 function refresh(queryClient: QueryClient) {
-  for (const queryKey of [wageKeys.all, personnelCostKeys.all])
+  for (const queryKey of [wageKeys.all, payrollKeys.all, personnelCostKeys.all])
     void queryClient.invalidateQueries({ queryKey });
 }
 

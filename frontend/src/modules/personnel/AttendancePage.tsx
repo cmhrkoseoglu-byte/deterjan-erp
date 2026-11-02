@@ -158,15 +158,26 @@ function MonthStatus({ grid }: { grid: AttendanceGrid | undefined }) {
 function DayCell({
   name,
   cell,
+  column,
   onEdit,
 }: {
   name: string;
   cell: AttendanceCell;
+  column: AttendanceColumn;
   onEdit: () => void;
 }) {
   const hours = formatHours(cell.overtime_hours);
   const label = cell.status ? at.labels[cell.status] : "";
-  const title = [label, hours && `${at.overtime}: ${hours}`, cell.note].filter(Boolean).join(" · ");
+  // İşaret yalnızca takvimde hâlâ yarım gün tatil olan günde sayılır (bordro ve Excel gibi).
+  const halfWorked = cell.holiday_half_worked && column.half_day;
+  const title = [
+    label,
+    halfWorked && at.halfHolidayWorked,
+    hours && `${at.overtime}: ${hours}`,
+    cell.note,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const style: CSSProperties = {
     ...tone(cell.status ? STATUS_COLORS[cell.status] : undefined),
     padding: 0,
@@ -176,7 +187,7 @@ function DayCell({
   const content = cell.status ? (
     <>
       <Text span size="xs" fw={cell.explicit ? 700 : 400} c="inherit">
-        {cell.code}
+        {halfWorked ? `${cell.code}½` : cell.code}
       </Text>
       {hours && (
         <Text span size="10px" lh={1} c="inherit" display="block">
@@ -271,6 +282,7 @@ function AttendanceTable({
                   key={cell.date}
                   name={row.employee.full_name}
                   cell={cell}
+                  column={grid.days[index]}
                   onEdit={() => onEdit(row, cell, grid.days[index])}
                 />
               ))}

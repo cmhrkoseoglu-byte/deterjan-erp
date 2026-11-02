@@ -126,17 +126,18 @@ export const kt = {
   consumption: "Tüketim",
   // Personel maliyeti
   personnelLead:
-    "Brüt ücret ve puantajdan ayın işveren maliyeti ve aşamalara göre gerçekleşen işçilik (TL/kg). Bordro değildir; vergi ve kesintiler hesaplanmaz.",
+    "Personel > Bordro'daki ön bordro hesabından (brüt ücret, puantaj, bordro parametreleri) ayın işveren maliyeti ve aşamalara göre gerçekleşen işçilik (TL/kg).",
   rulesShow: "Hesap kuralları",
   rulesHide: "Kuralları gizle",
   rules: [
     "Tam ay 30 gün sayılır; ay içinde giren ya da ayrılan işte olduğu takvim günü kadar ücret alır. Hiç ücretli günü olmayan ay ücretsizdir.",
     "Ücretsiz izin, devamsızlık ve rapor günleri günlük ücretle (brüt / 30) düşülür; yıllık ve mazeret izni ücretlidir.",
     "Ay içinde zam varsa her gün o gün geçerli ücretle hesaplanır.",
-    "Fazla mesai saat ücreti brüt / 225: iş günü ve hafta tatilinde 1,5 kat, resmi tatilde ayrıca 1 kat.",
-    "İşveren payı brüt ücret ve fazla mesainin üzerinden; oran bu sayfanın altında. Ücretler Personel > Ücretler'de girilir.",
+    "Fazla mesai saat ücreti brüt / 225: iş günü ve hafta tatilinde 1,5 kat. Resmi tatilde çalışana bir günlük ilave ücret (brüt / 30), 7,5 saati aşan saatler 1,5 kat; yarım gün tatilde öğleden sonra çalışana yarım gün.",
+    "İşveren payı SGK matrahı üzerinden: SGK işveren payı − teşvik + işsizlik işveren payı (2026'da imalatta %18,75). Matrah günlük alt (asgari ücret) ve üst sınır arasındadır; ücret alt sınırın altındaysa farkın primini işçi payı dahil işveren öder. Oranlar Personel > Bordro > Parametreler'de, ücretler Personel > Ücretler'de.",
     "Gerçekleşen işçilik = aşamanın personel maliyeti / o ay üretilen kg (üretimde biten şarjların çıktısı, dolumda dolan bulk; fire hariç).",
-    "Rapor saklanmaz: ücret, kişinin birimi ya da işe giriş ve çıkış tarihi, birim eşleştirmesi ya da işveren payı değişirse geçmiş aylar (onaylılar dahil) yeniden hesaplanır; eklenmiş işçilik oranları değişmez.",
+    "Bordrosu mali müşavirde olan kişide brüt ve maliyet Personel > Bordro'da girilen aylık rakamlardır.",
+    "Rapor saklanmaz: ücret, kişinin birimi ya da işe giriş ve çıkış tarihi, birim eşleştirmesi ya da bordro parametreleri değişirse geçmiş aylar (onaylılar dahil) yeniden hesaplanır; eklenmiş işçilik oranları değişmez.",
   ],
   previousMonth: "Önceki ay",
   nextMonth: "Sonraki ay",
@@ -147,6 +148,9 @@ export const kt = {
   missingWages: (n: number) =>
     `${n} kişinin ücreti ayın tamamı ya da bir bölümü için girilmemiş; bu günler sıfır sayıldı.`,
   goToWages: "Ücretleri aç",
+  figuresMissingHint: (n: number) =>
+    `Bordrosu mali müşavirde olan ${n} kişinin bu ay rakamları girilmedi; maliyeti sıfır sayıldı.`,
+  enterFigures: "Rakamları gir",
   totalPersonnelCost: "Toplam personel maliyeti",
   grossSalary: "Brüt ücret",
   overtimePay: "Fazla mesai",
@@ -167,7 +171,7 @@ export const kt = {
   noProduction: "Bu ay bu aşamada üretim yok.",
   noKg: "Üretim kg'a çevrilemedi: malzemede yoğunluk girilmemiş.",
   rateMissingWages: (n: number) =>
-    `Bu aşamada ${n} kişinin ücreti eksik; o günler sıfır sayıldığı için oran olması gerekenden düşük çıkar.`,
+    `Bu aşamada ${n} kişinin ücreti ya da mali müşavir rakamları eksik; eksik kısım sıfır sayıldığı için oran olması gerekenden düşük çıkar.`,
   rateUnconverted: (n: number) =>
     `${n} malzemenin üretimi kg'a çevrilemedi; kg eksik olduğu için oran olması gerekenden yüksek çıkar.`,
   laborRateEffect:
@@ -186,15 +190,16 @@ export const kt = {
   grossTotal: "Brüt toplam (TL)",
   employerShareShort: "İşveren payı (TL)",
   missingWage: "Ücret eksik",
+  payrollExternal: "Bordrosu mali müşavirde",
+  figuresMissing: "Rakam girilmedi",
+  parametersSaved: (year: number) => `Bordro parametreleri kayıtlı (${year})`,
+  parametersDefault: "Bordro parametreleri kaydedilmedi",
+  parametersFallback: (year: number) => `Bordro parametreleri yok (${year} ile tahmin)`,
+  openPayroll: "Bordroyu aç",
   leftOn: (date: string) => `Çıkış · ${date}`,
   // Personel maliyeti ayarları (ücretler Personel > Ücretler'de)
   costCenters: "Birimlerin maliyet aşaması",
   costCentersHint:
     "Birimdeki personelin maliyeti seçilen aşamanın işçiliğine yazılır; eşleştirilmemiş birim genel giderdir. Birimler personel kartlarından gelir. Kişinin bugünkü birimi bütün aylara uygulanır: eşleştirme ya da birim değişirse geçmiş ayların dağılımı da değişir.",
   costCenterSaved: "Birim eşleştirmesi kaydedildi.",
-  employerRate: "İşveren payı",
-  employerRateHint:
-    "SGK işveren primi ve işsizlik sigortası işveren payı toplamı. Teşvikli varsayılan %17,75. Değişiklik açık ve onaylı tüm ayların raporuna yansır; eklenmiş işçilik oranları değişmez.",
-  employerRateLabel: "Oran (%)",
-  employerRateSaved: "İşveren payı kaydedildi.",
 };

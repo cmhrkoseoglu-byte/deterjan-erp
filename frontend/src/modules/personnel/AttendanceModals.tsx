@@ -2,6 +2,7 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Group,
   Modal,
   SegmentedControl,
@@ -50,8 +51,11 @@ export function DayModal({
   const [status, setStatus] = useState<AttendanceStatus>(cell.status || calendarStatus(column));
   const [hours, setHours] = useState(formatHours(cell.overtime_hours));
   const [note, setNote] = useState(cell.note);
+  const [halfWorked, setHalfWorked] = useState(cell.holiday_half_worked);
   const [error, setError] = useState<string | undefined>();
   const overtimeAllowed = OVERTIME_STATUSES.includes(status);
+  // Yarım gün tatilde öğleden sonra çalışma yalnızca çalışılan güne (Ç) girilir.
+  const halfAllowed = column.half_day && status === "WORKED";
   const mutation = useMutation({
     mutationFn: (overtime: string) =>
       setAttendanceDay({
@@ -59,6 +63,7 @@ export function DayModal({
         date: cell.date,
         status,
         overtime_hours: overtime,
+        holiday_half_worked: halfAllowed && halfWorked,
         note: note.trim(),
       }),
     onSuccess: onSaved,
@@ -98,6 +103,15 @@ export function DayModal({
             inputMode="decimal"
             autoComplete="off"
           />
+          {column.half_day && (
+            <Checkbox
+              label={at.halfHolidayWorked}
+              description={at.halfHolidayWorkedHelp}
+              checked={halfAllowed && halfWorked}
+              disabled={!halfAllowed}
+              onChange={(e) => setHalfWorked(e.currentTarget.checked)}
+            />
+          )}
           <TextInput
             label={at.note}
             value={note}

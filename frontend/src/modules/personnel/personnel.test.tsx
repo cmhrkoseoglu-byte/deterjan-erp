@@ -33,6 +33,8 @@ function employee(extra: Partial<Employee> = {}): Employee {
     school: "",
     field_of_study: "",
     graduation_year: null,
+    payroll_external: false,
+    bes_enrolled: false,
     user: null,
     user_info: null,
     is_active: true,
@@ -155,6 +157,9 @@ describe("personel listesi", () => {
     await user.type(within(dialog).getByLabelText("Doğum yeri"), "İzmir");
     await user.click(within(dialog).getByRole("textbox", { name: "Öğrenim durumu" }));
     await user.click(await screen.findByRole("option", { name: "Lisans" }));
+    // Bordro bölümü: BES otomatik katılım işaretlenir; bordro ERP'de hesaplanır.
+    expect(within(dialog).getByLabelText(/Bordrosu mali müşavirde/)).not.toBeChecked();
+    await user.click(within(dialog).getByLabelText(/BES'e dahil/));
     await user.click(within(dialog).getByRole("button", { name: "Kartı aç" }));
     await waitFor(() =>
       expect(personnelApi.createEmployee).toHaveBeenCalledWith({
@@ -173,6 +178,8 @@ describe("personel listesi", () => {
         school: "",
         field_of_study: "",
         graduation_year: 2012,
+        payroll_external: false,
+        bes_enrolled: true,
         user: null,
       }),
     );

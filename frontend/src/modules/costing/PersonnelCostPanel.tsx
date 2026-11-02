@@ -40,10 +40,11 @@ import {
   type StageCost,
 } from "../../api/costing";
 import { formatDate, formatMoney, formatNumber } from "../../i18n/format";
-import { WAGES_BASE } from "../personnel/strings";
-import { CostCentersSection, EmployerRateSection } from "./PersonnelCostSettings";
+import { PAYROLL_BASE, WAGES_BASE } from "../personnel/strings";
+import { CostCentersSection } from "./PersonnelCostSettings";
 import {
   monthLabel,
+  monthParam,
   nextMonthStart,
   parseMonth,
   shiftMonth,
@@ -81,6 +82,22 @@ function Stat({
       </Text>
       <Text fw={strong ? 700 : 600}>{value}</Text>
     </Paper>
+  );
+}
+
+function ParametersBadge({ report }: { report: PersonnelCostReport }) {
+  if (report.parameters_origin === "saved")
+    return (
+      <Badge color="blue" variant="light">
+        {kt.parametersSaved(report.parameters_year)}
+      </Badge>
+    );
+  return (
+    <Badge color={report.parameters_origin === "fallback" ? "red" : "yellow"} variant="light">
+      {report.parameters_origin === "fallback"
+        ? kt.parametersFallback(report.parameters_year)
+        : kt.parametersDefault}
+    </Badge>
   );
 }
 
@@ -134,8 +151,11 @@ function ReportView({
   report: PersonnelCostReport;
   onRate: (stage: CostStage) => void;
 }) {
-  // Ücreti eksik ayrılan personel varsa ücretler sekmesi ayrılanlarla açılır.
-  const formerMissing = report.rows.some((row) => row.missing_wage && !row.employee.is_active);
+  // Ücreti eksik kişi Ücretler'e (ayrılan varsa ayrılanlarla), rakamı girilmemiş mali müşavir
+  // kişisi Bordro'ya yönlendirilir (orada ücret kullanılmaz).
+  const wageMissing = report.rows.filter((row) => row.missing_wage && !row.payroll_external);
+  const figuresMissing = report.rows.filter((row) => row.missing_wage && row.payroll_external);
+  const formerMissing = wageMissing.some((row) => !row.employee.is_active);
   return (
     <Stack>
       {!report.attendance_approved && (
@@ -143,16 +163,30 @@ function ReportView({
           <Text size="sm">{kt.attendanceOpenHint}</Text>
         </Alert>
       )}
-      {report.missing_wage_count > 0 && (
+      {wageMissing.length > 0 && (
         <Alert color="orange" variant="light" icon={<IconAlertTriangle size={18} />}>
           <Group gap="xs" justify="space-between">
-            <Text size="sm">{kt.missingWages(report.missing_wage_count)}</Text>
+            <Text size="sm">{kt.missingWages(wageMissing.length)}</Text>
             <Anchor
               component={Link}
               to={`${WAGES_BASE}${formerMissing ? "?ayrilanlar=1" : ""}`}
               size="sm"
             >
               {kt.goToWages}
+            </Anchor>
+          </Group>
+        </Alert>
+      )}
+      {figuresMissing.length > 0 && (
+        <Alert color="orange" variant="light" icon={<IconAlertTriangle size={18} />}>
+          <Group gap="xs" justify="space-between">
+            <Text size="sm">{kt.figuresMissingHint(figuresMissing.length)}</Text>
+            <Anchor
+              component={Link}
+              to={`${PAYROLL_BASE}?ay=${monthParam(report.year, report.month)}`}
+              size="sm"
+            >
+              {kt.enterFigures}
             </Anchor>
           </Group>
         </Alert>
@@ -231,9 +265,14 @@ function ReportView({
             render: (r) => (
               <Group gap={6} wrap="nowrap">
                 <span>{r.employee.full_name}</span>
+                {r.payroll_external && (
+                  <Badge color="violet" variant="light" size="sm" tt="none">
+                    {kt.payrollExternal}
+                  </Badge>
+                )}
                 {r.missing_wage && (
                   <Badge color="orange" variant="light" size="sm" tt="none">
-                    {kt.missingWage}
+                    {r.payroll_external ? kt.figuresMissing : kt.missingWage}
                   </Badge>
                 )}
                 {r.employee.termination_date && (
@@ -421,15 +460,25 @@ export function PersonnelCostPanel() {
             <IconChevronRight size={16} />
           </ActionIcon>
           {report && <AttendanceBadge report={report} />}
+          {report && <ParametersBadge report={report} />}
         </Group>
-        <Button
-          component="a"
-          href={personnelCostExcelUrl(year, month)}
-          variant="default"
-          leftSection={<IconFileSpreadsheet size={16} />}
-        >
-          {kt.excel}
-        </Button>
+        <Group gap="xs">
+          <Button
+            component={Link}
+            to={`${PAYROLL_BASE}?ay=${shiftMonth(year, month, 0)}`}
+            variant="default"
+          >
+            {kt.openPayroll}
+          </Button>
+          <Button
+            component="a"
+            href={personnelCostExcelUrl(year, month)}
+            variant="default"
+            leftSection={<IconFileSpreadsheet size={16} />}
+          >
+            {kt.excel}
+          </Button>
+        </Group>
       </Group>
       {query.isError && <ErrorAlert error={query.error} />}
       {query.isLoading && <Loader />}
@@ -445,7 +494,6 @@ export function PersonnelCostPanel() {
         />
       )}
       <CostCentersSection />
-      <EmployerRateSection />
     </Stack>
   );
 }

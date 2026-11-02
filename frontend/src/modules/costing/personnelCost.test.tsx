@@ -23,8 +23,6 @@ vi.mock("../../api/costing", async (importOriginal) => ({
   addLaborRateFromPersonnelCost: vi.fn(),
   listCostCenters: vi.fn(),
   setCostCenter: vi.fn(),
-  getPersonnelCostSettings: vi.fn(),
-  updatePersonnelCostSettings: vi.fn(),
 }));
 
 const AYSE: CostEmployee = {
@@ -68,6 +66,7 @@ function costRow(employee: CostEmployee, extra: Partial<PersonnelCostRow>): Pers
     employer_share: "7987.50",
     total_cost: "52987.50",
     missing_wage: false,
+    payroll_external: false,
     ...extra,
   };
 }
@@ -94,7 +93,9 @@ function report(extra: Partial<PersonnelCostReport> = {}): PersonnelCostReport {
     attendance_status: "APPROVED",
     attendance_number: "PT-2026-00009",
     attendance_approved: true,
-    employer_rate: "17.75",
+    employer_rate: "18.75",
+    parameters_origin: "legal_default",
+    parameters_year: 2026,
     missing_wage_count: 1,
     gross_salary: "69166.67",
     overtime_pay: "2000.00",
@@ -152,10 +153,6 @@ beforeEach(() => {
     { department: "Dolum", stage: "" },
     { department: "Üretim", stage: "PRODUCTION" },
   ]);
-  vi.mocked(costingApi.getPersonnelCostSettings).mockResolvedValue({
-    employer_rate: "17.75",
-    updated_at: "",
-  });
 });
 
 describe("personel maliyeti", () => {
@@ -166,7 +163,12 @@ describe("personel maliyeti", () => {
     expect(costingApi.getPersonnelCost).toHaveBeenCalledWith(2026, 9);
     expect(screen.getByText("Eylül 2026")).toBeInTheDocument();
     expect(screen.getByText("Puantaj onaylı · PT-2026-00009")).toBeInTheDocument();
-    expect(screen.getByText("İşveren payı (%17,75)")).toBeInTheDocument();
+    expect(screen.getByText("İşveren payı (%18,75)")).toBeInTheDocument();
+    expect(screen.getByText("Bordro parametreleri kaydedilmedi")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Bordroyu aç" })).toHaveAttribute(
+      "href",
+      "/personel/bordro?ay=2026-09",
+    );
     expect(screen.getByText("54,0689")).toBeInTheDocument();
     expect(screen.getByLabelText(/2 malzemede yoğunluk girilmediği/)).toBeInTheDocument();
     const can = screen.getByText("Can Kaya").closest("tr")!;
@@ -226,7 +228,9 @@ describe("personel maliyeti", () => {
       await screen.findByRole("button", { name: "Oran olarak ekle: Dolum (mamul)" }),
     );
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/Bu aşamada 1 kişinin ücreti eksik/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/Bu aşamada 1 kişinin ücreti ya da mali müşavir rakamları eksik/),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText(/2 malzemenin üretimi kg'a çevrilemedi/)).toBeInTheDocument();
   });
 
@@ -286,13 +290,104 @@ describe("personel maliyeti", () => {
     );
   });
 
-  it("birim eşleştirmesi (genel gider dahil) ve işveren payı kaydedilir", async () => {
+  it("rakamı girilmemiş mali müşavir kişisi Ücretler'e değil Bordro'ya yönlendirilir", async () => {
+    vi.mocked(costingApi.getPersonnelCost).mockResolvedValue(
+      report({
+        month: 10,
+        period_label: "Ekim 2026",
+        rows: [
+          costRow(ECE, {
+            stage: "FILLING",
+            payroll_external: true,
+            gross_monthly: null,
+            gross_salary: "0.00",
+            employer_share: "0.00",
+            total_cost: "0.00",
+            missing_wage: true,
+          }),
+        ],
+      }),
+    );
+    renderApp("/maliyet/personel?ay=2026-10");
+    const row = (await screen.findByText("Ece Ak")).closest("tr")!;
+    expect(within(row).getByText("Bordrosu mali müşavirde")).toBeInTheDocument();
+    expect(within(row).getByText("Rakam girilmedi")).toBeInTheDocument();
+    expect(screen.getByText(/olan 1 kişinin bu ay rakamları girilmedi/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Rakamları gir" })).toHaveAttribute(
+      "href",
+      "/personel/bordro?ay=2026-10",
+    );
+    expect(screen.queryByRole("link", { name: "Ücretleri aç" })).not.toBeInTheDocument();
+  });
+
+  it("mali müşavir ve ücret eksikleri ayrı uyarılır; ayrılan mali müşavir kişisi Ücretler'i ayrılanlarla açtırmaz", async () => {
+    vi.mocked(costingApi.getPersonnelCost).mockResolvedValue(
+      report({
+        month: 10,
+        period_label: "Ekim 2026",
+        rows: [
+          costRow(ECE, {
+            stage: "FILLING",
+            payroll_external: true,
+            gross_monthly: null,
+            gross_salary: "0.00",
+            employer_share: "0.00",
+            total_cost: "0.00",
+            missing_wage: true,
+          }),
+          costRow(CAN, { stage: "FILLING", missing_wage: true }),
+        ],
+      }),
+    );
+    renderApp("/maliyet/personel?ay=2026-10");
+    const ece = (await screen.findByText("Ece Ak")).closest("tr")!;
+    expect(within(ece).getByText("Rakam girilmedi")).toBeInTheDocument();
+    expect(within(ece).queryByText("Ücret eksik")).not.toBeInTheDocument();
+    const can = screen.getByText("Can Kaya").closest("tr")!;
+    expect(within(can).getByText("Ücret eksik")).toBeInTheDocument();
+    expect(screen.getByText(/olan 1 kişinin bu ay rakamları girilmedi/)).toBeInTheDocument();
+    expect(screen.getByText(/^1 kişinin ücreti ayın tamamı/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Rakamları gir" })).toHaveAttribute(
+      "href",
+      "/personel/bordro?ay=2026-10",
+    );
+    // Ayrılan mali müşavir kişisi (Ece) Ücretler bağlantısına ?ayrilanlar=1 eklemez.
+    expect(screen.getByRole("link", { name: "Ücretleri aç" })).toHaveAttribute(
+      "href",
+      "/personel/ucretler",
+    );
+  });
+
+  it("tahmini parametreler kırmızı rozetle; mali müşavir rakamı girilen kişide eksik rozeti yok", async () => {
+    vi.mocked(costingApi.getPersonnelCost).mockResolvedValue(
+      report({
+        parameters_origin: "fallback",
+        parameters_year: 2026,
+        rows: [
+          costRow(AYSE, {
+            payroll_external: true,
+            gross_monthly: null,
+            gross_salary: "41000.00",
+            employer_share: "9000.00",
+            total_cost: "50000.00",
+          }),
+        ],
+      }),
+    );
+    renderApp("/maliyet/personel?ay=2026-09");
+    const fallback = await screen.findByText("Bordro parametreleri yok (2026 ile tahmin)");
+    expect(fallback.closest(".mantine-Badge-root")?.getAttribute("style") ?? "").toContain(
+      "--mantine-color-red",
+    );
+    const row = screen.getByText("Ayşe Demir").closest("tr")!;
+    expect(within(row).getByText("Bordrosu mali müşavirde")).toBeInTheDocument();
+    expect(within(row).queryByText("Rakam girilmedi")).not.toBeInTheDocument();
+    expect(within(row).queryByText("Ücret eksik")).not.toBeInTheDocument();
+  });
+
+  it("birim eşleştirmesi (genel gider dahil) kaydedilir; tek işveren payı ayarı yok", async () => {
     const user = userEvent.setup();
     vi.mocked(costingApi.setCostCenter).mockImplementation(async (center) => center);
-    vi.mocked(costingApi.updatePersonnelCostSettings).mockResolvedValue({
-      employer_rate: "20.50",
-      updated_at: "",
-    });
     // Ücretler Personel'e taşındı; ayarlar personel maliyeti sekmesinin altında.
     renderApp("/maliyet/personel?ay=2026-09");
     // Sayfa yüklendikten sonra: eski "Personel ücretleri" sekmesi yok.
@@ -317,16 +412,8 @@ describe("personel maliyeti", () => {
     await waitFor(() =>
       expect(costingApi.setCostCenter).toHaveBeenCalledWith({ department: "Üretim", stage: "" }),
     );
-    const rate = await screen.findByLabelText("Oran (%)");
-    await waitFor(() => expect(rate).toHaveValue("17,75"));
-    const save = screen.getByRole("button", { name: "Kaydet" });
-    expect(save).toBeDisabled();
-    await user.clear(rate);
-    await user.type(rate, "20,5");
-    await user.click(save);
-    await waitFor(() =>
-      expect(costingApi.updatePersonnelCostSettings).toHaveBeenCalledWith("20.5"),
-    );
+    // İşveren payı Personel > Bordro > Parametreler'den gelir (teşvik puanı).
+    expect(screen.queryByLabelText("Oran (%)")).not.toBeInTheDocument();
   });
 
   it.each(["/maliyet/ucretler", "/maliyet/personel"])(

@@ -1,5 +1,6 @@
 """Personel kartları: kimlik ve görev bilgileri (2026-10-25), özlük bilgileri ve belgeleri,
-puantaj (2026-10-29), ücretler (2026-11-01, maliyet modülünden taşındı; docs/DECISIONS.md).
+puantaj (2026-10-29), ücretler (2026-11-01, maliyet modülünden taşındı) ve ön bordro (2026-11-01;
+docs/DECISIONS.md).
 
 Sistemi kullanmayan çalışanlar da kaydedilir; sistem hesabı olanın kartı kullanıcısına bağlanır.
 Kart silinmez: işten ayrılan pasife alınır ve çıkış tarihi yazılır. Kişisel veridir; yalnızca admin
@@ -54,6 +55,12 @@ class Employee(MasterDataModel):
     school = models.CharField("okul", max_length=200, blank=True)
     field_of_study = models.CharField("bölüm", max_length=200, blank=True)
     graduation_year = models.PositiveSmallIntegerField("mezuniyet yılı", null=True, blank=True)
+    # Bordro (docs/DECISIONS.md "Personel bordrosu"). Emekli (SGDP), engelli, kısmi süreli, net
+    # ücretle anlaşılmış ya da başka işyerinde de çalışan kişinin bordrosu mali müşavirdedir ve
+    # ERP'de hesaplanmaz; nedeni yazılmaz (engellilik sağlık verisidir, KVKK m.6).
+    payroll_external = models.BooleanField("bordrosu mali müşavirde", default=False)
+    # BES otomatik katılım: kesinti her ay SGK matrahının yüzdesi (bordro parametresi).
+    bes_enrolled = models.BooleanField("BES'e dahil", default=False)
     user = models.OneToOneField(
         User,
         verbose_name="sistem kullanıcısı",
@@ -310,6 +317,9 @@ class AttendanceEntry(BaseModel):
     overtime_hours = models.DecimalField(
         "fazla mesai (saat)", max_digits=5, decimal_places=2, default=Decimal(0)
     )
+    # Yarım gün tatilde (28 Ekim, arife) öğleden sonra da çalıştı: bordroda yarım günlük ilave
+    # ücret (docs/DECISIONS.md "Personel bordrosu"). Yalnızca çalışılan güne girilir.
+    holiday_half_worked = models.BooleanField("yarım gün tatilde çalıştı", default=False)
     note = models.CharField("not", max_length=200, blank=True)
 
     class Meta:
@@ -330,6 +340,13 @@ class AttendanceEntry(BaseModel):
                 name="personnel_attendance_overtime_status",
                 violation_error_message=(
                     "Fazla mesai yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir."
+                ),
+            ),
+            models.CheckConstraint(
+                condition=Q(holiday_half_worked=False) | Q(status=AttendanceStatus.WORKED),
+                name="personnel_attendance_half_holiday_worked",
+                violation_error_message=(
+                    "Yarım gün tatil çalışması yalnızca çalışılan güne girilir."
                 ),
             ),
         ]
@@ -388,3 +405,148 @@ class EmployeeWage(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.employee_id} {self.gross_monthly} ({self.valid_from})"
+
+
+# --- ön bordro (docs/DECISIONS.md "Personel bordrosu") ------------------------------------------
+
+PARAMETER_RATE_FIELDS = (
+    "employee_sgk_rate",
+    "employee_unemployment_rate",
+    "employer_sgk_rate",
+    "employer_unemployment_rate",
+    "incentive_points",
+    "tax_rate_1",
+    "tax_rate_2",
+    "tax_rate_3",
+    "tax_rate_4",
+    "tax_rate_5",
+    "bes_rate",
+)
+
+
+def _percent(label: str) -> models.DecimalField:
+    return models.DecimalField(label, max_digits=5, decimal_places=2)
+
+
+def _amount(label: str) -> models.DecimalField:
+    return models.DecimalField(label, max_digits=18, decimal_places=2)
+
+
+def _rates_in_range() -> Q:
+    condition = Q()
+    for name in PARAMETER_RATE_FIELDS:
+        condition &= Q(**{f"{name}__gte": 0, f"{name}__lte": 100})
+    return condition
+
+
+class PayrollParameterSet(MasterDataModel):
+    """Bordro parametreleri: bir yılın yasal değerleri, ayın ilk gününden geçerli. Yıl içinde
+    değişirse (ör. Temmuz'da asgari ücret) o aydan geçerli yeni set açılır; set yalnızca kendi
+    yılına uygulanır. Oranlar yüzde, damga vergisi binde; gelir vergisi tarifesi dört dilim üst
+    sınırı ve beş oran. Silinmez; yanlış set pasife alınır."""
+
+    valid_from = models.DateField("geçerlilik başlangıcı")
+    minimum_wage = _amount("asgari ücret (aylık brüt, TL)")
+    ceiling_multiplier = models.DecimalField(
+        "SGK üst sınır çarpanı", max_digits=5, decimal_places=2
+    )
+    employee_sgk_rate = _percent("SGK işçi payı (%)")
+    employee_unemployment_rate = _percent("işsizlik işçi payı (%)")
+    employer_sgk_rate = _percent("SGK işveren payı (%)")
+    employer_unemployment_rate = _percent("işsizlik işveren payı (%)")
+    # 5510 s. Kanun m.81/ı: imalatta 5 puan, diğer sektörlerde 2 puan, şartlar sağlanmazsa 0.
+    incentive_points = _percent("SGK işveren teşviki (puan)")
+    stamp_tax_per_mille = models.DecimalField(
+        "damga vergisi (binde)", max_digits=6, decimal_places=3
+    )
+    tax_bracket_1 = _amount("gelir vergisi 1. dilim üst sınırı (TL)")
+    tax_bracket_2 = _amount("gelir vergisi 2. dilim üst sınırı (TL)")
+    tax_bracket_3 = _amount("gelir vergisi 3. dilim üst sınırı (TL)")
+    tax_bracket_4 = _amount("gelir vergisi 4. dilim üst sınırı (TL)")
+    tax_rate_1 = _percent("gelir vergisi 1. dilim oranı (%)")
+    tax_rate_2 = _percent("gelir vergisi 2. dilim oranı (%)")
+    tax_rate_3 = _percent("gelir vergisi 3. dilim oranı (%)")
+    tax_rate_4 = _percent("gelir vergisi 4. dilim oranı (%)")
+    tax_rate_5 = _percent("gelir vergisi 5. dilim oranı (%)")
+    bes_rate = _percent("BES katkı payı (%)")
+    source = models.CharField("kaynak", max_length=500, blank=True)
+    note = models.CharField("not", max_length=200, blank=True)
+
+    class Meta:
+        verbose_name = "bordro parametreleri"
+        verbose_name_plural = "bordro parametreleri"
+        ordering = ["-valid_from", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["valid_from"],
+                condition=Q(is_active=True),
+                name="personnel_payroll_parameters_date_uniq",
+                violation_error_message="Bu tarihten geçerli bir parametre seti zaten var.",
+            ),
+            models.CheckConstraint(
+                condition=Q(valid_from__day=1),
+                name="personnel_payroll_parameters_first_day",
+                violation_error_message="Geçerlilik başlangıcı ayın ilk günü olmalı.",
+            ),
+            models.CheckConstraint(
+                condition=Q(minimum_wage__gt=0, ceiling_multiplier__gte=1)
+                & Q(stamp_tax_per_mille__gte=0, stamp_tax_per_mille__lte=100)
+                & Q(incentive_points__lte=F("employer_sgk_rate"))
+                & _rates_in_range(),
+                name="personnel_payroll_parameters_values",
+                violation_error_message="Parametre değerleri geçersiz.",
+            ),
+            models.CheckConstraint(
+                condition=Q(tax_bracket_1__gt=0)
+                & Q(tax_bracket_2__gt=F("tax_bracket_1"))
+                & Q(tax_bracket_3__gt=F("tax_bracket_2"))
+                & Q(tax_bracket_4__gt=F("tax_bracket_3")),
+                name="personnel_payroll_parameters_brackets",
+                violation_error_message="Gelir vergisi dilim sınırları artan olmalı.",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Bordro parametreleri {self.valid_from:%m.%Y}"
+
+
+class ExternalPayrollFigure(BaseModel):
+    """Bordrosu mali müşavirde olan kişinin (`Employee.payroll_external`) ay rakamları: mali
+    müşavirin bordrosundaki brüt toplam ve işverene maliyet. İşveren maliyeti tablosu ve personel
+    maliyeti eksik kalmasın diye elle girilir; değişiklik denetim günlüğüne yazılır."""
+
+    employee = models.ForeignKey(
+        Employee,
+        verbose_name="personel",
+        on_delete=models.PROTECT,
+        related_name="external_payroll",
+    )
+    year = models.PositiveSmallIntegerField("yıl")
+    month = models.PositiveSmallIntegerField("ay")
+    gross_total = _amount("brüt toplam (TL)")
+    employer_cost = _amount("işverene maliyet (TL)")
+    note = models.CharField("not", max_length=200, blank=True)
+
+    class Meta:
+        verbose_name = "mali müşavir bordrosu"
+        verbose_name_plural = "mali müşavir bordroları"
+        ordering = ["-year", "-month", "employee_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "year", "month"],
+                name="personnel_external_payroll_month_uniq",
+                violation_error_message="Bu kişinin bu ay için rakamları zaten girilmiş.",
+            ),
+            models.CheckConstraint(
+                condition=Q(month__gte=1, month__lte=12)
+                & Q(gross_total__gte=0)
+                & Q(employer_cost__gte=F("gross_total")),
+                name="personnel_external_payroll_values",
+                violation_error_message=(
+                    "Brüt toplam negatif olamaz; işverene maliyet brüt toplamdan az olamaz."
+                ),
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.employee_id} {self.month:02d}.{self.year}"

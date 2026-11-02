@@ -8,6 +8,7 @@ import django_filters
 from django.db.models import QuerySet
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
+from django.utils.http import content_disposition_header
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
@@ -20,9 +21,15 @@ from rest_framework.views import APIView
 
 from apps.core.models import User
 from apps.core.permissions import HasRole
-from apps.personnel import exports, selectors, services
+from apps.personnel import exports, pdf, selectors, services
 from apps.personnel.api import serializers as s
-from apps.personnel.models import Employee, EmployeeDocument, EmployeeWage, PublicHoliday
+from apps.personnel.models import (
+    Employee,
+    EmployeeDocument,
+    EmployeeWage,
+    PayrollParameterSet,
+    PublicHoliday,
+)
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -315,6 +322,7 @@ class AttendanceDayView(APIView):
             status=data["status"],
             overtime_hours=data["overtime_hours"],
             note=data["note"],
+            holiday_half_worked=data["holiday_half_worked"],
         )
         return Response(s.AttendanceEntrySerializer(entry).data)
 
@@ -456,3 +464,147 @@ class EmployeeWageViewSet(
         query.is_valid(raise_exception=True)
         rows = selectors.wage_summary(include_former=query.validated_data["include_former"])
         return Response(s.WageSummarySerializer(rows, many=True).data)
+
+
+# --- ön bordro (docs/DECISIONS.md "Personel bordrosu") -------------------------------------------
+
+PDF = "application/pdf"
+
+
+def _private_file(
+    content: bytes, content_type: str, filename: str, *, inline: bool
+) -> HttpResponse:
+    """Ücret içeren dosya: tarayıcı önbelleğine alınmaz, içerik türü tahmin edilmez."""
+    response = HttpResponse(content, content_type=content_type)
+    response["Content-Disposition"] = content_disposition_header(not inline, filename) or ""
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+def _payroll(request: Request, year: int, month: int) -> selectors.PayrollMonth:
+    _check_month(year, month)
+    return selectors.payroll_month(year, month, department=_department(request))
+
+
+class PayrollMonthView(APIView):
+    """Ayın ön bordrosu (canlı hesap): kişi satırları, toplamlar, parametreler ve uyarılar."""
+
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+
+    @extend_schema(parameters=[DEPARTMENT_PARAM], responses=s.PayrollMonthSerializer)
+    def get(self, request: Request, year: int, month: int) -> Response:
+        return Response(s.PayrollMonthSerializer(_payroll(request, year, month)).data)
+
+
+class PayrollEmployerCostPdfView(APIView):
+    """İşveren maliyeti tablosu (PDF, A4 yatay); açılış denetim günlüğüne yazılır."""
+
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+
+    @extend_schema(parameters=[DEPARTMENT_PARAM], responses={(200, PDF): OpenApiTypes.BINARY})
+    def get(self, request: Request, year: int, month: int) -> HttpResponse:
+        payroll = _payroll(request, year, month)
+        content = pdf.employer_cost_pdf(payroll, draft=True)
+        services.record_payroll_access(_user(request), year, month, "İşveren maliyeti (PDF)")
+        return _private_file(content, PDF, f"isveren-maliyeti-{year}-{month:02d}.pdf", inline=True)
+
+
+class PayrollExcelView(APIView):
+    """Ön bordro Excel'i (işveren maliyeti, parametreler); açılış denetim günlüğüne yazılır."""
+
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+
+    @extend_schema(parameters=[DEPARTMENT_PARAM], responses={(200, XLSX): OpenApiTypes.BINARY})
+    def get(self, request: Request, year: int, month: int) -> HttpResponse:
+        payroll = _payroll(request, year, month)
+        content = exports.payroll_xlsx(payroll, draft=True)
+        services.record_payroll_access(_user(request), year, month, "Bordro (Excel)")
+        return _private_file(content, XLSX, f"bordro-{year}-{month:02d}.xlsx", inline=False)
+
+
+class ExternalPayrollView(APIView):
+    """Bordrosu mali müşavirde olan kişinin ay rakamlarını yazar (brüt toplam, işverene maliyet)."""
+
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+
+    @extend_schema(request=s.ExternalFigureInputSerializer, responses=s.ExternalFigureSerializer)
+    def post(self, request: Request, year: int, month: int) -> Response:
+        _check_month(year, month)
+        body = s.ExternalFigureInputSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        figure = services.set_external_payroll(
+            _user(request),
+            data["employee"],
+            year,
+            month,
+            gross_total=data["gross_total"],
+            employer_cost=data["employer_cost"],
+            note=data["note"],
+        )
+        return Response(s.ExternalFigureSerializer(figure).data)
+
+
+class PayrollParameterSetViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Bordro parametre setleri (kaldırılanlar hariç, en yenisi önce). Silinmez; yanlış set `remove`
+    ile gerekçeyle kaldırılır. `defaults?year=` yılın yasal değerlerini verir (formu doldurmak
+    için)."""
+
+    serializer_class = s.PayrollParameterSetSerializer
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    pagination_class = None
+    queryset = PayrollParameterSet.objects.filter(is_active=True).select_related("updated_by")
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_queryset(self) -> QuerySet[PayrollParameterSet]:
+        return selectors.parameter_sets().select_related("updated_by")
+
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Parametre seti açar."""
+        body = self.get_serializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        instance = services.create_parameter_set(_user(request), _parameter_values(body))
+        return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Parametre setini düzeltir (yalnızca gönderilen değerler)."""
+        instance = self.get_object()
+        body = self.get_serializer(instance, data=request.data, partial=True)
+        body.is_valid(raise_exception=True)
+        instance = services.update_parameter_set(_user(request), instance, _parameter_values(body))
+        return Response(self.get_serializer(instance).data)
+
+    @extend_schema(request=s.ReasonSerializer, responses=s.PayrollParameterSetSerializer)
+    @action(detail=True, methods=["post"])
+    def remove(self, request: Request, pk: str | None = None) -> Response:
+        """Parametre setini kaldırır (neden zorunlu)."""
+        body = s.ReasonSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        instance = services.remove_parameter_set(
+            _user(request), self.get_object(), body.validated_data["reason"]
+        )
+        return Response(self.get_serializer(instance).data)
+
+    @extend_schema(
+        parameters=[s.ParameterDefaultsQuerySerializer], responses=s.ParameterDefaultsSerializer
+    )
+    @action(detail=False, methods=["get"])
+    def defaults(self, request: Request) -> Response:
+        """Yılın yasal değerleri ve kaynakları."""
+        query = s.ParameterDefaultsQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        data = s.defaults_data(query.validated_data["year"])
+        return Response(s.ParameterDefaultsSerializer(data).data)
+
+
+def _parameter_values(body: serializers.BaseSerializer) -> dict[str, Any]:
+    """Formdan gelen değerler (salt okunur alanlar hariç)."""
+    allowed = {"valid_from", *s.PARAMETER_VALUE_FIELDS, "source", "note"}
+    return {key: value for key, value in body.validated_data.items() if key in allowed}

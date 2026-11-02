@@ -1,19 +1,15 @@
-// Maliyet > Personel maliyeti ayarları: birimlerin maliyet aşaması ve işveren payı. Ücretler
-// Personel > Ücretler'dedir (2026-11-01'de taşındı).
-import { Button, Group, Loader, Select, Stack, Text, TextInput, Title } from "@mantine/core";
+// Maliyet > Personel maliyeti ayarları: birimlerin maliyet aşaması. Ücretler Personel >
+// Ücretler'de, işveren payının yerini alan bordro parametreleri Personel > Bordro'dadır.
+import { Loader, Select, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import {
-  getPersonnelCostSettings,
   listCostCenters,
   personnelCostKeys,
   setCostCenter,
-  updatePersonnelCostSettings,
   type CostCenter,
   type CostCenterStage,
 } from "../../api/costing";
-import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { stageLabel } from "./personnelCostFormat";
 import { ErrorAlert, ReportTable } from "./ReportTable";
 import { kt } from "./strings";
@@ -75,54 +71,6 @@ export function CostCentersSection() {
           ]}
         />
       )}
-    </Stack>
-  );
-}
-
-/** İşveren payı (%): değişince bütün ayların raporu yeni oranla okunur. */
-export function EmployerRateSection() {
-  const queryClient = useQueryClient();
-  const settings = useQuery({
-    queryKey: personnelCostKeys.settings,
-    queryFn: getPersonnelCostSettings,
-  });
-  const [draft, setDraft] = useState<string | null>(null);
-  const saved = settings.data ? trimDecimal(settings.data.employer_rate).replace(".", ",") : "";
-  const value = draft ?? saved;
-  const save = useMutation({
-    mutationFn: () => updatePersonnelCostSettings(normalizeDecimal(value)),
-    onSuccess: (data) => {
-      notifications.show({ color: "green", message: kt.employerRateSaved });
-      queryClient.setQueryData(personnelCostKeys.settings, data);
-      setDraft(null);
-      void queryClient.invalidateQueries({ queryKey: personnelCostKeys.all });
-    },
-  });
-  return (
-    <Stack gap="xs">
-      <Title order={4}>{kt.employerRate}</Title>
-      <Text size="sm" c="dimmed" maw={860}>
-        {kt.employerRateHint}
-      </Text>
-      {settings.isError && <ErrorAlert error={settings.error} />}
-      <Group align="flex-end">
-        <TextInput
-          label={kt.employerRateLabel}
-          inputMode="decimal"
-          w={160}
-          value={value}
-          disabled={!settings.data}
-          onChange={(event) => setDraft(event.currentTarget.value)}
-        />
-        <Button
-          onClick={() => save.mutate()}
-          loading={save.isPending}
-          disabled={draft === null || !draft.trim() || draft === saved}
-        >
-          {kt.save}
-        </Button>
-      </Group>
-      {save.isError && <ErrorAlert error={save.error} />}
     </Stack>
   );
 }

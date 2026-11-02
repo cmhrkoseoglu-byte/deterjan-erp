@@ -14,9 +14,11 @@ Hesap olayla tetiklenir (bkz. `handlers.py`); üretim ve dolum modülleri maliye
 lotunun maliyeti henüz yoksa önce o hesaplanır. Lotun güncel birim maliyeti
 `inventory.services.set_lot_cost` ile `Lot.unit_cost`'a yazılır.
 
-Personel maliyeti (2026-10-29): birim eşleştirmesi ve işveren payı burada yazılır; aylık hesap
-`selectors.personnel_cost_report`'tadır ve puantajı ile ücretleri (personnel) yalnızca okur.
-Ücretler 2026-11-01'den beri personel modülündedir (`personnel.services.add_wage`).
+Personel maliyeti (2026-10-29): birim eşleştirmesi burada yazılır; aylık hesap
+`selectors.personnel_cost_report`'tadır ve personel modülünün ön bordro hesabını (puantaj,
+ücretler, bordro parametreleri) yalnızca okur. Ücretler ve işveren payının yerini alan bordro
+parametreleri 2026-11-01'den beri personel modülündedir. Eski tek işveren payı ayarı
+(`PersonnelCostSettings`) artık okunmaz; tablo, geçmiş kayıtlar silinmesin diye durur.
 """
 
 from collections import defaultdict
@@ -43,7 +45,6 @@ from apps.costing.models import (
     DepartmentCostCenter,
     LotCost,
     LotCostLine,
-    PersonnelCostSettings,
     StandardCost,
 )
 from apps.filling.models import ConsumptionKind, FillingRun, ScrapRecord
@@ -689,35 +690,6 @@ def _require_personnel_cost_role(actor: User | None) -> None:
 
 def _clean_text(value: Any) -> str:
     return " ".join(str(value or "").split())
-
-
-def get_personnel_cost_settings() -> PersonnelCostSettings:
-    """Personel maliyeti ayarları (tek kayıt). Kayıt yoksa kaydedilmemiş varsayılan döner (işveren
-    payı %17,75); kayıt ilk değişiklikte denetim kaydıyla açılır."""
-    return PersonnelCostSettings.objects.order_by("pk").first() or PersonnelCostSettings()
-
-
-@transaction.atomic
-def update_personnel_cost_settings(actor: User, employer_rate: Decimal) -> PersonnelCostSettings:
-    """İşveren payını (yüzde, 0–100) değiştirir. Rapor saklanmaz, her açılışta hesaplanır; bu
-    yüzden bütün aylar yeni oranla görünür."""
-    _require_personnel_cost_role(actor)
-    if employer_rate is None or not ZERO <= employer_rate <= 100:
-        raise BusinessRuleError(
-            "invalid_employer_rate", "İşveren payı %0 ile %100 arasında olmalı."
-        )
-    instance = PersonnelCostSettings.objects.select_for_update().order_by("pk").first()
-    if instance is None:
-        try:
-            with transaction.atomic():
-                return save_with_audit(
-                    PersonnelCostSettings(pk=1, employer_rate=employer_rate), actor
-                )
-        except IntegrityError:
-            # Aynı anda ilk kaydı başka biri açtı: onu güncelle.
-            instance = PersonnelCostSettings.objects.select_for_update().get(pk=1)
-    instance.employer_rate = employer_rate
-    return save_with_audit(instance, actor)
 
 
 @transaction.atomic

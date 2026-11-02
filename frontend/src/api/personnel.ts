@@ -37,6 +37,10 @@ export interface Employee {
   school: string;
   field_of_study: string;
   graduation_year: number | null;
+  /** Bordrosu mali müşavirde (emekli, engelli, kısmi süreli, net ücretli…); ERP'de hesaplanmaz. */
+  payroll_external: boolean;
+  /** BES otomatik katılım: kesinti her ay SGK matrahının yüzdesi. */
+  bes_enrolled: boolean;
   /** Bağlı sistem kullanıcısı (yoksa sistemi kullanmıyor). */
   user: number | null;
   user_info: LinkedUser | null;
@@ -62,6 +66,8 @@ export type EmployeeInput = Pick<
   | "school"
   | "field_of_study"
   | "graduation_year"
+  | "payroll_external"
+  | "bes_enrolled"
   | "user"
 >;
 

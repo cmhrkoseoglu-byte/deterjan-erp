@@ -2,6 +2,7 @@ import {
   Alert,
   Autocomplete,
   Button,
+  Checkbox,
   Group,
   Modal,
   Select,
@@ -81,6 +82,8 @@ export function EmployeeFormModal({ employee, onClose, onSaved }: Props) {
   const [userId, setUserId] = useState<string | null>(
     employee?.user != null ? String(employee.user) : null,
   );
+  const [payrollExternal, setPayrollExternal] = useState(employee?.payroll_external ?? false);
+  const [besEnrolled, setBesEnrolled] = useState(employee?.bes_enrolled ?? false);
   const [errors, setErrors] = useState<Errors>({});
 
   const departments = useQuery({
@@ -112,6 +115,8 @@ export function EmployeeFormModal({ employee, onClose, onSaved }: Props) {
         school: school.trim(),
         field_of_study: fieldOfStudy.trim(),
         graduation_year: year ? Number(year) : null,
+        payroll_external: payrollExternal,
+        bes_enrolled: besEnrolled,
         user: userId ? Number(userId) : null,
       };
       return employee === null ? createEmployee(input) : updateEmployee(employee.id, input);
@@ -273,6 +278,21 @@ export function EmployeeFormModal({ employee, onClose, onSaved }: Props) {
               autoComplete="off"
             />
           </Section>
+          <Stack gap="xs" mt={4}>
+            <Text fw={600}>{pe.sectionPayroll}</Text>
+            <Checkbox
+              label={pe.payrollExternal}
+              description={pe.payrollExternalHelp}
+              checked={payrollExternal}
+              onChange={(e) => setPayrollExternal(e.currentTarget.checked)}
+            />
+            <Checkbox
+              label={pe.besEnrolled}
+              description={pe.besEnrolledHelp}
+              checked={besEnrolled}
+              onChange={(e) => setBesEnrolled(e.currentTarget.checked)}
+            />
+          </Stack>
           <Select
             label={pe.user}
             description={pe.userHelp}

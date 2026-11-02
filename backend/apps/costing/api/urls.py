@@ -36,11 +36,6 @@ urlpatterns = [
         name="personnel-cost-labor-rate",
     ),
     path("cost-centers/", views.CostCenterView.as_view(), name="cost-centers"),
-    path(
-        "personnel-cost-settings/",
-        views.PersonnelCostSettingsView.as_view(),
-        name="personnel-cost-settings",
-    ),
 ]
 for name, (json_view, excel_view) in REPORTS.items():
     urlpatterns += [
