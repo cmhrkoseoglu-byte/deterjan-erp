@@ -143,6 +143,7 @@ PERSONNEL_COST: Sequence[Column] = (
     ("overtime_hours", "Fazla mesai (saat)"),
     ("gross_salary", "Brüt ücret (TL)"),
     ("overtime_pay", "Fazla mesai (TL)"),
+    ("extras_total", "Ek ödeme (TL)"),
     ("employer_share", "İşveren payı (TL)"),
     ("total_cost", "Toplam maliyet (TL)"),
     ("missing_wage", "Ücret eksik"),
@@ -183,6 +184,7 @@ def personnel_cost_xlsx(report: PersonnelCostReport) -> bytes:
         {"label": "Bordro parametreleri", "value": _parameters_label(report)},
         {"label": "Brüt ücret toplamı (TL)", "value": report.gross_salary},
         {"label": "Fazla mesai toplamı (TL)", "value": report.overtime_pay},
+        {"label": "Ek ödeme toplamı (TL)", "value": report.extras_total},
         {"label": "İşveren payı toplamı (TL)", "value": report.employer_share},
         {"label": "Toplam personel maliyeti (TL)", "value": report.total_cost},
         # Ekrandaki iki uyarı gibi: eksik ücret Ücretler'de, mali müşavir rakamı Bordro'da girilir.
@@ -208,6 +210,7 @@ def personnel_cost_xlsx(report: PersonnelCostReport) -> bytes:
             "overtime_hours": row.overtime_hours,
             "gross_salary": row.gross_salary,
             "overtime_pay": row.overtime_pay,
+            "extras_total": row.extras_total,
             "employer_share": row.employer_share,
             "total_cost": row.total_cost,
             "missing_wage": row.missing_wage and not row.payroll_external,

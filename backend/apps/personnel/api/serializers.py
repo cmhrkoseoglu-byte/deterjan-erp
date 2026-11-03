@@ -18,10 +18,14 @@ from apps.personnel.models import (
     EmployeeDocument,
     EmployeeWage,
     ExternalPayrollFigure,
+    PayrollItem,
+    PayrollItemCategory,
+    PayrollOpeningBalance,
     PayrollParameterSet,
     PublicHoliday,
 )
 from apps.personnel.selectors import (
+    PAYROLL_START,
     AttendanceGrid,
     PayrollMonth,
     PayrollSettings,
@@ -465,15 +469,40 @@ class PayrollEmployeeSerializer(serializers.ModelSerializer):
 
 
 class PayrollItemSerializer(serializers.Serializer):
+    """Hesaptaki kalem (motor): `kind` kalemin kategorisidir (ör. MEAL, ADVANCE)."""
+
     kind = serializers.CharField()
     description = serializers.CharField(source="label")
     amount = _money()
+
+
+# Brütten nete hesaba bağlı kalemler: başlangıç ayından önce (bordro mali müşavirdeyken) boş döner.
+NET_LINE_FIELDS = (
+    "tax_base",
+    "cumulative_tax_base_before",
+    "cumulative_tax_base_after",
+    "income_tax_computed",
+    "income_tax_exemption",
+    "income_tax",
+    "exemption_base_before",
+    "exemption_base_added",
+    "stamp_tax_computed",
+    "stamp_tax_exemption",
+    "stamp_tax",
+    "net_pay",
+    "bes_deduction",
+    "deductions_total",
+    "payable",
+)
 
 
 class PayrollLineSerializer(serializers.Serializer):
     """Bordro satırının kalemleri (hesap motoru, `personnel.payroll.Result`)."""
 
     employed_days = serializers.IntegerField()
+    worked_days = serializers.IntegerField(
+        help_text="fiilen çalışılan gün (Ç, fazla mesaili hafta tatili ve resmî tatil)"
+    )
     paid_days = serializers.IntegerField(help_text="30 gün usulü ücretli gün")
     unpaid_days = serializers.IntegerField(help_text="ücretsiz izin + rapor + devamsız")
     sick_days = serializers.IntegerField()
@@ -495,33 +524,42 @@ class PayrollLineSerializer(serializers.Serializer):
     extras = PayrollItemSerializer(many=True)
     extras_total = _money()
     gross_total = _money()
+    meal_exemption = _money(help_text="nakit yemeğin SGK matrahına girmeyen kısmı")
+    sgk_gross = _money(help_text="SGK'ya tabi brüt (brüt − yemek istisnası)")
     sgk_base = _money()
     floor_applied = serializers.BooleanField()
     ceiling_applied = serializers.BooleanField()
     employee_sgk = _money()
     employee_unemployment = _money()
-    tax_base = _money()
-    cumulative_tax_base_before = _money()
-    cumulative_tax_base_after = _money()
-    income_tax_computed = _money()
-    income_tax_exemption = _money()
-    income_tax = _money()
-    exemption_base_before = _money()
-    exemption_base_added = _money()
-    stamp_tax_computed = _money()
-    stamp_tax_exemption = _money()
-    stamp_tax = _money()
-    net_pay = _money()
-    bes_deduction = _money()
+    tax_base = _money(allow_null=True)
+    cumulative_tax_base_before = _money(allow_null=True)
+    cumulative_tax_base_after = _money(allow_null=True)
+    income_tax_computed = _money(allow_null=True)
+    income_tax_exemption = _money(allow_null=True)
+    income_tax = _money(allow_null=True)
+    exemption_base_before = _money(allow_null=True)
+    exemption_base_added = _money(allow_null=True)
+    stamp_tax_computed = _money(allow_null=True)
+    stamp_tax_exemption = _money(allow_null=True)
+    stamp_tax = _money(allow_null=True)
+    net_pay = _money(allow_null=True)
+    bes_deduction = _money(allow_null=True)
     deductions = PayrollItemSerializer(many=True)
-    deductions_total = _money()
-    payable = _money()
+    deductions_total = _money(allow_null=True)
+    payable = _money(allow_null=True)
     employer_sgk_gross = _money()
     incentive = _money()
     employer_sgk = _money()
     employer_unemployment = _money()
     floor_gap = _money()
     employer_cost = _money()
+
+    def to_representation(self, instance: Any) -> Any:
+        data = super().to_representation(instance)
+        if not self.context.get("net", True):
+            for name in NET_LINE_FIELDS:
+                data[name] = None
+        return data
 
 
 class ExternalFigureSerializer(serializers.ModelSerializer):
@@ -553,6 +591,198 @@ class ExternalFigureInputSerializer(serializers.Serializer):
     note = _blank(max_length=200, label="not")
 
 
+MAX_BATCH_ROWS = 1000
+
+
+def _name(user: User | None) -> str | None:
+    return str(user) if user else None
+
+
+class PayrollItemRecordSerializer(serializers.ModelSerializer):
+    """Ek ödeme ya da kesinti kaydı. Açıklama kişisel veri olabilir (icra dosyası); yalnızca
+    yönetim ve admin görür."""
+
+    category_label = serializers.CharField(source="get_category_display", read_only=True)
+    employee_name = serializers.CharField(source="employee.full_name", read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+    removed_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PayrollItem
+        fields = [
+            "id",
+            "employee",
+            "employee_name",
+            "year",
+            "month",
+            "kind",
+            "category",
+            "category_label",
+            "description",
+            "amount",
+            "is_active",
+            "created_at",
+            "created_by_name",
+            "updated_at",
+            "updated_by_name",
+            "removed_at",
+            "removed_by_name",
+            "removal_reason",
+        ]
+        read_only_fields = fields
+
+    def get_created_by_name(self, obj: PayrollItem) -> str | None:
+        return _name(obj.created_by)
+
+    def get_updated_by_name(self, obj: PayrollItem) -> str | None:
+        return _name(obj.updated_by)
+
+    def get_removed_by_name(self, obj: PayrollItem) -> str | None:
+        return _name(obj.removed_by)
+
+
+class PayrollItemInputSerializer(serializers.Serializer):
+    employee = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), label="personel")
+    year = serializers.IntegerField(label="yıl")
+    month = serializers.IntegerField(label="ay")
+    category = serializers.ChoiceField(choices=PayrollItemCategory.choices, label="kategori")
+    description = _blank(max_length=100, label="açıklama")
+    amount = _money(label="tutar (TL)")
+
+
+class PayrollItemUpdateSerializer(serializers.Serializer):
+    """Kalemin düzeltilebilen alanları (kişi, ay ve tür değişmez)."""
+
+    category = serializers.ChoiceField(
+        choices=PayrollItemCategory.choices, label="kategori", required=False
+    )
+    description = serializers.CharField(
+        max_length=100, allow_blank=True, required=False, label="açıklama"
+    )
+    amount = _money(label="tutar (TL)", required=False)
+
+
+class PayrollItemRowSerializer(serializers.Serializer):
+    employee = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), label="personel")
+    category = serializers.ChoiceField(choices=PayrollItemCategory.choices, label="kategori")
+    description = _blank(max_length=100, label="açıklama")
+    amount = _money(label="tutar (TL)")
+
+
+class PayrollItemBatchSerializer(serializers.Serializer):
+    """Toplu ekleme ("Toplu ekle", "Geçen aydan kopyala"): hepsi kaydedilir ya da hiçbiri."""
+
+    year = serializers.IntegerField(label="yıl")
+    month = serializers.IntegerField(label="ay")
+    items = PayrollItemRowSerializer(many=True, allow_empty=False)
+
+    def validate_items(self, value: list[Any]) -> list[Any]:
+        if len(value) > MAX_BATCH_ROWS:
+            raise serializers.ValidationError(f"En çok {MAX_BATCH_ROWS} satır gönderilebilir.")
+        return value
+
+
+class PayrollOpeningSerializer(serializers.ModelSerializer):
+    """Devir: `month` ayından önceki kümülatif GV matrahı ve asgari ücret istisna matrahı."""
+
+    employee_name = serializers.CharField(source="employee.full_name", read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+    removed_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PayrollOpeningBalance
+        fields = [
+            "id",
+            "employee",
+            "employee_name",
+            "year",
+            "month",
+            "tax_base",
+            "exemption_months",
+            "exemption_base",
+            "note",
+            "is_active",
+            "created_at",
+            "created_by_name",
+            "updated_at",
+            "updated_by_name",
+            "removed_at",
+            "removed_by_name",
+            "removal_reason",
+        ]
+        read_only_fields = fields
+
+    def get_created_by_name(self, obj: PayrollOpeningBalance) -> str | None:
+        return _name(obj.created_by)
+
+    def get_updated_by_name(self, obj: PayrollOpeningBalance) -> str | None:
+        return _name(obj.updated_by)
+
+    def get_removed_by_name(self, obj: PayrollOpeningBalance) -> str | None:
+        return _name(obj.removed_by)
+
+
+class PayrollOpeningRowSerializer(serializers.Serializer):
+    employee = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), label="personel")
+    tax_base = _money(label="kümülatif gelir vergisi matrahı (TL)")
+    exemption_months = serializers.IntegerField(
+        min_value=0, max_value=11, label="asgari ücret istisnası uygulanan ay"
+    )
+    note = _blank(max_length=200, label="not")
+    confirm_override = serializers.BooleanField(
+        default=False,
+        help_text="kişi önceki ay ERP'de hesaplandıysa devrin o ayların yerine geçtiği onayı",
+    )
+
+
+class PayrollOpeningInputSerializer(PayrollOpeningRowSerializer):
+    year = serializers.IntegerField(label="yıl")
+    month = serializers.IntegerField(label="ay")
+
+
+class PayrollOpeningBatchSerializer(serializers.Serializer):
+    """Ayın devirleri (devir penceresinin tek "Kaydet"i): hepsi kaydedilir ya da hiçbiri."""
+
+    year = serializers.IntegerField(label="yıl")
+    month = serializers.IntegerField(label="ay")
+    rows = PayrollOpeningRowSerializer(many=True, allow_empty=False)
+
+    def validate_rows(self, value: list[Any]) -> list[Any]:
+        if len(value) > MAX_BATCH_ROWS:
+            raise serializers.ValidationError(f"En çok {MAX_BATCH_ROWS} satır gönderilebilir.")
+        return value
+
+
+class BatchErrorRowSerializer(serializers.Serializer):
+    index = serializers.IntegerField()
+    employee = serializers.IntegerField(allow_null=True)
+    code = serializers.CharField()
+    detail = serializers.CharField()
+
+
+class BatchErrorSerializer(serializers.Serializer):
+    """Toplu kaydın reddi (400): satır hataları; hiçbir satır kaydedilmedi."""
+
+    code = serializers.CharField()
+    detail = serializers.CharField()
+    rows = BatchErrorRowSerializer(many=True)
+
+
+class CarryMonthSerializer(serializers.Serializer):
+    """Ay başı kümülatifin halkası (`kind`): "opening" (devir; tutarlar `month` ayından önceki
+    kümülatif),
+    "erp" (o ayın eklenen GV matrahı ve istisna matrahı) ya da "external" (bordro mali müşavirdeydi;
+    zincir kopar)."""
+
+    month = serializers.IntegerField()
+    kind = serializers.CharField(source="source", help_text="opening, erp ya da external")
+    tax_base = _money()
+    exemption_base = _money()
+    flags = serializers.ListField(child=serializers.CharField())
+
+
 class PayrollRowSerializer(serializers.Serializer):
     employee = PayrollEmployeeSerializer()
     external = serializers.BooleanField(help_text="bordrosu mali müşavirde (rakamlar `figure`)")
@@ -561,6 +791,22 @@ class PayrollRowSerializer(serializers.Serializer):
     line = PayrollLineSerializer()
     gross_total = _money()
     employer_cost = _money()
+    items = PayrollItemRecordSerializer(many=True, help_text="ayın ek ödeme ve kesintileri")
+    opening = PayrollOpeningSerializer(
+        allow_null=True, help_text="zincirin çapası olan devir (bu ay ya da önceki bir ay)"
+    )
+    openings = PayrollOpeningSerializer(
+        many=True, help_text="kişinin bu yıl bu aya kadarki etkin devirleri (ay sırasıyla)"
+    )
+    entry_month = serializers.IntegerField(
+        allow_null=True, help_text="devrin beklendiği giriş ayı (zincir buradan başlar)"
+    )
+    opening_needed = serializers.BooleanField(help_text="giriş ayının devri girilmedi")
+    suggestion_months = serializers.IntegerField(
+        help_text="giriş ayı devri için asgari ücret istisnası ay önerisi (işe girişten)"
+    )
+    suggestion_base = _money(help_text="önerilen ayların asgari ücret istisna matrahı toplamı")
+    carry_months = CarryMonthSerializer(many=True, help_text="ay başı kümülatifin kuruluşu")
 
 
 class PayrollValuesSerializer(serializers.Serializer):
@@ -581,6 +827,7 @@ class PayrollValuesSerializer(serializers.Serializer):
     tax_rates = serializers.ListField(child=_money())
     exemption_base = _money(help_text="asgari ücretin gelir vergisi matrahı")
     bes_rate = _money()
+    meal_exemption_daily = _money(help_text="nakit yemek SGK istisnası (günlük TL)")
 
 
 def values_data(params: payroll.Parameters) -> dict[str, Any]:
@@ -600,6 +847,7 @@ def values_data(params: payroll.Parameters) -> dict[str, Any]:
         "tax_rates": list(params.tax_rates),
         "exemption_base": params.exemption_base,
         "bes_rate": params.bes_rate,
+        "meal_exemption_daily": params.meal_exemption_daily,
     }
 
 
@@ -648,14 +896,27 @@ TOTAL_FIELDS = (
 )
 
 
+NET_TOTAL_FIELDS = (
+    "income_tax",
+    "stamp_tax",
+    "net_pay",
+    "bes_deduction",
+    "deductions_total",
+    "payable",
+)
+
+
 class PayrollTotalsSerializer(serializers.Serializer):
     """Toplamlar. `gross_total` ve `employer_cost` mali müşavirde hesaplananların girilmiş
-    rakamlarını da içerir; diğerleri yalnızca ERP'de hesaplanan satırların toplamıdır."""
+    rakamlarını da içerir; `computed_*` ve diğerleri yalnızca ERP'de hesaplanan satırların
+    toplamıdır. Net toplamlar başlangıç ayından önce boştur."""
 
     employee_count = serializers.IntegerField()
     external_count = serializers.IntegerField()
     gross_total = _money()
     employer_cost = _money()
+    computed_gross_total = _money(help_text="ERP'de hesaplanan satırların brüt toplamı")
+    computed_employer_cost = _money(help_text="ERP'de hesaplanan satırların işverene maliyeti")
     salary = _money()
     overtime_worked_pay = _money()
     overtime_rest_pay = _money()
@@ -664,12 +925,12 @@ class PayrollTotalsSerializer(serializers.Serializer):
     sgk_base = _money()
     employee_sgk = _money()
     employee_unemployment = _money()
-    income_tax = _money()
-    stamp_tax = _money()
-    net_pay = _money()
-    bes_deduction = _money()
-    deductions_total = _money()
-    payable = _money()
+    income_tax = _money(allow_null=True)
+    stamp_tax = _money(allow_null=True)
+    net_pay = _money(allow_null=True)
+    bes_deduction = _money(allow_null=True)
+    deductions_total = _money(allow_null=True)
+    payable = _money(allow_null=True)
     employer_sgk_gross = _money()
     incentive = _money()
     employer_sgk = _money()
@@ -678,13 +939,18 @@ class PayrollTotalsSerializer(serializers.Serializer):
 
 
 def totals_data(month: PayrollMonth) -> dict[str, Any]:
-    return {
+    data = {
         "employee_count": len(month.rows),
         "external_count": sum(1 for row in month.rows if row.external),
         "gross_total": month.gross_total,
         "employer_cost": month.employer_cost,
+        "computed_gross_total": month.total("gross_total"),
+        "computed_employer_cost": month.total("employer_cost"),
         **{name: month.total(name) for name in TOTAL_FIELDS},
     }
+    if not month.net:
+        data.update(dict.fromkeys(NET_TOTAL_FIELDS))
+    return data
 
 
 class PayrollMonthSerializer(serializers.Serializer):
@@ -697,9 +963,26 @@ class PayrollMonthSerializer(serializers.Serializer):
     attendance_number = serializers.CharField()
     attendance_approved = serializers.BooleanField()
     attendance_finished = serializers.BooleanField(source="grid.finished")
+    net = serializers.BooleanField(
+        help_text="brütten nete hesaplandı (başlangıç ayından önce hayır; net alanları boş)"
+    )
+    net_available = serializers.BooleanField()
+    start = serializers.SerializerMethodField(help_text="brütten nete bordronun ilk ayı (YYYY-AA)")
     parameters = serializers.SerializerMethodField()
     rows = PayrollRowSerializer(many=True)
+    orphan_items = PayrollItemRecordSerializer(
+        many=True, help_text="bu ay işte olmayan kişilere girilmiş kalemler"
+    )
     totals = serializers.SerializerMethodField()
+
+    def to_representation(self, instance: PayrollMonth) -> Any:
+        # İç içe satır serileştiricileri net alanlarını bu bilgiyle boşaltır.
+        self._context = {**getattr(self, "_context", {}), "net": instance.net}
+        return super().to_representation(instance)
+
+    def get_start(self, obj: PayrollMonth) -> str:
+        year, month = PAYROLL_START
+        return f"{year}-{month:02d}"
 
     @extend_schema_field(PayrollParametersInfoSerializer)
     def get_parameters(self, obj: PayrollMonth) -> dict[str, Any]:
@@ -729,6 +1012,7 @@ PARAMETER_VALUE_FIELDS = (
     "tax_rate_4",
     "tax_rate_5",
     "bes_rate",
+    "meal_exemption_daily",
 )
 
 

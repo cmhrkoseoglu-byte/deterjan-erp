@@ -191,10 +191,11 @@ function ReportView({
           </Group>
         </Alert>
       )}
-      <SimpleGrid cols={{ base: 2, sm: 4 }}>
+      <SimpleGrid cols={{ base: 2, sm: 5 }}>
         <Stat label={kt.totalPersonnelCost} value={formatMoney(report.total_cost, "TL")} strong />
         <Stat label={kt.grossSalary} value={formatMoney(report.gross_salary, "TL")} />
         <Stat label={kt.overtimePay} value={formatMoney(report.overtime_pay, "TL")} />
+        <Stat label={kt.extrasTotal} value={formatMoney(report.extras_total, "TL")} />
         <Stat
           label={kt.employerShare(formatNumber(report.employer_rate, 2))}
           value={formatMoney(report.employer_share, "TL")}
@@ -299,6 +300,7 @@ function ReportView({
           },
           { label: kt.grossSalary, right: true, render: (r) => money(r.gross_salary) },
           { label: kt.overtimePay, right: true, render: (r) => money(r.overtime_pay) },
+          { label: kt.extrasTotal, right: true, render: (r) => money(r.extras_total) },
           { label: kt.employerShareShort, right: true, render: (r) => money(r.employer_share) },
           {
             label: kt.totalCost,

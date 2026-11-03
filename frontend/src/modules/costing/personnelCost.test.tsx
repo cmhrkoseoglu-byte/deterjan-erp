@@ -67,6 +67,7 @@ function costRow(employee: CostEmployee, extra: Partial<PersonnelCostRow>): Pers
     total_cost: "52987.50",
     missing_wage: false,
     payroll_external: false,
+    extras_total: "0.00",
     ...extra,
   };
 }
@@ -99,6 +100,7 @@ function report(extra: Partial<PersonnelCostReport> = {}): PersonnelCostReport {
     missing_wage_count: 1,
     gross_salary: "69166.67",
     overtime_pay: "2000.00",
+    extras_total: "0.00",
     employer_share: "12632.08",
     total_cost: "83798.75",
     stages: [
@@ -187,6 +189,21 @@ describe("personel maliyeti", () => {
     await user.click(screen.getByRole("button", { name: "Önceki ay" }));
     await waitFor(() => expect(costingApi.getPersonnelCost).toHaveBeenCalledWith(2026, 8));
     expect(screen.getByText("Ağustos 2026")).toBeInTheDocument();
+  });
+
+  it("ek ödemeler (prim, ikramiye) özette ve kişi satırında ayrı görünür", async () => {
+    vi.mocked(costingApi.getPersonnelCost).mockResolvedValue(
+      report({
+        extras_total: "1500.00",
+        rows: [costRow(AYSE, { extras_total: "1500.00", gross_total: "46500.00" })],
+      }),
+    );
+    renderApp("/maliyet/personel?ay=2026-09");
+    expect(await screen.findByText("1.500,00 TL")).toBeInTheDocument();
+    const ayse = screen.getByText("Ayşe Demir").closest("tr")!;
+    expect(within(ayse).getByText("1.500,00")).toBeInTheDocument();
+    // Özet kutusu ve tablo sütunu.
+    expect(screen.getAllByText("Ek ödeme")).toHaveLength(2);
   });
 
   it("onaylı ayın gerçekleşen işçiliği oran olarak eklenir ve pencere kapanır", async () => {

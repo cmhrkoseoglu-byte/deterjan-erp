@@ -1,5 +1,5 @@
 """Personel yazma işlemleri (yalnızca admin ve yönetim): kartlar, özlük belgeleri, puantaj,
-ücretler.
+ücretler ve ön bordro (parametreler, mali müşavir rakamları, devir, ek ödeme ve kesintiler).
 
 Kart silinmez (CLAUDE.md kural 6): işten ayrılış `terminate_employee` ile kaydedilir (kart pasife
 alınır, çıkış tarihi yazılır), yeniden işe başlayan `reinstate_employee` ile açılır. Her değişiklik
@@ -9,8 +9,9 @@ açılması ve kaldırılması kartın geçmişine de yazılır. Puantaj ayı on
 günler").
 
 Kilit sırası (kilitlenme olmasın diye her yazımda aynı): personel kartları (kimlik sırasıyla),
-puantaj ayları (yıl, ay sırasıyla), puantaj günleri. Gün ve aralık girişi ile ay onayı önce
-kartları kilitler; böylece aynı anda kaydedilen bir ayrılış çıkıştan sonraya gün bırakamaz.
+puantaj ayları (yıl, ay sırasıyla), puantaj günleri, bordro kayıtları (devir, kalem, mali müşavir
+rakamı). Gün ve aralık girişi ile ay onayı önce kartları kilitler; böylece aynı anda kaydedilen bir
+ayrılış çıkıştan sonraya gün bırakamaz. Bordro kayıtları da önce kişinin kartını kilitler.
 """
 
 import os
@@ -38,6 +39,8 @@ from apps.core.services import create_document, save_with_audit, transition_stat
 from apps.masterdata import services as masterdata
 from apps.personnel import selectors
 from apps.personnel.models import (
+    DESCRIBED_CATEGORIES,
+    EXTRA_CATEGORIES,
     OVERTIME_STATUSES,
     PARAMETER_RATE_FIELDS,
     AttendanceEntry,
@@ -48,6 +51,10 @@ from apps.personnel.models import (
     EmployeeDocument,
     EmployeeWage,
     ExternalPayrollFigure,
+    PayrollItem,
+    PayrollItemCategory,
+    PayrollItemKind,
+    PayrollOpeningBalance,
     PayrollParameterSet,
     PublicHoliday,
 )
@@ -191,10 +198,92 @@ def create_employee(actor: User, data: Mapping[str, Any]) -> Employee:
 @transaction.atomic
 def update_employee(actor: User, employee: Employee, data: Mapping[str, Any]) -> Employee:
     """Kartı günceller; değişen alanlar eski → yeni değerleriyle günlüğe yazılır. Ayrılış ve çıkış
-    tarihi bu servisle değişmez (`terminate_employee`, `reinstate_employee`)."""
+    tarihi bu servisle değişmez (`terminate_employee`, `reinstate_employee`).
+
+    İşe giriş tarihi, kişinin işte olmayacağı aylara düşen bordro kaydı (ek ödeme, kesinti, devir)
+    ya da istisna ay sayısı yeni tarihe göre fazla kalan devir varken değiştirilemez. Kart önce
+    kilitlenir (bordro kayıtlarının kilit sırası): aynı anda girilen kalem ya da devir bu denetimi
+    atlatamaz."""
     _require_role(actor)
+    employee = Employee.objects.select_for_update().get(pk=employee.pk)
     values = _clean(_pick(data, EMPLOYEE_FIELDS), employee)
+    hire = values.get("hire_date")
+    if hire and hire != employee.hire_date:
+        _require_no_payroll_records(
+            employee,
+            Q(year__lt=hire.year) | Q(year=hire.year, month__lt=hire.month),
+            Q(year__lt=hire.year) | Q(year=hire.year, month__lte=hire.month),
+            f"işe giriş tarihinden ({hire:%d.%m.%Y}) önceki aylarda",
+            "payroll_items_before_hire",
+        )
+        _require_opening_months_within(employee, hire)
     return masterdata.update_record(actor, employee, values)
+
+
+def _require_opening_months_within(employee: Employee, hire: date) -> None:
+    """İşe giriş yılındaki devirlerin asgari ücret istisnası ay sayısı yeni işe giriş tarihine göre
+    fazla kalıyorsa reddeder (istisna ay sayısı işe girişten bu yana ay sayısını aşamaz; giriş ayı
+    tam sayılır)."""
+    excess = [
+        opening
+        for opening in PayrollOpeningBalance.objects.filter(
+            employee=employee, is_active=True, year=hire.year, month__gt=hire.month
+        ).order_by("month")
+        if opening.exemption_months > opening.month - hire.month
+    ]
+    if not excess:
+        return
+    listed = ", ".join(
+        f"{selectors.month_label(opening.year, opening.month)} devri ({opening.exemption_months} "
+        f"ay; en çok {opening.month - hire.month})"
+        for opening in excess
+    )
+    raise BusinessRuleError(
+        "opening_months_exceed_hire",
+        f"{employee.full_name} için yeni işe giriş tarihine ({hire:%d.%m.%Y}) göre asgari ücret "
+        f"istisnası ay sayısı fazla kalan devir var: {listed}. Önce devri Personel > Bordro'dan "
+        "düzeltin ya da gerekçeyle kaldırın.",
+    )
+
+
+REMOVE_FIRST = (
+    "Önce bunları Personel > Bordro'dan gerekçeyle kaldırın; ek ödeme ya da kesinti kişinin "
+    "çalıştığı bir aya aitse o aya yeniden girin."
+)
+
+
+def _require_no_payroll_records(
+    employee: Employee,
+    item_months: Q,
+    opening_months: Q,
+    where: str,
+    code: str,
+    advice: str = REMOVE_FIRST,
+) -> None:
+    """Kişinin işte olmadığı aylara düşen etkin ek ödeme, kesinti ve devir varsa reddeder (kalem
+    bordrodan sessizce düşmesin; önce gerekçeyle kaldırılır, kalem başka bir aya aitse o aya yeniden
+    girilir)."""
+    items = list(
+        PayrollItem.objects.filter(employee=employee, is_active=True)
+        .filter(item_months)
+        .order_by("year", "month", "id")
+    )
+    openings = list(
+        PayrollOpeningBalance.objects.filter(employee=employee, is_active=True)
+        .filter(opening_months)
+        .order_by("year", "month")
+    )
+    if not items and not openings:
+        return
+    listed = [
+        f"{selectors.month_label(item.year, item.month)} {item.get_category_display()} "
+        f"{format_money(item.amount)} TL"
+        for item in items
+    ] + [f"{selectors.month_label(opening.year, opening.month)} devri" for opening in openings]
+    raise BusinessRuleError(
+        code,
+        f"{employee.full_name} için {where} bordro kaydı var: {', '.join(listed)}. {advice}",
+    )
 
 
 class ApprovedAttendanceAfterExit(BusinessRuleError):
@@ -288,6 +377,16 @@ def terminate_employee(
         raise BusinessRuleError(
             "termination_before_hire", "İşten çıkış tarihi işe giriş tarihinden önce olamaz."
         )
+    _require_no_payroll_records(
+        locked,
+        Q(year__gt=termination_date.year)
+        | Q(year=termination_date.year, month__gt=termination_date.month),
+        Q(year__gt=termination_date.year)
+        | Q(year=termination_date.year, month__gt=termination_date.month),
+        f"çıkış ayından ({selectors.month_label(termination_date.year, termination_date.month)}) "
+        "sonraki aylarda",
+        "payroll_items_after_exit",
+    )
     later = _lock_attendance_after(locked, termination_date)
     approved = [entry for entry in later if entry.month.status == AttendanceMonth.Status.APPROVED]
     if approved:
@@ -970,6 +1069,7 @@ PARAMETER_FIELDS = (
     "tax_rate_4",
     "tax_rate_5",
     "bes_rate",
+    "meal_exemption_daily",
     "source",
     "note",
 )
@@ -994,6 +1094,9 @@ def _clean_parameters(
     merged.update(values)
     for name in _OPTIONAL_PARAMETER_FIELDS:
         merged[name] = _text(merged.get(name))[: 500 if name == "source" else 200]
+    # Nakit yemek SGK istisnası isteğe bağlı: girilmezse 0 (istisna yok).
+    if merged.get("meal_exemption_daily") is None:
+        merged["meal_exemption_daily"] = Decimal(0)
     if any(merged.get(name) is None for name in PARAMETER_FIELDS):
         raise BusinessRuleError("parameters_incomplete", "Bütün parametreler girilmelidir.")
     day = merged["valid_from"].replace(day=1)
@@ -1017,6 +1120,12 @@ def _clean_parameters(
     if not Decimal(0) <= merged["stamp_tax_per_mille"] <= 100:
         raise BusinessRuleError(
             "invalid_stamp_tax", "Damga vergisi binde 0 ile 100 arasında olmalı."
+        )
+    if not Decimal(0) <= merged["meal_exemption_daily"] <= MAX_MONTHLY_WAGE:
+        raise BusinessRuleError(
+            "invalid_meal_exemption",
+            "Nakit yemek SGK istisnası günlük 0 ile "
+            f"{format_money(MAX_MONTHLY_WAGE)} TL arasında olmalı.",
         )
     brackets = [merged[f"tax_bracket_{index}"] for index in range(1, 5)]
     if (
@@ -1107,17 +1216,36 @@ def set_external_payroll(
     _require_role(actor)
     _check_period(year, month)
     employee = Employee.objects.select_for_update().get(pk=employee.pk)
-    if not employee.payroll_external:
+    figure = (
+        ExternalPayrollFigure.objects.select_for_update()
+        .filter(employee=employee, year=year, month=month, is_active=True)
+        .first()
+    )
+    # Kartın işareti sonradan kaldırılsa da o ayın girilmiş rakamı düzeltilebilir.
+    if not employee.payroll_external and figure is None:
         raise BusinessRuleError(
             "not_external",
             f'{employee.full_name} kartında "Bordrosu mali müşavirde" işaretli değil; bordrosu '
             "ERP'de hesaplanır.",
         )
+    _require_payroll_open(year, month)
     first, last = selectors.month_bounds(year, month)
     if not selectors.employees_between(first, last).filter(pk=employee.pk).exists():
         raise BusinessRuleError(
             "not_employed",
             f"{employee.full_name} {selectors.month_label(year, month)} ayında işte değil.",
+        )
+    if figure is None:
+        # Rakam girilen ay mali müşavirde sayılır; o aya ERP'de girilmiş kalem hesaba girmezdi.
+        label = selectors.month_label(year, month)
+        _require_no_payroll_records(
+            employee,
+            Q(year=year, month=month),
+            Q(pk__in=[]),
+            f"{label} ayında",
+            "payroll_items_external",
+            "Bu ayın bordrosu mali müşavirde hesaplanacaksa ERP'de girilmiş kalemler hesaba "
+            "girmez: önce mali müşavire bildirip Personel > Bordro'dan gerekçeyle kaldırın.",
         )
     if gross_total is None or employer_cost is None:
         raise BusinessRuleError(
@@ -1129,11 +1257,6 @@ def set_external_payroll(
         raise BusinessRuleError(
             "invalid_employer_cost", "İşverene maliyet brüt toplamdan az olamaz."
         )
-    figure = (
-        ExternalPayrollFigure.objects.select_for_update()
-        .filter(employee=employee, year=year, month=month)
-        .first()
-    )
     if figure is None:
         figure = ExternalPayrollFigure(employee=employee, year=year, month=month)
     figure.gross_total = gross_total
@@ -1144,7 +1267,7 @@ def set_external_payroll(
             return save_with_audit(figure, actor)
     except IntegrityError:  # aynı kişi ve ay eşzamanlı açıldı: yeniden dene
         figure = ExternalPayrollFigure.objects.select_for_update().get(
-            employee=employee, year=year, month=month
+            employee=employee, year=year, month=month, is_active=True
         )
         figure.gross_total = gross_total
         figure.employer_cost = employer_cost
@@ -1163,3 +1286,434 @@ def record_payroll_access(actor: User, year: int, month: int, output: str) -> No
         {"year": year, "month": month},
         f"Bordro çıktısı açıldı: {output} · {selectors.month_label(year, month)}",
     )
+
+
+@transaction.atomic
+def remove_external_payroll(
+    actor: User, figure: ExternalPayrollFigure, reason: str
+) -> ExternalPayrollFigure:
+    """Yanlış girilen mali müşavir rakamını kaldırır (silinmez, pasife alınır; neden zorunlu). O ay
+    yeniden kartın işaretine göre hesaplanır."""
+    _require_role(actor)
+    reason = _text(reason)[:500]
+    if not reason:
+        raise BusinessRuleError("reason_required", "Kaldırma nedeni girilmelidir.")
+    Employee.objects.select_for_update().get(pk=figure.employee_id)
+    locked = ExternalPayrollFigure.objects.select_for_update().get(pk=figure.pk)
+    if not locked.is_active:
+        raise BusinessRuleError("already_removed", "Rakamlar zaten kaldırılmış.")
+    _require_payroll_open(locked.year, locked.month)
+    locked.is_active = False
+    locked.removed_at = timezone.now()
+    locked.removed_by = actor
+    locked.removal_reason = reason
+    note = f"Mali müşavir rakamları kaldırıldı. Neden: {reason}"
+    return save_with_audit(locked, actor, note=note)
+
+
+# --- devir, ek ödeme ve kesintiler (docs/DECISIONS.md "Personel bordrosu", 3. adım) -------------
+
+
+class PayrollBatchError(BusinessRuleError):
+    """Toplu kayıtta reddedilen satırlar (hiçbiri kaydedilmez). `errors`: [{"index", "employee",
+    "code", "detail"}]; API yanıtına eklenir, pencere satırın altında gösterir."""
+
+    def __init__(self, errors: list[dict[str, Any]]) -> None:
+        count = len(errors)
+        super().__init__(
+            "batch_rejected",
+            f"{count} satır kaydedilemedi; hiçbir satır kaydedilmedi. Satırların altındaki "
+            "hataları düzeltip yeniden kaydedin.",
+        )
+        self.errors = errors
+
+
+def _require_payroll_open(year: int, month: int) -> None:
+    """Ayın bordrosu onaylıysa o aya etki eden yazım reddedilir. Onay 4. adımda gelir; o zamana
+    kadar bütün aylar açıktır. Bordroya etki eden her yazım (kalem, devir, mali müşavir rakamı) bunu
+    çağırır."""
+    return None
+
+
+def _check_payroll_month(year: int, month: int) -> None:
+    """Brütten nete bordro ayı: geçerli ve başlangıç ayından sonra."""
+    _check_period(year, month)
+    if not selectors.net_available(year, month):
+        start_year, start_month = selectors.PAYROLL_START
+        raise BusinessRuleError(
+            "before_start",
+            f"Brütten nete bordro {selectors.month_label(start_year, start_month)} ayından başlar; "
+            "önceki aylar mali müşavirdedir.",
+        )
+
+
+def _require_computed(employee: Employee, year: int, month: int) -> None:
+    """Kişi o ay işte ve bordrosu ERP'de hesaplanıyor (mali müşavirde değil)."""
+    label = selectors.month_label(year, month)
+    first, last = selectors.month_bounds(year, month)
+    if not selectors.employees_between(first, last).filter(pk=employee.pk).exists():
+        raise BusinessRuleError("not_employed", f"{employee.full_name} {label} ayında işte değil.")
+    external = employee.payroll_external or (
+        ExternalPayrollFigure.objects.filter(
+            employee=employee, year=year, month=month, is_active=True
+        ).exists()
+    )
+    if external:
+        raise BusinessRuleError(
+            "not_computed",
+            f"{employee.full_name} için {label} bordrosu mali müşavirde; ERP'de hesaplanmaz.",
+        )
+
+
+def _erp_month(employee: Employee, year: int, month: int) -> bool:
+    """Kişinin o ay bordrosu ERP'de mi hesaplandı (başlangıçtan sonra, işte, mali müşavirde
+    değil)? Devir bu aydan sonraki bir aya girilirse ERP hesabının yerine geçer."""
+    if month < 1 or not selectors.net_available(year, month):
+        return False
+    first, last = selectors.month_bounds(year, month)
+    if not selectors.employees_between(first, last).filter(pk=employee.pk).exists():
+        return False
+    return not ExternalPayrollFigure.objects.filter(
+        employee=employee, year=year, month=month, is_active=True
+    ).exists()
+
+
+def _card_note(actor: User, employee: Employee, note: str) -> None:
+    """Bordro kaydının özeti kartın geçmişine (kimin, ne zaman; icra ya da nafaka açıklaması
+    yazılmaz)."""
+    log_change(actor, employee, AuditLog.Action.CUSTOM, {}, note)
+
+
+def _employee_ids(rows: Sequence[Mapping[str, Any]]) -> list[int]:
+    """Toplu kayıttaki kişilerin kimlikleri, sıralı (kartlar bu sırayla kilitlenir)."""
+    return sorted({int(row["employee"].pk) for row in rows if row.get("employee") is not None})
+
+
+def _batch(rows: Sequence[Mapping[str, Any]], write: Any) -> list[Any]:
+    """Toplu kayıt: her satır kendi kayıt noktasında yazılır; biri reddedilirse hepsi geri alınır
+    ve satır hataları birlikte döner."""
+    saved, errors = [], []
+    for index, row in enumerate(rows):
+        try:
+            with transaction.atomic():
+                saved.append(write(row))
+        except BusinessRuleError as exc:
+            employee = row.get("employee")
+            errors.append(
+                {
+                    "index": index,
+                    "employee": getattr(employee, "pk", employee),
+                    "code": exc.code,
+                    "detail": exc.message,
+                }
+            )
+    if errors:
+        raise PayrollBatchError(errors)
+    return saved
+
+
+@transaction.atomic
+def set_opening_balance(
+    actor: User,
+    employee: Employee,
+    year: int,
+    month: int,
+    *,
+    tax_base: Decimal | None,
+    exemption_months: int | None,
+    note: str = "",
+    confirm_override: bool = False,
+) -> PayrollOpeningBalance:
+    """Devir girer ya da düzeltir: kişinin bu işverende `month` ayından önceki yıl içi kümülatif
+    gelir vergisi matrahı (mali müşavirin bir önceki ay bordrosundaki kümülatif, o ay dahil) ve
+    asgari ücret istisnasının uygulandığı ay sayısı (işe giriş ayı tam sayılır; işe girişten bu
+    yana ay sayısını aşamaz). İstisna matrahı devir ayından önceki o ayların kendi
+    parametrelerinden hesaplanıp yazılır.
+
+    Ocak'ta kümülatif sıfırdan başlar, devir girilmez; bu yıl o aydan önce bu işyerinde çalışmayan
+    kişiye de gerekmez. Kişi bir önceki ay ERP'de hesaplandıysa devir o ayların ERP hesabının
+    yerine geçer (mali müşavirle eşitleme): `confirm_override` ile onaylanır."""
+    _require_role(actor)
+    _check_payroll_month(year, month)
+    if month == 1:
+        raise BusinessRuleError(
+            "opening_not_needed", "Ocak'ta kümülatif sıfırdan başlar; devir girilmez."
+        )
+    today = timezone.localdate()
+    if (year, month) > (today.year, today.month):
+        raise BusinessRuleError(
+            "future_month",
+            "Gelecek aya devir girilemez: bir önceki ayın kümülatifi o ay bitince belli olur.",
+        )
+    employee = Employee.objects.select_for_update().get(pk=employee.pk)
+    label = selectors.month_label(year, month)
+    _require_computed(employee, year, month)
+    _require_payroll_open(year, month)
+    available = selectors.months_employed_before(employee, year, month)
+    if available == 0:
+        raise BusinessRuleError(
+            "opening_not_needed",
+            f"{employee.full_name} bu yıl {label} ayından önce bu işyerinde çalışmadı; kümülatif "
+            "sıfırdır, devir gerekmez.",
+        )
+    if tax_base is None or not Decimal(0) <= tax_base <= MAX_PAYROLL_AMOUNT:
+        raise BusinessRuleError(
+            "invalid_tax_base", "Kümülatif gelir vergisi matrahı sıfır ya da daha büyük olmalı."
+        )
+    if exemption_months is None or not 0 <= exemption_months <= available:
+        raise BusinessRuleError(
+            "invalid_exemption_months",
+            f"Asgari ücret istisnası uygulanan ay 0 ile {available} arasında olmalı (bu yıl işe "
+            "girişten bu yana).",
+        )
+    if not confirm_override and _erp_month(employee, year, month - 1):
+        previous = selectors.month_label(year, month - 1)
+        raise BusinessRuleError(
+            "opening_overrides_chain",
+            f"{employee.full_name} için {previous} bordrosu ERP'de hesaplandı; bu devir önceki "
+            "ayların ERP hesabının yerine geçer (mali müşavirle eşitleme). Onaylayarak kaydedin.",
+        )
+    settings_by_month = selectors.parameter_settings(year, range(1, month))
+    exemption_base = selectors.opening_exemption_base(settings_by_month, month, exemption_months)
+    opening = (
+        PayrollOpeningBalance.objects.select_for_update()
+        .filter(employee=employee, year=year, month=month, is_active=True)
+        .first()
+    )
+    created = opening is None
+    note = _text(note)[:200]
+    if opening is not None and (
+        opening.tax_base,
+        opening.exemption_months,
+        opening.exemption_base,
+        opening.note,
+    ) == (tax_base, exemption_months, exemption_base, note):
+        return opening  # Değişiklik yok: kayıt ve kart notu yazılmaz.
+    if opening is None:
+        opening = PayrollOpeningBalance(employee=employee, year=year, month=month)
+    opening.tax_base = tax_base
+    opening.exemption_months = exemption_months
+    opening.exemption_base = exemption_base
+    opening.note = note
+    try:
+        with transaction.atomic():
+            saved = save_with_audit(opening, actor)
+    except IntegrityError:
+        raise BusinessRuleError(
+            "duplicate_opening",
+            f"{employee.full_name} için {label} devri aynı anda girildi; sayfayı yenileyip "
+            "yeniden deneyin.",
+        ) from None
+    _card_note(
+        actor,
+        employee,
+        f"Devir {'girildi' if created else 'düzeltildi'}: {label} · kümülatif GV matrahı "
+        f"{format_money(tax_base)} TL · asgari ücret istisnası {exemption_months} ay",
+    )
+    return saved
+
+
+OPENING_ROW_FIELDS = ("employee", "tax_base", "exemption_months", "note", "confirm_override")
+
+
+@transaction.atomic
+def set_opening_balances(
+    actor: User, year: int, month: int, rows: Sequence[Mapping[str, Any]]
+) -> list[PayrollOpeningBalance]:
+    """Ayın devirlerini toplu girer (devir penceresinin tek "Kaydet"i): satırlar tek tek
+    `set_opening_balance` kurallarıyla yazılır; biri reddedilirse hiçbiri kaydedilmez ve satır
+    hataları birlikte döner (`PayrollBatchError`). Kartlar kimlik sırasıyla kilitlenir."""
+    _require_role(actor)
+    ids = _employee_ids(rows)
+    list(Employee.objects.select_for_update().filter(pk__in=ids).order_by("pk"))
+
+    def write(row: Mapping[str, Any]) -> PayrollOpeningBalance:
+        values = _pick(row, OPENING_ROW_FIELDS)
+        if values.get("employee") is None:
+            raise BusinessRuleError("employee_required", "Personel seçilmelidir.")
+        return set_opening_balance(
+            actor,
+            values["employee"],
+            year,
+            month,
+            tax_base=values.get("tax_base"),
+            exemption_months=values.get("exemption_months"),
+            note=values.get("note") or "",
+            confirm_override=bool(values.get("confirm_override")),
+        )
+
+    return _batch(rows, write)
+
+
+@transaction.atomic
+def remove_opening_balance(
+    actor: User, opening: PayrollOpeningBalance, reason: str
+) -> PayrollOpeningBalance:
+    """Yanlış devri kaldırır (silinmez, pasife alınır; neden zorunlu). Zincir bir önceki devirden
+    ya da yılın ilk ERP ayından yeniden kurulur."""
+    _require_role(actor)
+    reason = _text(reason)[:500]
+    if not reason:
+        raise BusinessRuleError("reason_required", "Kaldırma nedeni girilmelidir.")
+    employee = Employee.objects.select_for_update().get(pk=opening.employee_id)
+    locked = PayrollOpeningBalance.objects.select_for_update().get(pk=opening.pk)
+    if not locked.is_active:
+        raise BusinessRuleError("already_removed", "Devir zaten kaldırılmış.")
+    _require_payroll_open(locked.year, locked.month)
+    locked.is_active = False
+    locked.removed_at = timezone.now()
+    locked.removed_by = actor
+    locked.removal_reason = reason
+    saved = save_with_audit(locked, actor, note="Devir kaldırıldı")
+    _card_note(
+        actor,
+        employee,
+        f"Devir kaldırıldı: {selectors.month_label(locked.year, locked.month)}. Neden: {reason}",
+    )
+    return saved
+
+
+ITEM_FIELDS = ("employee", "year", "month", "category", "description", "amount")
+ITEM_UPDATE_FIELDS = ("category", "description", "amount")
+ITEM_ROW_FIELDS = ("employee", "category", "description", "amount")
+
+
+def _item_kind(category: Any) -> str:
+    if category not in PayrollItemCategory.values:
+        raise BusinessRuleError("invalid_category", "Geçersiz kalem kategorisi.")
+    return PayrollItemKind.EXTRA if category in EXTRA_CATEGORIES else PayrollItemKind.DEDUCTION
+
+
+def _clean_item(item: PayrollItem, values: Mapping[str, Any]) -> None:
+    """Kalemin kuralları: kategori türe uyar (tür sonradan değişmez), "Diğer"de açıklama zorunlu,
+    tutar sıfırdan büyük."""
+    category = values.get("category", item.category)
+    kind = _item_kind(category)
+    if item.pk is not None and kind != item.kind:
+        raise BusinessRuleError(
+            "invalid_category",
+            "Kalemin türü (ek ödeme ya da kesinti) değiştirilemez; kaldırıp yeni kalem girin.",
+        )
+    description = _text(values.get("description", item.description))[:100]
+    if category in DESCRIBED_CATEGORIES and not description:
+        raise BusinessRuleError(
+            "description_required", "Diğer ek ödeme ve kesintide açıklama yazılmalıdır."
+        )
+    amount = values.get("amount", item.amount)
+    if amount is None or not Decimal(0) < amount <= MAX_MONTHLY_WAGE:
+        raise BusinessRuleError(
+            "invalid_amount",
+            f"Tutar sıfırdan büyük ve en çok {format_money(MAX_MONTHLY_WAGE)} TL olmalı.",
+        )
+    item.kind = kind
+    item.category = category
+    item.description = description
+    item.amount = amount
+
+
+def _item_label(item: PayrollItem) -> str:
+    """Kartın geçmişindeki özet: "Ekim 2026 · Prim 5.000,00 TL" (açıklama yazılmaz)."""
+    return (
+        f"{selectors.month_label(item.year, item.month)} · {item.get_category_display()} "
+        f"{format_money(item.amount)} TL"
+    )
+
+
+def _kind_word(item: PayrollItem) -> str:
+    return "Ek ödeme" if item.kind == PayrollItemKind.EXTRA else "Kesinti"
+
+
+def _add_item(
+    actor: User, employee: Employee, year: int, month: int, values: Mapping[str, Any]
+) -> PayrollItem:
+    _check_payroll_month(year, month)
+    today = timezone.localdate()
+    if (year, month) > (today.year, today.month):
+        raise BusinessRuleError("future_month", "Gelecek aya kalem girilemez.")
+    _require_computed(employee, year, month)
+    _require_payroll_open(year, month)
+    item = PayrollItem(employee=employee, year=year, month=month)
+    _clean_item(item, values)
+    saved = save_with_audit(item, actor)
+    _card_note(actor, employee, f"{_kind_word(saved)} eklendi: {_item_label(saved)}")
+    return saved
+
+
+@transaction.atomic
+def add_payroll_item(actor: User, data: Mapping[str, Any]) -> PayrollItem:
+    """Kişiye o ayın ek ödemesini (brüt) ya da kesintisini (netten) girer. Kalem, birlikte ödendiği
+    ücretin bordro ayına girilir; başlangıç ayından önceye ve gelecek aya girilmez. Kişi o ay işte
+    ve bordrosu ERP'de hesaplanıyor olmalı."""
+    _require_role(actor)
+    values = _pick(data, ITEM_FIELDS)
+    if values.get("employee") is None:
+        raise BusinessRuleError("employee_required", "Personel seçilmelidir.")
+    employee = Employee.objects.select_for_update().get(pk=values["employee"].pk)
+    return _add_item(actor, employee, values.get("year") or 0, values.get("month") or 0, values)
+
+
+@transaction.atomic
+def add_payroll_items(
+    actor: User, year: int, month: int, rows: Sequence[Mapping[str, Any]]
+) -> list[PayrollItem]:
+    """Ayın kalemlerini toplu girer ("Toplu ekle" ve "Geçen aydan kopyala"): satırlar
+    `add_payroll_item` kurallarıyla yazılır; biri reddedilirse hiçbiri kaydedilmez ve satır hataları
+    birlikte döner (`PayrollBatchError`). Kartlar kimlik sırasıyla kilitlenir."""
+    _require_role(actor)
+    ids = _employee_ids(rows)
+    cards = {
+        card.pk: card
+        for card in Employee.objects.select_for_update().filter(pk__in=ids).order_by("pk")
+    }
+
+    def write(row: Mapping[str, Any]) -> PayrollItem:
+        values = _pick(row, ITEM_ROW_FIELDS)
+        employee = values.get("employee")
+        if employee is None:
+            raise BusinessRuleError("employee_required", "Personel seçilmelidir.")
+        return _add_item(actor, cards[employee.pk], year, month, values)
+
+    return _batch(rows, write)
+
+
+@transaction.atomic
+def update_payroll_item(actor: User, item: PayrollItem, data: Mapping[str, Any]) -> PayrollItem:
+    """Kalemi düzeltir: tutar, kategori (aynı tür içinde) ve açıklama. Değişen değerler eski → yeni
+    denetim günlüğüne, özeti kartın geçmişine yazılır."""
+    _require_role(actor)
+    values = _pick(data, ITEM_UPDATE_FIELDS)
+    employee = Employee.objects.select_for_update().get(pk=item.employee_id)
+    locked = PayrollItem.objects.select_for_update().get(pk=item.pk)
+    if not locked.is_active:
+        raise BusinessRuleError("item_removed", "Kaldırılmış kalem düzeltilemez.")
+    _require_payroll_open(locked.year, locked.month)
+    before = (locked.category, locked.description, locked.amount)
+    _clean_item(locked, values)
+    if (locked.category, locked.description, locked.amount) == before:
+        return locked  # Değişiklik yok: kayıt ve kart notu yazılmaz.
+    saved = save_with_audit(locked, actor)
+    _card_note(actor, employee, f"{_kind_word(saved)} düzeltildi: {_item_label(saved)}")
+    return saved
+
+
+@transaction.atomic
+def remove_payroll_item(actor: User, item: PayrollItem, reason: str) -> PayrollItem:
+    """Yanlış kalemi kaldırır (silinmez, pasife alınır; neden zorunlu)."""
+    _require_role(actor)
+    reason = _text(reason)[:500]
+    if not reason:
+        raise BusinessRuleError("reason_required", "Kaldırma nedeni girilmelidir.")
+    employee = Employee.objects.select_for_update().get(pk=item.employee_id)
+    locked = PayrollItem.objects.select_for_update().get(pk=item.pk)
+    if not locked.is_active:
+        raise BusinessRuleError("already_removed", "Kalem zaten kaldırılmış.")
+    _require_payroll_open(locked.year, locked.month)
+    locked.is_active = False
+    locked.removed_at = timezone.now()
+    locked.removed_by = actor
+    locked.removal_reason = reason
+    saved = save_with_audit(locked, actor, note=f"{_kind_word(locked)} kaldırıldı")
+    _card_note(
+        actor, employee, f"{_kind_word(saved)} kaldırıldı: {_item_label(saved)}. Neden: {reason}"
+    )
+    return saved

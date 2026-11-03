@@ -1,4 +1,5 @@
-"""Bordro PDF'leri (docs/DECISIONS.md "Personel bordrosu"): işveren maliyeti tablosu.
+"""Bordro PDF'leri (docs/DECISIONS.md "Personel bordrosu"): işveren maliyeti tablosu ve bordro
+listesi (icmal sayfasıyla).
 
 Satırlar saf işlevlerle kurulur (`employer_cost_rows`; testler içeriği bunlardan denetler), PDF
 reportlab ile bellekte üretilir. Her sayfada ön bordro notu ve "Sayfa x/y"; onaylanmamış bordroda
@@ -18,11 +19,21 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
+from apps.core.audit import mask_identifier
 from apps.core.formatting import format_money
 from apps.core.labels import FONT, FONT_BOLD, register_fonts
 from apps.masterdata import services as masterdata
+from apps.personnel import selectors
+from apps.personnel.models import PayrollItemKind
 from apps.personnel.selectors import FALLBACK, LEGAL_DEFAULT, PayrollMonth, PayrollRow
 
 PRELIMINARY_NOTE = (
@@ -162,11 +173,17 @@ def _total_cells(label: str, rows: Sequence[PayrollRow]) -> list[str]:
     ]
 
 
+def row_order(row: PayrollRow) -> tuple[str, str, int]:
+    """Satır sırası: birim, sonra ad (ekrandaki ve Excel'deki gibi)."""
+    person = row.employee
+    return (person.department, selectors.fold(person.full_name), person.pk)
+
+
 def employer_cost_rows(month: PayrollMonth) -> list[tuple[str, list[str]]]:
     """İşveren maliyeti tablosunun satırları: birim birim kişiler, birim toplamı (birden çok kişili
     birimde) ve genel toplam. Her satır (tür, hücreler); tür "row", "subtotal" ya da "total"."""
     groups: dict[str, list[PayrollRow]] = {}
-    for row in sorted(month.rows, key=lambda item: (item.employee.department, item.employee.pk)):
+    for row in sorted(month.rows, key=row_order):
         groups.setdefault(row.employee.department, []).append(row)
     lines: list[tuple[str, list[str]]] = []
     for department, members in groups.items():
@@ -269,7 +286,7 @@ def employer_cost_pdf(month: PayrollMonth, *, draft: bool = True) -> bytes:
         para("Ön bordro" + (" · TASLAK" if draft else "")),
     ]
     header = Table(
-        [[_company_block(para, bold), heading]], colWidths=[150 * mm, 127 * mm], hAlign="LEFT"
+        [[_company_block(para, bold), heading]], colWidths=[146 * mm, 126 * mm], hAlign="LEFT"
     )
     header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
     lines = employer_cost_rows(month)
@@ -306,6 +323,354 @@ def employer_cost_pdf(month: PayrollMonth, *, draft: bool = True) -> bytes:
             "İşverene maliyet = brüt toplam + SGK işveren payı (teşvik sonrası) + işsizlik işveren "
             "payı + alt sınır farkı (ücret SGK alt sınırının altındaysa işçi payı dahil farkın "
             "primi, 5510 s. Kanun m.82). Asgari ücret desteği düşülmemiştir.",
+            small,
+        ),
+    ]
+    chrome = _Chrome(title, draft)
+    doc.build(story, canvasmaker=chrome.canvas_maker())
+    return buffer.getvalue()
+
+
+# --- bordro listesi ------------------------------------------------------------------------------
+
+REGISTER_HEADER = (
+    "Kişi",
+    "SGK gün",
+    "Kazançlar",
+    "Brüt toplam",
+    "SGK matrahı",
+    "SGK işçi / işsizlik işçi",
+    "GV matrahı / kümülatif",
+    "Gelir vergisi (hesaplanan / istisna / kesilen)",
+    "Damga vergisi (hesaplanan / istisna / kesilen)",
+    "Net ücret",
+    "Kesintiler",
+    "Ödenecek / işverene maliyet",
+    "Not",
+)
+# Sütun genişlikleri (mm): A4 yatay, 10 mm kenar boşluklarıyla çerçeveye (yaklaşık 272,8 mm) sığar.
+REGISTER_WIDTHS = (34, 10, 29, 19, 20, 20, 23, 23, 19, 19, 25, 25, 6)
+# Satır işaretleri ve açıklamaları (sayfanın altında).
+REGISTER_MARKS = (
+    (selectors.OPENING_MISSING, "D", "devir girilmedi: gelir vergisi kümülatifsiz hesaplandı"),
+    (
+        selectors.CARRY_INCOMPLETE,
+        "Z",
+        "kümülatif eksik: önceki bir ayda ücret eksik, parametre tahmini ya da devir eski "
+        "parametrelerle kaydedilmiş",
+    ),
+    (selectors.MISSING_WAGE, "Ü", "ücreti girilmemiş günler sıfır sayıldı"),
+    (selectors.NEGATIVE_PAYABLE, "N", "kesintiler netten fazla: ödenecek negatif"),
+    (
+        selectors.CEILING_WITH_BONUS,
+        "P",
+        "tavanı aşan prim / ikramiye: sonraki aylara devreden SGK matrahı mali müşavirde",
+    ),
+    ("floor", "A", "SGK matrahı alt sınıra çıkarıldı"),
+    ("ceiling", "T", "SGK matrahı tavanla kesildi"),
+)
+EXTERNAL_HEADER = ("Kişi", "Brüt toplam", "İşverene maliyet", "Not")
+
+
+def register_marks(row: PayrollRow) -> list[str]:
+    """Satırın işaret harfleri (açıklamaları `REGISTER_MARKS`)."""
+    present = set(row.warnings)
+    if row.line.floor_applied:
+        present.add("floor")
+    if row.line.ceiling_applied:
+        present.add("ceiling")
+    return [mark for key, mark, _ in REGISTER_MARKS if key in present]
+
+
+def _person_cell(row: PayrollRow) -> str:
+    person = row.employee
+    lines = [person.full_name, " · ".join(filter(None, [person.employee_no, person.department]))]
+    if person.national_id:
+        lines.append(f"TC {mask_identifier(person.national_id)}")
+    return "\n".join(lines)
+
+
+def _deduction_lines(rows: Sequence[PayrollRow]) -> list[str]:
+    """BES ve kesintiler kategoriye göre (açıklama yazılmaz: icra ve nafaka bilgisi)."""
+    bes = sum((row.line.bes_deduction for row in rows), Decimal(0))
+    totals: dict[str, Decimal] = {}
+    for row in rows:
+        for item in row.items:
+            if item.kind == PayrollItemKind.DEDUCTION:
+                label = item.get_category_display()
+                totals[label] = totals.get(label, Decimal(0)) + item.amount
+    lines = [f"BES {_money(bes)}"] if bes else []
+    lines.extend(f"{label} {_money(amount)}" for label, amount in totals.items())
+    return lines or ["—"]
+
+
+def _sum(rows: Sequence[PayrollRow], name: str) -> Decimal:
+    return sum((getattr(row.line, name) for row in rows), Decimal(0))
+
+
+def _register_cells(rows: Sequence[PayrollRow], person: str, marks: str) -> list[str]:
+    """Bir satırın (kişi ya da toplam) hücreleri; kalemler alt alta."""
+
+    def total(name: str) -> Decimal:
+        return _sum(rows, name)
+
+    earnings = [f"Normal {_money(total('salary'))}"]
+    overtime = total("overtime_worked_pay") + total("overtime_rest_pay") + total("holiday_pay")
+    if overtime:
+        earnings.append(f"FM ve tatil {_money(overtime)}")
+    if total("extras_total"):
+        earnings.append(f"Ek ödeme {_money(total('extras_total'))}")
+    base = [_money(total("sgk_base"))]
+    if total("meal_exemption"):
+        base.append(f"Yemek ist. {_money(total('meal_exemption'))}")
+    days = [str(sum(row.line.sgk_days for row in rows))]
+    return [
+        person,
+        "\n".join(days),
+        "\n".join(earnings),
+        _money(total("gross_total")),
+        "\n".join(base),
+        f"{_money(total('employee_sgk'))}\n{_money(total('employee_unemployment'))}",
+        f"{_money(total('tax_base'))}\n{_money(total('cumulative_tax_base_after'))}",
+        f"{_money(total('income_tax_computed'))}\n−{_money(total('income_tax_exemption'))}\n"
+        f"{_money(total('income_tax'))}",
+        f"{_money(total('stamp_tax_computed'))}\n−{_money(total('stamp_tax_exemption'))}\n"
+        f"{_money(total('stamp_tax'))}",
+        _money(total("net_pay")),
+        "\n".join(_deduction_lines(rows)),
+        f"{_money(total('payable'))}\n{_money(total('employer_cost'))}",
+        marks,
+    ]
+
+
+def register_rows(month: PayrollMonth) -> list[tuple[str, list[str]]]:
+    """Bordro listesinin satırları: birim birim ERP'de hesaplanan kişiler, birim toplamı (birden
+    çok kişili birimde) ve genel toplam. Her satır (tür, hücreler); tür "row", "subtotal" ya da
+    "total". Kümülatif GV matrahı bu ay dahildir (mali müşavir bordrolarındaki gibi)."""
+    groups: dict[str, list[PayrollRow]] = {}
+    for row in sorted(month.computed, key=row_order):
+        groups.setdefault(row.employee.department, []).append(row)
+    lines: list[tuple[str, list[str]]] = []
+    for department, members in groups.items():
+        for row in members:
+            lines.append(
+                ("row", _register_cells([row], _person_cell(row), " ".join(register_marks(row))))
+            )
+        if len(groups) > 1 and len(members) > 1:
+            lines.append(("subtotal", _register_cells(members, f"{department} toplamı", "")))
+    lines.append(("total", _register_cells(month.computed, "Genel toplam", "")))
+    return lines
+
+
+def external_rows(month: PayrollMonth) -> list[list[str]]:
+    """Bordrosu mali müşavirde olan kişiler (bu listede hesaplanmadı; toplamlara katılmaz). Kişiye
+    ERP'de girilmiş ek ödeme ve kesintiler hesaplanmaz; notta kalem toplamlarıyla (açıklamasız)
+    yazılır, mali müşavire iletilsin."""
+    found = []
+    for row in sorted((item for item in month.rows if item.external), key=row_order):
+        figure = row.figure
+        notes = [] if figure else ["rakam girilmedi"]
+        totals: dict[str, Decimal] = {}
+        for item in row.items:
+            label = item.get_category_display()
+            totals[label] = totals.get(label, Decimal(0)) + item.amount
+        if totals:
+            listed = "; ".join(f"{label} {_money(amount)}" for label, amount in totals.items())
+            notes.append(f"ERP'de girilen kalemler hesaplanmadı: {listed}")
+        found.append(
+            [
+                _person_cell(row),
+                _money(figure.gross_total) if figure else "",
+                _money(figure.employer_cost) if figure else "",
+                "\n".join(notes),
+            ]
+        )
+    return found
+
+
+def summary_rows(month: PayrollMonth) -> list[tuple[str, list[tuple[str, str]]]]:
+    """İcmal (mali müşavirin icmaliyle karşılaştırma için): çalışan ve işveren tarafı."""
+    rows = month.computed
+
+    def total(name: str) -> str:
+        return _money(_sum(rows, name))
+
+    extras: dict[str, Decimal] = {}
+    for row in rows:
+        for item in row.items:
+            if item.kind == PayrollItemKind.EXTRA:
+                label = item.get_category_display()
+                extras[label] = extras.get(label, Decimal(0)) + item.amount
+    external = [row for row in month.rows if row.external]
+    employee_side = [
+        ("Kişi (ERP / mali müşavirde)", f"{len(rows)} / {len(external)}"),
+        ("SGK gün toplamı", str(sum(row.line.sgk_days for row in rows))),
+        ("Normal ücret", total("salary")),
+        ("Fazla mesai (iş günü)", total("overtime_worked_pay")),
+        ("Fazla mesai (hafta tatili)", total("overtime_rest_pay")),
+        ("Resmî tatil", total("holiday_pay")),
+        *((f"Ek ödeme: {label}", _money(amount)) for label, amount in extras.items()),
+        ("Brüt toplam", total("gross_total")),
+        ("Nakit yemek SGK istisnası", total("meal_exemption")),
+        ("SGK matrahı", total("sgk_base")),
+        ("SGK işçi payı", total("employee_sgk")),
+        ("İşsizlik işçi payı", total("employee_unemployment")),
+        ("Gelir vergisi matrahı", total("tax_base")),
+        ("Hesaplanan gelir vergisi", total("income_tax_computed")),
+        ("Asgari ücret GV istisnası", total("income_tax_exemption")),
+        ("Kesilen gelir vergisi", total("income_tax")),
+        ("Hesaplanan damga vergisi", total("stamp_tax_computed")),
+        ("Asgari ücret DV istisnası", total("stamp_tax_exemption")),
+        ("Kesilen damga vergisi", total("stamp_tax")),
+        ("Net ücret", total("net_pay")),
+        *((f"Kesinti: {line}", "") for line in _deduction_lines(rows) if line != "—"),
+        ("Ödenecek", total("payable")),
+    ]
+    employer_side = [
+        ("SGK işveren payı (teşvik öncesi)", total("employer_sgk_gross")),
+        ("Teşvik", f"−{total('incentive')}"),
+        ("SGK işveren payı (teşvik sonrası)", total("employer_sgk")),
+        ("İşsizlik işveren payı", total("employer_unemployment")),
+        ("Alt sınır farkı", total("floor_gap")),
+        ("İşverene maliyet (ERP)", total("employer_cost")),
+        (
+            "Mali müşavirdekiler: brüt / maliyet",
+            f"{_money(sum((row.gross_total for row in external), Decimal(0)))} / "
+            f"{_money(sum((row.employer_cost for row in external), Decimal(0)))}",
+        ),
+        ("İşverene maliyet (hepsi)", _money(month.employer_cost)),
+    ]
+    return [("Çalışan", employee_side), ("İşveren", employer_side)]
+
+
+def register_pdf(month: PayrollMonth, *, draft: bool = True) -> bytes:
+    """Bordro listesi (A4 yatay): ERP'de hesaplanan kişiler brütten nete, birim ara toplamları ve
+    genel toplam; bordrosu mali müşavirde olanlar ayrı blokta (toplamlara katılmaz); son sayfada
+    icmal. Maskeli TC kimlik no; kesintiler kategoriyle (açıklama yazılmaz)."""
+    register_fonts()
+    base = ParagraphStyle("base", fontName=FONT, fontSize=6.5, leading=8)
+    bold = ParagraphStyle("bold", parent=base, fontName=FONT_BOLD)
+    right = ParagraphStyle("right", parent=base, alignment=2)
+    right_bold = ParagraphStyle("right_bold", parent=right, fontName=FONT_BOLD)
+    title_style = ParagraphStyle("title", parent=base, fontName=FONT_BOLD, fontSize=14, leading=18)
+    small = ParagraphStyle("small", parent=base, fontSize=7, leading=9, textColor=colors.grey)
+    header_style = ParagraphStyle("header", parent=bold, fontSize=6.5, leading=8)
+
+    def para(text: str, style: ParagraphStyle = base) -> Paragraph:
+        return Paragraph(escape(text or "").replace("\n", "<br/>"), style)
+
+    title = f"Bordro listesi — {month.label}"
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        leftMargin=10 * mm,
+        rightMargin=10 * mm,
+        topMargin=10 * mm,
+        bottomMargin=12 * mm,
+        title=title,
+    )
+    heading = [
+        para("BORDRO LİSTESİ", title_style),
+        para(f"Dönem: {month.label}", bold),
+        para("Ön bordro" + (" · TASLAK" if draft else "")),
+    ]
+    header = Table(
+        [[_company_block(para, bold), heading]], colWidths=[146 * mm, 126 * mm], hAlign="LEFT"
+    )
+    header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    data: list[list[Any]] = [[para(text, header_style) for text in REGISTER_HEADER]]
+    style: list[tuple[Any, ...]] = [
+        ("BACKGROUND", (0, 0), (-1, 0), HEADER_FILL),
+        ("GRID", (0, 0), (-1, -1), 0.5, GRID),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+    ]
+    used: set[str] = set()
+    for index, (kind, cells) in enumerate(register_rows(month), start=1):
+        summary = kind in ("subtotal", "total")
+        used.update(cells[-1].split())
+        data.append(
+            [
+                para(cells[0], bold if summary else base),
+                *(para(cell, right_bold if summary else right) for cell in cells[1:-1]),
+                para(cells[-1], bold),
+            ]
+        )
+        if summary:
+            style.append(("BACKGROUND", (0, index), (-1, index), SUBTOTAL_FILL))
+    table = Table(
+        data, colWidths=[width * mm for width in REGISTER_WIDTHS], repeatRows=1, hAlign="LEFT"
+    )
+    table.setStyle(TableStyle(style))
+    story: list[Any] = [
+        header,
+        Spacer(1, 3 * mm),
+        para(status_line(month), small),
+        para(parameter_line(month), small),
+        Spacer(1, 3 * mm),
+        table,
+    ]
+    legend = [f"{mark}: {text}" for _, mark, text in REGISTER_MARKS if mark in used]
+    if legend:
+        story += [Spacer(1, 2 * mm), para("İşaretler — " + "; ".join(legend) + ".", small)]
+    externals = external_rows(month)
+    if externals:
+        block: list[list[Any]] = [[para(text, header_style) for text in EXTERNAL_HEADER]]
+        block += [
+            [para(cells[0]), para(cells[1], right), para(cells[2], right), para(cells[3])]
+            for cells in externals
+        ]
+        external_table = Table(
+            block, colWidths=[60 * mm, 30 * mm, 30 * mm, 90 * mm], repeatRows=1, hAlign="LEFT"
+        )
+        external_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), HEADER_FILL),
+                    ("GRID", (0, 0), (-1, -1), 0.5, GRID),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        story += [
+            Spacer(1, 4 * mm),
+            para(
+                f"Bordrosu mali müşavirde olan {len(externals)} kişi (bu listede hesaplanmadı; "
+                "toplamlara katılmadı)",
+                bold,
+            ),
+            Spacer(1, 1 * mm),
+            external_table,
+        ]
+    sides = []
+    for caption, items in summary_rows(month):
+        rows = [[para(caption, header_style), para("TL", header_style)]]
+        rows += [[para(label), para(value, right)] for label, value in items]
+        side = Table(rows, colWidths=[80 * mm, 40 * mm], hAlign="LEFT")
+        side.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), HEADER_FILL),
+                    ("GRID", (0, 0), (-1, -1), 0.5, GRID),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        sides.append(side)
+    summary = Table([sides], colWidths=[130 * mm, 130 * mm], hAlign="LEFT")
+    summary.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    story += [
+        PageBreak(),
+        para(f"İCMAL — {month.label}", title_style),
+        para(status_line(month), small),
+        Spacer(1, 3 * mm),
+        summary,
+        Spacer(1, 3 * mm),
+        para(
+            "Kümülatif gelir vergisi matrahı bu ay dahildir. Kesintiler kategoriyle yazılır; "
+            "açıklamalar kişinin pusulasındadır. Asgari ücret desteği düşülmemiştir.",
             small,
         ),
     ]

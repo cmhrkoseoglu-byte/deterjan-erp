@@ -397,7 +397,8 @@ class PersonnelCostRow:
     """Kişinin ay maliyeti. `gross_monthly` ayın son çalışılan günündeki brüt ücret (yoksa None);
     `missing_wage`: işte olduğu bir gün için geçerli ücret yok (o günler sıfır sayıldı) ya da
     bordrosu mali müşavirde olan kişinin (`payroll_external`) o ayın rakamları girilmedi.
-    `gross_salary` fazla mesai dışındaki brüt (ek ödemeler dahil)."""
+    `gross_salary` normal ücret (30 gün usulü); fazla mesai ve resmî tatil ile ek ödemeler (prim,
+    ikramiye, nakit yol ve yemek) ayrıdır. Mali müşavirdeki kişide brüt toplamın tamamıdır."""
 
     employee: Employee
     stage: str
@@ -412,10 +413,11 @@ class PersonnelCostRow:
     total_cost: Decimal
     missing_wage: bool
     payroll_external: bool = False
+    extras_total: Decimal = ZERO
 
     @property
     def gross_total(self) -> Decimal:
-        return self.gross_salary + self.overtime_pay
+        return self.gross_salary + self.overtime_pay + self.extras_total
 
 
 @dataclass(frozen=True)
@@ -475,6 +477,10 @@ class PersonnelCostReport:
     @property
     def overtime_pay(self) -> Decimal:
         return sum((row.overtime_pay for row in self.rows), ZERO)
+
+    @property
+    def extras_total(self) -> Decimal:
+        return sum((row.extras_total for row in self.rows), ZERO)
 
     @property
     def employer_share(self) -> Decimal:
@@ -573,11 +579,12 @@ def _cost_row(row: personnel.PayrollRow, stage: str) -> PersonnelCostRow:
         unpaid_days=line.unpaid_days,
         paid_days=line.paid_days,
         overtime_hours=line.overtime_worked_hours + line.overtime_rest_hours + line.holiday_hours,
-        gross_salary=line.gross_total - line.overtime_pay,
+        gross_salary=line.salary,
         overtime_pay=line.overtime_pay,
         employer_share=line.employer_share,
         total_cost=line.employer_cost,
         missing_wage=line.missing_wage,
+        extras_total=line.extras_total,
     )
 
 
@@ -597,7 +604,8 @@ def personnel_cost_report(year: int, month: int) -> PersonnelCostReport:
     hesaplanır: geçmiş aylar da (onaylılar dahil) bugünkü ücret kayıtları, kişinin bugünkü birimi
     ile işe giriş ve çıkış tarihi, bugünkü eşleştirme ve o yılın bordro parametreleriyle
     hesaplanır."""
-    payroll = personnel.payroll_month(year, month)
+    # İşveren maliyeti gelir vergisi kümülatifine bağlı değil: zincir hesaplanmaz.
+    payroll = personnel.payroll_month(year, month, net=False)
     centers = _center_stages()
     rows = [
         _cost_row(row, centers.get(personnel.fold(row.employee.department), GENERAL))

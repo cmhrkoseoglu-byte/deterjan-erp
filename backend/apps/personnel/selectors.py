@@ -3,7 +3,7 @@
 import calendar
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
@@ -25,6 +25,10 @@ from apps.personnel.models import (
     EmployeeDocument,
     EmployeeWage,
     ExternalPayrollFigure,
+    PayrollItem,
+    PayrollItemCategory,
+    PayrollItemKind,
+    PayrollOpeningBalance,
     PayrollParameterSet,
     PublicHoliday,
     default_rest_weekdays,
@@ -323,29 +327,22 @@ class AttendanceGrid:
         return month_label(self.year, self.month)
 
 
-def attendance_grid(year: int, month: int, *, department: str = "") -> AttendanceGrid:
-    """Ayın puantaj tablosu (isteğe bağlı birim süzgeciyle)."""
-    first, last = month_bounds(year, month)
-    record = month_record(year, month)
-    approved = record is not None and record.status == AttendanceMonth.Status.APPROVED
-    holidays = holidays_between(first, last)
-    rest = rest_weekdays()
-    days = [
-        AttendanceDay(date=day, rest=day.weekday() in rest, holiday=holidays.get(day))
-        for day in days_between(first, last)
-    ]
-    entries = AttendanceEntry.objects.filter(date__range=(first, last)).select_related("employee")
-    if department:
-        entries = entries.filter(employee__department=department)
-    saved: dict[tuple[int, date], AttendanceEntry] = {
-        (entry.employee_id, entry.date): entry for entry in entries
-    }
-    people = {entry.employee_id: entry.employee for entry in saved.values()}
-    if not approved:
-        for employee in employees_between(first, last, department):
-            people.setdefault(employee.pk, employee)
+def _overlaps(employee: Employee, first: date, last: date) -> bool:
+    """Kişi aralıkta en az bir gün işte mi (`employees_between` ile aynı kural)?"""
+    if employee.hire_date and employee.hire_date > last:
+        return False
+    return not (employee.termination_date and employee.termination_date < first)
+
+
+def _grid_rows(
+    people: Iterable[Employee],
+    days: list[AttendanceDay],
+    saved: dict[tuple[int, date], AttendanceEntry],
+    approved: bool,
+    rest: set[int],
+) -> list[AttendanceRow]:
     rows = []
-    for employee in sorted(people.values(), key=lambda person: (fold(person.full_name), person.pk)):
+    for employee in sorted(people, key=lambda person: (fold(person.full_name), person.pk)):
         cells = []
         for day in days:
             entry = saved.get((employee.pk, day.date))
@@ -370,7 +367,59 @@ def attendance_grid(year: int, month: int, *, department: str = "") -> Attendanc
                 )
             )
         rows.append(AttendanceRow(employee=employee, cells=cells))
-    return AttendanceGrid(year=year, month=month, record=record, days=days, rows=rows)
+    return rows
+
+
+def attendance_grids(
+    year: int, months: Iterable[int], *, department: str = ""
+) -> dict[int, AttendanceGrid]:
+    """Bir yılın aylarının puantaj tabloları, ay sayısından bağımsız sabit sayıda sorguyla
+    (bordronun kümülatif zinciri için). Her ay `attendance_grid` ile aynıdır."""
+    wanted = sorted(set(months))
+    if not wanted:
+        return {}
+    first = date(year, wanted[0], 1)
+    last = month_bounds(year, wanted[-1])[1]
+    records = {
+        record.month: record
+        for record in AttendanceMonth.objects.select_related("approved_by").filter(
+            year=year, month__in=wanted
+        )
+    }
+    holidays = holidays_between(first, last)
+    rest = rest_weekdays()
+    entries = AttendanceEntry.objects.filter(date__range=(first, last)).select_related("employee")
+    if department:
+        entries = entries.filter(employee__department=department)
+    saved_by_month: dict[int, dict[tuple[int, date], AttendanceEntry]] = defaultdict(dict)
+    for entry in entries:
+        saved_by_month[entry.date.month][(entry.employee_id, entry.date)] = entry
+    candidates: list[Employee] | None = None
+    grids = {}
+    for month in wanted:
+        month_first, month_last = month_bounds(year, month)
+        record = records.get(month)
+        approved = record is not None and record.status == AttendanceMonth.Status.APPROVED
+        days = [
+            AttendanceDay(date=day, rest=day.weekday() in rest, holiday=holidays.get(day))
+            for day in days_between(month_first, month_last)
+        ]
+        saved = saved_by_month.get(month, {})
+        people = {entry.employee_id: entry.employee for entry in saved.values()}
+        if not approved:
+            if candidates is None:
+                candidates = list(employees_between(first, last, department))
+            for employee in candidates:
+                if _overlaps(employee, month_first, month_last):
+                    people.setdefault(employee.pk, employee)
+        rows = _grid_rows(people.values(), days, saved, approved, rest)
+        grids[month] = AttendanceGrid(year=year, month=month, record=record, days=days, rows=rows)
+    return grids
+
+
+def attendance_grid(year: int, month: int, *, department: str = "") -> AttendanceGrid:
+    """Ayın puantaj tablosu (isteğe bağlı birim süzgeciyle)."""
+    return attendance_grids(year, [month], department=department)[month]
 
 
 # --- ücretler ------------------------------------------------------------------------------------
@@ -440,6 +489,24 @@ BELOW_MINIMUM_WAGE = "below_minimum_wage"
 EXTERNAL_MISSING = "external_missing"
 EXIT_IN_MONTH = "exit_in_month"
 PAY_WITHOUT_SGK_DAYS = "pay_without_sgk_days"
+# Brütten nete bordronun uyarıları (3. adım).
+OPENING_MISSING = "opening_missing"
+CARRY_INCOMPLETE = "carry_incomplete"
+NEGATIVE_PAYABLE = "negative_payable"
+CEILING_WITH_BONUS = "ceiling_with_bonus"
+# Zincir halkasının bayrakları: parametreler başka yılın değerleriyle tahmin edildi; devrin
+# kaydedilmiş istisna matrahı bugünkü parametrelerle hesaplanandan farklı (parametreler devirden
+# sonra değişti: devir yeniden kaydedilmeli).
+FALLBACK_PARAMETERS = "fallback_parameters"
+OPENING_STALE = "opening_stale"
+
+# Brütten nete bordronun başladığı ay (docs/DECISIONS.md "Başlangıç Ekim 2026"). Öncesinde bordro
+# mali müşavirdedir: net kalemler hesaplanmaz; işveren maliyeti ve personel maliyeti hesaplanır.
+PAYROLL_START = (2026, 10)
+# SGK tavanını aşınca izleyen iki aya devreden kalemler (5510 m.80; hesaplanmaz, uyarılır).
+BONUS_CATEGORIES = frozenset({PayrollItemCategory.PREMIUM, PayrollItemCategory.BONUS})
+# Kümülatif zincir ayının kaynağı (döküm için).
+CARRY_OPENING, CARRY_ERP, CARRY_EXTERNAL = "opening", "erp", "external"
 
 
 @dataclass(frozen=True)
@@ -477,27 +544,37 @@ def engine_parameters(record: PayrollParameterSet) -> payroll.Parameters:
             record.tax_rate_5,
         ),
         bes_rate=record.bes_rate,
+        meal_exemption_daily=record.meal_exemption_daily,
     )
+
+
+def parameter_settings(year: int, months: Iterable[int]) -> dict[int, PayrollSettings]:
+    """Ayların parametreleri (yılın setleri tek sorguyla): her ay için aynı yılın, ayın ilk gününe
+    kadar geçerli olmuş en son kayıtlı seti; yoksa yılın yasal değerleri; o da yoksa en yakın yılın
+    yasal değerleri (tahmin)."""
+    records = list(
+        PayrollParameterSet.objects.filter(is_active=True, valid_from__year=year).order_by(
+            "-valid_from", "-id"
+        )
+    )
+    legal = payroll.legal_parameters(year)
+    nearest = payroll.nearest_legal_year(year)
+    found = {}
+    for month in set(months):
+        first = date(year, month, 1)
+        record = next((item for item in records if item.valid_from <= first), None)
+        if record is not None:
+            found[month] = PayrollSettings(engine_parameters(record), SAVED, record, year)
+        elif legal is not None:
+            found[month] = PayrollSettings(legal, LEGAL_DEFAULT, None, year)
+        else:
+            found[month] = PayrollSettings(payroll.LEGAL_DEFAULTS[nearest], FALLBACK, None, nearest)
+    return found
 
 
 def payroll_parameters(year: int, month: int) -> PayrollSettings:
-    """Ayın parametreleri: aynı yılın, ayın ilk gününe kadar geçerli olmuş en son kayıtlı seti;
-    yoksa yılın yasal değerleri; o da yoksa en yakın yılın yasal değerleri (tahmin)."""
-    first = date(year, month, 1)
-    record = (
-        PayrollParameterSet.objects.filter(
-            is_active=True, valid_from__year=year, valid_from__lte=first
-        )
-        .order_by("-valid_from", "-id")
-        .first()
-    )
-    if record is not None:
-        return PayrollSettings(engine_parameters(record), SAVED, record, year)
-    legal = payroll.legal_parameters(year)
-    if legal is not None:
-        return PayrollSettings(legal, LEGAL_DEFAULT, None, year)
-    nearest = payroll.nearest_legal_year(year)
-    return PayrollSettings(payroll.LEGAL_DEFAULTS[nearest], FALLBACK, None, nearest)
+    """Ayın parametreleri (`parameter_settings`)."""
+    return parameter_settings(year, [month])[month]
 
 
 def parameter_sets() -> QuerySet[PayrollParameterSet]:
@@ -505,17 +582,78 @@ def parameter_sets() -> QuerySet[PayrollParameterSet]:
     return PayrollParameterSet.objects.filter(is_active=True).order_by("-valid_from", "-id")
 
 
+def net_available(year: int, month: int) -> bool:
+    """Brütten nete bordro bu ay için hesaplanır mı (başlangıç ayı ve sonrası)?"""
+    return (year, month) >= PAYROLL_START
+
+
+def chain_start(year: int) -> int | None:
+    """Yılın kümülatif zincirinin varsayılan ilk ayı: başlangıç yılında başlangıç ayı, sonraki
+    yıllarda Ocak; başlangıçtan önceki yıllarda yok."""
+    if year < PAYROLL_START[0]:
+        return None
+    return PAYROLL_START[1] if year == PAYROLL_START[0] else 1
+
+
+def months_employed_before(employee: Employee, year: int, month: int) -> int:
+    """Kişinin bu yıl `month` ayından önce bu işverende işte olduğu ay sayısı (işe giriş ayı tam
+    sayılır; GVGT 319 m.6/2, Örnek 7): devirde asgari ücret istisnası ay sayısının önerisi ve üst
+    sınırı."""
+    hire = employee.hire_date
+    if hire and hire.year > year:
+        return 0
+    first = hire.month if hire and hire.year == year else 1
+    return max(0, month - first)
+
+
+def opening_exemption_base(settings: dict[int, PayrollSettings], month: int, count: int) -> Decimal:
+    """Devir ayından önceki `count` ayın kendi parametrelerindeki asgari ücret matrahları toplamı
+    (yıl içinde asgari ücret değişse de doğru)."""
+    return sum(
+        (settings[number].params.exemption_base for number in range(month - count, month)),
+        Decimal(0),
+    )
+
+
+@dataclass(frozen=True)
+class CarryMonth:
+    """Kümülatif zincirin bir halkası (döküm için). `source` "opening" (devir; `month` devrin
+    ayıdır, tutarlar o aydan önceki kümülatiftir), "erp" (ERP'de hesaplanan ay; eklenen GV matrahı
+    ve asgari ücret istisna matrahı) ya da "external" (bordrosu mali müşavirdeydi; zincir burada
+    kopar)."""
+
+    month: int
+    source: str
+    tax_base: Decimal
+    exemption_base: Decimal
+    flags: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True)
 class PayrollRow:
     """Bir kişinin ay bordrosu. `line` ERP hesabıdır; bordrosu mali müşavirde olan kişide
     (`external`) para tutarları yerine mali müşavirin rakamları (`figure`) kullanılır, `line`
-    yalnızca günler içindir."""
+    yalnızca günler içindir.
+
+    Brütten nete hesapta (`PayrollMonth.net`): `opening` zincirin çapası olan devir, `openings`
+    kişinin bu yıl bu aya kadarki etkin devirleri (ay sırasıyla; devir penceresi önceki ayların
+    devirlerini de görsün), `entry_month` devrin beklendiği giriş ayı, `opening_needed` giriş ayının
+    devri girilmemiş mi, `suggestion_months` / `suggestion_base` giriş ayının devri için asgari
+    ücret istisnası önerisi, `carry_months` ay başı kümülatifin nasıl kurulduğu."""
 
     employee: Employee
     line: payroll.Result
     external: bool
     figure: ExternalPayrollFigure | None
     warnings: tuple[str, ...]
+    items: tuple[PayrollItem, ...] = ()
+    opening: PayrollOpeningBalance | None = None
+    openings: tuple[PayrollOpeningBalance, ...] = ()
+    entry_month: int | None = None
+    opening_needed: bool = False
+    suggestion_months: int = 0
+    suggestion_base: Decimal = Decimal(0)
+    carry_months: tuple[CarryMonth, ...] = ()
 
     @property
     def gross_total(self) -> Decimal:
@@ -532,13 +670,18 @@ class PayrollRow:
 
 @dataclass(frozen=True)
 class PayrollMonth:
-    """Ayın ön bordrosu: puantaj durumu, parametreler ve kişi satırları (canlı hesap)."""
+    """Ayın ön bordrosu: puantaj durumu, parametreler ve kişi satırları (canlı hesap). `net`:
+    brütten nete (kümülatif zincir, devir, vergiler) hesaplandı mı; başlangıç ayından önce ve
+    personel maliyetinde hesaplanmaz. `orphan_items`: o ay işte olmayan kişilere girilmiş
+    kalemler."""
 
     year: int
     month: int
     grid: AttendanceGrid
     settings: PayrollSettings
     rows: list[PayrollRow]
+    net: bool = False
+    orphan_items: tuple[PayrollItem, ...] = ()
 
     @property
     def label(self) -> str:
@@ -551,6 +694,10 @@ class PayrollMonth:
     @property
     def attendance_number(self) -> str:
         return self.grid.record.number if self.grid.record else ""
+
+    @property
+    def net_available(self) -> bool:
+        return net_available(self.year, self.month)
 
     @property
     def computed(self) -> list[PayrollRow]:
@@ -572,14 +719,28 @@ class PayrollMonth:
         return sum((row.employer_cost for row in self.rows), Decimal(0))
 
 
+def _engine_item(item: PayrollItem) -> payroll.Item:
+    """Kalemin hesap motoru biçimi (tür kategori kodudur; ad açıklama ya da kategori)."""
+    return payroll.Item(
+        kind=item.category,
+        label=item.description or item.get_category_display(),
+        amount=item.amount,
+    )
+
+
 def _month_input(
-    row: AttendanceRow, days: list[AttendanceDay], wages: Sequence[EmployeeWage]
+    row: AttendanceRow,
+    days: list[AttendanceDay],
+    wages: Sequence[EmployeeWage],
+    *,
+    items: Sequence[PayrollItem] = (),
+    carry: payroll.Carry | None = None,
 ) -> payroll.MonthInput:
     """Puantaj satırından hesap girdisi: yalnızca kişinin işte olduğu (durumu olan) günler, her gün
     o gün geçerli ücretle; yarım gün tatil çalışması yalnızca takvimde yarım gün tatil olan güne
-    sayılır."""
+    sayılır. Ayın ek ödemeleri brüte, kesintileri netten."""
     half_days = {day.date for day in days if day.half_day}
-    items = tuple(
+    selected = tuple(
         payroll.Day(
             date=cell.date,
             status=cell.status,
@@ -590,7 +751,16 @@ def _month_input(
         for cell in row.cells
         if cell.status and employed_on(row.employee, cell.date)
     )
-    return payroll.MonthInput(days=items, days_in_month=len(days), bes=row.employee.bes_enrolled)
+    return payroll.MonthInput(
+        days=selected,
+        days_in_month=len(days),
+        extras=tuple(_engine_item(item) for item in items if item.kind == PayrollItemKind.EXTRA),
+        deductions=tuple(
+            _engine_item(item) for item in items if item.kind == PayrollItemKind.DEDUCTION
+        ),
+        bes=row.employee.bes_enrolled,
+        carry=carry or payroll.Carry(),
+    )
 
 
 def _warnings(
@@ -599,7 +769,7 @@ def _warnings(
     days: tuple[payroll.Day, ...],
     params: payroll.Parameters,
     last: date,
-) -> tuple[str, ...]:
+) -> list[str]:
     found = []
     if line.missing_wage:
         found.append(MISSING_WAGE)
@@ -619,36 +789,229 @@ def _warnings(
         found.append(EXIT_IN_MONTH)
     if line.gross_total > 0 and not line.sgk_days:
         found.append(PAY_WITHOUT_SGK_DAYS)
-    return tuple(found)
+    return found
 
 
-def payroll_month(year: int, month: int, *, department: str = "") -> PayrollMonth:
+@dataclass(frozen=True)
+class _Chain:
+    """Kişinin ay başı kümülatifi ve nasıl kurulduğu."""
+
+    carry: payroll.Carry
+    months: tuple[CarryMonth, ...]
+    entry_month: int
+    opening_needed: bool
+    incomplete: bool
+
+
+@dataclass(frozen=True)
+class _ChainData:
+    """Zincir aylarının önceden yüklenmiş verisi (aylar bellekte hesaplanır)."""
+
+    year: int
+    month: int
+    start: int
+    grids: dict[int, AttendanceGrid]
+    rows: dict[int, dict[int, AttendanceRow]]
+    settings: dict[int, PayrollSettings]
+    wages: dict[int, list[EmployeeWage]]
+    items: dict[tuple[int, int], list[PayrollItem]]
+    figures: dict[tuple[int, int], ExternalPayrollFigure]
+
+
+def _chain(employee: Employee, opening: PayrollOpeningBalance | None, data: _ChainData) -> _Chain:
+    """Kişinin ay başı kümülatif GV matrahı ve asgari ücret istisna matrahı.
+
+    Çapa, kişinin bu yıl bu ay ya da önceki aylardaki en son devridir (devrin tutarları devir
+    ayından önceki kümülatiftir); yoksa zincirin varsayılan ilk ayından (başlangıç yılında Ekim,
+    sonra Ocak) sıfırla başlanır. Çapadan bu aya kadarki ERP aylarının GV matrahı ve istisna matrahı
+    eklenir (bunlar kümülatife bağlı değildir). Bordrosu mali müşavirde geçen ay zinciri keser:
+    sonraki ilk ERP ayı giriş ayıdır ve devir ister. 4. adımda onaylı ayın saklı kümülatifi de
+    çapa olacak."""
+    anchor = opening.month if opening is not None else data.start
+    tax_base = opening.tax_base if opening is not None else Decimal(0)
+    exemption = opening.exemption_base if opening is not None else Decimal(0)
+    links: list[CarryMonth] = []
+    incomplete = False
+    if opening is not None:
+        # Devrin istisna matrahı kayıtta saklıdır; kapsadığı ayların parametreleri tahminse ya da
+        # sonradan değiştiyse zincir eksik sayılır (devir yeniden kaydedilince düzelir).
+        covered = range(opening.month - opening.exemption_months, opening.month)
+        opening_flags = []
+        if any(data.settings[number].source == FALLBACK for number in covered):
+            opening_flags.append(FALLBACK_PARAMETERS)
+        expected = opening_exemption_base(data.settings, opening.month, opening.exemption_months)
+        if expected != opening.exemption_base:
+            opening_flags.append(OPENING_STALE)
+        incomplete = bool(opening_flags)
+        links.append(
+            CarryMonth(opening.month, CARRY_OPENING, tax_base, exemption, tuple(opening_flags))
+        )
+    last_external: int | None = None
+    for number in range(data.start, data.month):
+        if (employee.pk, number) in data.figures:
+            last_external = number
+            if number >= anchor:
+                links.append(CarryMonth(number, CARRY_EXTERNAL, Decimal(0), Decimal(0)))
+            continue
+        if number < anchor:
+            continue  # devirden önceki aylar devrin içindedir
+        row = data.rows[number].get(employee.pk)
+        if row is None:
+            continue  # kişi o ay işte değil
+        month_input = _month_input(
+            row,
+            data.grids[number].days,
+            data.wages.get(employee.pk, []),
+            items=data.items.get((employee.pk, number), []),
+        )
+        if not month_input.days:
+            continue
+        settings = data.settings[number]
+        line = payroll.compute(month_input, settings.params)
+        flags = []
+        if line.missing_wage:
+            flags.append(MISSING_WAGE)
+        if settings.source == FALLBACK:
+            flags.append(FALLBACK_PARAMETERS)
+        incomplete = incomplete or bool(flags)
+        tax_base += line.tax_base
+        exemption += line.exemption_base_added
+        links.append(
+            CarryMonth(number, CARRY_ERP, line.tax_base, line.exemption_base_added, tuple(flags))
+        )
+    entry = data.start if last_external is None else last_external + 1
+    has_opening = opening is not None and opening.month >= entry
+    needed = months_employed_before(employee, data.year, entry) > 0 and not has_opening
+    return _Chain(payroll.Carry(tax_base, exemption), tuple(links), entry, needed, incomplete)
+
+
+def payroll_month(year: int, month: int, *, department: str = "", net: bool = True) -> PayrollMonth:
     """Ayın ön bordrosu (isteğe bağlı birim süzgeciyle): puantajın günleri (açık ayda takvim
-    varsayılanları, onaylı ayda kayıtlı günler) ve ücretlerden kişi başına brütten nete hesap ve
-    işverene maliyet. Bordrosu mali müşavirde olan kişide o ayın girilmiş rakamları kullanılır."""
-    grid = attendance_grid(year, month, department=department)
-    settings = payroll_parameters(year, month)
+    varsayılanları, onaylı ayda kayıtlı günler), ücretler ve ayın ek ödeme ve kesintilerinden kişi
+    başına brütten nete hesap ve işverene maliyet. Bordrosu mali müşavirde olan kişide (o ay için
+    rakamı girilmiş ya da kartı işaretli) o ayın girilmiş rakamları kullanılır.
+
+    `net=True` ve başlangıç ayından sonraki ayda gelir vergisi kişinin kümülatif zinciriyle (devir
+    ve önceki ERP ayları) hesaplanır; sorgu sayısı ay ve kişi sayısından bağımsızdır. Personel
+    maliyeti `net=False` ile çağırır (işveren maliyeti kümülatife bağlı değildir)."""
+    net = net and net_available(year, month)
+    start = chain_start(year) if net else None
+    months = list(range(start, month + 1)) if start is not None else [month]
+    grids = attendance_grids(year, months, department=department)
+    grid = grids[month]
+    settings_by_month = parameter_settings(year, range(1, month + 1) if net else [month])
+    settings = settings_by_month[month]
     last = grid.days[-1].date
-    people = [row.employee.pk for row in grid.rows]
+    people = sorted({row.employee.pk for number in months for row in grids[number].rows})
     wages = wages_by_employee(people, last)
     figures = {
-        figure.employee_id: figure
+        (figure.employee_id, figure.month): figure
         for figure in ExternalPayrollFigure.objects.filter(
-            year=year, month=month, employee_id__in=people
+            is_active=True, year=year, month__in=months, employee_id__in=people
         ).select_related("updated_by")
     }
+    item_query = PayrollItem.objects.filter(is_active=True, year=year, month__in=months)
+    if department:
+        item_query = item_query.filter(employee__department=department)
+    items: dict[tuple[int, int], list[PayrollItem]] = defaultdict(list)
+    for item in item_query.select_related(
+        "employee", "created_by", "updated_by", "removed_by"
+    ).order_by("month", "kind", "category", "id"):
+        items[(item.employee_id, item.month)].append(item)
+    openings: dict[int, list[PayrollOpeningBalance]] = defaultdict(list)
+    if net:
+        for opening in (
+            PayrollOpeningBalance.objects.filter(
+                is_active=True, year=year, month__lte=month, employee_id__in=people
+            )
+            .select_related("employee", "created_by", "updated_by", "removed_by")
+            .order_by("month", "id")
+        ):
+            openings[opening.employee_id].append(opening)  # en son devir çapadır
+    data = _ChainData(
+        year=year,
+        month=month,
+        start=start if start is not None else month,
+        grids=grids,
+        rows={number: {row.employee.pk: row for row in grids[number].rows} for number in months},
+        settings=settings_by_month,
+        wages=wages,
+        items=items,
+        figures=figures,
+    )
     rows = []
     for row in grid.rows:
-        month_input = _month_input(row, grid.days, wages.get(row.employee.pk, []))
+        employee = row.employee
+        own_items = items.get((employee.pk, month), [])
+        month_input = _month_input(row, grid.days, wages.get(employee.pk, []), items=own_items)
         if not month_input.days:
             continue  # kişi bu ay işte değil (yalnızca işte olmadığı günlerde kaydı var)
-        line = payroll.compute(month_input, settings.params)
-        warnings: tuple[str, ...]
-        if row.employee.payroll_external:
-            figure = figures.get(row.employee.pk)
-            warnings = () if figure else (EXTERNAL_MISSING,)
-            rows.append(PayrollRow(row.employee, line, True, figure, warnings))
+        figure = figures.get((employee.pk, month))
+        if employee.payroll_external or figure is not None:
+            line = payroll.compute(month_input, settings.params)
+            rows.append(
+                PayrollRow(
+                    employee,
+                    line,
+                    True,
+                    figure,
+                    () if figure else (EXTERNAL_MISSING,),
+                    items=tuple(own_items),
+                )
+            )
             continue
-        warnings = _warnings(row.employee, line, month_input.days, settings.params, last)
-        rows.append(PayrollRow(row.employee, line, False, None, warnings))
-    return PayrollMonth(year=year, month=month, grid=grid, settings=settings, rows=rows)
+        own_openings = openings.get(employee.pk, [])
+        anchor = own_openings[-1] if own_openings else None
+        chain = _chain(employee, anchor, data) if net else None
+        if chain is not None:
+            month_input = replace(month_input, carry=chain.carry)
+        line = payroll.compute(month_input, settings.params)
+        warnings = _warnings(employee, line, month_input.days, settings.params, last)
+        extras = [item for item in own_items if item.kind == PayrollItemKind.EXTRA]
+        if line.ceiling_applied and any(item.category in BONUS_CATEGORIES for item in extras):
+            warnings.append(CEILING_WITH_BONUS)
+        if chain is None:
+            rows.append(PayrollRow(employee, line, False, None, tuple(warnings), tuple(own_items)))
+            continue
+        if chain.opening_needed:
+            warnings.append(OPENING_MISSING)
+        if chain.incomplete:
+            warnings.append(CARRY_INCOMPLETE)
+        if line.payable < 0:
+            warnings.append(NEGATIVE_PAYABLE)
+        suggestion = months_employed_before(employee, year, chain.entry_month)
+        rows.append(
+            PayrollRow(
+                employee,
+                line,
+                False,
+                None,
+                tuple(warnings),
+                tuple(own_items),
+                opening=anchor,
+                openings=tuple(own_openings),
+                entry_month=chain.entry_month,
+                opening_needed=chain.opening_needed,
+                suggestion_months=suggestion,
+                suggestion_base=opening_exemption_base(
+                    settings_by_month, chain.entry_month, suggestion
+                ),
+                carry_months=chain.months,
+            )
+        )
+    listed = {row.employee.pk for row in rows}
+    orphans = tuple(
+        item
+        for (employee_id, number), found in items.items()
+        if number == month and employee_id not in listed
+        for item in found
+    )
+    return PayrollMonth(
+        year=year,
+        month=month,
+        grid=grid,
+        settings=settings,
+        rows=rows,
+        net=net,
+        orphan_items=orphans,
+    )

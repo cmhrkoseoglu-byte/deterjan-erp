@@ -262,6 +262,45 @@ def test_bes_and_net_deductions() -> None:
     assert (bonus.extras_total, bonus.gross_total) == (D("5000"), D("55000.00"))
 
 
+def test_cash_meal_sgk_exemption() -> None:
+    """Nakit yemek: fiilen çalışılan gün × günlük sınıra kadarki kısmı SGK matrahına girmez; gelir
+    ve damga vergisine tabi kalır. Sınır 0'sa (varsayılan) istisna yok. Ekim 2026: 4 hafta tatili,
+    biri 4 saat fazla mesaili → fiilen 28 gün; yemek 5.000, sınır 158 → istisna 4.424."""
+    meal = (payroll.Item(payroll.MEAL, "Yemek", D("5000")),)
+    rest = dict.fromkeys((4, 11, 18, 25), payroll.WEEKLY_REST)
+    inp = month(2026, 10, "33030", statuses=rest, hours={11: 4}, extras=meal)
+    plain = compute(inp)
+    assert plain.meal_exemption == D(0) and plain.sgk_gross == plain.gross_total
+    line = compute(inp, replace(P, meal_exemption_daily=D("158.00")))
+    assert (line.worked_days, line.meal_exemption) == (28, D("4424.00"))
+    assert line.gross_total == plain.gross_total == D("38910.80")
+    assert (line.sgk_gross, line.sgk_base) == (D("34486.80"), D("34486.80"))
+    assert (line.employee_sgk, line.employee_unemployment) == (D("4828.15"), D("344.87"))
+    # GV matrahı brütün tamamından (yemek dahil) SGK ve işsizlik payı düşülerek; damga brütten.
+    assert (line.tax_base, line.income_tax, line.stamp_tax) == (
+        D("33737.78"),
+        D("849.34"),
+        D("44.64"),
+    )
+    assert (line.net_pay, line.employer_cost) == (D("32843.80"), D("45377.08"))
+    # İstisna yemek tutarını aşamaz; matrah alt sınırın altına inerse alt sınır uygulanır.
+    small = compute(
+        month(2026, 10, "33030", extras=(payroll.Item(payroll.MEAL, "Yemek", D("2000")),)),
+        replace(P, meal_exemption_daily=D("158.00")),
+    )
+    assert (small.meal_exemption, small.sgk_gross, small.floor_applied) == (
+        D("2000.00"),
+        D("33030.00"),
+        False,
+    )
+    # Yemek dışındaki ek ödeme istisnadan yararlanmaz.
+    bonus = compute(
+        month(2026, 10, "33030", extras=(payroll.Item("PREMIUM", "Prim", D("5000")),)),
+        replace(P, meal_exemption_daily=D("158.00")),
+    )
+    assert bonus.meal_exemption == D(0) and bonus.sgk_gross == bonus.gross_total
+
+
 def test_missing_wage_skips_the_floor() -> None:
     """Ücreti girilmemiş gün varsa alt sınır uygulanmaz (ücretsiz görünen kişiye prim yazılmaz)."""
     line = compute(month(2026, 10, None))

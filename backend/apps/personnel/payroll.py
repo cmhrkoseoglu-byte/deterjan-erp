@@ -20,13 +20,16 @@ durumudur, çıktı bordronun bütün kalemleridir. Her kalem kuruşa yarım yuk
   hesaplanır. Asgari ücret istisnası aynı yöntemle, kişinin bu işverendeki kümülatif asgari ücret
   matrahıyla bulunur ve hesaplanan vergiyi aşmaz. Damga vergisi brütün asgari ücreti aşan kısmından.
 - BES kesintisi SGK matrahının yüzdesi olarak netten düşülür.
+- Nakit yemek ek ödemesinin fiilen çalışılan gün × günlük sınıra kadarki kısmı SGK matrahına girmez
+  (5510 s. Kanun m.80); gelir ve damga vergisine tabi kalır. Günlük sınır parametredir (varsayılan
+  0: istisna yok).
 """
 
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
-ENGINE_VERSION = "2026.1"
+ENGINE_VERSION = "2026.2"
 
 ZERO = Decimal(0)
 CENT = Decimal("0.01")
@@ -46,6 +49,10 @@ UNPAID_LEAVE = "UNPAID_LEAVE"
 SICK_LEAVE = "SICK_LEAVE"
 ABSENT = "ABSENT"
 UNPAID_STATUSES = frozenset({UNPAID_LEAVE, SICK_LEAVE, ABSENT})
+REST_STATUSES = frozenset({WEEKLY_REST, PUBLIC_HOLIDAY})
+
+# Ek ödeme kategorisi (`personnel.models.PayrollItem.Category`): SGK istisnası nakit yemekte.
+MEAL = "MEAL"
 
 
 def money(value: Decimal) -> Decimal:
@@ -74,6 +81,8 @@ class Parameters:
     tax_brackets: tuple[Decimal, Decimal, Decimal, Decimal]
     tax_rates: tuple[Decimal, Decimal, Decimal, Decimal, Decimal]
     bes_rate: Decimal
+    # Nakit yemek SGK istisnası, fiilen çalışılan gün başına TL (0: istisna yok).
+    meal_exemption_daily: Decimal = ZERO
 
     @property
     def daily_floor(self) -> Decimal:
@@ -129,7 +138,8 @@ class Day:
 
 @dataclass(frozen=True)
 class Item:
-    """Elle girilen aylık kalem: ek ödeme (brüt) ya da net kesinti."""
+    """Elle girilen aylık kalem: ek ödeme (brüt) ya da net kesinti. `kind` kalemin kategorisidir
+    (ör. "MEAL" nakit yemek, "ADVANCE" avans)."""
 
     kind: str
     label: str
@@ -163,6 +173,7 @@ class Result:
 
     # Günler
     employed_days: int
+    worked_days: int
     paid_days: int
     unpaid_days: int
     sick_days: int
@@ -186,6 +197,8 @@ class Result:
     extras_total: Decimal
     gross_total: Decimal
     # SGK ve işsizlik (işçi)
+    meal_exemption: Decimal
+    sgk_gross: Decimal
     sgk_base: Decimal
     floor_applied: bool
     ceiling_applied: bool
@@ -291,6 +304,18 @@ def compute(month: MonthInput, params: Parameters) -> Result:
     extras_total = sum((item.amount for item in month.extras), ZERO)
     gross = salary + overtime_worked + overtime_rest + holiday_pay + extras_total
 
+    # Nakit yemek: fiilen çalışılan gün × günlük sınıra kadarki kısmı SGK matrahına girmez (gelir
+    # ve damga vergisine tabi kalır). Fiilen çalışılan gün: Ç, fazla mesaili hafta tatili ve
+    # resmî tatil.
+    worked_days = sum(
+        1
+        for day in days
+        if day.status == WORKED or (day.status in REST_STATUSES and day.overtime_hours > 0)
+    )
+    meal_total = sum((item.amount for item in month.extras if item.kind == MEAL), ZERO)
+    meal_exemption = money(min(meal_total, params.meal_exemption_daily * worked_days))
+    sgk_gross = gross - meal_exemption
+
     # SGK matrahı (alt ve üst sınır), işçi payları ve alt sınır farkı. Ücreti girilmemiş gün varsa
     # brüt eksiktir: alt sınır uygulanmaz (yoksa ücretsiz görünen kişiye prim yazılırdı); satır
     # "ücret eksik" uyarısı taşır.
@@ -300,12 +325,12 @@ def compute(month: MonthInput, params: Parameters) -> Result:
     if sgk_days:
         floor = ZERO if missing_wage else params.daily_floor * sgk_days
         ceiling = params.daily_ceiling * sgk_days
-        sgk_base = min(max(gross, floor), ceiling)
+        sgk_base = min(max(sgk_gross, floor), ceiling)
     else:
         floor = ceiling = sgk_base = ZERO
-    floor_applied = bool(sgk_days) and gross < floor
-    ceiling_applied = bool(sgk_days) and gross > ceiling
-    employee_base = min(gross, sgk_base)
+    floor_applied = bool(sgk_days) and sgk_gross < floor
+    ceiling_applied = bool(sgk_days) and sgk_gross > ceiling
+    employee_base = min(sgk_gross, sgk_base)
     employee_sgk = percent(employee_base, params.employee_sgk_rate)
     employee_unemployment = percent(employee_base, params.employee_unemployment_rate)
     floor_gap = ZERO
@@ -345,6 +370,7 @@ def compute(month: MonthInput, params: Parameters) -> Result:
 
     return Result(
         employed_days=len(days),
+        worked_days=worked_days,
         paid_days=paid_days,
         unpaid_days=sum(1 for day in days if day.status in UNPAID_STATUSES),
         sick_days=sum(1 for day in days if day.status == SICK_LEAVE),
@@ -366,6 +392,8 @@ def compute(month: MonthInput, params: Parameters) -> Result:
         extras=month.extras,
         extras_total=extras_total,
         gross_total=gross,
+        meal_exemption=meal_exemption,
+        sgk_gross=sgk_gross,
         sgk_base=sgk_base,
         floor_applied=floor_applied,
         ceiling_applied=ceiling_applied,

@@ -431,6 +431,35 @@ def test_cost_center_rules(manager: User) -> None:
     )
 
 
+def test_extras_are_reported_separately(manager: User) -> None:
+    """Ek ödeme (ör. ikramiye) brüt ücrete karışmaz: ayrı sütun; maliyete (SGK'sıyla) girer."""
+    person = employee(manager)
+    _wage(manager, person, "45000", date(2020, 1, 1))
+    personnel.add_payroll_item(
+        manager,
+        {
+            "employee": person,
+            "year": 2026,
+            "month": 10,
+            "category": "BONUS",
+            "description": "",
+            "amount": D("10000"),
+        },
+    )
+    row = _row(2026, 10, person)
+    assert (row.gross_salary, row.extras_total, row.gross_total) == (
+        D("45000.00"),
+        D("10000"),
+        D("55000.00"),
+    )
+    assert row.total_cost == D("65312.50")  # 55.000 × %118,75
+    report = selectors.personnel_cost_report(2026, 10)
+    assert report.extras_total == D("10000")
+    workbook = load_workbook(BytesIO(exports.personnel_cost_xlsx(report)))
+    (sheet_row,) = _sheet_rows(workbook["Personel maliyeti"])
+    assert D(str(sheet_row["Ek ödeme (TL)"])) == D("10000")
+
+
 def test_external_payroll_uses_entered_figures(manager: User) -> None:
     """Bordrosu mali müşavirde olan kişide maliyet o ayın girilmiş rakamlarıdır; girilmemişse sıfır
     ve eksik görünür."""

@@ -126,7 +126,7 @@ export const kt = {
   consumption: "Tüketim",
   // Personel maliyeti
   personnelLead:
-    "Personel > Bordro'daki ön bordro hesabından (brüt ücret, puantaj, bordro parametreleri) ayın işveren maliyeti ve aşamalara göre gerçekleşen işçilik (TL/kg).",
+    "Personel > Bordro'daki ön bordro hesabından (brüt ücret, puantaj, ek ödemeler, bordro parametreleri) ayın işveren maliyeti ve aşamalara göre gerçekleşen işçilik (TL/kg).",
   rulesShow: "Hesap kuralları",
   rulesHide: "Kuralları gizle",
   rules: [
@@ -137,7 +137,8 @@ export const kt = {
     "İşveren payı SGK matrahı üzerinden: SGK işveren payı − teşvik + işsizlik işveren payı (2026'da imalatta %18,75). Matrah günlük alt (asgari ücret) ve üst sınır arasındadır; ücret alt sınırın altındaysa farkın primini işçi payı dahil işveren öder. Oranlar Personel > Bordro > Parametreler'de, ücretler Personel > Ücretler'de.",
     "Gerçekleşen işçilik = aşamanın personel maliyeti / o ay üretilen kg (üretimde biten şarjların çıktısı, dolumda dolan bulk; fire hariç).",
     "Bordrosu mali müşavirde olan kişide brüt ve maliyet Personel > Bordro'da girilen aylık rakamlardır.",
-    "Rapor saklanmaz: ücret, kişinin birimi ya da işe giriş ve çıkış tarihi, birim eşleştirmesi ya da bordro parametreleri değişirse geçmiş aylar (onaylılar dahil) yeniden hesaplanır; eklenmiş işçilik oranları değişmez.",
+    "Ek ödemeler (prim, ikramiye, nakit yol ve yemek) Personel > Bordro'da girilir; brüte eklenir, işveren payıyla maliyete girer ve ayrı sütunda görünür. Tek seferlik bir ödeme o ayın gerçekleşen işçiliğini yükseltir: oran olarak eklemeden önce kontrol edin. Kesintiler (avans, icra) ve gelir vergisi maliyeti değiştirmez.",
+    "Rapor saklanmaz: ücret, ek ödeme, kişinin birimi ya da işe giriş ve çıkış tarihi, birim eşleştirmesi ya da bordro parametreleri değişirse geçmiş aylar (onaylılar dahil) yeniden hesaplanır; eklenmiş işçilik oranları değişmez.",
   ],
   previousMonth: "Önceki ay",
   nextMonth: "Sonraki ay",
@@ -154,6 +155,7 @@ export const kt = {
   totalPersonnelCost: "Toplam personel maliyeti",
   grossSalary: "Brüt ücret",
   overtimePay: "Fazla mesai",
+  extrasTotal: "Ek ödeme",
   employerShare: (rate: string) => `İşveren payı (%${rate})`,
   stageCosts: "Aşamalara göre",
   employeeCosts: "Kişilere göre",

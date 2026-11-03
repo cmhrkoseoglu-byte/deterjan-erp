@@ -101,6 +101,8 @@ def test_parameter_set_rules(manager: User) -> None:
     assert _code(create(employee_sgk_rate=D("100.01"))) == "invalid_rate"
     assert _code(create(incentive_points=D(22))) == "invalid_incentive"
     assert _code(create(stamp_tax_per_mille=D(-1))) == "invalid_stamp_tax"
+    assert _code(create(meal_exemption_daily=D(-1))) == "invalid_meal_exemption"
+    assert _code(create(meal_exemption_daily=D("100000001"))) == "invalid_meal_exemption"
     assert _code(create(tax_bracket_2=D("150000"))) == "invalid_brackets"
     assert _code(create(valid_from=date(1999, 1, 1))) == "invalid_valid_from"
     with pytest.raises(ValueError):
@@ -178,7 +180,9 @@ def test_payroll_month_from_attendance_and_wages(manager: User) -> None:
     )
     row = _row(2026, 10, person)
     line = row.line
-    assert not row.external and row.warnings == ()
+    # Ekim 2026 brütten nete bordronun ilk ayı: 2024'ten beri çalışan kişinin Eylül devri beklenir.
+    assert not row.external and row.warnings == (selectors.OPENING_MISSING,)
+    assert (row.entry_month, row.opening_needed, row.suggestion_months) == (10, True, 9)
     assert (line.holiday_days, line.holiday_half_days, line.holiday_pay) == (1, 1, D("2250.00"))
     assert (line.gross_total, line.sgk_base, line.sgk_days) == (D("47250.00"), D("47250.00"), 30)
     # 47.250 × %18,75 = 8.859,375 → kalem kalem: 10.276,88 − 2.362,50 + 945,00.
@@ -416,9 +420,10 @@ def test_employer_cost_rows_and_lines(manager: User) -> None:
     lines = pdf.employer_cost_rows(month)
     kinds = [kind for kind, _ in lines]
     assert kinds == ["row", "row", "subtotal", "row", "row", "subtotal", "total"]
-    assert lines[0][1][:5] == ["S-3", "Ece Ak", "Depo", "30", "45.000,00"]
-    assert lines[0][1][6:] == ["9.787,50", "−2.250,00", "900,00", "0,00", "53.437,50", "%118,75"]
-    depo_external = lines[1][1]
+    # Birim içinde ada göre (ekrandaki gibi): Depo'da Ali Can, sonra Ece Ak.
+    assert lines[1][1][:5] == ["S-3", "Ece Ak", "Depo", "30", "45.000,00"]
+    assert lines[1][1][6:] == ["9.787,50", "−2.250,00", "900,00", "0,00", "53.437,50", "%118,75"]
+    depo_external = lines[0][1]
     assert depo_external[:6] == ["S-4", "Ali Can", "Depo", "—", "40.000,00", pdf.EXTERNAL_TEXT]
     assert depo_external[10:] == ["48.000,00", "%120"]
     assert lines[5][1][1] == "Dolum toplamı" and lines[5][1][10] == "106.875,00"
@@ -464,7 +469,8 @@ def test_payroll_excel(manager: User) -> None:
     person = employee(manager, employee_no="S-1")
     _wage(manager, person, "45000")
     workbook = load_workbook(BytesIO(exports.payroll_xlsx(selectors.payroll_month(2026, 9))))
-    assert workbook.sheetnames == ["İşveren maliyeti", "Parametreler"]
+    # Başlangıç ayından (Ekim 2026) önce brütten nete sayfalar yok.
+    assert workbook.sheetnames == ["İşveren maliyeti", "Eksik gün", "Parametreler"]
     rows = _sheet(workbook, "İşveren maliyeti")
     assert rows[0][0] == "İşveren maliyeti — Eylül 2026 (ön bordro · TASLAK)"
     assert rows[1][0] == exports.DRAFT_NOTE
@@ -478,6 +484,7 @@ def test_payroll_excel(manager: User) -> None:
     parameters = {row[0]: row[1] for row in _sheet(workbook, "Parametreler")}
     assert D(str(parameters["Etkin işveren oranı (%)"])) == D("18.75")
     assert D(str(parameters["Asgari ücret istisna matrahı (TL)"])) == D("28075.50")
+    assert D(str(parameters["Nakit yemek SGK istisnası (günlük TL)"])) == D("0")
     # Onaylı bordronun (4. adım) Excel'inde TASLAK yazmaz.
     final = load_workbook(
         BytesIO(exports.payroll_xlsx(selectors.payroll_month(2026, 9), draft=False))
@@ -545,9 +552,13 @@ def test_payroll_month_api(client_for: Callable[..., APIClient], manager: User) 
     (row,) = body["rows"]
     assert row["employee"]["employee_no"] == "S-1" and row["employee"]["bes_enrolled"] is True
     assert row["external"] is False and row["figure"] is None and row["warnings"] == []
-    assert row["line"]["employer_cost"] == "53437.50" and row["line"]["bes_deduction"] == "1350.00"
+    # Eylül 2026 başlangıçtan önce: işveren maliyeti var, brütten nete kalemler boş.
+    assert (body["net"], body["net_available"], body["start"]) == (False, False, "2026-10")
+    assert row["line"]["employer_cost"] == "53437.50" and row["line"]["bes_deduction"] is None
+    assert row["line"]["net_pay"] is None and row["line"]["income_tax"] is None
     assert row["employer_cost"] == "53437.50"
-    assert body["totals"]["employer_cost"] == "53437.50"
+    assert body["totals"]["employer_cost"] == "53437.50" and body["totals"]["net_pay"] is None
+    assert body["totals"]["computed_employer_cost"] == "53437.50"
     assert body["totals"]["employee_count"] == 1 and body["totals"]["external_count"] == 0
     assert client.get(f"{BASE}/payroll/2026/9/", {"department": "Depo"}).json()["rows"] == []
     assert client.get(f"{BASE}/payroll/2026/13/").status_code == 404

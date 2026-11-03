@@ -3,15 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../api/auth";
 import * as payrollApi from "../../api/payroll";
-import type {
-  ParameterSet,
-  PayrollLine,
-  PayrollMonth,
-  PayrollRow,
-  PayrollValues,
-} from "../../api/payroll";
+import type { ParameterSet, PayrollMonth } from "../../api/payroll";
 import * as workflowApi from "../../api/workflow";
 import { httpError, page, userWith } from "../../test/fixtures";
+import { AYSE, CAN, ECE, month, VALUES } from "../../test/payrollFixtures";
 import { renderApp } from "../../test/render";
 
 vi.mock("../../api/auth");
@@ -21,174 +16,12 @@ vi.mock("../../api/payroll", async (importOriginal) => ({
   ...(await importOriginal<typeof payrollApi>()),
   getPayrollMonth: vi.fn(),
   setExternalFigure: vi.fn(),
+  removeExternalFigure: vi.fn(),
   listParameterSets: vi.fn(),
   getParameterDefaults: vi.fn(),
   saveParameterSet: vi.fn(),
   removeParameterSet: vi.fn(),
 }));
-
-const VALUES: PayrollValues = {
-  minimum_wage: "33030.00",
-  daily_floor: "1101.00",
-  daily_ceiling: "9909.00",
-  ceiling_multiplier: "9.00",
-  employee_sgk_rate: "14.00",
-  employee_unemployment_rate: "1.00",
-  employer_sgk_rate: "21.75",
-  employer_unemployment_rate: "2.00",
-  incentive_points: "5.00",
-  employer_rate: "18.75",
-  stamp_tax_per_mille: "7.590",
-  tax_brackets: ["190000.00", "400000.00", "1500000.00", "5300000.00"],
-  tax_rates: ["15.00", "20.00", "27.00", "35.00", "40.00"],
-  exemption_base: "28075.50",
-  bes_rate: "3.00",
-};
-
-function line(extra: Partial<PayrollLine> = {}): PayrollLine {
-  return {
-    employed_days: 31,
-    paid_days: 30,
-    unpaid_days: 0,
-    sick_days: 0,
-    unpaid_leave_days: 0,
-    absent_days: 0,
-    sgk_days: 30,
-    monthly_wage: "45000.00",
-    missing_wage: false,
-    salary: "45000.00",
-    overtime_worked_hours: "0.00",
-    overtime_worked_pay: "0.00",
-    overtime_rest_hours: "0.00",
-    overtime_rest_pay: "0.00",
-    holiday_days: 0,
-    holiday_half_days: 0,
-    holiday_hours: "0.00",
-    holiday_extra_hours: "0.00",
-    holiday_pay: "0.00",
-    extras: [],
-    extras_total: "0.00",
-    gross_total: "45000.00",
-    sgk_base: "45000.00",
-    floor_applied: false,
-    ceiling_applied: false,
-    employee_sgk: "6300.00",
-    employee_unemployment: "450.00",
-    tax_base: "38250.00",
-    cumulative_tax_base_before: "0.00",
-    cumulative_tax_base_after: "38250.00",
-    income_tax_computed: "5737.50",
-    income_tax_exemption: "4211.33",
-    income_tax: "1526.17",
-    exemption_base_before: "0.00",
-    exemption_base_added: "28075.50",
-    stamp_tax_computed: "341.55",
-    stamp_tax_exemption: "250.70",
-    stamp_tax: "90.85",
-    net_pay: "36632.98",
-    bes_deduction: "0.00",
-    deductions: [],
-    deductions_total: "0.00",
-    payable: "36632.98",
-    employer_sgk_gross: "9787.50",
-    incentive: "2250.00",
-    employer_sgk: "7537.50",
-    employer_unemployment: "900.00",
-    floor_gap: "0.00",
-    employer_cost: "53437.50",
-    ...extra,
-  };
-}
-
-const AYSE: PayrollRow = {
-  employee: {
-    id: 1,
-    employee_no: "S-1",
-    full_name: "Ayşe Demir",
-    department: "Dolum",
-    title: "Operatör",
-    hire_date: "2024-01-01",
-    termination_date: null,
-    is_active: true,
-    payroll_external: false,
-    bes_enrolled: false,
-  },
-  external: false,
-  figure: null,
-  warnings: [],
-  line: line(),
-  gross_total: "45000.00",
-  employer_cost: "53437.50",
-};
-const CAN: PayrollRow = {
-  ...AYSE,
-  employee: {
-    ...AYSE.employee,
-    id: 2,
-    employee_no: "S-2",
-    full_name: "Can Kaya",
-    payroll_external: true,
-  },
-  external: true,
-  warnings: ["external_missing"],
-  line: line(),
-  gross_total: "0.00",
-  employer_cost: "0.00",
-};
-const ECE: PayrollRow = {
-  ...AYSE,
-  employee: { ...AYSE.employee, id: 3, employee_no: "S-3", full_name: "Ece Ak" },
-  warnings: ["below_minimum_wage"],
-  line: line({ floor_applied: true, gross_total: "30000.00", floor_gap: "454.50" }),
-  gross_total: "30000.00",
-  employer_cost: "36647.63",
-};
-
-function month(extra: Partial<PayrollMonth> = {}): PayrollMonth {
-  return {
-    year: 2026,
-    month: 10,
-    period_label: "Ekim 2026",
-    attendance_status: "OPEN",
-    attendance_number: "",
-    attendance_approved: false,
-    attendance_finished: true,
-    parameters: {
-      origin: "legal_default",
-      year: 2026,
-      record: null,
-      valid_from: null,
-      values: VALUES,
-    },
-    rows: [AYSE, CAN, ECE],
-    totals: {
-      employee_count: 3,
-      external_count: 1,
-      gross_total: "75000.00",
-      employer_cost: "90085.13",
-      salary: "75000.00",
-      overtime_worked_pay: "0.00",
-      overtime_rest_pay: "0.00",
-      holiday_pay: "0.00",
-      extras_total: "0.00",
-      sgk_base: "78030.00",
-      employee_sgk: "10500.00",
-      employee_unemployment: "750.00",
-      income_tax: "1526.17",
-      stamp_tax: "90.85",
-      net_pay: "63000.00",
-      bes_deduction: "0.00",
-      deductions_total: "0.00",
-      payable: "63000.00",
-      employer_sgk_gross: "16971.53",
-      incentive: "3901.50",
-      employer_sgk: "13070.03",
-      employer_unemployment: "1560.60",
-      floor_gap: "454.50",
-    },
-    ...extra,
-  };
-}
 
 function savedSet(extra: Partial<ParameterSet> = {}): ParameterSet {
   return {
@@ -212,6 +45,7 @@ function savedSet(extra: Partial<ParameterSet> = {}): ParameterSet {
     tax_rate_4: "35.00",
     tax_rate_5: "40.00",
     bes_rate: "3.00",
+    meal_exemption_daily: "0.00",
     source: "RG",
     note: "",
     year: 2026,
@@ -257,7 +91,7 @@ beforeEach(() => {
 describe("bordro: işveren maliyeti", () => {
   it("ayın işveren maliyeti tablosunu, toplamları, uyarıları ve çıktıları gösterir", async () => {
     const user = userEvent.setup();
-    renderApp("/personel/bordro?ay=2026-10");
+    renderApp("/personel/bordro?ay=2026-10&gorunum=maliyet");
     const ayse = (await screen.findByText("Ayşe Demir")).closest("tr")!;
     expect(payrollApi.getPayrollMonth).toHaveBeenCalledWith(2026, 10);
     expect(screen.getByRole("tab", { name: "Bordro" })).toHaveAttribute("aria-selected", "true");
@@ -316,7 +150,7 @@ describe("bordro: işveren maliyeti", () => {
       updated_at: "",
       updated_by_name: null,
     });
-    renderApp("/personel/bordro?ay=2026-10");
+    renderApp("/personel/bordro?ay=2026-10&gorunum=maliyet");
     await user.click(await screen.findByRole("button", { name: "Rakamları gir: Can Kaya" }));
     const dialog = await screen.findByRole("dialog");
     const gross = within(dialog).getByLabelText(/Brüt toplam/);
@@ -353,7 +187,7 @@ describe("bordro: işveren maliyeti", () => {
       updated_at: "",
       updated_by_name: null,
     });
-    renderApp("/personel/bordro?ay=2026-10");
+    renderApp("/personel/bordro?ay=2026-10&gorunum=maliyet");
     await user.click(await screen.findByRole("button", { name: "Rakamları gir: Can Kaya" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/Özel durumun nedenini/)).toBeInTheDocument();
@@ -394,12 +228,57 @@ describe("bordro: işveren maliyeti", () => {
         ],
       }),
     );
-    renderApp("/personel/bordro?ay=2026-10");
+    renderApp("/personel/bordro?ay=2026-10&gorunum=maliyet");
     await user.click(await screen.findByRole("button", { name: "Rakamları düzelt: Can Kaya" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText(/Brüt toplam/)).toHaveValue("0,00");
     expect(within(dialog).queryByText(/Geçerli bir tutar girin/)).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Kaydet" })).toBeEnabled();
+  });
+
+  it("mali müşavir rakamları gerekçeyle kaldırılır; gerekçe penceresinde Vazgeç forma döner", async () => {
+    const user = userEvent.setup();
+    const figure = {
+      id: 7,
+      employee: 2,
+      year: 2026,
+      month: 10,
+      gross_total: "41000.00",
+      employer_cost: "50000.00",
+      note: "",
+      updated_at: "",
+      updated_by_name: null,
+    };
+    vi.mocked(payrollApi.getPayrollMonth).mockResolvedValue(
+      month({
+        rows: [
+          AYSE,
+          { ...CAN, figure, warnings: [], gross_total: "41000.00", employer_cost: "50000.00" },
+          ECE,
+        ],
+      }),
+    );
+    vi.mocked(payrollApi.removeExternalFigure).mockResolvedValue(figure);
+    renderApp("/personel/bordro?ay=2026-10&gorunum=maliyet");
+    await user.click(await screen.findByRole("button", { name: "Rakamları düzelt: Can Kaya" }));
+    const gross = within(await screen.findByRole("dialog")).getByLabelText(/Brüt toplam/);
+    await user.clear(gross);
+    await user.type(gross, "42.000");
+    await user.click(screen.getByRole("button", { name: "Rakamları kaldır" }));
+    const reason = await screen.findByRole("dialog", { name: "Rakamları kaldır" });
+    expect(within(reason).getByRole("button", { name: "Rakamları kaldır" })).toBeDisabled();
+    await user.click(within(reason).getByRole("button", { name: "Vazgeç" }));
+    // Form, girilen değerle geri gelir.
+    expect(await screen.findByLabelText(/Brüt toplam/)).toHaveValue("42.000");
+    await user.click(screen.getByRole("button", { name: "Rakamları kaldır" }));
+    const again = await screen.findByRole("dialog", { name: "Rakamları kaldır" });
+    await user.type(within(again).getByLabelText(/Kaldırma nedeni/), "  Yanlış ay ");
+    await user.click(within(again).getByRole("button", { name: "Rakamları kaldır" }));
+    await waitFor(() =>
+      expect(payrollApi.removeExternalFigure).toHaveBeenCalledWith(7, "Yanlış ay"),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(payrollApi.getPayrollMonth).toHaveBeenCalledTimes(2));
   });
 
   it("yönetim dışındaki rol bordroyu açamaz", async () => {
@@ -421,6 +300,7 @@ describe("bordro parametreleri", () => {
     expect(wage).toHaveValue("33030");
     expect(within(dialog).getByLabelText("SGK işveren payı (%)")).toHaveValue("21,75");
     expect(within(dialog).getByLabelText("Damga vergisi (binde)")).toHaveValue("7,59");
+    expect(within(dialog).getByLabelText("Nakit yemek SGK istisnası (günlük TL)")).toHaveValue("0");
     expect(within(dialog).getByText(/etkin işveren oranı %18,75/)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("textbox", { name: "SGK işveren teşviki" }));
     await user.click(await screen.findByRole("option", { name: /2 puan/ }));
@@ -448,6 +328,7 @@ describe("bordro parametreleri", () => {
       stamp_tax_per_mille: "7.59",
       tax_bracket_1: "190000",
       tax_rate_5: "40",
+      meal_exemption_daily: "0",
       source: "RG 26.12.2025",
     });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

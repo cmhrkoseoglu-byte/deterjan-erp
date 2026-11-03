@@ -61,6 +61,7 @@ const VALUE_FIELDS: (keyof ParameterSetValues)[] = [
   "tax_rate_4",
   "tax_rate_5",
   "bes_rate",
+  "meal_exemption_daily",
 ];
 // TL tutarları: binlik noktalı yazılabilir (33.030), en çok 2 ondalık, sıfırdan büyük.
 const AMOUNT_FIELDS = new Set<keyof ParameterSetValues>([
@@ -103,6 +104,7 @@ function fromValues(values: PayrollValues, year: number, source: string): Draft 
     incentive_points: show(values.incentive_points),
     stamp_tax_per_mille: show(values.stamp_tax_per_mille),
     bes_rate: show(values.bes_rate),
+    meal_exemption_daily: show(values.meal_exemption_daily),
   };
   BRACKETS.forEach((n) => (draft[`tax_bracket_${n}`] = show(values.tax_brackets[n - 1])));
   RATES.forEach((n) => (draft[`tax_rate_${n}`] = show(values.tax_rates[n - 1])));
@@ -116,6 +118,8 @@ function fromValues(values: PayrollValues, year: number, source: string): Draft 
  */
 function number(name: keyof ParameterSetValues, text: string): string | null {
   if (AMOUNT_FIELDS.has(name)) return parseMoney(text);
+  // Nakit yemek istisnası günlük TL'dir; mali müşavirden alınana kadar 0.
+  if (name === "meal_exemption_daily") return parseMoney(text, { allowZero: true });
   const value = normalizeDecimal(text);
   const places = name === "stamp_tax_per_mille" ? 3 : 2;
   if (!new RegExp(`^\\d{1,3}(\\.\\d{1,${places}})?$`).test(value)) return null;
@@ -125,7 +129,7 @@ function number(name: keyof ParameterSetValues, text: string): string | null {
 }
 
 function invalidMessage(name: keyof ParameterSetValues): string {
-  if (AMOUNT_FIELDS.has(name)) return py.invalidAmount;
+  if (AMOUNT_FIELDS.has(name) || name === "meal_exemption_daily") return py.invalidAmount;
   if (name === "stamp_tax_per_mille") return py.invalidStampTax;
   if (name === "ceiling_multiplier") return py.invalidMultiplier;
   return py.invalidRate;
@@ -391,6 +395,7 @@ function ParametersForm({
           onChange={(value) => value !== null && change("incentive_points", value)}
         />
         {field(py.besRate, "bes_rate")}
+        {field(py.mealExemptionDaily, "meal_exemption_daily", py.mealExemptionHelp)}
       </SimpleGrid>
       {preview && (
         <Text size="sm" c="dimmed">

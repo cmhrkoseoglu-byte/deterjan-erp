@@ -298,6 +298,8 @@ export interface PersonnelCostRow {
   overtime_hours: string;
   gross_salary: string;
   overtime_pay: string;
+  /** Ek ödemeler (prim, ikramiye, nakit yol ve yemek). */
+  extras_total: string;
   gross_total: string;
   employer_share: string;
   total_cost: string;
@@ -338,6 +340,8 @@ export interface PersonnelCostReport {
   missing_wage_count: number;
   gross_salary: string;
   overtime_pay: string;
+  /** Ek ödemeler (prim, ikramiye, nakit yol ve yemek). */
+  extras_total: string;
   employer_share: string;
   total_cost: string;
   stages: StageCost[];

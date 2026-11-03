@@ -7,6 +7,7 @@ from typing import Any
 import django_filters
 from django.db.models import QuerySet
 from django.http import FileResponse, HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.http import content_disposition_header
 from drf_spectacular.types import OpenApiTypes
@@ -19,6 +20,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.exceptions import BusinessRuleError
 from apps.core.models import User
 from apps.core.permissions import HasRole
 from apps.personnel import exports, pdf, selectors, services
@@ -27,6 +29,9 @@ from apps.personnel.models import (
     Employee,
     EmployeeDocument,
     EmployeeWage,
+    ExternalPayrollFigure,
+    PayrollItem,
+    PayrollOpeningBalance,
     PayrollParameterSet,
     PublicHoliday,
 )
@@ -482,9 +487,11 @@ def _private_file(
     return response
 
 
-def _payroll(request: Request, year: int, month: int) -> selectors.PayrollMonth:
+def _payroll(
+    request: Request, year: int, month: int, *, net: bool = True
+) -> selectors.PayrollMonth:
     _check_month(year, month)
-    return selectors.payroll_month(year, month, department=_department(request))
+    return selectors.payroll_month(year, month, department=_department(request), net=net)
 
 
 class PayrollMonthView(APIView):
@@ -504,14 +511,37 @@ class PayrollEmployerCostPdfView(APIView):
 
     @extend_schema(parameters=[DEPARTMENT_PARAM], responses={(200, PDF): OpenApiTypes.BINARY})
     def get(self, request: Request, year: int, month: int) -> HttpResponse:
-        payroll = _payroll(request, year, month)
+        payroll = _payroll(request, year, month, net=False)
         content = pdf.employer_cost_pdf(payroll, draft=True)
         services.record_payroll_access(_user(request), year, month, "İşveren maliyeti (PDF)")
         return _private_file(content, PDF, f"isveren-maliyeti-{year}-{month:02d}.pdf", inline=True)
 
 
+class PayrollRegisterPdfView(APIView):
+    """Bordro listesi (PDF, A4 yatay): kişi başına brütten nete kalemler, birim ara toplamları
+    ve icmal sayfası; açılış denetim günlüğüne yazılır. Başlangıç ayından önce verilmez."""
+
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+
+    @extend_schema(parameters=[DEPARTMENT_PARAM], responses={(200, PDF): OpenApiTypes.BINARY})
+    def get(self, request: Request, year: int, month: int) -> HttpResponse:
+        _check_month(year, month)
+        if not selectors.net_available(year, month):
+            start_year, start_month = selectors.PAYROLL_START
+            raise BusinessRuleError(
+                "before_start",
+                f"Bordro listesi {selectors.month_label(start_year, start_month)} ayından "
+                "başlar; önceki aylar mali müşavirdedir.",
+            )
+        payroll = _payroll(request, year, month)
+        content = pdf.register_pdf(payroll, draft=True)
+        services.record_payroll_access(_user(request), year, month, "Bordro listesi (PDF)")
+        return _private_file(content, PDF, f"bordro-listesi-{year}-{month:02d}.pdf", inline=True)
+
+
 class PayrollExcelView(APIView):
-    """Ön bordro Excel'i (işveren maliyeti, parametreler); açılış denetim günlüğüne yazılır."""
+    """Ön bordro Excel'i (bordro, işveren maliyeti, karşılaştırma, eksik gün, parametreler);
+    açılış denetim günlüğüne yazılır."""
 
     permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
 
@@ -608,3 +638,178 @@ def _parameter_values(body: serializers.BaseSerializer) -> dict[str, Any]:
     """Formdan gelen değerler (salt okunur alanlar hariç)."""
     allowed = {"valid_from", *s.PARAMETER_VALUE_FIELDS, "source", "note"}
     return {key: value for key, value in body.validated_data.items() if key in allowed}
+
+
+class ExternalPayrollRemoveView(APIView):
+    """Yanlış girilen mali müşavir rakamını kaldırır (neden zorunlu; silinmez)."""
+
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+
+    @extend_schema(request=s.ReasonSerializer, responses=s.ExternalFigureSerializer)
+    def post(self, request: Request, pk: int) -> Response:
+        figure = get_object_or_404(ExternalPayrollFigure, pk=pk)
+        body = s.ReasonSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        figure = services.remove_external_payroll(
+            _user(request), figure, body.validated_data["reason"]
+        )
+        return Response(s.ExternalFigureSerializer(figure).data)
+
+
+def _batch_rejected(exc: services.PayrollBatchError) -> Response:
+    """Toplu kaydın reddi: satır hataları `rows` içinde (hiçbir satır kaydedilmedi)."""
+    return Response(
+        {"code": exc.code, "detail": exc.message, "rows": exc.errors},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
+
+
+ITEM_EDITABLE = ("category", "description", "amount")
+
+
+class PayrollItemViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Ek ödeme ve kesinti kalemleri. Liste ay (`year` ve `month`) ya da kişi (`employee`) ister;
+    kaldırılanlar `is_active=false` ile. Silinmez: yanlış kalem `remove` ile gerekçeyle kaldırılır.
+    Düzeltmede yalnızca tutar, kategori (aynı tür) ve açıklama değişir. `batch` toplu ekler (hepsi
+    ya da hiçbiri)."""
+
+    serializer_class = s.PayrollItemRecordSerializer
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    queryset = PayrollItem.objects.select_related(
+        "employee", "created_by", "updated_by", "removed_by"
+    )
+    filterset_fields = ["year", "month", "employee", "kind", "category", "is_active"]
+    ordering = ["-year", "-month", "employee__full_name", "id"]
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        params = request.query_params
+        if not params.get("employee") and not (params.get("year") and params.get("month")):
+            raise BusinessRuleError(
+                "filter_required", "Ay (year ve month) ya da kişi (employee) seçilmelidir."
+            )
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        request=s.PayrollItemInputSerializer, responses={201: s.PayrollItemRecordSerializer}
+    )
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Kişiye ayın ek ödemesini ya da kesintisini girer."""
+        body = s.PayrollItemInputSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        item = services.add_payroll_item(_user(request), body.validated_data)
+        return Response(self.get_serializer(item).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(request=s.PayrollItemUpdateSerializer, responses=s.PayrollItemRecordSerializer)
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Kalemi düzeltir (tutar, kategori, açıklama)."""
+        extra = sorted(set(request.data) - set(ITEM_EDITABLE))
+        if extra:
+            raise BusinessRuleError(
+                "field_not_editable",
+                f"Değiştirilemeyen alan: {', '.join(extra)}. Kişi, ay ve tür değişmez; kalemi "
+                "kaldırıp yenisini girin.",
+            )
+        body = s.PayrollItemUpdateSerializer(data=request.data, partial=True)
+        body.is_valid(raise_exception=True)
+        item = services.update_payroll_item(_user(request), self.get_object(), body.validated_data)
+        return Response(self.get_serializer(item).data)
+
+    @extend_schema(request=s.ReasonSerializer, responses=s.PayrollItemRecordSerializer)
+    @action(detail=True, methods=["post"])
+    def remove(self, request: Request, pk: str | None = None) -> Response:
+        """Yanlış kalemi kaldırır (neden zorunlu)."""
+        body = s.ReasonSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        item = services.remove_payroll_item(
+            _user(request), self.get_object(), body.validated_data["reason"]
+        )
+        return Response(self.get_serializer(item).data)
+
+    @extend_schema(
+        request=s.PayrollItemBatchSerializer,
+        responses={
+            201: s.PayrollItemRecordSerializer(many=True),
+            400: OpenApiResponse(s.BatchErrorSerializer, description="satır hataları"),
+        },
+    )
+    @action(detail=False, methods=["post"])
+    def batch(self, request: Request) -> Response:
+        """Ayın kalemlerini toplu ekler (toplu ekleme, geçen aydan kopyalama)."""
+        body = s.PayrollItemBatchSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            items = services.add_payroll_items(
+                _user(request), data["year"], data["month"], data["items"]
+            )
+        except services.PayrollBatchError as exc:
+            return _batch_rejected(exc)
+        return Response(self.get_serializer(items, many=True).data, status=status.HTTP_201_CREATED)
+
+
+class PayrollOpeningViewSet(
+    mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+):
+    """Devirler (kaldırılanlar `is_active=false` ile). POST devri girer ya da düzeltir; `batch` ayın
+    devirlerini toplu girer (hepsi ya da hiçbiri); yanlış devir `remove` ile gerekçeyle
+    kaldırılır."""
+
+    serializer_class = s.PayrollOpeningSerializer
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    queryset = PayrollOpeningBalance.objects.select_related(
+        "employee", "created_by", "updated_by", "removed_by"
+    )
+    filterset_fields = ["year", "month", "employee", "is_active"]
+    ordering = ["-year", "-month", "employee__full_name", "id"]
+    http_method_names = ["get", "post", "head", "options"]
+
+    @extend_schema(request=s.PayrollOpeningInputSerializer, responses=s.PayrollOpeningSerializer)
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Devri girer ya da düzeltir."""
+        body = s.PayrollOpeningInputSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        opening = services.set_opening_balance(
+            _user(request),
+            data["employee"],
+            data["year"],
+            data["month"],
+            tax_base=data["tax_base"],
+            exemption_months=data["exemption_months"],
+            note=data["note"],
+            confirm_override=data["confirm_override"],
+        )
+        return Response(self.get_serializer(opening).data)
+
+    @extend_schema(request=s.ReasonSerializer, responses=s.PayrollOpeningSerializer)
+    @action(detail=True, methods=["post"])
+    def remove(self, request: Request, pk: str | None = None) -> Response:
+        """Yanlış devri kaldırır (neden zorunlu)."""
+        body = s.ReasonSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        opening = services.remove_opening_balance(
+            _user(request), self.get_object(), body.validated_data["reason"]
+        )
+        return Response(self.get_serializer(opening).data)
+
+    @extend_schema(
+        request=s.PayrollOpeningBatchSerializer,
+        responses={
+            200: s.PayrollOpeningSerializer(many=True),
+            400: OpenApiResponse(s.BatchErrorSerializer, description="satır hataları"),
+        },
+    )
+    @action(detail=False, methods=["post"])
+    def batch(self, request: Request) -> Response:
+        """Ayın devirlerini toplu girer."""
+        body = s.PayrollOpeningBatchSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            openings = services.set_opening_balances(
+                _user(request), data["year"], data["month"], data["rows"]
+            )
+        except services.PayrollBatchError as exc:
+            return _batch_rejected(exc)
+        return Response(self.get_serializer(openings, many=True).data)

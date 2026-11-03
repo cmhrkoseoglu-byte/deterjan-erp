@@ -1025,3 +1025,79 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   bordro listesinde maskeli TC, istisna sütunları ve icmal sayfası, karşılaştırma sayfası).
 - DECISIONS ("2. adım", "İnceleme sonrası", "3. adım kararları"), KVKK (ön bordro satırı, teknik tedbir)
   ve kılavuz (yönetim "Bordro", kartta Bordro adımı, puantajda Ç½; admin) güncellendi.
+
+## 2026-11-02 — Personel bordrosu, 3. adım: brütten nete bordro, devir, ek ödeme ve kesinti
+
+- Backend (`apps/personnel`, göç 0006):
+  - Modeller: `PayrollOpeningBalance` (devir; Şubat–Aralık, gerekçeyle kaldırılır, etkin devir kişi ve
+    ay başına tek), `PayrollItem` (ek ödeme ve kesinti; tür kategoriden gelir, gerekçeyle kaldırılır),
+    `ExternalPayrollFigure` gerekçeyle kaldırılır, parametrelerde `meal_exemption_daily`.
+  - Motor (sürüm 2026.2): nakit yemek SGK istisnası (fiilen çalışılan gün × günlük sınır),
+    `worked_days`, `sgk_gross`.
+  - Seçiciler: `payroll_month` Ekim 2026'dan brütten nete hesaplar. Kümülatif zincir devirden ve ERP
+    aylarından kurulur, mali müşavirde geçen ay zinciri koparır. Ay aralığı tek seferde yüklenir
+    (`attendance_grids`, `parameter_settings`); sorgu sayısı kişi sayısıyla artmaz. Satırda kalemler,
+    devir, giriş ayı, devir önerisi ve zincirin halkaları; yeni uyarılar devir eksik, zincir eksik,
+    kesinti netten fazla, tavanı aşan prim; o ay işte olmayan kişilere girilmiş kalemler ayrı.
+    Maliyet brütten nete hesabı çağırmaz (`net=False`).
+  - Servisler: devir (tek ve toplu, eşitlemede onay, kaldırma), kalem (tek, toplu, düzeltme,
+    kaldırma), mali müşavir rakamının kaldırılması; işe giriş tarihi ve ayrılışta bordro kayıtları
+    denetlenir. Toplu kayıt hepsi ya da hiçbiridir (`PayrollBatchError`, satır hatalarıyla).
+    Değişmeyen kayıt kartın geçmişine not düşürmez.
+  - Çıktılar: bordro listesi PDF'i (maskeli TC, istisna sütunları, uyarı harfleri, birim ara
+    toplamları, mali müşavirdekiler ayrı blokta, icmal sayfası, TASLAK); Excel'e "Bordro",
+    "Karşılaştırma" ve "Eksik gün" sayfaları; Parametreler sayfasında nakit yemek sınırı.
+  - API: `payroll/items/` (liste, ekleme, düzeltme, `remove`, `batch`; silme yok),
+    `payroll/openings/` (liste, kayıt, `remove`, `batch`), `payroll/external/<id>/remove/`,
+    `payroll/<yıl>/<ay>/register.pdf`.
+- Maliyet: Personel maliyeti brütten nete hesabı kullanmaz; ek ödemeler ayrı sütunda ve özette, Excel'de
+  de ayrı.
+- Ön yüz: Personel > Bordro'da üç görünüm (`?gorunum=` bordro, maliyet, kalemler; ay değişince
+  korunur); Ay hazırlığı listesi; brütten nete tablo ("Yalnızca uyarılı kişiler"); döküm çekmecesi
+  (Hesap, Ek ödeme ve kesinti, Devir sekmeleri; önceki / sonraki kişi ve ok tuşları); kalem penceresi,
+  toplu ekleme, geçen aydan kopyalama; devir penceresi (Excel'den sütun yapıştırma, olası hata
+  ipuçları, eşitleme onayı, satır hataları); gerekçeyle kaldırma penceresi; mali müşavir rakamlarının
+  kaldırılması; Parametreler'de nakit yemek günlük sınırı. Başlangıçtan önceki ayda yalnızca işveren
+  maliyeti görünür.
+- Kanıt: `personnel/tests/test_payroll_net.py` (zincir ve devir, eşitleme onayı, toplu kayıt, kalem
+  kuralları, kart geçmişinde açıklama yok, değişmeyen kayıtta not yok, nakit yemek, uyarılar, işe
+  giriş ve ayrılışla kayıtlar, işte olmayana girilen kalem, sorgu sayısı, yetki, bordro listesi,
+  Excel, API), `test_payroll_engine.py` (nakit yemek istisnası), `test_payroll.py`,
+  `costing/tests/test_personnel_cost.py` (ek ödeme ayrı); ön yüz `modules/personnel/payrollNet.test.tsx`
+  (tablo ve ay hazırlığı, döküm ve gezinme, kalem düzeltme ve kaldırma, görünüm adreste, başlangıç
+  öncesi ay, kalem ekleme, toplu eklemede satır hatası, geçen aydan kopyalama, devir yapıştırma,
+  değişmeyen devir, eşitleme onayı ve satır hatası, devir kaldırma; inceleme düzeltmelerinin
+  testleri: yapıştırmanın kenar durumları, Esc ve ok tuşları, süzgeç ve ay değişimi, gelecek ay,
+  kopyalama, eskiyen devir), `payroll.test.tsx`, `modules/costing/personnelCost.test.tsx`. Ortak
+  bordro test verisi `src/test/payrollFixtures.ts`. Backend 1479 test, ruff, mypy, göç kontrolü,
+  OpenAPI; ön yüz 427 test, ESLint, Prettier, tsc, derleme.
+- İnceleme: beş eksenli çok ajanlı tur (bordro hukuku, arka uç, ön yüz, uç durumlar, belgeler ve
+  kurallar), her bulgu ayrı ajanla çürütülmeye çalışıldı; kullanım sınırında yarıda kalan doğrulamalar
+  kaldığı yerden tamamlandı. Yinelenenler birleştirilince 29 bulgu doğrulandı, 6'sı çürütüldü (onaylı
+  karar ya da 3. adımdan önceki tasarım). Başlıcaları:
+  - Devir penceresine Excel'den yapıştırmada aradaki boş hücre sonraki herkesi kaydırıyor, tutar ve
+    ay sütunları tek tutara birleşiyordu; okunamayan tutar sessizce atlanıyor, pencerede kaldırılan
+    devir sonraki kayıtta yeniden oluşuyor, Esc devir penceresini de kapatıyordu. Artık boş hücre
+    kişiyi atlar, ikinci sütun istisna ay sayısıdır, sicil no ile eşleştirme var.
+  - Geçen aydan kopyalama aynı kalemleri ikinci kez ekleyebiliyordu (avans ve icra iki kez kesilirdi).
+  - İşe giriş tarihi ileri alınınca devrin istisna ay sayısı fazla kalıyor (asgari ücret istisnası
+    fazla), işe giriş denetimi kartı kilitlemeden yapılıyordu.
+  - Bordrosu mali müşavirde olan kişiye girilmiş kalemler hesaptan sessizce düşüp ekranda toplamlara
+    katılıyordu; devrin kayıtlı istisna matrahı parametreler değişince eskiyordu.
+  - Bordro listesi kişi başına işverene maliyeti göstermiyor, tablo sayfadan taşıyordu.
+  - Döküm üstünde pencere açıkken ok tuşları arkadaki kişiyi değiştiriyor; uyarı süzgeci, ay değişimi
+    ve gelecek ay pencerelerde karışıklık yaratıyordu.
+  - KVKK belgesi, açıklamanın ve kaldırma nedeninin denetim günlüğünde kaldığını söylemiyordu.
+  Hepsi düzeltildi ve her biri için test eklendi. İkinci tur düzeltmeleri inceledi: 15 bulgu
+  doğrulandı (hiçbir sicil eşleşmeyince sicil no'nun tutar sayılması, süzgecin gönderilecek satırı
+  gizlemesi, başta TL ve i / İ, önceki ayın devrinin görünmemesi, eskiyen devrin sonraki aydan
+  yeniden kaydedilememesi, gelecek ayda devir pencereleri, kopyalamada önbellekteki listeyle seçim,
+  aynı kalemlerin erişilebilir adları), 4'ü çürütüldü. Üçüncü tur yalnızca bu düzeltmelere baktı: 8
+  bulgunun hepsi düzeltildi (boş tutar hücresinde ay sayısının tutar sayılması, TC kimlik no ya da
+  gün sütunu, aynı sicil no'nun iki satırı, düzenlenen satırın süzgeçle kaybolması, ay hazırlığında
+  çelişen "Devirler tamam", geçen ayın önbellekteki listesi, gerçek tarihe bağlı testler). Açık soru:
+  kart işareti "Bordrosu mali müşavirde" sonradan açılınca önceki ERP ayları da mali müşavirde
+  sayılıyor; 4. adımdan önce kullanıcıya sorulacak.
+- DECISIONS ("3. adım", "İnceleme sonrası"), KVKK (ön bordro satırı ve teknik tedbir: kalem açıklaması
+  çıktılara ve kart geçmişine yazılmaz, denetim günlüğünde kalır; Eksik gün sayfasında rapor
+  tarihleri) ve kılavuz (yönetim "Bordro", "Personel maliyeti") güncellendi.

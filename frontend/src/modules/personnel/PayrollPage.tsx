@@ -1,16 +1,17 @@
-// Personel > Bordro: ayın ön bordrosu (canlı hesap) ve işverene maliyet tablosu; parametreler, mali
-// müşavirde hesaplanan kişilerin rakamları, PDF ve Excel (docs/DECISIONS.md "Personel bordrosu").
-// Ücret ve kesinti bilgisi kişisel veridir; yalnızca yönetim ve admin görür.
+// Personel > Bordro: ayın ön bordrosu (canlı hesap): brütten nete bordro tablosu ve dökümü,
+// işverene maliyet tablosu, ek ödeme ve kesintiler, devirler, parametreler, mali müşavirde
+// hesaplanan kişilerin rakamları, PDF ve Excel (docs/DECISIONS.md "Personel bordrosu"). Ücret ve
+// kesinti bilgisi kişisel veridir; yalnızca yönetim ve admin görür.
 import {
   ActionIcon,
   Alert,
-  Anchor,
   Badge,
   Button,
   Group,
   Loader,
   Modal,
   Paper,
+  SegmentedControl,
   SimpleGrid,
   Stack,
   Table,
@@ -21,7 +22,6 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
-  IconAlertTriangle,
   IconChevronLeft,
   IconChevronRight,
   IconFileSpreadsheet,
@@ -29,26 +29,39 @@ import {
   IconInfoCircle,
   IconLock,
   IconSettings,
+  IconTransferIn,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { personnelCostKeys } from "../../api/costing";
 import {
   employerCostPdfUrl,
   getPayrollMonth,
   payrollExcelUrl,
   payrollKeys,
+  registerPdfUrl,
+  removeExternalFigure,
+  removeOpening,
+  removePayrollItem,
   setExternalFigure,
+  type PayrollItemRecord,
   type PayrollMonth,
+  type PayrollOpening,
   type PayrollRow,
 } from "../../api/payroll";
 import { formatMoney, formatNumber } from "../../i18n/format";
 import { monthLabel, parseMoney, parseMonth, shiftMonth } from "../costing/personnelCostFormat";
 import { ErrorAlert } from "../costing/ReportTable";
+import { OpeningsModal } from "./OpeningsModal";
+import { isFutureMonth, openingTarget } from "./payrollFormat";
+import { PayrollDrawer } from "./PayrollDrawer";
+import { BulkItemsModal, CopyItemsModal, PayrollItemModal } from "./PayrollItemModals";
+import { PayrollChecklist, PayrollItemsView, PayrollNetView } from "./PayrollNetView";
 import { PayrollParametersModal } from "./PayrollParametersModal";
 import { PersonnelTabs } from "./PersonnelTabs";
-import { ATTENDANCE_BASE, PAYROLL_BASE, pe, py, WAGES_BASE } from "./strings";
+import { ReasonModal } from "./ReasonModal";
+import { PAYROLL_BASE, pe, pn, py } from "./strings";
 
 const NO_WRAP: CSSProperties = { whiteSpace: "nowrap" };
 // Ad sütunu yatay kaydırmada sabit kalır (dar ekranda tablo kayar).
@@ -65,6 +78,9 @@ const WARNING_COLORS: Record<string, string> = {
   exit_in_month: "gray",
   pay_without_sgk_days: "red",
 };
+// Görünümler (`?gorunum=`): bordro (brütten nete), işveren maliyeti, ek ödeme ve kesintiler.
+const VIEWS = ["bordro", "maliyet", "kalemler"] as const;
+type View = (typeof VIEWS)[number];
 
 const money = (value: string) => formatMoney(value);
 const rate = (value: string) => formatNumber(value);
@@ -138,6 +154,7 @@ function RowBadges({ row }: { row: PayrollRow }) {
       </Badge>,
     );
   for (const warning of row.warnings) {
+    if (!(warning in py.warning)) continue; // brütten nete uyarıları bordro görünümünde
     const badge = (
       <Badge key={warning} color={WARNING_COLORS[warning]} variant="light" size="sm" tt="none">
         {py.warning[warning]}
@@ -321,11 +338,16 @@ function ExternalFigureModal({
   const [gross, setGross] = useState(row.figure ? formatMoney(row.figure.gross_total) : "");
   const [cost, setCost] = useState(row.figure ? formatMoney(row.figure.employer_cost) : "");
   const [note, setNote] = useState(row.figure?.note ?? "");
+  const [removing, setRemoving] = useState(false);
   // Ayın tamamı raporlu ya da ücretsiz izinli kişide mali müşavirin rakamları 0 / 0 olabilir.
   const grossValue = parseMoney(gross, { allowZero: true });
   const costValue = parseMoney(cost, { allowZero: true });
   const costBelow =
     grossValue !== null && costValue !== null && Number(costValue) < Number(grossValue);
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: payrollKeys.all });
+    void queryClient.invalidateQueries({ queryKey: personnelCostKeys.all });
+  };
   const save = useMutation({
     mutationFn: () =>
       setExternalFigure(payroll.year, payroll.month, {
@@ -336,8 +358,7 @@ function ExternalFigureModal({
       }),
     onSuccess: () => {
       notifications.show({ color: "green", message: py.figuresSaved });
-      void queryClient.invalidateQueries({ queryKey: payrollKeys.all });
-      void queryClient.invalidateQueries({ queryKey: personnelCostKeys.all });
+      refresh();
     },
   });
   // İstek sürerken pencere kapanmaz; kapatma istek başına (geç gelen yanıt başka bir pencereyi
@@ -347,6 +368,23 @@ function ExternalFigureModal({
   };
   const invalid = (text: string, value: string | null) =>
     text.trim() && value === null ? py.invalidAmount : undefined;
+  if (removing && row.figure) {
+    const figure = row.figure;
+    return (
+      <ReasonModal
+        title={pn.removeFigures}
+        intro={pn.removeFiguresIntro}
+        confirmLabel={pn.removeFigures}
+        onConfirm={(reason) => removeExternalFigure(figure.id, reason)}
+        onDone={() => {
+          notifications.show({ color: "green", message: pn.figuresRemoved });
+          refresh();
+          onClose();
+        }}
+        onClose={() => setRemoving(false)}
+      />
+    );
+  }
   return (
     <Modal
       opened
@@ -384,86 +422,47 @@ function ExternalFigureModal({
           onChange={(event) => setNote(event.currentTarget.value)}
         />
         {save.isError && <ErrorAlert error={save.error} />}
-        <Group justify="flex-end">
-          <Button variant="default" onClick={close} disabled={save.isPending}>
-            {py.cancel}
-          </Button>
-          <Button
-            onClick={() => save.mutate(undefined, { onSuccess: onClose })}
-            loading={save.isPending}
-            disabled={grossValue === null || costValue === null || costBelow}
-          >
-            {py.save}
-          </Button>
+        <Group justify="space-between">
+          {row.figure ? (
+            <Button
+              variant="subtle"
+              color="red"
+              onClick={() => setRemoving(true)}
+              disabled={save.isPending}
+            >
+              {pn.removeFigures}
+            </Button>
+          ) : (
+            <span />
+          )}
+          <Group>
+            <Button variant="default" onClick={close} disabled={save.isPending}>
+              {py.cancel}
+            </Button>
+            <Button
+              onClick={() => save.mutate(undefined, { onSuccess: onClose })}
+              loading={save.isPending}
+              disabled={grossValue === null || costValue === null || costBelow}
+            >
+              {py.save}
+            </Button>
+          </Group>
         </Group>
       </Stack>
     </Modal>
   );
 }
 
-function PayrollView({
+function EmployerCostView({
   payroll,
-  onParameters,
   onFigure,
 }: {
   payroll: PayrollMonth;
-  onParameters: () => void;
   onFigure: (row: PayrollRow) => void;
 }) {
   const { parameters, totals } = payroll;
-  const missingWages = payroll.rows.filter((row) => row.warnings.includes("missing_wage"));
-  const formerMissing = missingWages.some((row) => !row.employee.is_active);
-  const externalMissing = payroll.rows.filter((row) => row.warnings.includes("external_missing"));
-  const ay = `${payroll.year}-${String(payroll.month).padStart(2, "0")}`;
   return (
     <Stack>
-      {!payroll.attendance_approved && (
-        <Alert color="yellow" variant="light" icon={<IconInfoCircle size={18} />}>
-          <Group gap="xs" justify="space-between">
-            <Text size="sm">{py.attendanceOpenHint}</Text>
-            <Anchor component={Link} to={`${ATTENDANCE_BASE}?ay=${ay}`} size="sm">
-              {py.openAttendance}
-            </Anchor>
-          </Group>
-        </Alert>
-      )}
-      {parameters.origin !== "saved" && (
-        <Alert
-          color={parameters.origin === "fallback" ? "red" : "yellow"}
-          variant="light"
-          icon={<IconAlertTriangle size={18} />}
-        >
-          <Group gap="xs" justify="space-between">
-            <Text size="sm">
-              {parameters.origin === "fallback"
-                ? py.parametersFallbackHint(payroll.year, parameters.year)
-                : py.parametersDefaultHint(payroll.year)}
-            </Text>
-            <Anchor component="button" type="button" size="sm" onClick={onParameters}>
-              {py.openParameters}
-            </Anchor>
-          </Group>
-        </Alert>
-      )}
-      {missingWages.length > 0 && (
-        <Alert color="orange" variant="light" icon={<IconAlertTriangle size={18} />}>
-          <Group gap="xs" justify="space-between">
-            <Text size="sm">{py.missingWages(missingWages.length)}</Text>
-            <Anchor
-              component={Link}
-              to={`${WAGES_BASE}${formerMissing ? "?ayrilanlar=1" : ""}`}
-              size="sm"
-            >
-              {py.goToWages}
-            </Anchor>
-          </Group>
-        </Alert>
-      )}
-      {externalMissing.length > 0 && (
-        <Alert color="orange" variant="light" icon={<IconAlertTriangle size={18} />}>
-          <Text size="sm">{py.externalMissing(externalMissing.length)}</Text>
-        </Alert>
-      )}
       <SimpleGrid cols={{ base: 2, sm: 5 }}>
         <Stat label={py.totalCost} value={formatMoney(totals.employer_cost, "TL")} strong />
         <Stat label={py.grossTotal} value={formatMoney(totals.gross_total, "TL")} />
@@ -489,25 +488,110 @@ function PayrollView({
   );
 }
 
-/** Ay seçici (varsayılan geçen ay), durum rozetleri, uyarılar, işveren maliyeti tablosu, PDF ve
- * Excel, parametreler ve mali müşavir rakamları. */
+// Açık pencereler ay değişince (geri tuşu dahil) kapanır ve o aya dönünce kendiliğinden açılmaz: her
+// durum hangi ay için açıldığını taşır, ay değişince hepsi sıfırlanır.
+type Opened<T> = { key: string } & T;
+
+/** Ay seçici (varsayılan geçen ay), görünümler, ay hazırlığı, bordro tablosu ve dökümü, işveren
+ * maliyeti, ek ödeme ve kesintiler, devirler, PDF ve Excel, parametreler ve mali müşavir
+ * rakamları. */
 export function PayrollPage() {
+  const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const { year, month } = parseMonth(params.get("ay"));
+  const requested = params.get("gorunum");
+  const view: View = VIEWS.includes(requested as View) ? (requested as View) : "bordro";
+  // "Yalnızca uyarılı kişiler" adreste (`?uyarili=1`): tablo ve dökümün sırası aynı.
+  const onlyWarnings = params.get("uyarili") === "1";
+  const key = `${year}-${month}`;
   const [parametersOpen, setParametersOpen] = useState(false);
-  const [figure, setFigure] = useState<{ key: string; employee: number } | null>(null);
+  const [figure, setFigure] = useState<Opened<{ employee: number }> | null>(null);
+  const [drawer, setDrawer] = useState<Opened<{ employee: number }> | null>(null);
+  const [itemModal, setItemModal] = useState<Opened<{
+    item?: PayrollItemRecord;
+    employee?: number;
+  }> | null>(null);
+  const [bulk, setBulk] = useState<Opened<object> | null>(null);
+  const [copy, setCopy] = useState<Opened<object> | null>(null);
+  const [openings, setOpenings] = useState<Opened<{ target?: number; employee?: number }> | null>(
+    null,
+  );
+  const [removingItem, setRemovingItem] = useState<Opened<{ item: PayrollItemRecord }> | null>(
+    null,
+  );
+  const [removingOpening, setRemovingOpening] = useState<Opened<{
+    opening: PayrollOpening;
+  }> | null>(null);
+  const [openedFor, setOpenedFor] = useState(key);
+  if (openedFor !== key) {
+    setOpenedFor(key);
+    setFigure(null);
+    setDrawer(null);
+    setItemModal(null);
+    setBulk(null);
+    setCopy(null);
+    setOpenings(null);
+    setRemovingItem(null);
+    setRemovingOpening(null);
+  }
   const query = useQuery({
     queryKey: payrollKeys.month(year, month),
     queryFn: () => getPayrollMonth(year, month),
   });
-  const payroll = query.data;
-  const key = `${year}-${month}`;
-  // Ay değişince (geri tuşu dahil) açık rakam penceresi kapanır.
-  if (figure && figure.key !== key) setFigure(null);
-  const figureRow =
-    figure && payroll?.year === year && payroll.month === month
-      ? payroll.rows.find((row) => row.employee.id === figure.employee && row.external)
-      : undefined;
+  const payroll = query.data?.year === year && query.data.month === month ? query.data : undefined;
+  const current = <T,>(state: Opened<T> | null): Opened<T> | null =>
+    state && state.key === key && payroll ? state : null;
+  const go = (values: { ay?: string; gorunum?: View }) =>
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      if (values.ay) next.set("ay", values.ay);
+      if (values.gorunum) next.set("gorunum", values.gorunum);
+      return next;
+    });
+  const setOnlyWarnings = (on: boolean) =>
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      if (on) next.set("uyarili", "1");
+      else next.delete("uyarili");
+      return next;
+    });
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: payrollKeys.all });
+    void queryClient.invalidateQueries({ queryKey: personnelCostKeys.all });
+  };
+  const net = Boolean(payroll?.net);
+  const shownView: View = net ? view : "maliyet";
+  const computed = payroll?.rows.filter((row) => !row.external) ?? [];
+  const warned = (row: PayrollRow) => row.warnings.length > 0;
+  const tableRows = onlyWarnings ? computed.filter(warned) : computed;
+  const drawerState = current(drawer);
+  const drawerRow = drawerState
+    ? payroll?.rows.find((row) => row.employee.id === drawerState.employee)
+    : undefined;
+  // Döküm tablodaki sırayı izler; uyarısı giderilen açık kişi listeden düşmez.
+  const order = onlyWarnings
+    ? computed.filter((row) => warned(row) || row.employee.id === drawerState?.employee)
+    : computed;
+  const figureState = current(figure);
+  const figureRow = figureState
+    ? payroll?.rows.find((row) => row.employee.id === figureState.employee && row.external)
+    : undefined;
+  const itemState = current(itemModal);
+  const openingState = current(openings);
+  const removingItemState = current(removingItem);
+  const removingOpeningState = current(removingOpening);
+  // Dökümün üstünde bir pencere açık: Esc ve ok tuşları o pencereye aittir.
+  const covered = Boolean(
+    parametersOpen ||
+    figureRow ||
+    itemState ||
+    current(bulk) ||
+    current(copy) ||
+    openingState ||
+    removingItemState ||
+    removingOpeningState,
+  );
+  const [startYear, startMonth] = (payroll?.start ?? "2026-10").split("-").map(Number);
   return (
     <Stack>
       <Title order={2}>{pe.title}</Title>
@@ -520,7 +604,7 @@ export function PayrollPage() {
           <ActionIcon
             variant="default"
             aria-label={py.previousMonth}
-            onClick={() => setParams({ ay: shiftMonth(year, month, -1) })}
+            onClick={() => go({ ay: shiftMonth(year, month, -1) })}
           >
             <IconChevronLeft size={16} />
           </ActionIcon>
@@ -530,7 +614,7 @@ export function PayrollPage() {
           <ActionIcon
             variant="default"
             aria-label={py.nextMonth}
-            onClick={() => setParams({ ay: shiftMonth(year, month, 1) })}
+            onClick={() => go({ ay: shiftMonth(year, month, 1) })}
           >
             <IconChevronRight size={16} />
           </ActionIcon>
@@ -544,6 +628,28 @@ export function PayrollPage() {
           >
             {py.parameters}
           </Button>
+          {net && payroll && (
+            <Button
+              variant="default"
+              leftSection={<IconTransferIn size={16} />}
+              disabled={isFutureMonth(year, openingTarget(payroll))}
+              onClick={() => setOpenings({ key })}
+            >
+              {pn.openings}
+            </Button>
+          )}
+          {net && (
+            <Button
+              component="a"
+              href={registerPdfUrl(year, month)}
+              target="_blank"
+              rel="noopener"
+              variant="default"
+              leftSection={<IconFileTypePdf size={16} />}
+            >
+              {pn.registerPdf}
+            </Button>
+          )}
           <Button
             component="a"
             href={employerCostPdfUrl(year, month)}
@@ -567,11 +673,57 @@ export function PayrollPage() {
       {query.isError && <ErrorAlert error={query.error} />}
       {query.isLoading && <Loader />}
       {payroll && (
-        <PayrollView
-          payroll={payroll}
-          onParameters={() => setParametersOpen(true)}
-          onFigure={(row) => setFigure({ key, employee: row.employee.id })}
-        />
+        <Stack>
+          {!payroll.net && (
+            <Alert color="gray" variant="light" icon={<IconInfoCircle size={18} />}>
+              <Text size="sm">{pn.beforeStart(monthLabel(startYear, startMonth))}</Text>
+            </Alert>
+          )}
+          <PayrollChecklist
+            payroll={payroll}
+            onParameters={() => setParametersOpen(true)}
+            onOpenings={(target) => setOpenings({ key, target })}
+            onEmployerCost={() => go({ gorunum: "maliyet" })}
+            onItems={() => go({ gorunum: "kalemler" })}
+          />
+          {net && (
+            <SegmentedControl
+              value={shownView}
+              onChange={(value) => go({ gorunum: value as View })}
+              data={[
+                { value: "bordro", label: pn.viewPayroll },
+                { value: "maliyet", label: pn.viewEmployerCost },
+                { value: "kalemler", label: pn.viewItems },
+              ]}
+              w="fit-content"
+            />
+          )}
+          {shownView === "bordro" && (
+            <PayrollNetView
+              payroll={payroll}
+              rows={tableRows}
+              onlyWarnings={onlyWarnings}
+              onOnlyWarningsChange={setOnlyWarnings}
+              onOpen={(row) => setDrawer({ key, employee: row.employee.id })}
+            />
+          )}
+          {shownView === "maliyet" && (
+            <EmployerCostView
+              payroll={payroll}
+              onFigure={(row) => setFigure({ key, employee: row.employee.id })}
+            />
+          )}
+          {shownView === "kalemler" && (
+            <PayrollItemsView
+              payroll={payroll}
+              onAdd={() => setItemModal({ key })}
+              onEdit={(item) => setItemModal({ key, item })}
+              onRemove={(item) => setRemovingItem({ key, item })}
+              onBulk={() => setBulk({ key })}
+              onCopy={() => setCopy({ key })}
+            />
+          )}
+        </Stack>
       )}
       {parametersOpen && (
         <PayrollParametersModal
@@ -586,6 +738,73 @@ export function PayrollPage() {
           payroll={payroll}
           row={figureRow}
           onClose={() => setFigure(null)}
+        />
+      )}
+      {drawerRow && payroll && (
+        <PayrollDrawer
+          payroll={payroll}
+          row={drawerRow}
+          order={order}
+          covered={covered}
+          onNavigate={(row) => setDrawer({ key, employee: row.employee.id })}
+          onClose={() => setDrawer(null)}
+          onAddItem={(row) => setItemModal({ key, employee: row.employee.id })}
+          onEditItem={(item) => setItemModal({ key, item })}
+          onRemoveItem={(item) => setRemovingItem({ key, item })}
+          onOpening={(target, row) => setOpenings({ key, target, employee: row.employee.id })}
+          onRemoveOpening={(opening) => setRemovingOpening({ key, opening })}
+          onFigure={(row) => setFigure({ key, employee: row.employee.id })}
+        />
+      )}
+      {itemState && payroll && (
+        <PayrollItemModal
+          key={`${key}-${itemState.item?.id ?? "new"}`}
+          payroll={payroll}
+          people={computed}
+          item={itemState.item}
+          employeeId={itemState.employee}
+          onClose={() => setItemModal(null)}
+        />
+      )}
+      {current(bulk) && payroll && (
+        <BulkItemsModal payroll={payroll} people={computed} onClose={() => setBulk(null)} />
+      )}
+      {current(copy) && payroll && (
+        <CopyItemsModal payroll={payroll} people={computed} onClose={() => setCopy(null)} />
+      )}
+      {openingState && payroll && (
+        <OpeningsModal
+          key={`${key}-${openingState.target ?? "auto"}-${openingState.employee ?? "all"}`}
+          payroll={payroll}
+          target={openingState.target}
+          employeeId={openingState.employee}
+          onClose={() => setOpenings(null)}
+        />
+      )}
+      {removingItemState && (
+        <ReasonModal
+          title={pn.removeItemTitle}
+          intro={pn.removeItemIntro}
+          confirmLabel={pn.removeItem}
+          onConfirm={(reason) => removePayrollItem(removingItemState.item.id, reason)}
+          onDone={() => {
+            notifications.show({ color: "green", message: pn.itemRemoved });
+            refresh();
+          }}
+          onClose={() => setRemovingItem(null)}
+        />
+      )}
+      {removingOpeningState && (
+        <ReasonModal
+          title={pn.removeOpening}
+          intro={pn.removeOpeningIntro}
+          confirmLabel={pn.removeOpening}
+          onConfirm={(reason) => removeOpening(removingOpeningState.opening.id, reason)}
+          onDone={() => {
+            notifications.show({ color: "green", message: pn.openingRemoved });
+            refresh();
+          }}
+          onClose={() => setRemovingOpening(null)}
         />
       )}
     </Stack>

@@ -469,6 +469,14 @@ class PayrollParameterSet(MasterDataModel):
     tax_rate_4 = _percent("gelir vergisi 4. dilim oranı (%)")
     tax_rate_5 = _percent("gelir vergisi 5. dilim oranı (%)")
     bes_rate = _percent("BES katkı payı (%)")
+    # Nakit yemek ödemesinin SGK istisnası, fiilen çalışılan gün başına (0: istisna yok;
+    # 5510 s. Kanun m.80, tutar mali müşavirden alınır).
+    meal_exemption_daily = models.DecimalField(
+        "nakit yemek SGK istisnası (günlük TL)",
+        max_digits=18,
+        decimal_places=2,
+        default=Decimal(0),
+    )
     source = models.CharField("kaynak", max_length=500, blank=True)
     note = models.CharField("not", max_length=200, blank=True)
 
@@ -504,6 +512,11 @@ class PayrollParameterSet(MasterDataModel):
                 name="personnel_payroll_parameters_brackets",
                 violation_error_message="Gelir vergisi dilim sınırları artan olmalı.",
             ),
+            models.CheckConstraint(
+                condition=Q(meal_exemption_daily__gte=0),
+                name="personnel_payroll_parameters_meal",
+                violation_error_message="Nakit yemek istisnası negatif olamaz.",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -513,7 +526,9 @@ class PayrollParameterSet(MasterDataModel):
 class ExternalPayrollFigure(BaseModel):
     """Bordrosu mali müşavirde olan kişinin (`Employee.payroll_external`) ay rakamları: mali
     müşavirin bordrosundaki brüt toplam ve işverene maliyet. İşveren maliyeti tablosu ve personel
-    maliyeti eksik kalmasın diye elle girilir; değişiklik denetim günlüğüne yazılır."""
+    maliyeti eksik kalmasın diye elle girilir; değişiklik denetim günlüğüne yazılır. Rakamı olan ay
+    kişinin bordrosunun mali müşavirde olduğu aydır (kart işareti sonradan değişse de); ERP'deki
+    kümülatif zinciri keser. Silinmez; yanlış girilen rakam gerekçeyle kaldırılır."""
 
     employee = models.ForeignKey(
         Employee,
@@ -526,6 +541,17 @@ class ExternalPayrollFigure(BaseModel):
     gross_total = _amount("brüt toplam (TL)")
     employer_cost = _amount("işverene maliyet (TL)")
     note = models.CharField("not", max_length=200, blank=True)
+    is_active = models.BooleanField("aktif", default=True, db_index=True)
+    removed_at = models.DateTimeField("kaldırılma zamanı", null=True, blank=True)
+    removed_by = models.ForeignKey(
+        User,
+        verbose_name="kaldıran",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    removal_reason = models.CharField("kaldırma nedeni", max_length=500, blank=True)
 
     class Meta:
         verbose_name = "mali müşavir bordrosu"
@@ -534,6 +560,7 @@ class ExternalPayrollFigure(BaseModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["employee", "year", "month"],
+                condition=Q(is_active=True),
                 name="personnel_external_payroll_month_uniq",
                 violation_error_message="Bu kişinin bu ay için rakamları zaten girilmiş.",
             ),
@@ -550,3 +577,153 @@ class ExternalPayrollFigure(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.employee_id} {self.month:02d}.{self.year}"
+
+
+class PayrollOpeningBalance(BaseModel):
+    """Devir: kişinin bu işverende, `month` ayından ÖNCEKİ yıl içi kümülatif gelir vergisi
+    matrahı ve asgari ücret istisnası matrahı (mali müşavirin bir önceki ay bordrosundan). ERP
+    bordrosunun başladığı ayda (Ekim 2026), mali müşavirden ERP'ye geçişte ya da ERP ile mali
+    müşavirin kümülatifi ayrıştığında girilir; hesap kişinin o yıl, o ay ya da öncesindeki en son
+    devrinden başlar. `exemption_base` kayıtta, devir ayından önceki `exemption_months` ayın kendi
+    parametrelerindeki asgari ücret matrahlarının toplamı olarak yazılır. Silinmez; yanlış devir
+    gerekçeyle kaldırılır."""
+
+    employee = models.ForeignKey(
+        Employee,
+        verbose_name="personel",
+        on_delete=models.PROTECT,
+        related_name="payroll_openings",
+    )
+    year = models.PositiveSmallIntegerField("yıl")
+    month = models.PositiveSmallIntegerField("ay")
+    tax_base = _amount("kümülatif gelir vergisi matrahı (TL)")
+    exemption_months = models.PositiveSmallIntegerField("asgari ücret istisnası uygulanan ay")
+    exemption_base = _amount("kümülatif asgari ücret istisna matrahı (TL)")
+    note = models.CharField("not", max_length=200, blank=True)
+    is_active = models.BooleanField("aktif", default=True, db_index=True)
+    removed_at = models.DateTimeField("kaldırılma zamanı", null=True, blank=True)
+    removed_by = models.ForeignKey(
+        User,
+        verbose_name="kaldıran",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    removal_reason = models.CharField("kaldırma nedeni", max_length=500, blank=True)
+
+    class Meta:
+        verbose_name = "bordro devri"
+        verbose_name_plural = "bordro devirleri"
+        ordering = ["-year", "-month", "employee_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "year", "month"],
+                condition=Q(is_active=True),
+                name="personnel_payroll_opening_month_uniq",
+                violation_error_message="Bu kişinin bu ay için devri zaten girilmiş.",
+            ),
+            models.CheckConstraint(
+                condition=Q(month__gte=2, month__lte=12)
+                & Q(tax_base__gte=0, exemption_base__gte=0)
+                & Q(exemption_months__lte=F("month") - 1),
+                name="personnel_payroll_opening_values",
+                violation_error_message=(
+                    "Devir Şubat–Aralık ayına girilir; matrahlar negatif olamaz, istisna ay sayısı "
+                    "devir ayından önceki ay sayısını aşamaz."
+                ),
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Devir {self.employee_id} {self.month:02d}.{self.year}"
+
+
+class PayrollItemKind(models.TextChoices):
+    EXTRA = "EXTRA", "Ek ödeme"
+    DEDUCTION = "DEDUCTION", "Kesinti"
+
+
+class PayrollItemCategory(models.TextChoices):
+    PREMIUM = "PREMIUM", "Prim"
+    BONUS = "BONUS", "İkramiye"
+    TRAVEL = "TRAVEL", "Yol (nakit)"
+    MEAL = "MEAL", "Yemek (nakit)"
+    OTHER_EXTRA = "OTHER_EXTRA", "Diğer ek ödeme"
+    ADVANCE = "ADVANCE", "Avans"
+    GARNISHMENT = "GARNISHMENT", "İcra / nafaka"
+    OTHER_DEDUCTION = "OTHER_DEDUCTION", "Diğer kesinti"
+
+
+EXTRA_CATEGORIES = (
+    PayrollItemCategory.PREMIUM,
+    PayrollItemCategory.BONUS,
+    PayrollItemCategory.TRAVEL,
+    PayrollItemCategory.MEAL,
+    PayrollItemCategory.OTHER_EXTRA,
+)
+DEDUCTION_CATEGORIES = (
+    PayrollItemCategory.ADVANCE,
+    PayrollItemCategory.GARNISHMENT,
+    PayrollItemCategory.OTHER_DEDUCTION,
+)
+# Açıklaması zorunlu kategoriler (pusulada ne olduğu yazsın; İş Kanunu m.37).
+DESCRIBED_CATEGORIES = (PayrollItemCategory.OTHER_EXTRA, PayrollItemCategory.OTHER_DEDUCTION)
+
+
+class PayrollItem(BaseModel):
+    """Kişinin bir aydaki elle girilen kalemi: ek ödeme (brüt; SGK'ya ve vergiye tabi, nakit yemekte
+    günlük sınıra kadar SGK istisnası) ya da netten kesinti. Kalem, birlikte ödendiği ücretin
+    bordro ayına girilir. Silinmez; yanlış kalem gerekçeyle kaldırılır. Açıklama ekranda, dökümde
+    ve kişinin pusulasında görünür, bordro listesine, Excel'e ve kartın geçmişine yazılmaz; denetim
+    günlüğünde eski → yeni değeriyle kalır. Kişisel veri olabilir (icra dosyası gibi)."""
+
+    Kind = PayrollItemKind
+    Category = PayrollItemCategory
+
+    employee = models.ForeignKey(
+        Employee,
+        verbose_name="personel",
+        on_delete=models.PROTECT,
+        related_name="payroll_items",
+    )
+    year = models.PositiveSmallIntegerField("yıl")
+    month = models.PositiveSmallIntegerField("ay")
+    kind = models.CharField("tür", max_length=10, choices=PayrollItemKind.choices)
+    category = models.CharField("kategori", max_length=20, choices=PayrollItemCategory.choices)
+    description = models.CharField("açıklama", max_length=100, blank=True)
+    amount = _amount("tutar (TL)")
+    is_active = models.BooleanField("aktif", default=True, db_index=True)
+    removed_at = models.DateTimeField("kaldırılma zamanı", null=True, blank=True)
+    removed_by = models.ForeignKey(
+        User,
+        verbose_name="kaldıran",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    removal_reason = models.CharField("kaldırma nedeni", max_length=500, blank=True)
+
+    class Meta:
+        verbose_name = "bordro kalemi"
+        verbose_name_plural = "bordro kalemleri"
+        ordering = ["year", "month", "employee_id", "id"]
+        indexes = [models.Index(fields=["year", "month"], name="personnel_payroll_item_month")]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(month__gte=1, month__lte=12) & Q(amount__gt=0),
+                name="personnel_payroll_item_values",
+                violation_error_message="Tutar sıfırdan büyük olmalı.",
+            ),
+            models.CheckConstraint(
+                condition=Q(kind=PayrollItemKind.EXTRA, category__in=EXTRA_CATEGORIES)
+                | Q(kind=PayrollItemKind.DEDUCTION, category__in=DEDUCTION_CATEGORIES),
+                name="personnel_payroll_item_category",
+                violation_error_message="Kategori kalemin türüne uymuyor.",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        # Açıklama yazılmaz (icra ya da nafaka bilgisi denetim günlüğünün başlığına düşmesin).
+        return f"{self.get_category_display()} {self.employee_id} {self.month:02d}.{self.year}"

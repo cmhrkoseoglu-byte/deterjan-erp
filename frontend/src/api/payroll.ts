@@ -1,6 +1,7 @@
 // /api/v1/personnel/payroll/* (admin ve yönetim): ön bordro, bordro parametreleri, mali müşavirde
-// hesaplanan kişilerin rakamları ve çıktılar (docs/DECISIONS.md "Personel bordrosu"). Ücret ve
-// kesinti bilgisi kişisel veridir (docs/KVKK.md).
+// hesaplanan kişilerin rakamları, devir, ek ödeme ve kesintiler ve çıktılar (docs/DECISIONS.md
+// "Personel bordrosu"). Ücret ve kesinti bilgisi kişisel veridir (docs/KVKK.md).
+import axios from "axios";
 import { api } from "./client";
 
 const BASE = "/personnel/payroll";
@@ -10,7 +11,41 @@ export type PayrollWarning =
   | "below_minimum_wage"
   | "external_missing"
   | "exit_in_month"
-  | "pay_without_sgk_days";
+  | "pay_without_sgk_days"
+  | "opening_missing"
+  | "carry_incomplete"
+  | "negative_payable"
+  | "ceiling_with_bonus";
+
+export type PayrollItemKind = "EXTRA" | "DEDUCTION";
+export type PayrollItemCategory =
+  | "PREMIUM"
+  | "BONUS"
+  | "TRAVEL"
+  | "MEAL"
+  | "OTHER_EXTRA"
+  | "ADVANCE"
+  | "GARNISHMENT"
+  | "OTHER_DEDUCTION";
+
+export const EXTRA_CATEGORIES: PayrollItemCategory[] = [
+  "PREMIUM",
+  "BONUS",
+  "TRAVEL",
+  "MEAL",
+  "OTHER_EXTRA",
+];
+export const DEDUCTION_CATEGORIES: PayrollItemCategory[] = [
+  "ADVANCE",
+  "GARNISHMENT",
+  "OTHER_DEDUCTION",
+];
+/** Açıklaması zorunlu kategoriler (pusulada ne olduğu yazsın). */
+export const DESCRIBED_CATEGORIES: PayrollItemCategory[] = ["OTHER_EXTRA", "OTHER_DEDUCTION"];
+
+export function itemKind(category: PayrollItemCategory): PayrollItemKind {
+  return EXTRA_CATEGORIES.includes(category) ? "EXTRA" : "DEDUCTION";
+}
 
 export interface PayrollEmployee {
   id: number;
@@ -25,15 +60,72 @@ export interface PayrollEmployee {
   bes_enrolled: boolean;
 }
 
+/** Hesaptaki kalem (motor): `kind` kalemin kategorisidir. */
 export interface PayrollItem {
   kind: string;
   description: string;
   amount: string;
 }
 
+/** Ek ödeme ya da kesinti kaydı. */
+export interface PayrollItemRecord {
+  id: number;
+  employee: number;
+  employee_name: string;
+  year: number;
+  month: number;
+  kind: PayrollItemKind;
+  category: PayrollItemCategory;
+  category_label: string;
+  description: string;
+  amount: string;
+  is_active: boolean;
+  created_at: string;
+  created_by_name: string | null;
+  updated_at: string;
+  updated_by_name: string | null;
+  removed_at: string | null;
+  removed_by_name: string | null;
+  removal_reason: string;
+}
+
+/** Devir: `month` ayından önceki kümülatif GV matrahı ve asgari ücret istisna matrahı. */
+export interface PayrollOpening {
+  id: number;
+  employee: number;
+  employee_name: string;
+  year: number;
+  month: number;
+  tax_base: string;
+  exemption_months: number;
+  exemption_base: string;
+  note: string;
+  is_active: boolean;
+  created_at: string;
+  created_by_name: string | null;
+  updated_at: string;
+  updated_by_name: string | null;
+  removed_at: string | null;
+  removed_by_name: string | null;
+  removal_reason: string;
+}
+
+/** Ay başı kümülatifin halkası. */
+export interface CarryMonth {
+  month: number;
+  /** opening: devir (tutarlar o aydan önceki kümülatif); erp: o ayın eklenenleri; external: mali
+   * müşavirdeydi (zincir kopar). */
+  kind: "opening" | "erp" | "external";
+  tax_base: string;
+  exemption_base: string;
+  flags: string[];
+}
+
 /** Bordro satırının kalemleri (TL, kuruşa yuvarlanmış). */
 export interface PayrollLine {
   employed_days: number;
+  /** Fiilen çalışılan gün (Ç, fazla mesaili hafta tatili ve resmî tatil). */
+  worked_days: number;
   paid_days: number;
   unpaid_days: number;
   sick_days: number;
@@ -55,27 +147,32 @@ export interface PayrollLine {
   extras: PayrollItem[];
   extras_total: string;
   gross_total: string;
+  /** Nakit yemeğin SGK matrahına girmeyen kısmı. */
+  meal_exemption: string;
+  /** SGK'ya tabi brüt (brüt − yemek istisnası). */
+  sgk_gross: string;
   sgk_base: string;
   floor_applied: boolean;
   ceiling_applied: boolean;
   employee_sgk: string;
   employee_unemployment: string;
-  tax_base: string;
-  cumulative_tax_base_before: string;
-  cumulative_tax_base_after: string;
-  income_tax_computed: string;
-  income_tax_exemption: string;
-  income_tax: string;
-  exemption_base_before: string;
-  exemption_base_added: string;
-  stamp_tax_computed: string;
-  stamp_tax_exemption: string;
-  stamp_tax: string;
-  net_pay: string;
-  bes_deduction: string;
+  // Brütten nete kalemler: başlangıç ayından önce boş (bordro mali müşavirde).
+  tax_base: string | null;
+  cumulative_tax_base_before: string | null;
+  cumulative_tax_base_after: string | null;
+  income_tax_computed: string | null;
+  income_tax_exemption: string | null;
+  income_tax: string | null;
+  exemption_base_before: string | null;
+  exemption_base_added: string | null;
+  stamp_tax_computed: string | null;
+  stamp_tax_exemption: string | null;
+  stamp_tax: string | null;
+  net_pay: string | null;
+  bes_deduction: string | null;
   deductions: PayrollItem[];
-  deductions_total: string;
-  payable: string;
+  deductions_total: string | null;
+  payable: string | null;
   employer_sgk_gross: string;
   incentive: string;
   employer_sgk: string;
@@ -105,6 +202,21 @@ export interface PayrollRow {
   line: PayrollLine;
   gross_total: string;
   employer_cost: string;
+  /** Ayın ek ödeme ve kesintileri. */
+  items: PayrollItemRecord[];
+  /** Zincirin çapası olan devir (bu ay ya da önceki bir ay). */
+  opening: PayrollOpening | null;
+  /** Kişinin bu yıl bu aya kadarki etkin devirleri (ay sırasıyla). */
+  openings: PayrollOpening[];
+  /** Devrin beklendiği giriş ayı (zincir buradan başlar); brütten nete hesap yoksa boş. */
+  entry_month: number | null;
+  /** Giriş ayının devri girilmedi. */
+  opening_needed: boolean;
+  /** Giriş ayı devri için asgari ücret istisnası ay önerisi ve matrahı. */
+  suggestion_months: number;
+  suggestion_base: string;
+  /** Ay başı kümülatifin kuruluşu. */
+  carry_months: CarryMonth[];
 }
 
 export interface PayrollValues {
@@ -124,6 +236,8 @@ export interface PayrollValues {
   tax_rates: string[];
   exemption_base: string;
   bes_rate: string;
+  /** Nakit yemek SGK istisnası (günlük TL). */
+  meal_exemption_daily: string;
 }
 
 /** Hesapta kullanılan parametrelerin kaynağı. */
@@ -145,6 +259,9 @@ export interface PayrollTotals {
   gross_total: string;
   /** Mali müşavirde hesaplananların rakamları dahil. */
   employer_cost: string;
+  /** Yalnızca ERP'de hesaplanan satırlar. */
+  computed_gross_total: string;
+  computed_employer_cost: string;
   salary: string;
   overtime_worked_pay: string;
   overtime_rest_pay: string;
@@ -153,12 +270,12 @@ export interface PayrollTotals {
   sgk_base: string;
   employee_sgk: string;
   employee_unemployment: string;
-  income_tax: string;
-  stamp_tax: string;
-  net_pay: string;
-  bes_deduction: string;
-  deductions_total: string;
-  payable: string;
+  income_tax: string | null;
+  stamp_tax: string | null;
+  net_pay: string | null;
+  bes_deduction: string | null;
+  deductions_total: string | null;
+  payable: string | null;
   employer_sgk_gross: string;
   incentive: string;
   employer_sgk: string;
@@ -174,8 +291,15 @@ export interface PayrollMonth {
   attendance_number: string;
   attendance_approved: boolean;
   attendance_finished: boolean;
+  /** Brütten nete hesaplandı mı (başlangıç ayından önce hayır; net alanları boş). */
+  net: boolean;
+  net_available: boolean;
+  /** Brütten nete bordronun ilk ayı ("2026-10"). */
+  start: string;
   parameters: PayrollParametersInfo;
   rows: PayrollRow[];
+  /** Bu ay işte olmayan kişilere girilmiş kalemler. */
+  orphan_items: PayrollItemRecord[];
   totals: PayrollTotals;
 }
 
@@ -199,6 +323,7 @@ export interface ParameterSetValues {
   tax_rate_4: string;
   tax_rate_5: string;
   bes_rate: string;
+  meal_exemption_daily: string;
 }
 
 export interface ParameterSet extends ParameterSetValues {
@@ -236,6 +361,9 @@ export const payrollKeys = {
   month: (year: number, month: number) => ["personnel", "payroll", "month", year, month] as const,
   parameters: ["personnel", "payroll", "parameters"] as const,
   defaults: (year: number) => ["personnel", "payroll", "defaults", year] as const,
+  items: (filters: Record<string, unknown>) => ["personnel", "payroll", "items", filters] as const,
+  openings: (filters: Record<string, unknown>) =>
+    ["personnel", "payroll", "openings", filters] as const,
 };
 
 const monthPath = (year: number, month: number) => `${BASE}/${year}/${month}`;
@@ -251,6 +379,10 @@ export function employerCostPdfUrl(year: number, month: number): string {
 
 export function payrollExcelUrl(year: number, month: number): string {
   return `/api/v1${monthPath(year, month)}/xlsx/`;
+}
+
+export function registerPdfUrl(year: number, month: number): string {
+  return `/api/v1${monthPath(year, month)}/register.pdf`;
 }
 
 /** Hata kodları: not_external, not_employed, invalid_amount, invalid_employer_cost,
@@ -293,5 +425,150 @@ export async function saveParameterSet(
 
 export async function removeParameterSet(id: number, reason: string): Promise<ParameterSet> {
   const { data } = await api.post<ParameterSet>(`${BASE}/parameters/${id}/remove/`, { reason });
+  return data;
+}
+
+export async function removeExternalFigure(id: number, reason: string): Promise<ExternalFigure> {
+  const { data } = await api.post<ExternalFigure>(`${BASE}/external/${id}/remove/`, { reason });
+  return data;
+}
+
+// --- devir, ek ödeme ve kesintiler ----------------------------------------------------------------
+
+interface Page<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+/** Toplu kaydın satır hatası (hiçbir satır kaydedilmedi). */
+export interface BatchErrorRow {
+  index: number;
+  employee: number | null;
+  code: string;
+  detail: string;
+}
+
+/** Toplu kaydın reddindeki satır hataları; başka bir hataysa boş. */
+export function getBatchErrors(error: unknown): BatchErrorRow[] {
+  if (!axios.isAxiosError(error)) return [];
+  const data = error.response?.data as { code?: string; rows?: BatchErrorRow[] } | undefined;
+  return data?.code === "batch_rejected" && Array.isArray(data.rows) ? data.rows : [];
+}
+
+export interface PayrollItemInput {
+  employee: number;
+  category: PayrollItemCategory;
+  description: string;
+  amount: string;
+}
+
+export async function listPayrollItems(params: {
+  year?: number;
+  month?: number;
+  employee?: number;
+  is_active?: boolean;
+  page?: number;
+  /** En çok 500. */
+  page_size?: number;
+}): Promise<Page<PayrollItemRecord>> {
+  const { data } = await api.get<Page<PayrollItemRecord>>(`${BASE}/items/`, { params });
+  return data;
+}
+
+/** Hata kodları: before_start, future_month, not_employed, not_computed, invalid_category,
+ * description_required, invalid_amount. */
+export async function addPayrollItem(
+  year: number,
+  month: number,
+  payload: PayrollItemInput,
+): Promise<PayrollItemRecord> {
+  const { data } = await api.post<PayrollItemRecord>(`${BASE}/items/`, {
+    ...payload,
+    year,
+    month,
+  });
+  return data;
+}
+
+/** Toplu ekleme (hepsi ya da hiçbiri; satır hataları `getBatchErrors`). */
+export async function addPayrollItems(
+  year: number,
+  month: number,
+  items: PayrollItemInput[],
+): Promise<PayrollItemRecord[]> {
+  const { data } = await api.post<PayrollItemRecord[]>(`${BASE}/items/batch/`, {
+    year,
+    month,
+    items,
+  });
+  return data;
+}
+
+/** Hata kodları: item_removed, invalid_category, description_required, invalid_amount. */
+export async function updatePayrollItem(
+  id: number,
+  payload: Partial<Pick<PayrollItemInput, "category" | "description" | "amount">>,
+): Promise<PayrollItemRecord> {
+  const { data } = await api.patch<PayrollItemRecord>(`${BASE}/items/${id}/`, payload);
+  return data;
+}
+
+export async function removePayrollItem(id: number, reason: string): Promise<PayrollItemRecord> {
+  const { data } = await api.post<PayrollItemRecord>(`${BASE}/items/${id}/remove/`, { reason });
+  return data;
+}
+
+export interface OpeningInput {
+  employee: number;
+  tax_base: string;
+  exemption_months: number;
+  note: string;
+  /** Kişi önceki ay ERP'de hesaplandıysa devrin o ayların yerine geçtiği onayı. */
+  confirm_override: boolean;
+}
+
+export async function listOpenings(params: {
+  year?: number;
+  month?: number;
+  employee?: number;
+  is_active?: boolean;
+}): Promise<Page<PayrollOpening>> {
+  const { data } = await api.get<Page<PayrollOpening>>(`${BASE}/openings/`, { params });
+  return data;
+}
+
+/** Hata kodları: before_start, opening_not_needed, not_computed, not_employed, invalid_tax_base,
+ * invalid_exemption_months, opening_overrides_chain. */
+export async function saveOpening(
+  year: number,
+  month: number,
+  payload: OpeningInput,
+): Promise<PayrollOpening> {
+  const { data } = await api.post<PayrollOpening>(`${BASE}/openings/`, {
+    ...payload,
+    year,
+    month,
+  });
+  return data;
+}
+
+/** Ayın devirleri toplu (hepsi ya da hiçbiri; satır hataları `getBatchErrors`). */
+export async function saveOpenings(
+  year: number,
+  month: number,
+  rows: OpeningInput[],
+): Promise<PayrollOpening[]> {
+  const { data } = await api.post<PayrollOpening[]>(`${BASE}/openings/batch/`, {
+    year,
+    month,
+    rows,
+  });
+  return data;
+}
+
+export async function removeOpening(id: number, reason: string): Promise<PayrollOpening> {
+  const { data } = await api.post<PayrollOpening>(`${BASE}/openings/${id}/remove/`, { reason });
   return data;
 }

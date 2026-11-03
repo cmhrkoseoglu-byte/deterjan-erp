@@ -13,6 +13,8 @@ router.register("wages", views.EmployeeWageViewSet, basename="wage")
 router.register(
     "payroll/parameters", views.PayrollParameterSetViewSet, basename="payroll-parameters"
 )
+router.register("payroll/items", views.PayrollItemViewSet, basename="payroll-item")
+router.register("payroll/openings", views.PayrollOpeningViewSet, basename="payroll-opening")
 
 MONTH = "attendance/<int:year>/<int:month>"
 PAYROLL = "payroll/<int:year>/<int:month>"
@@ -37,7 +39,17 @@ urlpatterns = [
         views.PayrollEmployerCostPdfView.as_view(),
         name="payroll-employer-cost-pdf",
     ),
+    path(
+        f"{PAYROLL}/register.pdf",
+        views.PayrollRegisterPdfView.as_view(),
+        name="payroll-register-pdf",
+    ),
     path(f"{PAYROLL}/xlsx/", views.PayrollExcelView.as_view(), name="payroll-xlsx"),
+    path(
+        "payroll/external/<int:pk>/remove/",
+        views.ExternalPayrollRemoveView.as_view(),
+        name="payroll-external-remove",
+    ),
     path(f"{PAYROLL}/external/", views.ExternalPayrollView.as_view(), name="payroll-external"),
     path("", include(router.urls)),
 ]
