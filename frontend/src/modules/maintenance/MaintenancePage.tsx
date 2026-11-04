@@ -57,6 +57,7 @@ import { hasAnyRole } from "../../auth/roles";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { tr } from "../../i18n/tr";
 import { ct } from "../common/strings";
+import { optionLabel } from "../common/useOptions";
 import { RowsTable } from "../filling/FillingPage";
 import { today } from "../inventory/config";
 import { idOrNull } from "../inventory/options";
@@ -72,7 +73,7 @@ import {
   SETTINGS_ROLES,
   workOrderPath,
 } from "./config";
-import { cleanItems, equipmentLabel, useEquipmentOptions } from "./options";
+import { cleanItems, useEquipmentOptions } from "./options";
 import { CalibrationBadge, ChecklistEditor, KindBadge, WorkOrderStatusBadge } from "./shared";
 import { formatMinutes, mt } from "./strings";
 
@@ -87,7 +88,7 @@ function useEquipmentSelect() {
   const equipment = useEquipmentOptions();
   return (equipment.data ?? []).map((row) => ({
     value: String(row.id),
-    label: equipmentLabel(row),
+    label: optionLabel(row),
   }));
 }
 
@@ -1113,7 +1114,7 @@ function useBulkProducts() {
       });
       return page.results.map((row) => ({
         value: String(row.id),
-        label: `${row.code} - ${row.name}`,
+        label: optionLabel(row),
       }));
     },
   });

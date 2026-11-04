@@ -9,6 +9,7 @@ import {
   Stack,
   Table,
   Text,
+  Title,
 } from "@mantine/core";
 import { IconInfoCircle } from "@tabler/icons-react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -23,7 +24,7 @@ import {
 } from "../../../api/coding";
 import { formatDateTime } from "../../../i18n/format";
 import { CodeSchemeModal } from "./CodeSchemeModal";
-import { RecodeSection } from "./RecodeSection";
+import { MigrationRuns, RecodeSection } from "./RecodeSection";
 import { cs } from "./strings";
 
 const SECTIONS = {
@@ -171,7 +172,24 @@ function describeRevision(revision: CodeSchemeRevision): string {
   return parts.join(" · ");
 }
 
+/** Geçmiş: biçim revizyonları ve uygulanan kod göçleri (geri alma Kod göçü bölümündedir). */
 function HistorySection() {
+  return (
+    <Stack>
+      <Title order={4}>{cs.revisionsTitle}</Title>
+      <RevisionsTable />
+      <Title order={4} mt="md">
+        {cs.runs}
+      </Title>
+      <Text size="sm" c="dimmed">
+        {cs.runsHistoryHelp}
+      </Text>
+      <MigrationRuns />
+    </Stack>
+  );
+}
+
+function RevisionsTable() {
   const [page, setPage] = useState(1);
   const query = useQuery({
     queryKey: ["system", "coding", "revisions", page],

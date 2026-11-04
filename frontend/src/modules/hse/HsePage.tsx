@@ -70,6 +70,7 @@ import { WithHazard } from "../../components/hazard/HazardIcon";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ct } from "../common/strings";
+import { optionLabel } from "../common/useOptions";
 import { RowsTable } from "../filling/FillingPage";
 import { today } from "../inventory/config";
 import { CancelModal } from "../inventory/CancelModal";
@@ -126,7 +127,7 @@ function useMaterialSelect() {
   const materials = useMaterialOptions();
   return (materials.data ?? []).map((row) => ({
     value: String(row.id),
-    label: `${row.code} - ${row.name}`,
+    label: optionLabel(row),
   }));
 }
 
@@ -139,7 +140,7 @@ function useSupplierSelect() {
   });
   return (suppliers.data ?? []).map((row) => ({
     value: String(row.id),
-    label: `${row.code} - ${row.name}`,
+    label: optionLabel(row),
   }));
 }
 
@@ -704,6 +705,7 @@ function SdsTab() {
 function HazardsTab() {
   const { user } = useAuth();
   const materials = useMaterialSelect();
+  const materialRows = useMaterialOptions();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
   const [pictogram, setPictogram] = useState<string | null>(null);
@@ -787,8 +789,9 @@ function HazardsTab() {
             value={null}
             w={280}
             onChange={(value) => {
-              const row = materials.find((item) => item.value === value);
-              if (row) setOpen({ id: Number(row.value), code: row.label.split(" - ")[0] });
+              // Etiket eski kodları da taşır; başlıktaki kod kayıttan alınır.
+              const row = materialRows.data?.find((item) => String(item.id) === value);
+              if (row) setOpen({ id: row.id, code: row.code });
             }}
             nothingFoundMessage={hs.notFound}
           />

@@ -45,6 +45,8 @@ export const ct = {
   importOk: "Hazır",
   codeSuggested: (format: string) => `Önerilen kod. Değiştirebilirsiniz; biçim: ${format}`,
   codeLocked: "Kodu yalnızca sistem yöneticisi değiştirebilir.",
+  codeRefreshed: (taken: string, next: string) =>
+    `${taken} başka bir kayda verilmiş. Yerine sıradaki önerilen kod ${next} yazıldı; kontrol edip yeniden kaydedin.`,
   formerCodes: (codes: string) => `Eski kodlar: ${codes}`,
   formerLabel: (codes: string) => `(eski: ${codes})`,
 } as const;

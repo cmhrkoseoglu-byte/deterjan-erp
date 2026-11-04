@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { listRecords, type Location } from "../../api/masterdata";
+import { optionLabel } from "../common/useOptions";
 
 export interface LocationOption {
   value: string;
@@ -7,7 +8,7 @@ export interface LocationOption {
   type: Location["location_type"];
 }
 
-/** Aktif lokasyonlar (seçim kutusu için). */
+/** Aktif lokasyonlar (seçim kutusu için; eski koduyla da aranır). */
 export function useLocations() {
   return useQuery({
     queryKey: ["options", "locations-typed"],
@@ -16,7 +17,7 @@ export function useLocations() {
       const page = await listRecords<Location>("locations", { is_active: true, page_size: 500 });
       return page.results.map((row) => ({
         value: String(row.id),
-        label: `${row.code} - ${row.name}`,
+        label: optionLabel(row),
         type: row.location_type,
       }));
     },

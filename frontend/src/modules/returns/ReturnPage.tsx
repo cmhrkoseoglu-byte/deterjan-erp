@@ -53,7 +53,7 @@ import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ct } from "../common/strings";
-import { useOptions } from "../common/useOptions";
+import { optionLabel, useOptions } from "../common/useOptions";
 import { CancelModal } from "../inventory/CancelModal";
 import { lotPath, today } from "../inventory/config";
 import { idOrNull, useLocations } from "../inventory/options";
@@ -277,7 +277,7 @@ function LineEditor({
           searchable
           data={products.map((row) => ({
             value: String(row.id),
-            label: `${row.code} - ${row.name}`,
+            label: optionLabel(row),
           }))}
           value={line.product}
           nothingFoundMessage={rt.notFound}

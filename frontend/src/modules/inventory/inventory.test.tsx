@@ -335,6 +335,55 @@ describe("mal kabul", () => {
     );
   });
 
+  it("malzeme ve depo lokasyonu seçiminde eski kodla da aranır", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));
+    vi.mocked(mdApi.listRecords).mockImplementation(async (endpoint) => {
+      if (endpoint === "locations") {
+        return page([
+          ...locations,
+          {
+            id: 6,
+            code: "LOC-0000006",
+            name: "B rafı",
+            location_type: "STORAGE",
+            is_active: true,
+            former_codes: ["RAF-B"],
+          },
+        ]);
+      }
+      if (endpoint === "materials") {
+        return page([
+          {
+            id: 50,
+            code: "MLZ-0000001",
+            name: "LABSA",
+            former_codes: ["HM-LAS"],
+            base_unit: 1,
+            requires_incoming_qc: true,
+            is_active: true,
+          },
+        ]);
+      }
+      return page([]);
+    });
+    renderApp("/depo/mal-kabul/yeni");
+
+    await user.type(await screen.findByRole("textbox", { name: /Depo lokasyonu/ }), "raf-b");
+    expect(
+      await screen.findByRole("option", { name: "LOC-0000006 - B rafı (eski: RAF-B)" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "HM-01 - Hammadde rafı" })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    // Satır açılışta bir kez yeniden kurulur; öğe her seferinde yeniden aranır.
+    const line = screen.getByTestId("receipt-line");
+    await user.type(within(line).getByRole("textbox", { name: /Malzeme/ }), "HM-LAS");
+    expect(
+      await screen.findByRole("option", { name: "MLZ-0000001 - LABSA (eski: HM-LAS)" }),
+    ).toBeInTheDocument();
+  });
+
   it("yeni mal kabul taslağı başlık ve satırlarla gönderilir", async () => {
     const user = userEvent.setup();
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));

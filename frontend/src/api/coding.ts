@@ -68,6 +68,12 @@ export interface CodeFormatValues {
   date_format?: DateFormat;
 }
 
+/** Önizleme isteği: biçim değerleri ve yazılan sıradaki numaralar ({"MLZ": 25}); örnekteki
+ * sıradaki kod ve son numara bunlara göre gelir. */
+export interface CodePreviewRequest extends CodeFormatValues {
+  counters?: Record<string, number>;
+}
+
 export interface CodeSchemeUpdate extends CodeFormatValues {
   is_active?: boolean;
   /** Ana veride sıradaki numara: {"MLZ": 25}. */
@@ -110,7 +116,10 @@ export async function updateCodeType(key: string, body: CodeSchemeUpdate): Promi
   return data;
 }
 
-export async function previewCodeType(key: string, values: CodeFormatValues): Promise<CodePreview> {
+export async function previewCodeType(
+  key: string,
+  values: CodePreviewRequest,
+): Promise<CodePreview> {
   const { data } = await api.post<CodePreview>(`/coding/types/${key}/preview/`, values);
   return data;
 }

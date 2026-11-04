@@ -57,7 +57,7 @@ import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { ct } from "../common/strings";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
-import { useOptions } from "../common/useOptions";
+import { optionLabel, useOptions } from "../common/useOptions";
 import { lotPath, today } from "../inventory/config";
 import { idOrNull, useLocations } from "../inventory/options";
 import { Info, Qty } from "../inventory/shared";
@@ -238,13 +238,14 @@ function OrderForm({
     .filter((row) => !reworkLot.data || row.product === reworkLot.data.material)
     .map((row) => ({
       value: String(row.id),
-      label: `${row.code} - ${row.name} (v${row.approved_version!.version_no})`,
+      label: optionLabel(row, ` (v${row.approved_version!.version_no})`),
     }));
   const tankOptions = (tanks.data ?? []).map((row) => ({
     value: String(row.id),
-    label: `${row.code} - ${row.name}${
-      row.capacity ? ` (${formatNumber(row.capacity)} ${row.capacity_unit_code ?? ""})` : ""
-    }`,
+    label: optionLabel(
+      row,
+      row.capacity ? ` (${formatNumber(row.capacity)} ${row.capacity_unit_code ?? ""})` : "",
+    ),
   }));
   const productionLocations = (locations.data ?? []).filter((row) => row.type === "PRODUCTION");
 
@@ -879,7 +880,7 @@ function StartBatchModal({
           label={pt.tank}
           data={(tanks.data ?? []).map((row) => ({
             value: String(row.id),
-            label: `${row.code} - ${row.name}`,
+            label: optionLabel(row),
           }))}
           value={equipment}
           allowDeselect={false}
