@@ -11,7 +11,9 @@ function hasUnsafeChars(value: string): boolean {
 /**
  * Adresten ya da kullanıcıdan gelen değer uygulama içi bir yol mu (açık yönlendirmeyi önler)?
  * Yalnızca "/" ile başlayan, "//" ile başlamayan, ters bölü ve kontrol karakteri içermeyen ve bu
- * sitenin içine çözülen yollar geçer. Geçerse yol + sorgu + çapa döner, geçmezse null.
+ * sitenin içine çözülen yollar geçer. Çözülmüş yol da "//" ile başlamamalı: "/..//x" gibi nokta
+ * bölümleri çözülünce "//x" kalır ve tarayıcı bunu başka sunucu sayar. Geçerse yol + sorgu + çapa
+ * döner, geçmezse null.
  */
 export function safeAppPath(value: string | null | undefined): string | null {
   if (!value || !value.startsWith("/") || value.startsWith("//") || hasUnsafeChars(value)) {
@@ -19,7 +21,7 @@ export function safeAppPath(value: string | null | undefined): string | null {
   }
   try {
     const url = new URL(value, window.location.origin);
-    if (url.origin !== window.location.origin) return null;
+    if (url.origin !== window.location.origin || url.pathname.startsWith("//")) return null;
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {
     return null;
