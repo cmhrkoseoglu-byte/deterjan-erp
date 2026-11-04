@@ -99,7 +99,7 @@ def _set_counters(item: CodeType, counters: Mapping[str, int]) -> dict[str, list
     """Sayaçları "sıradaki numara"ya göre düzeltir; eski → yeni (sıradaki numara) döner."""
     changes: dict[str, list[int]] = {}
     for prefix, next_number in sorted(counters.items()):
-        sequence = _locked_sequence(item, prefix)
+        sequence = lock_sequence(item, prefix)
         old = sequence.last_number + 1
         if old == next_number:
             continue
@@ -282,7 +282,7 @@ def check_master_code(item: CodeType, instance: models.Model, *, previous_code: 
         )
 
 
-def _locked_sequence(item: CodeType, prefix: str) -> CodeSequence:
+def lock_sequence(item: CodeType, prefix: str) -> CodeSequence:
     """Önek sayacını kilitler; satır yoksa mevcut kodlardaki en büyük sayıyla oluşturur."""
     head = formats.stem(prefix)
     if not CodeSequence.objects.filter(key=item.key, stem=head).exists():
@@ -306,7 +306,7 @@ def assign_master_code(item: CodeType, instance: models.Model) -> None:
     prefix = selectors.instance_prefix(item, fmt, instance)
     if prefix is None:
         return
-    sequence = _locked_sequence(item, prefix)
+    sequence = lock_sequence(item, prefix)
     code, _ = selectors.next_free(item, prefix, fmt.width, sequence.last_number)
     setattr(instance, item.field, code)
 
@@ -326,7 +326,7 @@ def claim_master_code(item: CodeType, instance: models.Model, *, previous_code: 
     number = formats.master_number(code, prefix, fmt.width) if prefix else None
     if prefix is None or number is None:
         return
-    sequence = _locked_sequence(item, prefix)
+    sequence = lock_sequence(item, prefix)
     if selectors.code_in_use(item, code, exclude_pk=instance.pk):
         suggestion, _ = selectors.next_free(item, prefix, fmt.width, sequence.last_number)
         raise BusinessRuleError(
@@ -345,6 +345,7 @@ def record_code_change(
     *,
     reason: str = CodeHistory.Reason.CHANGE,
     note: str = "",
+    run_id: int | None = None,
 ) -> CodeHistory:
     """Kodu değişen kaydın eski kodunu geçerlilik aralığıyla saklar (değiştirilemez satır)."""
     from django.contrib.contenttypes.models import ContentType
@@ -368,5 +369,6 @@ def record_code_change(
         valid_to=now,
         reason=reason,
         note=note[:255],
+        run_id=run_id,
         created_by=_real_actor(actor),
     )

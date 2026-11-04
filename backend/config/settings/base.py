@@ -217,6 +217,8 @@ SPECTACULAR_SETTINGS = {
         "BackupRunKindEnum": "apps.ops.models.BackupRun.Kind",
         "BackupRunStatusEnum": "apps.ops.models.BackupRun.Status",
         "BackupRunOffsiteEnum": "apps.ops.models.BackupRun.Offsite",
+        "CodeKindEnum": "apps.core.api.coding.CODE_KINDS",
+        "CodeMigrationRunKindEnum": "apps.core.models.CodeMigrationRun.Kind",
     },
     # Şema ve dokümantasyon yalnızca giriş yapmış kullanıcılara açık (dev.py'de herkese açık).
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],

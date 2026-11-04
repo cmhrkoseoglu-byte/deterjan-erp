@@ -384,6 +384,14 @@ class CodeHistory(ImmutableModel):
     valid_to = models.DateTimeField("geçerlilik sonu")
     reason = models.CharField("neden", max_length=16, choices=Reason.choices)
     note = models.CharField("not", max_length=255, blank=True)
+    run = models.ForeignKey(
+        "CodeMigrationRun",
+        verbose_name="kod göçü",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="history",
+    )
     created_at = models.DateTimeField("kayıt zamanı", auto_now_add=True)
     created_by = models.ForeignKey(
         User,
@@ -405,6 +413,50 @@ class CodeHistory(ImmutableModel):
 
     def __str__(self) -> str:
         return self.code
+
+
+class CodeMigrationRun(ImmutableModel):
+    """Uygulanan bir kod göçü ya da geri alması: hangi kaydın kodu neyden neye değişti.
+
+    `mapping` satırları `{"id": 5, "label": "...", "old": "DENEME", "new": "REC-0000004"}`. Geri
+    alma kendi satırıyla tutulur (`reverts`). Satırlar değiştirilemez ve silinemez.
+    """
+
+    immutable_message = "Kod göçü kayıtları değiştirilemez."
+
+    class Kind(models.TextChoices):
+        APPLY = "apply", "Göç"
+        REVERT = "revert", "Geri alma"
+
+    key = models.CharField("kod türü", max_length=64)
+    kind = models.CharField("tür", max_length=16, choices=Kind.choices)
+    mapping = models.JSONField("eşleme", default=list)
+    note = models.TextField("not")
+    reverts = models.ForeignKey(
+        "self",
+        verbose_name="geri alınan göç",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="reverted_by",
+    )
+    created_at = models.DateTimeField("zaman", auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        verbose_name="uygulayan",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "kod göçü"
+        verbose_name_plural = "kod göçleri"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"Kod göçü #{self.pk}"
 
 
 def attachment_upload_to(instance: "Attachment", filename: str) -> str:

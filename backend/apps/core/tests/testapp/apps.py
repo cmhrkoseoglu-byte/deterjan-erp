@@ -29,6 +29,7 @@ class TestAppConfig(AppConfig):
             default_width=4,
             max_length=20,
             write_roles=(PLANLAMA,),
+            recode=_test_recode,
         )
         register_master_code(
             "core_testapp.typedwidget",
@@ -52,3 +53,18 @@ TEST_LOT_COUNTERS: dict[tuple[str, object], int] = {}
 
 def _test_lot_counter(prefix: str, day: object) -> int:
     return TEST_LOT_COUNTERS.get((prefix, day), 0)
+
+
+def _test_recode(actor, instance, new_code, note, run_id, reason):  # type: ignore[no-untyped-def]
+    """Deneme parçasının kod göçü: yalnız kodu değiştirir ve eski kodu saklar."""
+    from apps.core.audit import log_change
+    from apps.core.coding import registry, services
+    from apps.core.models import AuditLog
+
+    old = instance.code
+    instance.code = new_code
+    instance.save(update_fields=["code", "updated_at"])
+    log_change(actor, instance, AuditLog.Action.UPDATE, {"code": [old, new_code]}, note)
+    item = registry.get_code_type("core_testapp.widget")
+    services.record_code_change(actor, item, instance, old, reason=reason, note=note, run_id=run_id)
+    return instance

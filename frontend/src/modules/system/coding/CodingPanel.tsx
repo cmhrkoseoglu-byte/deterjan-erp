@@ -23,12 +23,14 @@ import {
 } from "../../../api/coding";
 import { formatDateTime } from "../../../i18n/format";
 import { CodeSchemeModal } from "./CodeSchemeModal";
+import { RecodeSection } from "./RecodeSection";
 import { cs } from "./strings";
 
 const SECTIONS = {
   master: "ana-veri",
   documents: "belge",
   lots: "lot",
+  migration: "goc",
   history: "gecmis",
 } as const;
 type Section = keyof typeof SECTIONS;
@@ -288,6 +290,7 @@ export function CodingPanel() {
           onEdit={setEditing}
         />
       )}
+      {query.isSuccess && section === "migration" && <RecodeSection types={rows} />}
       {section === "history" && <HistorySection />}
       <CodeSchemeModal
         row={editing}

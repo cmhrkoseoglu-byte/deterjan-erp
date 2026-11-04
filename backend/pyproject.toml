@@ -80,6 +80,7 @@ module = [
     "apps.*.state",
     "apps.core.security",
     "apps.core.coding.formats",
+    "apps.core.coding.migration",
     "apps.core.coding.registry",
 ]
 disallow_untyped_defs = true

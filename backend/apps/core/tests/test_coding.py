@@ -537,3 +537,117 @@ def test_api_all_revisions_for_history(client_for, make_user):
         ("document.TD", "Deneme belgesi", "Birinci"),
     ]
     assert client_for(PLANLAMA).get(f"{BASE}/revisions/").status_code == 403
+
+
+# --- kod göçü --------------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_recode_preview_apply_and_revert(admin):
+    from apps.core.coding import migration
+    from apps.core.models import CodeMigrationRun
+
+    first = Widget.objects.create(name="a", code="ESKI-A")
+    keep = Widget.objects.create(name="b", code="WDG-0003")
+    third = Widget.objects.create(name="c", code="X")
+    plan = migration.preview_recode(WIDGET)
+    rows = {row["id"]: row for row in plan["rows"]}
+    assert (rows[first.pk]["action"], rows[first.pk]["new"]) == ("change", "WDG-0004")
+    assert (rows[keep.pk]["action"], rows[keep.pk]["new"]) == ("keep", "WDG-0003")
+    assert rows[third.pk]["new"] == "WDG-0005"
+    assert (plan["change_count"], plan["keep_count"], plan["problem_count"]) == (2, 1, 0)
+    assert not CodeMigrationRun.objects.exists()
+
+    with pytest.raises(BusinessRuleError) as exc:
+        migration.apply_recode(admin, WIDGET, checksum="eski", note="Göç")
+    assert exc.value.code == "recode_stale"
+    with pytest.raises(BusinessRuleError) as exc:
+        migration.apply_recode(admin, WIDGET, checksum=plan["checksum"], note=" ")
+    assert exc.value.code == "note_required"
+
+    run = migration.apply_recode(admin, WIDGET, checksum=plan["checksum"], note="Canlı göç")
+    first.refresh_from_db()
+    third.refresh_from_db()
+    assert (first.code, third.code) == ("WDG-0004", "WDG-0005")
+    assert run.mapping == [
+        {"id": first.pk, "label": "a", "old": "ESKI-A", "new": "WDG-0004"},
+        {"id": third.pk, "label": "c", "old": "X", "new": "WDG-0005"},
+    ]
+    assert CodeHistory.objects.filter(run=run).count() == 2
+    log = AuditLog.objects.get(object_id=first.pk, action=AuditLog.Action.UPDATE)
+    assert log.changes == {"code": ["ESKI-A", "WDG-0004"]}
+    assert log.note == f"Kod göçü #{run.pk}: Canlı göç"
+    assert CodeSequence.objects.get(key=WIDGET, stem="WDG-").last_number == 5
+    assert selectors.find_by_code(Widget, "ESKI-A") == (first, True)
+    again = migration.preview_recode(WIDGET)
+    assert again["change_count"] == 0
+    with pytest.raises(BusinessRuleError) as exc:
+        migration.apply_recode(admin, WIDGET, checksum=again["checksum"], note="Boş")
+    assert exc.value.code == "recode_nothing"
+
+    # Göçten sonra kodu değişen kayıt geri alınmaz.
+    Widget.objects.filter(pk=third.pk).update(code="WDG-0099")
+    preview = migration.preview_revert(run.pk)
+    assert [(row["id"], row["action"]) for row in preview["rows"]] == [
+        (first.pk, "revert"),
+        (third.pk, "skip"),
+    ]
+    revert = migration.revert_recode(admin, run.pk, note="Geri al")
+    first.refresh_from_db()
+    assert first.code == "ESKI-A" and revert.reverts == run
+    assert revert.mapping == [{"id": first.pk, "label": "a", "old": "WDG-0004", "new": "ESKI-A"}]
+    # Geri alınan yeni kod da eski kod olarak saklanır; başka kayda verilmez.
+    assert selectors.code_reserved(widget_type(), "WDG-0004", exclude_pk=third.pk)
+    with pytest.raises(BusinessRuleError) as exc:
+        migration.revert_recode(admin, run.pk, note="Tekrar")
+    assert exc.value.code == "already_reverted"
+    with pytest.raises(BusinessRuleError) as exc:
+        migration.revert_recode(admin, revert.pk, note="Geri almanın geri alması")
+    assert exc.value.code == "revert_not_allowed"
+
+
+@pytest.mark.django_db
+def test_recode_rules(admin, make_user):
+    from apps.core.coding import migration
+
+    with pytest.raises(PermissionDenied):
+        migration.apply_recode(make_user(PLANLAMA), WIDGET, checksum="", note="Göç")
+    with pytest.raises(BusinessRuleError) as exc:
+        migration.preview_recode(TYPED)  # göç kancası kayıtlı değil
+    assert exc.value.code == "recode_not_allowed"
+    with pytest.raises(BusinessRuleError) as exc:
+        migration.preview_recode("document.TD")
+    assert exc.value.code == "recode_not_allowed"
+
+
+@pytest.mark.django_db
+def test_recode_api(client_for):
+    Widget.objects.create(name="a", code="ESKI-A")
+    client = client_for(ADMIN)
+    preview = client.get(f"{BASE}/recode/{WIDGET}/").json()
+    assert preview["change_count"] == 1 and preview["rows"][0]["new"] == "WDG-0001"
+    applied = client.post(
+        f"{BASE}/recode/{WIDGET}/apply/",
+        {"checksum": preview["checksum"], "note": "Göç"},
+        format="json",
+    )
+    assert applied.status_code == 201, applied.json()
+    run = applied.json()
+    assert (run["kind"], run["count"], run["reverted"], run["label"]) == (
+        "apply",
+        1,
+        False,
+        "Deneme parçası",
+    )
+    runs = client.get(f"{BASE}/runs/").json()["results"]
+    assert [row["id"] for row in runs] == [run["id"]]
+    revert_preview = client.get(f"{BASE}/runs/{run['id']}/revert-preview/").json()
+    assert revert_preview["revert_count"] == 1
+    reverted = client.post(f"{BASE}/runs/{run['id']}/revert/", {"note": "Geri"}, format="json")
+    assert reverted.status_code == 201 and reverted.json()["reverts"] == run["id"]
+    assert client.get(f"{BASE}/runs/").json()["results"][1]["reverted"] is True
+
+    planner = client_for(PLANLAMA)
+    assert planner.get(f"{BASE}/recode/{WIDGET}/").status_code == 403
+    assert planner.get(f"{BASE}/runs/").status_code == 403
+    assert planner.post(f"{BASE}/runs/{run['id']}/revert/", {"note": "x"}).status_code == 403

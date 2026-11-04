@@ -18,9 +18,13 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from types import MappingProxyType
+from typing import Any
 
 # Lot türünün o gün (önek + gün) verilen son numarası; sayaç tablosu lotun modülündedir.
 LotCounter = Callable[[str, date], int]
+# Kod göçü: kaydın kodunu modülün kendi servisiyle değiştirir (yalnız kod kuralları, denetimli).
+# recode(actor, kayıt, yeni_kod, not, göç_no, neden) → kayıt
+Recode = Callable[[Any, Any, str, str, int | None, str], Any]
 
 MASTER = "master"
 DOCUMENT = "document"
@@ -50,6 +54,7 @@ class CodeType:
     allow_underscore: bool = False
     max_length: int = 32
     write_roles: tuple[str, ...] = ()
+    recode: Recode | None = dataclasses.field(default=None, compare=False)
     # Belge
     locked: bool = False  # ekrandan değiştirilemez (yasal belge numarası)
     default_year_format: str = "YYYY"
@@ -90,9 +95,11 @@ def register_master_code(
     allow_underscore: bool = False,
     max_length: int = 32,
     write_roles: Sequence[str] = (),
+    recode: Recode | None = None,
 ) -> CodeType:
     """Ana veri kod türünü kaydeder. `free=True`: serbest kod (yalnızca karakter kuralı).
-    `type_field` verilirse önek kaydın türünden gelir (`default_type_prefixes`)."""
+    `type_field` verilirse önek kaydın türünden gelir (`default_type_prefixes`). `recode` verilen
+    türün mevcut kodları kod göçüyle yeni biçime taşınabilir."""
     if not free and not type_field and not default_prefix:
         raise ValueError(f"{key}: sıralı kodun varsayılan öneki olmalıdır.")
     return _register(
@@ -112,6 +119,7 @@ def register_master_code(
             allow_underscore=allow_underscore,
             max_length=max_length,
             write_roles=tuple(write_roles),
+            recode=recode,
         )
     )
 

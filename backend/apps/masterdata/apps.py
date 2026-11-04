@@ -11,6 +11,7 @@ class MasterdataConfig(AppConfig):
         # biçimler canlıda kullanılan düzendir (CUMHUR, 2026-11-04).
         from apps.core.coding.registry import register_master_code, register_standard_code
         from apps.core.roles import PLANLAMA
+        from apps.masterdata import services
         from apps.masterdata.models import Equipment
 
         write = (PLANLAMA,)
@@ -22,6 +23,7 @@ class MasterdataConfig(AppConfig):
             default_width=7,
             scanned=True,
             write_roles=write,
+            recode=services.recode_record,
         )
         register_master_code(
             "masterdata.materialcategory",
@@ -30,6 +32,7 @@ class MasterdataConfig(AppConfig):
             default_prefix="KAT",
             default_width=4,
             write_roles=write,
+            recode=services.recode_record,
         )
         register_master_code(
             "masterdata.warehouse",
@@ -38,6 +41,7 @@ class MasterdataConfig(AppConfig):
             default_prefix="DEPO",
             default_width=5,
             write_roles=write,
+            recode=services.recode_record,
         )
         register_master_code(
             "masterdata.location",
@@ -47,6 +51,7 @@ class MasterdataConfig(AppConfig):
             default_width=4,
             scanned=True,
             write_roles=write,
+            recode=services.recode_record,
         )
         register_master_code(
             "masterdata.equipment",
@@ -63,6 +68,7 @@ class MasterdataConfig(AppConfig):
                 Equipment.Type.OTHER: "EKIPMAN",
             },
             write_roles=write,
+            recode=services.recode_record,
         )
         register_master_code(
             "masterdata.supplier",
@@ -71,6 +77,7 @@ class MasterdataConfig(AppConfig):
             default_prefix="TED",
             default_width=6,
             write_roles=write,
+            recode=services.recode_record,
         )
         register_master_code(
             "masterdata.customer",
@@ -79,6 +86,7 @@ class MasterdataConfig(AppConfig):
             default_prefix="MUS",
             default_width=6,
             write_roles=write,
+            recode=services.recode_record,
         )
         # Yazıcıyı yalnız admin tanımlar (yazma rolü yok).
         register_master_code(
@@ -87,6 +95,7 @@ class MasterdataConfig(AppConfig):
             model="masterdata.printer",
             default_prefix="YAZICI",
             default_width=3,
+            recode=services.recode_record,
         )
         register_standard_code(
             "masterdata.unitofmeasure", label="Birim", model="masterdata.unitofmeasure"

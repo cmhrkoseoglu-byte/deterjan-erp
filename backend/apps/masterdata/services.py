@@ -16,6 +16,7 @@ from django.db import IntegrityError, models, transaction
 
 from apps.core.audit import log_change
 from apps.core.coding import registry as coding_registry
+from apps.core.coding import selectors as coding_selectors
 from apps.core.coding import services as coding
 from apps.core.exceptions import BusinessRuleError
 from apps.core.labels import gs1_check_digit, is_valid_gtin
@@ -382,6 +383,43 @@ def update_record[M: MasterDataModel](
     for name, value in data.items():
         setattr(locked, name, value)
     return _save(locked, actor, note)
+
+
+@transaction.atomic
+def recode_record(
+    actor: User | None,
+    instance: MasterDataModel,
+    new_code: str,
+    note: str,
+    run_id: int | None = None,
+    reason: str = "migration",
+) -> MasterDataModel:
+    """Kod göçü (`core.coding.migration`): yalnızca kodu değiştirir.
+
+    Kaydın öteki alanları yeniden doğrulanmaz (göç, ilgisiz bir kural yüzünden yarıda kalmasın);
+    kod kuralları denetlenir: kod başka kaydın güncel kodu ya da eski koduysa `recode_conflict`.
+    Değişiklik denetim günlüğüne (`code: [eski, yeni]`) ve eski kod geçmişine yazılır.
+    """
+    item = code_type_of(instance)
+    if item is None:
+        raise ValueError("Kod göçü yalnızca kodlama sistematiğine kayıtlı türlerde yapılır.")
+    locked = type(instance)._base_manager.select_for_update().get(pk=instance.pk)
+    old = str(getattr(locked, item.field))
+    new_code = normalize_code(new_code)
+    if old == new_code:
+        return locked
+    if coding_selectors.code_in_use(item, new_code, exclude_pk=locked.pk) or (
+        coding_selectors.code_reserved(item, new_code, exclude_pk=locked.pk)
+    ):
+        raise BusinessRuleError(
+            "recode_conflict", f"{new_code} başka bir kayıtta kullanılıyor ya da kullanıldı."
+        )
+    setattr(locked, item.field, new_code)
+    locked.updated_by = actor if actor is not None and actor.is_authenticated else None
+    locked.save(update_fields=[item.field, "updated_by", "updated_at"])
+    log_change(actor, locked, AuditLog.Action.UPDATE, {item.field: [old, new_code]}, note)
+    coding.record_code_change(actor, item, locked, old, reason=reason, note=note, run_id=run_id)
+    return locked
 
 
 @transaction.atomic

@@ -121,3 +121,90 @@ export async function listCodeRevisions(page = 1): Promise<Paginated<CodeSchemeR
   });
   return data;
 }
+
+// --- kod göçü ----------------------------------------------------------------------------------
+
+export interface RecodeRow {
+  id: number;
+  label: string;
+  old: string;
+  new: string;
+  action: "keep" | "change" | "problem";
+  is_active: boolean;
+  problem: string;
+}
+
+export interface RecodePreview {
+  key: string;
+  label: string;
+  active: boolean;
+  rows: RecodeRow[];
+  change_count: number;
+  keep_count: number;
+  problem_count: number;
+  checksum: string;
+}
+
+export interface CodeMigrationRun {
+  id: number;
+  key: string;
+  label: string;
+  kind: "apply" | "revert";
+  mapping: { id: number; label: string; old: string; new: string }[];
+  note: string;
+  reverts: number | null;
+  reverted: boolean;
+  count: number;
+  created_at: string;
+  created_by_name: string;
+}
+
+export interface RevertPreview {
+  run: number;
+  key: string;
+  label: string;
+  rows: {
+    id: number;
+    label: string;
+    old: string;
+    new: string;
+    current: string;
+    action: "revert" | "skip";
+  }[];
+  revert_count: number;
+  already_reverted: boolean;
+}
+
+export async function previewRecode(key: string): Promise<RecodePreview> {
+  const { data } = await api.get<RecodePreview>(`/coding/recode/${key}/`);
+  return data;
+}
+
+export async function applyRecode(
+  key: string,
+  checksum: string,
+  note: string,
+): Promise<CodeMigrationRun> {
+  const { data } = await api.post<CodeMigrationRun>(`/coding/recode/${key}/apply/`, {
+    checksum,
+    note,
+  });
+  return data;
+}
+
+export async function listRecodeRuns(page = 1): Promise<Paginated<CodeMigrationRun>> {
+  const { data } = await api.get<Paginated<CodeMigrationRun>>("/coding/runs/", {
+    params: { page },
+  });
+  return data;
+}
+
+export async function previewRevert(runId: number): Promise<RevertPreview> {
+  const { data } = await api.get<RevertPreview>(`/coding/runs/${runId}/revert-preview/`);
+  return data;
+}
+
+export async function revertRecode(runId: number, note: string): Promise<CodeMigrationRun> {
+  const { data } = await api.post<CodeMigrationRun>(`/coding/runs/${runId}/revert/`, { note });
+  return data;
+}

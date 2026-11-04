@@ -221,3 +221,118 @@ describe("Sistem > Kodlama sistematiği", () => {
     expect(screen.getByText(/MLZ sayacı: sıradaki 25/)).toBeInTheDocument();
   });
 });
+
+describe("Sistem > Kodlama sistematiği > Kod göçü", () => {
+  const run: codingApi.CodeMigrationRun = {
+    id: 7,
+    key: "masterdata.material",
+    label: "Malzeme",
+    kind: "apply",
+    mapping: [{ id: 2, label: "DENEME - Deneme", old: "DENEME", new: "MLZ-0000025" }],
+    note: "Göç",
+    reverts: null,
+    reverted: false,
+    count: 1,
+    created_at: "2026-11-04T19:00:00+03:00",
+    created_by_name: "Sistem Yöneticisi",
+  };
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(authApi.fetchCsrf).mockResolvedValue();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    vi.mocked(workflowApi.fetchTasks).mockResolvedValue(page([]));
+    vi.mocked(workflowApi.fetchNotifications).mockResolvedValue(page([]));
+    vi.mocked(workflowApi.fetchUnreadCount).mockResolvedValue(0);
+    vi.mocked(codingApi.listCodeTypes).mockResolvedValue([MATERIAL, UNIT, PRODUCTION]);
+    vi.mocked(codingApi.listRecodeRuns).mockResolvedValue(page([]));
+    vi.mocked(codingApi.previewRecode).mockResolvedValue({
+      key: "masterdata.material",
+      label: "Malzeme",
+      active: true,
+      rows: [
+        {
+          id: 1,
+          label: "MLZ-0000001 - SLES",
+          old: "MLZ-0000001",
+          new: "MLZ-0000001",
+          action: "keep",
+          is_active: true,
+          problem: "",
+        },
+        {
+          id: 2,
+          label: "DENEME - Deneme",
+          old: "DENEME",
+          new: "MLZ-0000025",
+          action: "change",
+          is_active: false,
+          problem: "",
+        },
+      ],
+      change_count: 1,
+      keep_count: 1,
+      problem_count: 0,
+      checksum: "abc123",
+    });
+  });
+
+  it("önizler, yalnız değişecekleri gösterir, notla ve onayla uygular", async () => {
+    vi.mocked(codingApi.applyRecode).mockResolvedValue(run);
+    renderApp("/sistem/kodlama?bolum=goc");
+
+    await userEvent.click(await screen.findByRole("textbox", { name: "Kod türü" }));
+    expect(screen.queryByRole("option", { name: "Birim" })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("option", { name: "Malzeme" }));
+    expect(await screen.findByText("1 kod değişecek, 1 kod aynı kalacak.")).toBeInTheDocument();
+    expect(screen.getByText("MLZ-0000025")).toBeInTheDocument();
+    expect(screen.getByText("(pasif)")).toBeInTheDocument();
+    expect(screen.queryByText("MLZ-0000001 - SLES")).not.toBeInTheDocument();
+
+    const apply = screen.getByRole("button", { name: "1 kodu taşı" });
+    expect(apply).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/Göç notu/), "Canlı kodlar");
+    await userEvent.click(apply);
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Malzeme: 1 kod yeni biçime taşınsın mı?");
+    await userEvent.click(within(dialog).getByRole("button", { name: "1 kodu taşı" }));
+    await waitFor(() =>
+      expect(codingApi.applyRecode).toHaveBeenCalledWith(
+        "masterdata.material",
+        "abc123",
+        "Canlı kodlar",
+      ),
+    );
+  });
+
+  it("uygulanan göçü notla geri alır", async () => {
+    vi.mocked(codingApi.listRecodeRuns).mockResolvedValue(page([run]));
+    vi.mocked(codingApi.previewRevert).mockResolvedValue({
+      run: 7,
+      key: "masterdata.material",
+      label: "Malzeme",
+      rows: [
+        {
+          id: 2,
+          label: "MLZ-0000025 - Deneme",
+          old: "DENEME",
+          new: "MLZ-0000025",
+          current: "MLZ-0000025",
+          action: "revert",
+        },
+      ],
+      revert_count: 1,
+      already_reverted: false,
+    });
+    vi.mocked(codingApi.revertRecode).mockResolvedValue({ ...run, id: 8, kind: "revert" });
+    renderApp("/sistem/kodlama?bolum=goc");
+
+    expect(await screen.findByText("Malzeme (Göç #7)")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Geri al" }));
+    const dialog = await screen.findByRole("dialog", { name: "Göç #7: geri al" });
+    expect(await within(dialog).findByText("Geri döner")).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText(/Geri alma notu/), "Hatalı göç");
+    await userEvent.click(within(dialog).getByRole("button", { name: "1 kaydı geri al" }));
+    await waitFor(() => expect(codingApi.revertRecode).toHaveBeenCalledWith(7, "Hatalı göç"));
+  });
+});

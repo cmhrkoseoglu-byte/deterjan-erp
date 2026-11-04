@@ -1217,3 +1217,12 @@ Plan `docs/plan/kodlama-sistematigi.md`; kararlar DECISIONS "2026-11-04 — Kodl
   sunucudan canlı önizleme, kural ihlalinde kaydet kapalı, değişiklik notu zorunlu, onay penceresi.
   Yeni uç nokta `/api/v1/coding/revisions/` (bütün türlerin revizyonları). Kanıt:
   `modules/system/coding/coding.test.tsx`, `core/tests/test_coding.py`; ön yüz (470) yeşil.
+- **Adım 5:** kod göçü (Sistem > Kodlama sistematiği > Kod göçü). Önizleme salt okunur: biçime
+  uyan kod kalır, uymayanlar oluşturulma sırasıyla sıradaki boş kodu alır. Uygulama yalnız admin,
+  not zorunlu, onay penceresi; önizlemeden sonra kayıt değiştiyse reddedilir (`recode_stale`).
+  Kodu türün modülü değiştirir (`masterdata.services.recode_record`; kaydın öteki alanları yeniden
+  doğrulanmaz); her değişiklik denetim günlüğüne ve eski kod geçmişine yazılır, göç
+  `CodeMigrationRun` olarak saklanır (göç core.0006). Geri alma: kodu hâlâ göçteki yeni kod olan
+  kayıtlar eski koduna döner; bir göç bir kez geri alınır. Kanıt: `core/tests/test_coding.py`,
+  `inventory/tests/test_coding_recode.py` (stok değişmezleri, canlıdaki gibi reçete kodları), ön
+  yüz `coding.test.tsx` (önizle, uygula, geri al).

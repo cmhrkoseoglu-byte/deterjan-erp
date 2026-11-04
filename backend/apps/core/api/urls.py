@@ -41,6 +41,23 @@ urlpatterns = [
         name="coding-type-revisions",
     ),
     path("coding/revisions/", coding.AllRevisionsListView.as_view(), name="coding-revisions"),
+    path("coding/recode/<str:key>/", coding.RecodePreviewView.as_view(), name="coding-recode"),
+    path(
+        "coding/recode/<str:key>/apply/",
+        coding.RecodeApplyView.as_view(),
+        name="coding-recode-apply",
+    ),
+    path("coding/runs/", coding.CodeMigrationRunListView.as_view(), name="coding-runs"),
+    path(
+        "coding/runs/<int:run_id>/revert-preview/",
+        coding.RevertPreviewView.as_view(),
+        name="coding-run-revert-preview",
+    ),
+    path(
+        "coding/runs/<int:run_id>/revert/",
+        coding.RevertView.as_view(),
+        name="coding-run-revert",
+    ),
     path("coding/suggest/<str:key>/", coding.CodeSuggestView.as_view(), name="coding-suggest"),
     path("", include(router.urls)),
 ]

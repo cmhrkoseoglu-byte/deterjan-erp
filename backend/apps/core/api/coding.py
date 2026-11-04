@@ -19,9 +19,9 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.coding import formats, selectors, services
+from apps.core.coding import formats, migration, selectors, services
 from apps.core.coding.registry import KINDS, MASTER, CodeType, code_type, master_type_for_model
-from apps.core.models import CodeHistory, CodeSchemeRevision, User
+from apps.core.models import CodeHistory, CodeMigrationRun, CodeSchemeRevision, User
 from apps.core.pagination import StandardPagination
 from apps.core.permissions import HasRole, user_has_role
 from apps.core.roles import ADMIN
@@ -299,3 +299,151 @@ class CodeSuggestView(APIView):
             "format": selectors.format_hint(item, fmt, type_value),
         }
         return Response(CodeSuggestionSerializer(body).data)
+
+
+# --- kod göçü --------------------------------------------------------------------------------
+
+
+class RecodeRowSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    label = serializers.CharField()  # type: ignore[assignment]
+    old = serializers.CharField(allow_blank=True)
+    new = serializers.CharField(allow_blank=True)
+    action = serializers.CharField(help_text="keep | change | problem")
+    is_active = serializers.BooleanField()
+    problem = serializers.CharField(allow_blank=True)
+
+
+class RecodePreviewSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    label = serializers.CharField()  # type: ignore[assignment]
+    active = serializers.BooleanField()
+    rows = RecodeRowSerializer(many=True)
+    change_count = serializers.IntegerField()
+    keep_count = serializers.IntegerField()
+    problem_count = serializers.IntegerField()
+    checksum = serializers.CharField()
+
+
+class RecodeApplySerializer(serializers.Serializer):
+    checksum = serializers.CharField(max_length=64)
+    note = serializers.CharField(allow_blank=True, max_length=1000)
+
+
+class RecodeNoteSerializer(serializers.Serializer):
+    note = serializers.CharField(allow_blank=True, max_length=1000)
+
+
+class CodeMigrationRunSerializer(serializers.ModelSerializer):
+    label = serializers.SerializerMethodField()  # type: ignore[assignment]
+    created_by_name = serializers.SerializerMethodField()
+    reverted = serializers.SerializerMethodField()
+    count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CodeMigrationRun
+        fields = [
+            "id",
+            "key",
+            "label",
+            "kind",
+            "mapping",
+            "note",
+            "reverts",
+            "reverted",
+            "count",
+            "created_at",
+            "created_by_name",
+        ]
+
+    def get_label(self, obj: CodeMigrationRun) -> str:
+        item = code_type(obj.key)
+        return item.label if item is not None else obj.key
+
+    def get_created_by_name(self, obj: CodeMigrationRun) -> str:
+        user = obj.created_by
+        return (user.full_name or user.username) if user else ""
+
+    def get_reverted(self, obj: CodeMigrationRun) -> bool:
+        return obj.kind == CodeMigrationRun.Kind.APPLY and obj.reverted_by.exists()
+
+    def get_count(self, obj: CodeMigrationRun) -> int:
+        return len(obj.mapping)
+
+
+class RevertRowSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    label = serializers.CharField()  # type: ignore[assignment]
+    old = serializers.CharField()
+    new = serializers.CharField()
+    current = serializers.CharField(allow_blank=True)
+    action = serializers.CharField(help_text="revert | skip")
+
+
+class RevertPreviewSerializer(serializers.Serializer):
+    run = serializers.IntegerField()
+    key = serializers.CharField()
+    label = serializers.CharField()  # type: ignore[assignment]
+    rows = RevertRowSerializer(many=True)
+    revert_count = serializers.IntegerField()
+    already_reverted = serializers.BooleanField()
+
+
+class RecodePreviewView(APIView):
+    """Kod göçü önizlemesi (yalnız admin, salt okunur): her kaydın eski ve yeni kodu."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(responses=RecodePreviewSerializer)
+    def get(self, request: Request, key: str) -> Response:
+        item = _type_or_404(key)
+        return Response(RecodePreviewSerializer(migration.preview_recode(item.key)).data)
+
+
+class RecodeApplyView(APIView):
+    """Önizlemedeki göçü uygular (yalnız admin; not zorunlu; önizlemeden sonra kayıt değiştiyse
+    `recode_stale`)."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(request=RecodeApplySerializer, responses={201: CodeMigrationRunSerializer})
+    def post(self, request: Request, key: str) -> Response:
+        item = _type_or_404(key)
+        body = RecodeApplySerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        run = migration.apply_recode(_actor(request), item.key, **body.validated_data)
+        return Response(CodeMigrationRunSerializer(run).data, status=201)
+
+
+class CodeMigrationRunListView(generics.ListAPIView):
+    """Uygulanan kod göçleri ve geri almaları, en yeniden eskiye (yalnız admin)."""
+
+    permission_classes = [HasRole(ADMIN)]
+    serializer_class = CodeMigrationRunSerializer
+    filter_backends: list[Any] = []
+
+    def get_queryset(self) -> QuerySet[CodeMigrationRun]:
+        return CodeMigrationRun.objects.select_related("created_by").prefetch_related("reverted_by")
+
+
+class RevertPreviewView(APIView):
+    """Geri alma önizlemesi (yalnız admin): hangi kayıt eski koduna döner, hangisi kalır."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(responses=RevertPreviewSerializer)
+    def get(self, request: Request, run_id: int) -> Response:
+        return Response(RevertPreviewSerializer(migration.preview_revert(run_id)).data)
+
+
+class RevertView(APIView):
+    """Göçü geri alır (yalnız admin; not zorunlu; bir göç bir kez geri alınır)."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(request=RecodeNoteSerializer, responses={201: CodeMigrationRunSerializer})
+    def post(self, request: Request, run_id: int) -> Response:
+        body = RecodeNoteSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        run = migration.revert_recode(_actor(request), run_id, note=body.validated_data["note"])
+        return Response(CodeMigrationRunSerializer(run).data, status=201)
