@@ -1,0 +1,75 @@
+// Sistem > Kodlama sistematiği metinleri (yalnız admin; docs/plan/kodlama-sistematigi.md).
+export const cs = {
+  intro:
+    "Ana veri kodlarının, belge ve lot numaralarının kuralları. Değişiklikleri yalnızca sistem yöneticisi yapar; her değişiklik notuyla geçmişe yazılır. Bir değişiklik yalnızca bundan sonra verilecek kod ve numaraları etkiler; verilmiş kod ve numaralar değişmez.",
+  iso: "ISO 9001 belirli bir kod biçimi istemez; kayıtların benzersiz ve kalıcı tanımlanmasını ve değişikliklerin izini ister. Tarihler ISO 8601 düzenindedir (4 haneli yıl).",
+  sections: {
+    master: "Ana veri kodları",
+    documents: "Belge numaraları",
+    lots: "Lot numaraları",
+    history: "Geçmiş",
+  },
+  colType: "Tür",
+  colFormat: "Biçim",
+  colNext: "Sıradaki",
+  colLast: "Verilen son numara",
+  colLastToday: "Bugün verilen son numara",
+  colLastYear: "Bu yıl verilen son numara",
+  colState: "Durum",
+  colChanged: "Son değişiklik",
+  edit: "Düzenle",
+  state: {
+    active: "Etkin",
+    inactive: "Kapalı",
+    standard: "Standart kod",
+    locked: "Değiştirilemez",
+    free: "Serbest kod",
+  },
+  activeHelp:
+    "Etkin türde yeni kayıtta kod önerilir ve biçime uymayan yeni kod kabul edilmez. Kapalı türde kod bugünkü gibi serbesttir.",
+  standardHelp: "Uluslararası standart kodlar (birim, H/P/EUH) değiştirilmez.",
+  lockedHelp: "İrsaliye numarası yasal belge numarasıdır; biçimi bu ekrandan değiştirilemez.",
+  freeHelp:
+    "Serbest kod: öneri yapılmaz; biçim etkinse yalnızca karakter kuralı uygulanır (A-Z, 0-9, - ve _).",
+  typed: (n: number) => `${n} türe göre önek`,
+  // Düzenleme penceresi
+  editTitle: (label: string) => `Biçim: ${label}`,
+  prefix: "Önek",
+  prefixHelp: "Harfle başlar; yalnızca büyük harf (A-Z) ve rakam.",
+  lotPrefixHelp: "1-4 büyük harf (A-Z).",
+  width: "Sıra hanesi",
+  widthHelp: (min: number, max: number) => `${min}-${max} hane; numara soldan sıfırla doldurulur.`,
+  yearFormat: "Yıl",
+  years: { YYYY: "4 haneli yıl (ISO 8601): 2026", YY: "2 haneli yıl: 26" },
+  dateFormat: "Tarih",
+  dates: {
+    YYYYMMDD: "YYYYAAGG: ISO 8601 takvim tarihi (20261104)",
+    YYYYDDD: "YYYYGGG: ISO 8601 yılın günü (2026308)",
+    YYMMDD: "YYAAGG: GS1 düzeni (261104)",
+  },
+  typePrefixes: "Türe göre önekler",
+  activate: "Biçimi etkinleştir",
+  counter: "Sıradaki numara",
+  counterHelp:
+    "Sayacı düzeltmek için değiştirin. Dolu ya da başka kaydın eski kodu olan numara atlanır.",
+  note: "Değişiklik notu",
+  notePlaceholder: "Neden değiştirildi? (geçmişte görünür)",
+  preview: "Önizleme",
+  next: "Sıradaki",
+  longest: "En uzun hali",
+  save: "Kaydet",
+  cancel: "Vazgeç",
+  confirm:
+    "Bu biçim yalnızca bundan sonra verilecek kod ve numaralarda kullanılır; verilmiş olanlar değişmez. Kaydedilsin mi?",
+  saved: (label: string) => `${label} biçimi kaydedildi.`,
+  // Geçmiş
+  historyEmpty: "Henüz biçim değişikliği yok.",
+  colWhen: "Zaman",
+  colWho: "Değiştiren",
+  colWhat: "Değişiklik",
+  colNote: "Not",
+  revision: (n: number) => `Rev. ${n}`,
+  revisionSummary: (format: string, active: boolean | null) =>
+    active === null ? format : `${format} · ${active ? "Etkin" : "Kapalı"}`,
+  counterSet: (prefix: string, n: number) => `${prefix} sayacı: sıradaki ${n}`,
+} as const;

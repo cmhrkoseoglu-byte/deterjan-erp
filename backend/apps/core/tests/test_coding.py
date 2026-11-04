@@ -523,3 +523,17 @@ def test_every_document_prefix_in_source_is_registered():
     assert set(found) == registered, {p: f for p, f in found.items() if p not in registered}
     assert registry.document_type("SV").locked
     assert all(registry.lot_type(prefix) for prefix in LOT_PREFIXES.values())
+
+
+@pytest.mark.django_db
+def test_api_all_revisions_for_history(client_for, make_user):
+    admin = make_user(ADMIN)
+    services.update_scheme(admin, "document.TD", width=6, note="Birinci")
+    activate(admin)
+    client = client_for(ADMIN)
+    rows = client.get(f"{BASE}/revisions/").json()["results"]
+    assert [(row["key"], row["label"], row["note"]) for row in rows] == [
+        (WIDGET, "Deneme parçası", "Etkinleştirildi"),
+        ("document.TD", "Deneme belgesi", "Birinci"),
+    ]
+    assert client_for(PLANLAMA).get(f"{BASE}/revisions/").status_code == 403

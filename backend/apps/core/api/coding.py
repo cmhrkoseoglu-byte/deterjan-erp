@@ -99,12 +99,16 @@ class CodePreviewSerializer(serializers.Serializer):
 
 
 class CodeSchemeRevisionSerializer(serializers.ModelSerializer):
+    key = serializers.CharField(source="scheme.key", read_only=True)
+    label = serializers.SerializerMethodField()  # type: ignore[assignment]
     changed_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = CodeSchemeRevision
         fields = [
             "id",
+            "key",
+            "label",
             "revision",
             "prefix",
             "type_prefixes",
@@ -117,6 +121,10 @@ class CodeSchemeRevisionSerializer(serializers.ModelSerializer):
             "changed_at",
             "changed_by_name",
         ]
+
+    def get_label(self, obj: CodeSchemeRevision) -> str:
+        item = code_type(obj.scheme.key)
+        return item.label if item is not None else obj.scheme.key
 
     def get_changed_by_name(self, obj: CodeSchemeRevision) -> str:
         user = obj.changed_by
@@ -251,7 +259,21 @@ class CodeSchemeRevisionListView(generics.ListAPIView):
 
     def get_queryset(self) -> QuerySet[CodeSchemeRevision]:
         item = _type_or_404(self.kwargs["key"])
-        return CodeSchemeRevision.objects.filter(scheme__key=item.key).select_related("changed_by")
+        return CodeSchemeRevision.objects.filter(scheme__key=item.key).select_related(
+            "scheme", "changed_by"
+        )
+
+
+class AllRevisionsListView(generics.ListAPIView):
+    """Bütün kod türlerinin biçim revizyonları, en yeniden eskiye (yalnız admin): kodlama
+    ekranının Geçmiş bölümü."""
+
+    permission_classes = [HasRole(ADMIN)]
+    serializer_class = CodeSchemeRevisionSerializer
+    filter_backends: list[Any] = []
+
+    def get_queryset(self) -> QuerySet[CodeSchemeRevision]:
+        return CodeSchemeRevision.objects.select_related("scheme", "changed_by")
 
 
 class CodeSuggestView(APIView):

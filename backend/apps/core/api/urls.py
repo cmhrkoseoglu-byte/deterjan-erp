@@ -40,6 +40,7 @@ urlpatterns = [
         coding.CodeSchemeRevisionListView.as_view(),
         name="coding-type-revisions",
     ),
+    path("coding/revisions/", coding.AllRevisionsListView.as_view(), name="coding-revisions"),
     path("coding/suggest/<str:key>/", coding.CodeSuggestView.as_view(), name="coding-suggest"),
     path("", include(router.urls)),
 ]

@@ -1210,3 +1210,10 @@ Plan `docs/plan/kodlama-sistematigi.md`; kararlar DECISIONS "2026-11-04 — Kodl
   - Kanıt: `masterdata/tests/test_coding.py`, `inventory/tests/test_coding_scan.py`, ön yüz
     `MasterDataPage.test.tsx` (öneri, kod kilidi, eski kodlar), `components.test.tsx` (eski kod
     uyarısı); tam backend (1608) ve ön yüz (464) testleri yeşil.
+- **Adım 4:** Sistem > Kodlama sistematiği ekranı (`/sistem/kodlama`, yalnız admin). Bölümler:
+  ana veri kodları (standart kodlar salt okunur), belge numaraları (SV değiştirilemez), lot
+  numaraları (ISO 8601 tarih seçenekleri), geçmiş. Düzenleme penceresinde önek, sıra hanesi,
+  ekipmanda türe göre önekler, yıl ya da tarih, "Biçimi etkinleştir", sıradaki numara düzeltmesi;
+  sunucudan canlı önizleme, kural ihlalinde kaydet kapalı, değişiklik notu zorunlu, onay penceresi.
+  Yeni uç nokta `/api/v1/coding/revisions/` (bütün türlerin revizyonları). Kanıt:
+  `modules/system/coding/coding.test.tsx`, `core/tests/test_coding.py`; ön yüz (470) yeşil.
