@@ -24,6 +24,9 @@ from django.utils import timezone
 from apps.core import event_names as ev
 from apps.core import events
 from apps.core.audit import log_change, snapshot
+from apps.core.coding import formats as coding_formats
+from apps.core.coding import registry as coding_registry
+from apps.core.coding import selectors as coding_selectors
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, Currency, DocumentModel, User
 from apps.core.roles import LABORATUVAR
@@ -90,7 +93,8 @@ RESERVATION_GUARDED_TYPES = frozenset(
 )
 
 LOT_DECISION_ROLES = (LABORATUVAR,)
-# Lot numarası önekleri (Karar D-2): satın alma H, üretim B, dolum D.
+# Lot türleri (Karar D-2): satın alma H, üretim B, dolum D. Etkin önek ve biçim kodlama
+# ayarından gelir (`next_lot_number`).
 LOT_PREFIXES: dict[str, str] = {
     Lot.Source.PURCHASE: "H",
     Lot.Source.PRODUCTION: "B",
@@ -572,23 +576,27 @@ def reverse_movement(
 
 
 def next_lot_number(prefix: str, day: date | None = None) -> str:
-    """Gün bazında sıfırlanan lot numarası: `H-261015-001` (Karar D-2).
+    """Gün bazında sıfırlanan lot numarası: `H-20261015-001` (Karar D-2, 2026-11-04'te ISO 8601).
 
+    `prefix` lot türüdür (`LOT_PREFIXES`: H, B, D). Önek, tarih biçimi ve sıra hanesi Sistem >
+    Kodlama sistematiği ayarından gelir; admin öneki değiştirdiyse sayaç yeni önekte başlar.
     Sayaç önek + gün başınadır, tüm malzemelerde ortaktır; satır `select_for_update` ile
     kilitlenir. Lotu oluşturan transaction'ın içinde çağrılmalıdır.
     """
-    if prefix not in LOT_PREFIXES.values():
+    lot_type = coding_registry.lot_type(prefix)
+    if prefix not in LOT_PREFIXES.values() or lot_type is None:
         raise ValueError(f"Geçersiz lot öneki: {prefix!r}")
+    fmt = coding_selectors.effective_format(lot_type)
     day = day or timezone.localdate()
     with transaction.atomic():
         LotNumberSequence.objects.bulk_create(
-            [LotNumberSequence(prefix=prefix, day=day, last_number=0)], ignore_conflicts=True
+            [LotNumberSequence(prefix=fmt.prefix, day=day, last_number=0)], ignore_conflicts=True
         )
-        sequence = LotNumberSequence.objects.select_for_update().get(prefix=prefix, day=day)
+        sequence = LotNumberSequence.objects.select_for_update().get(prefix=fmt.prefix, day=day)
         sequence.last_number = F("last_number") + 1
         sequence.save(update_fields=["last_number"])
         sequence.refresh_from_db(fields=["last_number"])
-    return f"{prefix}-{day:%y%m%d}-{sequence.last_number:03d}"
+    return coding_formats.lot_number(fmt, day, sequence.last_number)
 
 
 def default_expiry_date(material: Material, start: date) -> date | None:

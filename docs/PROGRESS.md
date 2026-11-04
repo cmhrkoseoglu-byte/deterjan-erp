@@ -1188,3 +1188,10 @@ Plan `docs/plan/kodlama-sistematigi.md`; kararlar DECISIONS "2026-11-04 — Kodl
   tür kaydetmediği için davranış değişmedi. Kanıt: `core/tests/test_coding.py` (biçimler, karakter
   kuralı, önek ayırma ve geçmiş önek, sıra hanesi, sayaç penceresi ve düzeltmesi, eşzamanlı kod
   alma, eski kod ve tarihteki kod, API yetkileri).
+- **Adım 2:** belge ve lot numaraları kodlama ayarından. 17 belge türü (ST, SA, UE, DO, SS, SV, NM,
+  PU, BR, IA, BK, MK, SD, AT, OL, SK, SB) ve 3 lot türü (H, B, D) modüllerin `ready()`'sinde
+  kaydedildi; SV (irsaliye no) ekrandan değiştirilemez. Varsayılan belge biçimi değişmedi
+  (`UE-2026-00001`); lot numarası ISO 8601 tarihle `H-20261015-001` (Karar D-2 değişti). Önek
+  değişince sayaç yeni önekte başlar. Kanıt: `core/tests/test_coding.py` (ayardan belge numarası,
+  kaynaktaki her sabit önek kayıtlı), `inventory/tests/test_services.py` (ISO 8601 lot, ayardan
+  tarih biçimi ve önek); tam backend testleri yeşil.

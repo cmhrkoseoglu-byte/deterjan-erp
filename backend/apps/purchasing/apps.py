@@ -21,3 +21,9 @@ class PurchasingConfig(AppConfig):
         register_record_type(
             "purchasing.purchaseorder", roles=ORDER_READ_ROLES, hidden_fields=price_fields
         )
+
+        # Belge numaraları: biçim Sistem > Kodlama sistematiği ayarından (core.coding).
+        from apps.core.coding.registry import register_document_type
+
+        register_document_type("ST", label="Satın alma talebi", model="purchasing.purchaserequest")
+        register_document_type("SA", label="Satın alma siparişi", model="purchasing.purchaseorder")

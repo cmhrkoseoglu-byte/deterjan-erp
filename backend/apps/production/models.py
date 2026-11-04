@@ -240,7 +240,7 @@ class MaterialPick(PickRecord):
 
 
 class ProductionBatch(BaseModel):
-    """Şarj. `batch_no` çıktı lotunun numarasıdır (`B-YYMMDD-NNN`, Karar D-2)."""
+    """Şarj. `batch_no` çıktı lotunun numarasıdır (`B-YYYYMMDD-NNN`, Karar D-2)."""
 
     class Status(models.TextChoices):
         IN_PROGRESS = "IN_PROGRESS", "Devam ediyor"

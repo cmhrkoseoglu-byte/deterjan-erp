@@ -14,7 +14,14 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.core.exceptions import BusinessRuleError
-from apps.inventory.models import Lot, LotLink, PalletLabel, StockBalance, StockReservation
+from apps.inventory.models import (
+    Lot,
+    LotLink,
+    LotNumberSequence,
+    PalletLabel,
+    StockBalance,
+    StockReservation,
+)
 from apps.masterdata.models import Location, Material
 
 ZERO = Value(Decimal(0), output_field=DecimalField(max_digits=18, decimal_places=4))
@@ -22,6 +29,12 @@ ZERO = Value(Decimal(0), output_field=DecimalField(max_digits=18, decimal_places
 MAX_TRACE_DEPTH = 25
 # Minimum stok kontrolünde sayılmayan lotlar: kullanılamayacak stok.
 UNUSABLE_STATUSES = (Lot.Status.REJECTED, Lot.Status.BLOCKED)
+
+
+def last_lot_number(prefix: str, day: date) -> int:
+    """Bu önek ve gün için verilen son lot numarası (kodlama ekranı ve sıra hanesi denetimi)."""
+    row = LotNumberSequence.objects.filter(prefix=prefix, day=day).first()
+    return row.last_number if row is not None else 0
 
 
 def _reserved_subquery() -> Coalesce:

@@ -24,3 +24,9 @@ class HseConfig(AppConfig):
             roles=services.INCIDENT_REPORT_ROLES,
             visible=services.incidents_visible_to,
         )
+
+        # Belge numaraları: biçim Sistem > Kodlama sistematiği ayarından (core.coding).
+        from apps.core.coding.registry import register_document_type
+
+        register_document_type("AT", label="Atık kaydı", model="hse.wasterecord")
+        register_document_type("OL", label="Olay kaydı", model="hse.incident")

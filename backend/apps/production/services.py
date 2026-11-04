@@ -680,7 +680,7 @@ def start_batch(
     equipment: Equipment | None = None,
     planned_quantity: Decimal | None = None,
 ) -> ProductionBatch:
-    """Şarjı başlatır (rol: uretim). Çıktı lotu `B-YYMMDD-NNN` numarasıyla karantinada açılır.
+    """Şarjı başlatır (rol: uretim). Çıktı lotu `B-YYYYMMDD-NNN` numarasıyla karantinada açılır.
 
     Şarj miktarı verilmezse kalan miktar ile tank kapasitesinden küçüğüdür; kalanı ya da tank
     kapasitesini aşan şarj reddedilir (Karar D-4). Tankta devam eden şarj varsa yeni şarj

@@ -57,7 +57,7 @@ COMPARISON_COLUMNS: tuple[Column, ...] = (
         "Lot no",
         "lot_no",
         lambda value: _text(value).upper(),
-        example="H-261015-001",
+        example="H-20261015-001",
         help="Doluysa lot bazında karşılaştırılır (tüm satırlarda dolu olmalı)",
     ),
     Column(

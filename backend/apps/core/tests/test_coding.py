@@ -472,3 +472,54 @@ def test_api_suggestion_for_write_roles(client_for, make_user):
     assert planner.get(f"{BASE}/suggest/{TYPED}/").status_code == 403
     assert client_for(ADMIN).get(f"{BASE}/suggest/{TYPED}/", {"type": "BETA"}).status_code == 200
     assert planner.get(f"{BASE}/suggest/yok.yok/").status_code == 404
+
+
+# --- belge ve lot numaraları -----------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_document_numbers_follow_coding_settings(admin):
+    from apps.core import services as core
+
+    assert core.next_document_number("TD", year=2026) == "TD-2026-00001"
+    services.update_scheme(admin, "document.TD", year_format="YY", width=4, note="Kısa yıl")
+    # Önek aynı: sayaç devam eder.
+    assert core.next_document_number("TD", year=2026) == "TD-26-0002"
+    services.update_scheme(admin, "document.TD", prefix="TX", note="Yeni önek")
+    # Yeni önekte sayaç 1'den başlar; eski numaralar değişmez.
+    assert core.next_document_number("TD", year=2026) == "TX-26-0001"
+    assert DocumentSequence.objects.get(prefix="TD", year=2026).last_number == 2
+    # Kayıtsız önek (yalnızca testler) bugünkü biçimde kalır.
+    assert core.next_document_number("QQ", year=2026) == "QQ-2026-00001"
+
+
+def test_every_document_prefix_in_source_is_registered():
+    """Kaynaktaki her sabit belge öneki kayıtlı bir belge türüdür ve her kayıtlı tür kullanılır;
+    yeni bir belge türü kodlama ayarını atlayamaz."""
+    import pathlib
+    import re
+
+    from apps.inventory.services import LOT_PREFIXES
+
+    apps_dir = pathlib.Path(__file__).resolve().parents[2]
+    patterns = [
+        re.compile(r'create_document\((?:.|\n){0,400}?prefix="([A-Z][A-Z0-9]{0,9})"'),
+        re.compile(r'next_document_number\(\s*"([A-Z][A-Z0-9]{0,9})"'),
+    ]
+    found: dict[str, str] = {}
+    for path in apps_dir.rglob("*.py"):
+        if "tests" in path.parts or "migrations" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for pattern in patterns:
+            for match in pattern.finditer(text):
+                found.setdefault(match.group(1), str(path.relative_to(apps_dir)))
+    registered = {
+        item.default_prefix
+        for item in registry.code_types(registry.DOCUMENT)
+        if not item.model.startswith("core_testapp") and item.default_prefix not in {"TK", "TZ"}
+    }
+    assert len(found) == 17
+    assert set(found) == registered, {p: f for p, f in found.items() if p not in registered}
+    assert registry.document_type("SV").locked
+    assert all(registry.lot_type(prefix) for prefix in LOT_PREFIXES.values())
