@@ -1,0 +1,474 @@
+"""Kodlama motoru: biçimler, kayıt, biçim değiştirme, öneri, kod alma, eski kodlar, API."""
+
+import datetime
+import threading
+
+import pytest
+from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import PermissionDenied
+from django.db import connection, transaction
+from django.utils import timezone
+
+from apps.core.coding import formats, registry, selectors, services
+from apps.core.coding.formats import Format
+from apps.core.exceptions import BusinessRuleError
+from apps.core.models import (
+    AuditLog,
+    CodeHistory,
+    CodeScheme,
+    CodeSchemeRevision,
+    CodeSequence,
+    DocumentSequence,
+)
+from apps.core.roles import ADMIN, DEPO, PLANLAMA
+from apps.core.tests.testapp.apps import TEST_LOT_COUNTERS
+from apps.core.tests.testapp.models import TypedWidget, Widget
+
+WIDGET = "core_testapp.widget"
+TYPED = "core_testapp.typedwidget"
+
+
+def widget_type() -> registry.CodeType:
+    return registry.get_code_type(WIDGET)
+
+
+def typed_type() -> registry.CodeType:
+    return registry.get_code_type(TYPED)
+
+
+@pytest.fixture
+def admin(make_user):
+    return make_user(ADMIN)
+
+
+def activate(actor, key=WIDGET, **values):
+    return services.update_scheme(actor, key, is_active=True, note="Etkinleştirildi", **values)
+
+
+# --- biçimler --------------------------------------------------------------------------------
+
+
+def test_master_code_and_number():
+    assert formats.master_code("MLZ", 7, 24) == "MLZ-0000024"
+    assert formats.master_number("MLZ-0000024", "MLZ", 7) == 24
+    # Sıra hanesini aşan numara bir hane uzar; uzun biçimde ilk hane sıfır olamaz.
+    assert formats.master_code("MLZ", 7, 10_000_000) == "MLZ-10000000"
+    assert formats.master_number("MLZ-10000000", "MLZ", 7) == 10_000_000
+    assert formats.master_number("MLZ-00000024", "MLZ", 7) is None
+    assert formats.master_number("MLZ-024", "MLZ", 7) is None
+    assert formats.master_number("MLZX-0000024", "MLZ", 7) is None
+    assert formats.loose_number("MLZ-24", "MLZ") == 24
+    assert formats.loose_number("MLZ-A1", "MLZ") is None
+
+
+def test_document_and_lot_numbers():
+    day = datetime.date(2026, 11, 4)
+    assert formats.document_number(Format("document", "UE", 5), 2026, 1) == "UE-2026-00001"
+    assert formats.document_number(Format("document", "UE", 4, year_format="YY"), 2026, 7) == (
+        "UE-26-0007"
+    )
+    assert formats.lot_number(Format("lot", "H", 3), day, 1) == "H-20261104-001"
+    assert formats.lot_number(Format("lot", "H", 3, date_format="YYYYDDD"), day, 2) == (
+        "H-2026308-002"
+    )
+    assert formats.lot_number(Format("lot", "H", 4, date_format="YYMMDD"), day, 3) == (
+        "H-261104-0003"
+    )
+
+
+@pytest.mark.parametrize(
+    ("code", "scanned", "underscore", "expected"),
+    [
+        ("MLZ-0000001", True, False, None),
+        ("AKTIF_MADDE", False, True, None),
+        ("AKTIF_MADDE", False, False, "invalid_characters"),
+        ("REÇETE-1", False, False, "invalid_characters"),
+        ("A B", False, False, "invalid_characters"),
+        ("-AB", False, False, "invalid_characters"),
+        ("1-AB", True, False, "code_must_start_with_letter"),
+        ("", False, False, "code_required"),
+        ("A" * 21, False, False, "code_too_long"),
+    ],
+)
+def test_character_rule(code, scanned, underscore, expected):
+    error = formats.character_error(
+        code, scanned=scanned, allow_underscore=underscore, max_length=20
+    )
+    assert (error.code if error else None) == expected
+
+
+def test_registry_lookup_and_order():
+    assert registry.code_type("document.TD").label == "Deneme belgesi"
+    assert registry.code_type("CORE_TESTAPP.WIDGET").key == WIDGET
+    assert registry.code_type("document.td") is None
+    kinds = [item.kind for item in registry.code_types()]
+    assert kinds == sorted(kinds, key=registry.KINDS.index)
+    with pytest.raises(ValueError):
+        registry.register_master_code("x.y", label="X", model="x.y")
+
+
+# --- biçim değiştirme ------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_update_scheme_requires_admin(make_user):
+    with pytest.raises(PermissionDenied):
+        services.update_scheme(make_user(PLANLAMA), WIDGET, width=5, note="Not")
+
+
+@pytest.mark.django_db
+def test_update_scheme_requires_note(admin):
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(admin, WIDGET, width=5, note="  ")
+    assert exc.value.code == "note_required"
+    assert not CodeScheme.objects.exists()
+
+
+@pytest.mark.django_db
+def test_locked_type_cannot_be_changed(admin):
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(admin, "document.TK", width=6, note="Not")
+    assert exc.value.code == "scheme_locked"
+
+
+@pytest.mark.django_db
+def test_update_scheme_writes_revision_and_audit(admin):
+    row = services.update_scheme(admin, "document.TD", prefix="tx", width=6, note="Yeni önek")
+    assert (row.prefix, row.width, row.year_format, row.revision) == ("TX", 6, "YYYY", 1)
+    revision = CodeSchemeRevision.objects.get(scheme=row)
+    assert (revision.revision, revision.prefix, revision.note) == (1, "TX", "Yeni önek")
+    assert revision.changed_by == admin
+    with pytest.raises(ValueError):
+        revision.save()
+    with pytest.raises(ValueError):
+        revision.delete()
+    update = AuditLog.objects.filter(
+        content_type=ContentType.objects.get_for_model(CodeScheme),
+        object_id=row.pk,
+        action=AuditLog.Action.UPDATE,
+    ).get()
+    assert update.changes["prefix"] == ["TD", "TX"]
+    assert update.changes["width"] == [5, 6]
+    assert update.note == "Yeni önek"
+    assert selectors.describe(registry.get_code_type("document.TD"))["next"].startswith("TX-")
+
+
+@pytest.mark.django_db
+def test_update_scheme_without_changes_is_rejected(admin):
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(admin, "document.TD", width=5, note="Aynı")
+    assert exc.value.code == "no_change"
+    assert not CodeScheme.objects.exists()
+    assert not AuditLog.objects.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("key", "values", "code"),
+    [
+        ("document.TD", {"prefix": "1AB"}, "invalid_prefix"),
+        ("document.TD", {"width": 8}, "invalid_width"),
+        ("document.TD", {"year_format": "YYY"}, "invalid_year_format"),
+        ("lot.Q", {"prefix": "QQQQQ"}, "invalid_prefix"),
+        ("lot.Q", {"date_format": "DDMMYY"}, "invalid_date_format"),
+        (WIDGET, {"prefix": "WD-G"}, "invalid_prefix"),
+        (WIDGET, {"width": 1}, "invalid_width"),
+        (WIDGET, {"prefix": "ABCDEFGHIJKL", "width": 9}, "pattern_too_long"),
+        (TYPED, {"type_prefixes": {"ALPHA": "ALF"}}, "invalid_type_prefixes"),
+    ],
+)
+def test_update_scheme_rejects_invalid_format(admin, key, values, code):
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(admin, key, note="Not", **values)
+    assert exc.value.code == code
+
+
+@pytest.mark.django_db
+def test_prefix_cannot_be_taken_from_another_type(admin):
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(admin, "document.TD", prefix="TK", note="Not")
+    assert exc.value.code == "prefix_in_use"
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(admin, WIDGET, prefix="ALF", note="Not")
+    assert exc.value.code == "prefix_in_use"
+
+
+@pytest.mark.django_db
+def test_former_prefix_stays_with_its_type(admin):
+    services.update_scheme(admin, "document.TD", prefix="TX", note="Bir")
+    services.update_scheme(admin, "document.TD", prefix="TD", note="Geri")  # kendi eski öneki
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(admin, "document.TK", prefix="TX", note="Not")  # kilitli
+    assert exc.value.code == "scheme_locked"
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(admin, "document.TZ", prefix="TX", note="Not")
+    assert exc.value.code == "prefix_in_use"
+
+
+@pytest.mark.django_db
+def test_sequence_cannot_be_narrower_than_counter(admin):
+    year = timezone.localdate().year
+    DocumentSequence.objects.create(prefix="TD", year=year, last_number=12_345)
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(admin, "document.TD", width=4, note="Not")
+    assert exc.value.code == "sequence_too_narrow"
+    TEST_LOT_COUNTERS[("Q", timezone.localdate())] = 1_000
+    try:
+        with pytest.raises(BusinessRuleError) as exc:
+            services.update_scheme(admin, "lot.Q", date_format="YYMMDD", note="Not")
+        assert exc.value.code == "sequence_too_narrow"
+    finally:
+        TEST_LOT_COUNTERS.clear()
+
+
+@pytest.mark.django_db
+def test_is_active_only_for_master_codes(admin):
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(admin, "document.TD", is_active=True, note="Not")
+    assert exc.value.code == "not_applicable"
+
+
+@pytest.mark.django_db
+def test_counter_correction_is_audited(admin):
+    Widget.objects.create(name="a", code="WDG-0007")
+    activate(admin)
+    assert selectors.suggest_code(widget_type()) == "WDG-0008"
+    row = services.update_scheme(admin, WIDGET, counters={"WDG": 50}, note="Sayaç")
+    assert CodeSequence.objects.get(key=WIDGET, stem="WDG-").last_number == 49
+    assert selectors.suggest_code(widget_type()) == "WDG-0050"
+    assert CodeSchemeRevision.objects.get(scheme=row, revision=2).counters == {"WDG": 50}
+    log = AuditLog.objects.get(action=AuditLog.Action.CUSTOM, object_id=row.pk)
+    assert log.changes == {"counters": {"WDG": [8, 50]}}
+    # Geri alınan sayaç dolu numarayı atlar.
+    services.update_scheme(admin, WIDGET, counters={"WDG": 7}, note="Geri")
+    assert selectors.suggest_code(widget_type()) == "WDG-0008"
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(admin, WIDGET, counters={"XYZ": 3}, note="Not")
+    assert exc.value.code == "unknown_prefix"
+
+
+# --- öneri, kod alma, eski kodlar ------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_suggestion_only_when_active_and_skips_used_and_former_codes(admin):
+    assert selectors.suggest_code(widget_type()) is None
+    first = Widget.objects.create(name="a", code="WDG-0001")
+    Widget.objects.create(name="b", code="WDG-0003")
+    activate(admin)
+    assert selectors.suggest_code(widget_type()) == "WDG-0004"
+    services.record_code_change(admin, widget_type(), first, "WDG-0004")
+    assert selectors.suggest_code(widget_type()) == "WDG-0005"
+
+
+@pytest.mark.django_db
+def test_type_based_prefix(admin):
+    TypedWidget.objects.create(code="ALF-001", name="a", kind="ALPHA")
+    activate(admin, TYPED)
+    assert selectors.suggest_code(typed_type(), type_value="ALPHA") == "ALF-002"
+    assert selectors.suggest_code(typed_type(), type_value="BETA") == "BET-001"
+    assert selectors.suggest_code(typed_type(), type_value="GAMMA") is None
+    beta = TypedWidget(code="ALF-002", name="b", kind="BETA")
+    with pytest.raises(BusinessRuleError) as exc:
+        services.check_master_code(typed_type(), beta, previous_code=None)
+    assert exc.value.code == "code_format"
+    beta.code = "BET-001"
+    services.check_master_code(typed_type(), beta, previous_code=None)
+
+
+@pytest.mark.django_db
+def test_check_master_code_rules(admin):
+    item = widget_type()
+    old = Widget.objects.create(name="eski", code="WDG-0002")
+    services.record_code_change(admin, item, old, "ESKI-1")
+    other = Widget(name="yeni", code="ESKI-1")
+    # Kullanılmış kod biçim kapalıyken de başka kayda verilmez.
+    with pytest.raises(BusinessRuleError) as exc:
+        services.check_master_code(item, other, previous_code=None)
+    assert exc.value.code == "code_reserved"
+    # Kayıt kendi eski koduna dönebilir.
+    old.code = "ESKI-1"
+    services.check_master_code(item, old, previous_code="WDG-0002")
+    # Biçim kapalıyken serbest.
+    other.code = "SERBEST"
+    services.check_master_code(item, other, previous_code=None)
+    activate(admin)
+    with pytest.raises(BusinessRuleError) as exc:
+        services.check_master_code(item, other, previous_code=None)
+    assert exc.value.code == "code_format"
+    other.code = "WDG-ÇÜ"
+    with pytest.raises(BusinessRuleError) as exc:
+        services.check_master_code(item, other, previous_code=None)
+    assert exc.value.code == "invalid_characters"
+    # Kodu değişmeyen eski kayıt düzenlenebilir.
+    legacy = Widget.objects.create(name="biçimsiz", code="ESKI-KOD")
+    services.check_master_code(item, legacy, previous_code="ESKI-KOD")
+
+
+@pytest.mark.django_db
+def test_claim_advances_counter_only_within_window(admin):
+    item = widget_type()
+    activate(admin)
+    services.claim_master_code(item, Widget(name="a", code="WDG-0001"), previous_code=None)
+    assert CodeSequence.objects.get(key=WIDGET).last_number == 1
+    services.claim_master_code(item, Widget(name="b", code="WDG-0011"), previous_code=None)
+    assert CodeSequence.objects.get(key=WIDGET).last_number == 11
+    # Pencerenin dışındaki numara kabul edilir ama sayacı ilerletmez.
+    services.claim_master_code(item, Widget(name="c", code="WDG-0500"), previous_code=None)
+    assert CodeSequence.objects.get(key=WIDGET).last_number == 11
+    # Biçime uymayan kod (biçim kapalıyken girilmiş) sayaca dokunmaz.
+    services.claim_master_code(item, Widget(name="d", code="SERBEST"), previous_code=None)
+    assert CodeSequence.objects.get(key=WIDGET).last_number == 11
+
+
+@pytest.mark.django_db
+def test_claim_rejects_code_taken_meanwhile(admin):
+    item = widget_type()
+    activate(admin)
+    Widget.objects.create(name="ilk", code="WDG-0001")
+    with pytest.raises(BusinessRuleError) as exc:
+        services.claim_master_code(item, Widget(name="ikinci", code="WDG-0001"), previous_code=None)
+    assert exc.value.code == "code_taken"
+    assert "WDG-0002" in exc.value.message
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_claims_of_same_code():
+    item = widget_type()
+    workers = 6
+    barrier = threading.Barrier(workers)
+    results: list[str] = []
+    lock = threading.Lock()
+
+    def worker(index: int) -> None:
+        try:
+            barrier.wait()
+            with transaction.atomic():
+                widget = Widget(name=f"w{index}", code="WDG-0001")
+                services.claim_master_code(item, widget, previous_code=None)
+                widget.save()
+            outcome = "ok"
+        except BusinessRuleError as exc:
+            outcome = exc.code
+        finally:
+            connection.close()
+        with lock:
+            results.append(outcome)
+
+    threads = [threading.Thread(target=worker, args=(n,)) for n in range(workers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sorted(results) == ["code_taken"] * (workers - 1) + ["ok"]
+    assert Widget.objects.filter(code="WDG-0001").count() == 1
+
+
+@pytest.mark.django_db
+def test_history_lookup_and_code_as_of(admin):
+    item = widget_type()
+    widget = Widget.objects.create(name="a", code="A-1")
+    created = widget.created_at
+    services.record_code_change(admin, item, widget, "A-1")
+    Widget.objects.filter(pk=widget.pk).update(code="A-2")
+    widget.refresh_from_db()
+    first_change = timezone.now()
+    services.record_code_change(admin, item, widget, "A-2", reason=CodeHistory.Reason.MIGRATION)
+    Widget.objects.filter(pk=widget.pk).update(code="A-3")
+    widget.refresh_from_db()
+
+    assert selectors.find_by_code(Widget, "A-3") == (widget, False)
+    assert selectors.find_by_code(Widget, "A-1") == (widget, True)
+    assert selectors.find_by_code(Widget, "YOK") == (None, False)
+    assert selectors.former_codes(widget) == ["A-2", "A-1"]
+    assert selectors.former_code_map(Widget, [widget.pk]) == {widget.pk: ["A-2", "A-1"]}
+    assert selectors.code_as_of(widget, created) == "A-1"
+    assert selectors.code_as_of(widget, first_change) == "A-2"
+    assert selectors.code_as_of(widget, timezone.now()) == "A-3"
+    history = CodeHistory.objects.filter(object_id=widget.pk).order_by("valid_to")
+    assert history[0].valid_to == history[1].valid_from
+    with pytest.raises(ValueError):
+        history[0].delete()
+
+
+@pytest.mark.django_db
+def test_describe_and_preview(admin):
+    Widget.objects.create(name="a", code="WDG-0009")
+    body = selectors.describe(widget_type())
+    assert (body["format"], body["next"], body["last_number"]) == ("WDG-0000", "WDG-0010", 9)
+    assert body["is_active"] is False and body["samples"] == ["WDG-0009"]
+    preview = selectors.preview(widget_type(), {"prefix": "PRC", "width": 6})
+    assert preview["valid"] and preview["example"]["next"] == "PRC-000001"
+    assert not CodeScheme.objects.exists()
+    bad = selectors.preview(widget_type(), {"prefix": "ALF"})
+    assert bad == {
+        "valid": False,
+        "error": {"code": "prefix_in_use", "detail": bad["error"]["detail"]},
+        "example": None,
+    }
+    typed = selectors.describe(typed_type())
+    assert [(t["value"], t["next"]) for t in typed["types"]] == [
+        ("ALPHA", "ALF-001"),
+        ("BETA", "BET-001"),
+    ]
+    lot = selectors.describe(registry.get_code_type("lot.Q"))
+    assert lot["next"] == f"Q-{timezone.localdate():%Y%m%d}-001"
+
+
+# --- API -------------------------------------------------------------------------------------
+
+BASE = "/api/v1/coding"
+
+
+@pytest.mark.django_db
+def test_api_requires_admin(client_for, api_client):
+    assert api_client.get(f"{BASE}/types/").status_code == 401
+    planner = client_for(PLANLAMA)
+    assert planner.get(f"{BASE}/types/").status_code == 403
+    assert planner.get(f"{BASE}/types/{WIDGET}/").status_code == 403
+    assert planner.put(f"{BASE}/types/{WIDGET}/", {"note": "x"}, format="json").status_code == 403
+    assert planner.post(f"{BASE}/types/{WIDGET}/preview/", {}, format="json").status_code == 403
+    assert planner.get(f"{BASE}/types/{WIDGET}/revisions/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_api_list_detail_update_preview_and_revisions(client_for):
+    client = client_for(ADMIN)
+    listing = client.get(f"{BASE}/types/", {"kind": "document"}).json()
+    keys = [item["key"] for item in listing["results"]]
+    assert "document.TD" in keys and WIDGET not in keys
+    assert client.get(f"{BASE}/types/yok.yok/").status_code == 404
+
+    response = client.put(
+        f"{BASE}/types/{WIDGET}/",
+        {"prefix": "prc", "width": 5, "is_active": True, "note": "Biçim"},
+        format="json",
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["next"] == "PRC-00001" and response.json()["is_active"] is True
+
+    blank = client.put(f"{BASE}/types/{WIDGET}/", {"width": 6, "note": ""}, format="json")
+    assert blank.status_code == 400 and blank.json()["code"] == "note_required"
+
+    preview = client.post(
+        f"{BASE}/types/{WIDGET}/preview/", {"prefix": "ABCDEFGHIJKL", "width": 9}, format="json"
+    ).json()
+    assert preview["valid"] is False and preview["error"]["code"] == "pattern_too_long"
+
+    revisions = client.get(f"{BASE}/types/{WIDGET}/revisions/").json()
+    assert [row["note"] for row in revisions["results"]] == ["Biçim"]
+
+
+@pytest.mark.django_db
+def test_api_suggestion_for_write_roles(client_for, make_user):
+    planner = client_for(PLANLAMA)
+    inactive = planner.get(f"{BASE}/suggest/{WIDGET}/").json()
+    assert inactive == {"key": WIDGET, "active": False, "code": None, "format": "WDG-0000"}
+    activate(make_user(ADMIN))
+    assert planner.get(f"{BASE}/suggest/{WIDGET}/").json()["code"] == "WDG-0001"
+    assert client_for(DEPO).get(f"{BASE}/suggest/{WIDGET}/").status_code == 403
+    # Yazma rolü tanımlanmamış tür yalnız admin'e açık.
+    assert planner.get(f"{BASE}/suggest/{TYPED}/").status_code == 403
+    assert client_for(ADMIN).get(f"{BASE}/suggest/{TYPED}/", {"type": "BETA"}).status_code == 200
+    assert planner.get(f"{BASE}/suggest/yok.yok/").status_code == 404

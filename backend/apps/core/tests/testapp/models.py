@@ -19,3 +19,18 @@ class Widget(MasterDataModel):
 
 class SampleDocument(DocumentModel):
     title = models.CharField("başlık", max_length=100)
+
+
+class TypedWidget(MasterDataModel):
+    """Kodlama testleri: kodun öneki kaydın türünden gelir (ekipman türü gibi)."""
+
+    class Kind(models.TextChoices):
+        ALPHA = "ALPHA", "Alfa"
+        BETA = "BETA", "Beta"
+
+    code = models.CharField("kod", max_length=32, unique=True)
+    name = models.CharField("ad", max_length=100)
+    kind = models.CharField("tür", max_length=8, choices=Kind.choices)
+
+    def __str__(self) -> str:
+        return f"{self.code} - {self.name}"

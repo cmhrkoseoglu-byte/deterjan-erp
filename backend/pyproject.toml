@@ -74,7 +74,14 @@ files = ["apps"]
 # CLAUDE.md §6: her servis fonksiyonu tip ipuçlu. Servis, seçici ve durum katmanında
 # tip ipucu eksik fonksiyon hata sayılır; gövdeler de denetlenir.
 [[tool.mypy.overrides]]
-module = ["apps.*.services", "apps.*.selectors", "apps.*.state", "apps.core.security"]
+module = [
+    "apps.*.services",
+    "apps.*.selectors",
+    "apps.*.state",
+    "apps.core.security",
+    "apps.core.coding.formats",
+    "apps.core.coding.registry",
+]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true

@@ -1,0 +1,227 @@
+"""Kodlama sistematiği uç noktaları (`/api/v1/coding/`).
+
+Biçimleri okuma ve değiştirme yalnız admin içindir; kod önerisi türün yazma rollerine açıktır.
+Görünümler incedir: doğrula → `core.coding.services` / `selectors` → yanıt.
+"""
+
+from typing import Any
+
+from django.core.exceptions import PermissionDenied
+from django.db.models import QuerySet
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import generics, serializers
+from rest_framework.exceptions import NotFound
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.core.coding import formats, selectors, services
+from apps.core.coding.registry import KINDS, CodeType, code_type
+from apps.core.models import CodeSchemeRevision, User
+from apps.core.pagination import StandardPagination
+from apps.core.permissions import HasRole, user_has_role
+from apps.core.roles import ADMIN
+
+CODE_KINDS = [(kind, kind) for kind in KINDS]
+YEAR_FORMAT_CHOICES = list(formats.YEAR_FORMATS.items())
+DATE_FORMAT_CHOICES = list(formats.DATE_FORMATS.items())
+
+
+class CodeTypeOptionSerializer(serializers.Serializer):
+    value = serializers.CharField()
+    label = serializers.CharField()  # type: ignore[assignment]
+    prefix = serializers.CharField()
+    format = serializers.CharField()
+    next = serializers.CharField()
+    last_number = serializers.IntegerField()
+
+
+class CodeTypeSerializer(serializers.Serializer):
+    """Kodlama ekranındaki tür satırı."""
+
+    key = serializers.CharField()
+    kind = serializers.ChoiceField(choices=CODE_KINDS)
+    label = serializers.CharField()  # type: ignore[assignment]
+    configurable = serializers.BooleanField()
+    locked = serializers.BooleanField()
+    free = serializers.BooleanField()
+    scanned = serializers.BooleanField()
+    prefix = serializers.CharField(allow_blank=True)
+    width = serializers.IntegerField()
+    type_field = serializers.CharField(allow_blank=True)
+    type_prefixes = serializers.DictField(child=serializers.CharField())
+    year_format = serializers.CharField(allow_blank=True)
+    date_format = serializers.CharField(allow_blank=True)
+    is_active = serializers.BooleanField()
+    revision = serializers.IntegerField()
+    updated_at = serializers.DateTimeField(allow_null=True)
+    updated_by = serializers.CharField(allow_blank=True)
+    format = serializers.CharField(allow_blank=True)
+    next = serializers.CharField(allow_blank=True)
+    longest = serializers.CharField(allow_blank=True)
+    last_number = serializers.IntegerField()
+    types = CodeTypeOptionSerializer(many=True)
+    samples = serializers.ListField(child=serializers.CharField())
+
+
+class CodeFormatValuesSerializer(serializers.Serializer):
+    """İstenen biçim değerleri (verilmeyen değişmez)."""
+
+    prefix = serializers.CharField(required=False, allow_blank=True, max_length=16)
+    width = serializers.IntegerField(required=False, min_value=1, max_value=12)
+    type_prefixes = serializers.DictField(
+        child=serializers.CharField(allow_blank=True, max_length=16), required=False
+    )
+    year_format = serializers.ChoiceField(choices=YEAR_FORMAT_CHOICES, required=False)
+    date_format = serializers.ChoiceField(choices=DATE_FORMAT_CHOICES, required=False)
+
+
+class CodeSchemeUpdateSerializer(CodeFormatValuesSerializer):
+    is_active = serializers.BooleanField(required=False)
+    # Ana veride sıradaki numara: {"MLZ": 25}
+    counters = serializers.DictField(child=serializers.IntegerField(min_value=1), required=False)
+    note = serializers.CharField(allow_blank=True, max_length=1000)
+
+
+class CodePreviewErrorSerializer(serializers.Serializer):
+    code = serializers.CharField()
+    detail = serializers.CharField()
+
+
+class CodePreviewSerializer(serializers.Serializer):
+    valid = serializers.BooleanField()
+    error = CodePreviewErrorSerializer(allow_null=True)
+    example = CodeTypeSerializer(allow_null=True)
+
+
+class CodeSchemeRevisionSerializer(serializers.ModelSerializer):
+    changed_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CodeSchemeRevision
+        fields = [
+            "id",
+            "revision",
+            "prefix",
+            "type_prefixes",
+            "width",
+            "year_format",
+            "date_format",
+            "is_active",
+            "counters",
+            "note",
+            "changed_at",
+            "changed_by_name",
+        ]
+
+    def get_changed_by_name(self, obj: CodeSchemeRevision) -> str:
+        user = obj.changed_by
+        return (user.full_name or user.username) if user else ""
+
+
+class CodeSuggestionSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    active = serializers.BooleanField()
+    code = serializers.CharField(allow_null=True)
+    format = serializers.CharField(allow_blank=True)
+
+
+def _type_or_404(key: str) -> CodeType:
+    found = code_type(key)
+    if found is None:
+        raise NotFound("Tanımsız kod türü.")
+    return found
+
+
+def _actor(request: Request) -> User:
+    return request.user  # type: ignore[return-value]
+
+
+class CodeTypeListView(APIView):
+    """Kayıtlı bütün kod türleri: biçim, örnek, sıradaki ve verilen son numara (yalnız admin).
+    `?kind=master|document|lot|standard` ile süzülür."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(
+        parameters=[OpenApiParameter("kind", str, enum=list(KINDS), required=False)],
+        responses=CodeTypeSerializer(many=True),
+    )
+    def get(self, request: Request) -> Response:
+        kind = request.query_params.get("kind") or None
+        if kind is not None and kind not in KINDS:
+            kind = "__none__"
+        items = selectors.overview(kind)
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(items, request, view=self)  # type: ignore[arg-type]
+        return paginator.get_paginated_response(CodeTypeSerializer(page, many=True).data)
+
+
+class CodeTypeDetailView(APIView):
+    """Tek kod türü: oku ya da biçimini değiştir (yalnız admin; not zorunlu)."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(responses=CodeTypeSerializer)
+    def get(self, request: Request, key: str) -> Response:
+        return Response(CodeTypeSerializer(selectors.describe(_type_or_404(key))).data)
+
+    @extend_schema(request=CodeSchemeUpdateSerializer, responses=CodeTypeSerializer)
+    def put(self, request: Request, key: str) -> Response:
+        item = _type_or_404(key)
+        body = CodeSchemeUpdateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data: dict[str, Any] = dict(body.validated_data)
+        services.update_scheme(_actor(request), item.key, **data)
+        return Response(CodeTypeSerializer(selectors.describe(item)).data)
+
+
+class CodeTypePreviewView(APIView):
+    """Kaydetmeden istenen biçimin örnekleri ve kural ihlali (yalnız admin)."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(request=CodeFormatValuesSerializer, responses=CodePreviewSerializer)
+    def post(self, request: Request, key: str) -> Response:
+        item = _type_or_404(key)
+        body = CodeFormatValuesSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return Response(CodePreviewSerializer(selectors.preview(item, body.validated_data)).data)
+
+
+class CodeSchemeRevisionListView(generics.ListAPIView):
+    """Bir kod türünün biçim revizyonları, en yeniden eskiye (yalnız admin)."""
+
+    permission_classes = [HasRole(ADMIN)]
+    serializer_class = CodeSchemeRevisionSerializer
+    filter_backends: list[Any] = []
+
+    def get_queryset(self) -> QuerySet[CodeSchemeRevision]:
+        item = _type_or_404(self.kwargs["key"])
+        return CodeSchemeRevision.objects.filter(scheme__key=item.key).select_related("changed_by")
+
+
+class CodeSuggestView(APIView):
+    """Yeni kayıt için sıradaki kod (biçim etkinse). Türün yazma rollerine ve admin'e açık;
+    `?type=` türe göre önekli kodda kaydın türü (ekipman türü)."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        parameters=[OpenApiParameter("type", str, required=False)],
+        responses=CodeSuggestionSerializer,
+    )
+    def get(self, request: Request, key: str) -> Response:
+        item = _type_or_404(key)
+        if not user_has_role(request.user, item.write_roles or (ADMIN,)):
+            raise PermissionDenied("Bu kayıt türünü yazma yetkiniz yok.")
+        type_value = request.query_params.get("type") or None
+        fmt = selectors.effective_format(item)
+        body = {
+            "key": item.key,
+            "active": selectors.is_active(item),
+            "code": selectors.suggest_code(item, type_value=type_value),
+            "format": selectors.format_hint(item, fmt, type_value),
+        }
+        return Response(CodeSuggestionSerializer(body).data)

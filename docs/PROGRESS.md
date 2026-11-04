@@ -1181,3 +1181,10 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
 Plan `docs/plan/kodlama-sistematigi.md`; kararlar DECISIONS "2026-11-04 — Kodlama sistematiği".
 
 - **Adım 0:** plan ve karar kaydı. D-2'ye lot tarihinin ISO 8601 olduğu ve iade lotu notu eklendi.
+- **Adım 1:** kodlama motoru `apps/core/coding/` (kayıt, biçimler, okuma ve yazma servisleri);
+  modeller `CodeScheme`, `CodeSchemeRevision`, `CodeSequence`, `CodeHistory` (göç core.0005).
+  Ayar uç noktaları `/api/v1/coding/types/` (yalnız admin; liste, oku, değiştir, önizle,
+  revizyonlar), öneri `/api/v1/coding/suggest/<tür>/` (türün yazma rolleri). Henüz hiçbir modül
+  tür kaydetmediği için davranış değişmedi. Kanıt: `core/tests/test_coding.py` (biçimler, karakter
+  kuralı, önek ayırma ve geçmiş önek, sıra hanesi, sayaç penceresi ve düzeltmesi, eşzamanlı kod
+  alma, eski kod ve tarihteki kod, API yetkileri).
