@@ -1175,3 +1175,9 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   testi kırılır. Yerelde tarayıcıda: giriş ve dönüş adresi, reddedilen dönüş adresi, bağlantı ve geri
   tuşu, kaydedip yeni belgeye geçme (mal kabul), sekme rotaları.
 - Tarayıcı paketi yaklaşık 10 KB (gzip) büyüdü.
+
+## 2026-11-04 — Kodlama sistematiği (Paket 1)
+
+Plan `docs/plan/kodlama-sistematigi.md`; kararlar DECISIONS "2026-11-04 — Kodlama sistematiği".
+
+- **Adım 0:** plan ve karar kaydı. D-2'ye lot tarihinin ISO 8601 olduğu ve iade lotu notu eklendi.

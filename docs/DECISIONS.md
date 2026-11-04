@@ -251,6 +251,9 @@ Sayaç önek + gün başınadır ve tüm malzemelerde ortaktır (`H-261015-001`,
 olabilir); `LotNumberSequence` satırı `select_for_update` ile kilitlenir, gün Türkiye saatine göredir.
 Lot no malzeme içinde tekildir (`unique(material, lot_no)`). Açılış stokunda ve iadelerde lot no
 dışarıdan verilir (Excel'deki mevcut numara korunur). Tedarikçinin lot numarası ayrı alanda tutulur.
+- **Değişti (2026-11-04):** lot tarihi ISO 8601 (`H-20261104-001`); biçim Sistem > Kodlama
+  sistematiği ekranından ayarlanır (bkz. "2026-11-04 — Kodlama sistematiği"). İadede lot no
+  dışarıdan verilmez; iade orijinal lotla girer (müşteri iadesi kararı).
 
 ## 2026-10-15 — Karar D-3: Sayım düzeltmeyi depo onaylar (CUMHUR kararı)
 
@@ -2113,3 +2116,35 @@ değiştirme zorunlu, yalnızca admin):
 - **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=admin,yonetim` ve aynı yeniden başlatma. Bu
   rollerdeki kullanıcılar bir sonraki işleminde Güvenlik sayfasında kurulumu yapar; kontrol listesi
   madde 22 ve 25 o zaman yeniden işaretlenir.
+
+## 2026-11-04 — Kodlama sistematiği
+
+- **İstek (CUMHUR):** "tüm kod gerektiren kısımlara iso standartlarına göre kod ekleyelim. Ayrıca
+  kodlama sistematiği için ayar ekranı ekleyelim". Plan: `docs/plan/kodlama-sistematigi.md`.
+- **Kararlar (CUMHUR, 2026-11-04, soruların yanıtları):**
+  - Kapsam: ana veri kodları, belge ve lot numaraları, çıktılarda doküman kodu, barkodlar (GS1).
+  - Kod üretimi: "Sistem önersin"; kullanıcı kodu değiştirebilir, ama kod biçime uymalıdır.
+  - Mevcut kodlar: "Yeni sistematiğe geçsin"; eski kod kayıtta kalır ve aranabilir. Verilmiş belge
+    ve lot numaraları değişmez.
+  - Ayar yetkisi: "Yalnız admin"; her değişiklik denetim günlüğüne yazılır.
+  - Varsayılan biçimler: "Bugünkü düzeniniz", yani canlıda kullanılan `MLZ-0000001`, `KAT-0001`,
+    `DEPO-00001`, `LOKASYON-0001`, `TANK-00001`, `TED-000001`, `REC-0000001` düzeni.
+  - Kod kilidi: kayıt açıldıktan sonra kodu "Yalnız admin" değiştirir.
+  - Lot tarihi: "ISO 8601" (`H-20261104-001`); D-2'deki `YYMMDD` düzeninin yerini alır.
+  - Uygulama: iki paket sırayla; push ve PR her paketin sonunda sorulur.
+- **Planla onaylanan, ayrıca sorulmayan kurallar** (değiştirilebilir):
+  - Kullanılmış bir kod aynı türde başka bir kayda hiçbir zaman verilmez; kayıt kendi eski koduna
+    dönebilir.
+  - Önerilenden en çok 10 ileri yazılan numara sayacı ilerletir; daha ilerisi kabul edilir ama
+    sayacı ilerletmez.
+  - İrsaliye numarası (SV) yasal belge numarası olduğu için ekrandan değiştirilemez.
+  - Belge ya da lot öneki değişince yeni önekte sayaç 1'den başlar; eski önek başka türe verilmez.
+  - Ana veri biçimleri kapalı gelir; admin ekrandan etkinleştirir.
+  - Canlıda kaydı olmayan türler için önekler: müşteri `MUS`, yazıcı `YAZICI`, stok tankı `STOK`,
+    terazi `TERAZI`, diğer ekipman `EKIPMAN`.
+- **ISO notu:** ISO 9001 belirli bir kod biçimi istemez; benzersiz tanımlama (md. 8.5.2) ve
+  doküman kontrolü (md. 7.5) ister. Tarihlerde ISO 8601, barkodlarda GS1 uygulanır. Bu çalışma tek
+  başına ISO 9001 uygunluğu sağlamaz; denetimde kanıt olarak kullanılabilir.
+- **CLAUDE.md:** kural 10'un metni geçerliliğini korur; değişiklik gerekmedi. Numara hâlâ
+  `next_document_number` ile, yıl bazında ve kilitli üretilir; `UE-2026-00001` varsayılan biçimdir.
+- **D-18:** değişmedi. Kartlar bu sistemde açılır ve muhasebeye bu kodlarla gider.
