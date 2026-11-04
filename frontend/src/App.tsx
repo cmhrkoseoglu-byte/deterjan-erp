@@ -2,7 +2,8 @@ import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter } from "react-router-dom";
+import { AppRouterProvider } from "./AppRouterProvider";
 import { AuthProvider } from "./auth/AuthProvider";
 import { TrainingBanner } from "./components/site/TrainingBanner";
 import { routes } from "./routes";
@@ -23,7 +24,7 @@ export function App() {
       <Notifications />
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <RouterProvider router={router} />
+          <AppRouterProvider router={router} />
           <TrainingBanner />
         </AuthProvider>
       </QueryClientProvider>

@@ -1,7 +1,8 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
-import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import { createMemoryRouter } from "react-router-dom";
+import { AppRouterProvider } from "../AppRouterProvider";
 import { AuthProvider } from "../auth/AuthProvider";
 import { routes } from "../routes";
 import { theme } from "../theme";
@@ -14,7 +15,7 @@ export function renderApp(path: string) {
     <MantineProvider theme={theme}>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <RouterProvider router={router} />
+          <AppRouterProvider router={router} />
         </AuthProvider>
       </QueryClientProvider>
     </MantineProvider>,
@@ -29,7 +30,7 @@ export function renderWithProviders(ui: React.ReactElement) {
   render(
     <MantineProvider theme={theme}>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <AppRouterProvider router={router} />
       </QueryClientProvider>
     </MantineProvider>,
   );
