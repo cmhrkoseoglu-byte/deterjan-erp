@@ -16,7 +16,9 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "channels>=4.1",
     "channels-redis>=4.2",
-    "celery>=5.4",
+    # "redis" eki Redis aracısının bağımlılıklarını getirir: kombu 5.7'den beri Redis taşıyıcısı
+    # packaging ister; ek olmadan üretim imajında worker ve beat açılmaz.
+    "celery[redis]>=5.4",
     "redis>=5.0",
     "uvicorn[standard]>=0.30",
     "openpyxl>=3.1",
