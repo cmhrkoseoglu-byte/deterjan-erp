@@ -1408,6 +1408,8 @@ değiştirme zorunlu, yalnızca admin):
 - **Geri dönüş (iki adıma geçildiğinde):** `.env.prod` içinde `OTP_REQUIRED_ROLES=admin,yonetim`, ardından
   `scripts/prod-compose.sh up -d --wait`. Bu rollerdeki kullanıcılar bir sonraki girişte kurulumu yapar
   (Güvenlik sayfası); kontrol listesi madde 22 ve 25 o zaman yeniden işaretlenir.
+- **Sona erdi (2026-11-04):** 2FA yeniden zorunlu; bkz. "2026-11-04 — İki aşamalı doğrulama canlıda
+  yeniden zorunlu".
 
 ## 2026-10-25 — Giriş ekranı PET ERP'deki gibi
 
@@ -2051,3 +2053,17 @@ değiştirme zorunlu, yalnızca admin):
     - Aynı yıl içinde ayrılıp yeniden işe başlatılan kişide kart aradaki boşluğu tutmaz: aradaki
       onaylı ayda satırı olmadığından zincir kopar ve ilk açık ayda devir istenir (güvenli yön;
       yeniden işe alım kapsam dışı).
+
+## 2026-11-04 — İki aşamalı doğrulama canlıda yeniden zorunlu
+
+- **Karar (CUMHUR, "İki adımlı doğrulamayı yönetim ve admin için yeniden zorunlu yapayım mı?"
+  sorusuna "Evet, zorunlu yap"):** ön bordro canlıya alındıktan sonra, bordro ve ücret verisi
+  girilmeden önce admin ve yönetim rollerinde 2FA yeniden zorunlu. 2026-10-25'teki geçici kararın
+  yerine geçer; D-21 kurulumundaki duruma dönülür.
+- **Uygulama (kod değişmedi):** canlı `.env.prod` içinde `OTP_REQUIRED_ROLES=admin,yonetim`, ardından
+  `scripts/prod-compose.sh up -d --wait`. Öncesinde `.env.prod.yedek-20261104-092817` alındı.
+- **Etkisi:** bu rollerde doğrulayıcısı kurulu olmayan kullanıcı bir sonraki işleminde Güvenlik
+  sayfasına yönlendirilir ve kurulumu bitirmeden başka işlem yapamaz (telefonda bir doğrulayıcı
+  uygulaması gerekir; kurtarma kodları saklanır). Kontrol listesi madde 22 ve 25, kurulumlar
+  bitince işaretlenir.
+- **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=` (boş) ve aynı yeniden başlatma.
