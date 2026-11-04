@@ -217,3 +217,80 @@ export async function revertRecode(runId: number, note: string): Promise<CodeMig
   const { data } = await api.post<CodeMigrationRun>(`/coding/runs/${runId}/revert/`, { note });
   return data;
 }
+
+// --- çıktı doküman kodları (ISO 9001 md. 7.5) ----------------------------------------------------
+
+export interface OutputRevision {
+  id: number;
+  revision_no: number;
+  /** Yürürlük tarihi (YYYY-MM-DD). */
+  revision_date: string;
+  change_note: string;
+  approved_by_name: string;
+  approved_on: string;
+  template_version: number;
+  created_at: string;
+  created_by_name: string;
+}
+
+/** Basılı çıktı (PDF, Excel) ve doküman kontrol bilgisi. */
+export interface OutputDocumentRow {
+  key: string;
+  label: string;
+  group: string;
+  formats: string[];
+  /** Yasal belge (irsaliye): bandı açmadan önce mali müşavire danışılır. */
+  legal: boolean;
+  suggested_code: string;
+  doc_code: string;
+  first_issue_date: string | null;
+  /** Bant çıktıya basılıyor mu? */
+  is_active: boolean;
+  revision_no: number | null;
+  revision_date: string | null;
+  template_version: number;
+  /** Şablon son revizyondan sonra değişti; yeni revizyon girilmeli. */
+  template_changed: boolean;
+  /** En yeniden eskiye. */
+  revisions: OutputRevision[];
+}
+
+/** Verilmeyen alan değişmez; not zorunlu. */
+export interface OutputDocumentUpdate {
+  doc_code?: string;
+  first_issue_date?: string;
+  is_active?: boolean;
+  note: string;
+}
+
+export interface OutputRevisionCreate {
+  revision_date: string;
+  change_note: string;
+  approved_by_name: string;
+  approved_on: string;
+  /** Yalnızca ilk revizyonda: kalite sistemindeki güncel revizyon no (verilmezse 00). */
+  revision_no?: number;
+}
+
+export async function listOutputs(): Promise<OutputDocumentRow[]> {
+  const { data } = await api.get<Paginated<OutputDocumentRow>>("/coding/outputs/", {
+    params: { page_size: 200 },
+  });
+  return data.results;
+}
+
+export async function updateOutput(
+  key: string,
+  body: OutputDocumentUpdate,
+): Promise<OutputDocumentRow> {
+  const { data } = await api.patch<OutputDocumentRow>(`/coding/outputs/${key}/`, body);
+  return data;
+}
+
+export async function addOutputRevision(
+  key: string,
+  body: OutputRevisionCreate,
+): Promise<OutputDocumentRow> {
+  const { data } = await api.post<OutputDocumentRow>(`/coding/outputs/${key}/revisions/`, body);
+  return data;
+}

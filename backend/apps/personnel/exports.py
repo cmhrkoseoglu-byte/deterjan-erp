@@ -13,6 +13,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from apps.core.coding.outputs import document_control
+from apps.core.xlsx import apply_document_control
 from apps.personnel import selectors
 from apps.personnel.models import (
     ATTENDANCE_CODES,
@@ -23,9 +25,12 @@ from apps.personnel.models import (
     PayrollItemKind,
 )
 from apps.personnel.pdf import (
+    ATTENDANCE_OUTPUT,
     DRAFT,
+    PAYROLL_OUTPUT,
     PRELIMINARY_NOTE,
     SUPERSEDED,
+    document_date,
     parameter_line,
     row_order,
     status_line,
@@ -167,6 +172,13 @@ def attendance_xlsx(grid: AttendanceGrid) -> bytes:
     legend.column_dimensions["B"].width = 40
     for cell in legend[1]:
         cell.font = Font(bold=True)
+    record = grid.record
+    approved_on = (
+        timezone.localtime(record.approved_at).date()
+        if grid.approved and record is not None and record.approved_at
+        else None
+    )
+    apply_document_control(workbook, document_control(ATTENDANCE_OUTPUT, on=approved_on))
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
@@ -709,6 +721,7 @@ def payroll_xlsx(month: PayrollMonth, *, stamp: str = DRAFT) -> bytes:
         _employer_cost_sheet(ws, month, notes, stamp=stamp)
     _missing_days_sheet(workbook.create_sheet("Eksik gün"), month, stamp=stamp)
     _parameters_sheet(workbook.create_sheet("Parametreler"), month, stamp=stamp)
+    apply_document_control(workbook, document_control(PAYROLL_OUTPUT, on=document_date(month)))
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()

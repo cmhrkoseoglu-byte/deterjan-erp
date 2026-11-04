@@ -24,8 +24,10 @@ from openpyxl.utils.exceptions import InvalidFileException
 from apps.core.coding import formats as coding_formats
 from apps.core.coding import registry as coding_registry
 from apps.core.coding import selectors as coding_selectors
+from apps.core.coding.outputs import document_control
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import MasterDataModel, User
+from apps.core.xlsx import apply_document_control
 from apps.masterdata import services
 from apps.masterdata.fields import normalize_code
 from apps.masterdata.models import (
@@ -752,7 +754,12 @@ def build_template(kind: str) -> bytes:
         "Güncellemede boş bırakılan isteğe bağlı hücre mevcut değeri değiştirmez.",
         "Örnek satırı silip kendi verinizi girin. Hatalı satır varsa hiçbiri aktarılmaz.",
     )
-    return build_template_for(spec.title, spec.columns, notes)
+    return build_template_for(spec.title, spec.columns, notes, output=template_output(kind))
+
+
+def template_output(kind: str) -> str:
+    """Şablonun çıktı anahtarı (Kodlama > Çıktı doküman kodları)."""
+    return f"masterdata.template.{kind}"
 
 
 def build_template_for(
@@ -760,9 +767,13 @@ def build_template_for(
     columns: Iterable[Column],
     notes: Iterable[str],
     examples: Iterable[Iterable[Any]] | None = None,
+    *,
+    output: str | None = None,
 ) -> bytes:
     """Şablon kitabı: ilk sayfada başlık (zorunlular sarı) + örnek satır(lar), ikinci sayfada
-    sütun açıklamaları ve notlar. `examples` verilmezse sütunların `example` değeri kullanılır."""
+    sütun açıklamaları ve notlar. `examples` verilmezse sütunların `example` değeri kullanılır.
+    `output` çıktı anahtarıdır: doküman kontrol bilgisi yazdırma alt bilgisine yazılır (hücreler
+    değişmez, dosya yine içe aktarılır)."""
     columns = tuple(columns)
     workbook = Workbook()
     sheet = workbook.active
@@ -795,6 +806,8 @@ def build_template_for(
     sheet_notes.column_dimensions["C"].width = 60
     for cell in sheet_notes[1]:
         cell.font = header_font
+    if output is not None:
+        apply_document_control(workbook, document_control(output))
 
     buffer = io.BytesIO()
     workbook.save(buffer)

@@ -24,6 +24,9 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from apps.core.coding.outputs import DocumentControl
+from apps.core.pdf import controlled_canvas
+from apps.core.xlsx import apply_document_control
 from apps.quality.coa import FONT, FONT_BOLD, _register_fonts
 from apps.reporting.reports import Column
 
@@ -99,8 +102,10 @@ def to_xlsx(
     *,
     filters: Sequence[tuple[str, str]] = (),
     summary: Sequence[dict[str, Any]] = (),
+    control: DocumentControl | None = None,
 ) -> bytes:
-    """Rapor Excel dosyası (tek sayfa). Satırlar akış halinde yazılır (büyük raporlar için)."""
+    """Rapor Excel dosyası (tek sayfa). Satırlar akış halinde yazılır (büyük raporlar için).
+    `control` verilirse yazdırma alt bilgisine doküman kontrol bilgisi yazılır."""
     workbook = Workbook(write_only=True)
     sheet = workbook.create_sheet(title[:31])
     for index, column in enumerate(columns, start=1):
@@ -124,6 +129,7 @@ def to_xlsx(
                 cell.number_format = fmt
             cells.append(cell)
         sheet.append(cells)
+    apply_document_control(workbook, control)
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
@@ -137,6 +143,7 @@ def to_pdf(
     filters: Sequence[tuple[str, str]] = (),
     summary: Sequence[dict[str, Any]] = (),
     wide: bool = True,
+    control: DocumentControl | None = None,
 ) -> bytes:
     """Rapor PDF'i: A4 (geniş raporlar yatay), başlık satırı her sayfada tekrar eder."""
     _register_fonts()
@@ -190,5 +197,5 @@ def to_pdf(
         )
     )
     story.append(table)
-    doc.build(story)
+    doc.build(story, canvasmaker=controlled_canvas(control, left=margin, baseline=5 * mm))
     return buffer.getvalue()

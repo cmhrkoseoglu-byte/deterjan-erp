@@ -19,8 +19,16 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.coding import formats, migration, selectors, services
-from apps.core.coding.registry import KINDS, MASTER, CodeType, code_type, master_type_for_model
+from apps.core.coding import formats, migration, outputs, selectors, services
+from apps.core.coding.registry import (
+    KINDS,
+    MASTER,
+    CodeType,
+    OutputType,
+    code_type,
+    master_type_for_model,
+    output_type,
+)
 from apps.core.models import CodeHistory, CodeMigrationRun, CodeSchemeRevision, User
 from apps.core.pagination import StandardPagination
 from apps.core.permissions import HasRole, user_has_role
@@ -457,3 +465,112 @@ class RevertView(APIView):
         body.is_valid(raise_exception=True)
         run = migration.revert_recode(_actor(request), run_id, note=body.validated_data["note"])
         return Response(CodeMigrationRunSerializer(run).data, status=201)
+
+
+# --- çıktı doküman kodları (ISO 9001 md. 7.5) ---------------------------------------------------
+
+
+class OutputRevisionSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    revision_no = serializers.IntegerField()
+    revision_date = serializers.DateField()
+    change_note = serializers.CharField()
+    approved_by_name = serializers.CharField()
+    approved_on = serializers.DateField()
+    template_version = serializers.IntegerField()
+    created_at = serializers.DateTimeField()
+    created_by_name = serializers.CharField(allow_blank=True)
+
+
+class OutputDocumentSerializer(serializers.Serializer):
+    """Kodlama ekranındaki çıktı satırı: doküman no, yayın tarihi, revizyonlar, bant durumu."""
+
+    key = serializers.CharField()
+    label = serializers.CharField()  # type: ignore[assignment]
+    group = serializers.CharField()
+    formats = serializers.ListField(child=serializers.CharField())
+    legal = serializers.BooleanField()
+    suggested_code = serializers.CharField(allow_blank=True)
+    doc_code = serializers.CharField(allow_blank=True)
+    first_issue_date = serializers.DateField(allow_null=True)
+    is_active = serializers.BooleanField()
+    revision_no = serializers.IntegerField(allow_null=True)
+    revision_date = serializers.DateField(allow_null=True)
+    template_version = serializers.IntegerField()
+    template_changed = serializers.BooleanField()
+    revisions = OutputRevisionSerializer(many=True)
+
+
+class OutputDocumentUpdateSerializer(serializers.Serializer):
+    """Verilmeyen alan değişmez; not zorunludur (servis Türkçe hatayla reddeder)."""
+
+    note = serializers.CharField(allow_blank=True, default="")
+    doc_code = serializers.CharField(required=False, allow_blank=True, max_length=40)
+    first_issue_date = serializers.DateField(required=False)
+    is_active = serializers.BooleanField(required=False)
+
+
+class OutputRevisionCreateSerializer(serializers.Serializer):
+    revision_date = serializers.DateField()
+    change_note = serializers.CharField(allow_blank=True, default="")
+    approved_by_name = serializers.CharField(allow_blank=True, default="", max_length=150)
+    approved_on = serializers.DateField()
+    # Yalnızca ilk revizyonda: kalite sistemindeki güncel revizyon no (verilmezse 00).
+    revision_no = serializers.IntegerField(required=False, min_value=0)
+
+
+def _output_or_404(key: str) -> OutputType:
+    found = output_type(key)
+    if found is None:
+        raise NotFound("Tanımsız çıktı.")
+    return found
+
+
+class OutputDocumentListView(APIView):
+    """Basılı çıktılar (PDF, Excel) ve doküman kontrol bilgileri (yalnız admin)."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(responses=OutputDocumentSerializer(many=True))
+    def get(self, request: Request) -> Response:
+        items = outputs.overview()
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(items, request, view=self)  # type: ignore[arg-type]
+        return paginator.get_paginated_response(OutputDocumentSerializer(page, many=True).data)
+
+
+class OutputDocumentDetailView(APIView):
+    """Tek çıktı: oku ya da doküman no, ilk yayın tarihi ve bandı değiştir (yalnız admin; not
+    zorunlu)."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(responses=OutputDocumentSerializer)
+    def get(self, request: Request, key: str) -> Response:
+        return Response(OutputDocumentSerializer(outputs.describe_output(_output_or_404(key))).data)
+
+    @extend_schema(request=OutputDocumentUpdateSerializer, responses=OutputDocumentSerializer)
+    def patch(self, request: Request, key: str) -> Response:
+        item = _output_or_404(key)
+        body = OutputDocumentUpdateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data: dict[str, Any] = dict(body.validated_data)
+        outputs.update_output(_actor(request), item.key, **data)
+        return Response(OutputDocumentSerializer(outputs.describe_output(item)).data)
+
+
+class OutputRevisionCreateView(APIView):
+    """Çıktıya yeni revizyon ekler (yalnız admin; revizyonlar değiştirilemez)."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(
+        request=OutputRevisionCreateSerializer, responses={201: OutputDocumentSerializer}
+    )
+    def post(self, request: Request, key: str) -> Response:
+        item = _output_or_404(key)
+        body = OutputRevisionCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data: dict[str, Any] = dict(body.validated_data)
+        outputs.add_revision(_actor(request), item.key, **data)
+        return Response(OutputDocumentSerializer(outputs.describe_output(item)).data, status=201)

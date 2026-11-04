@@ -11,6 +11,7 @@ basmaz).
 
 import io
 from collections.abc import Callable, Sequence
+from datetime import date
 from decimal import Decimal
 from typing import Any
 from xml.sax.saxutils import escape
@@ -31,8 +32,10 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from apps.core.coding.outputs import DocumentControl, document_control
 from apps.core.formatting import format_money
 from apps.core.labels import FONT, FONT_BOLD, register_fonts
+from apps.core.pdf import draw_band
 from apps.masterdata import services as masterdata
 from apps.personnel import selectors
 from apps.personnel.models import PayrollItem, PayrollItemCategory, PayrollItemKind
@@ -232,13 +235,28 @@ def employer_cost_rows(month: PayrollMonth) -> list[tuple[str, list[str]]]:
     return lines
 
 
+# Çıktı anahtarları (Kodlama > Çıktı doküman kodları; kayıtları apps.py'de).
+ATTENDANCE_OUTPUT = "personnel.attendance"
+PAYROLL_OUTPUT = "personnel.payroll"
+EMPLOYER_COST_OUTPUT = "personnel.employer-cost"
+PAYSLIP_OUTPUT = "personnel.payslip"
+
+
 class _Chrome:
     """Sayfa çerçevesi: alt bilgi (not, üretim zamanı, Sayfa x/y) ve damga (TASLAK, GEÇERSİZ)."""
 
-    def __init__(self, title: str, stamp: str, *, note: str = PRELIMINARY_NOTE) -> None:
+    def __init__(
+        self,
+        title: str,
+        stamp: str,
+        *,
+        note: str = PRELIMINARY_NOTE,
+        control: DocumentControl | None = None,
+    ) -> None:
         self.title = title
         self.stamp = stamp
         self.note = note
+        self.control = control  # doküman kontrol bandı (Kodlama > Çıktı doküman kodları)
         self.produced = f"{timezone.localtime():%d.%m.%Y %H:%M}"
 
     def canvas_maker(self) -> Callable[..., Canvas]:
@@ -284,7 +302,23 @@ class _Chrome:
         canvas.drawRightString(
             width - 10 * mm, baseline, f"{self.title} · {self.produced} · Sayfa {number}/{total}"
         )
+        if self.control is not None:
+            # Notun üstünde; sayfa bilgisi sağda zaten yazılı.
+            band = 9.5 * mm if width > height else 13 * mm
+            draw_band(canvas, self.control, None, None, left=10 * mm, baseline=band)
         canvas.restoreState()
+
+
+def document_date(month: PayrollMonth) -> date:
+    """Doküman kontrolünde çıktının tarihi: onaylı (ya da eski onaylı) ayda onay günü (yeniden
+    basımda o günkü revizyon), açık ayda bugün."""
+    if month.approval is not None:
+        return timezone.localtime(month.approval.approved_at).date()
+    return timezone.localdate()
+
+
+def _control(key: str, month: PayrollMonth) -> DocumentControl | None:
+    return document_control(key, on=document_date(month))
 
 
 def company_data(month: PayrollMonth) -> dict[str, str]:
@@ -386,7 +420,7 @@ def employer_cost_pdf(month: PayrollMonth, *, stamp: str = DRAFT) -> bytes:
             small,
         ),
     ]
-    chrome = _Chrome(title, stamp)
+    chrome = _Chrome(title, stamp, control=_control(EMPLOYER_COST_OUTPUT, month))
     doc.build(story, canvasmaker=chrome.canvas_maker())
     return buffer.getvalue()
 
@@ -736,7 +770,7 @@ def register_pdf(month: PayrollMonth, *, stamp: str = DRAFT) -> bytes:
             small,
         ),
     ]
-    chrome = _Chrome(title, stamp)
+    chrome = _Chrome(title, stamp, control=_control(PAYROLL_OUTPUT, month))
     doc.build(story, canvasmaker=chrome.canvas_maker())
     return buffer.getvalue()
 
@@ -1093,6 +1127,10 @@ def payslips_pdf(month: PayrollMonth, *, employee_id: int | None = None) -> byte
         ]
     if not story:
         story = [Paragraph(escape(f"{month.label}: ERP'de hesaplanan kişi yok."), base)]
-    chrome = _Chrome(title, SUPERSEDED if month.superseded else "")
+    chrome = _Chrome(
+        title,
+        SUPERSEDED if month.superseded else "",
+        control=_control(PAYSLIP_OUTPUT, month),
+    )
     doc.build(story, canvasmaker=chrome.canvas_maker())
     return buffer.getvalue()

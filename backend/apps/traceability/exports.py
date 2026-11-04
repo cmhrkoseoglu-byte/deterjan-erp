@@ -22,6 +22,9 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from apps.core.coding.outputs import document_control
+from apps.core.pdf import controlled_canvas
+from apps.core.xlsx import apply_document_control
 from apps.quality.coa import FONT, FONT_BOLD, _register_fonts
 
 NO_CUSTOMER = "Müşteri bilgisi yok"
@@ -135,6 +138,9 @@ def _sheet(workbook: Workbook, title: str, header: Sequence[str], rows: list[lis
     sheet.freeze_panes = "A2"
 
 
+RECALL_OUTPUT = "traceability.recall"
+
+
 def recall_xlsx(result: dict[str, Any]) -> bytes:
     """Geri çağırma simülasyonu Excel dosyası (özet + dört sayfa)."""
     workbook = Workbook()
@@ -154,6 +160,7 @@ def recall_xlsx(result: dict[str, Any]) -> bytes:
     _sheet(workbook, "Stokta kalan", STOCK_HEADER, stock_rows(result))
     _sheet(workbook, "Sevkiyatlar", SHIPMENT_HEADER, shipment_rows(result))
     _sheet(workbook, "Müşteriler", CUSTOMER_HEADER, customer_rows(result))
+    apply_document_control(workbook, document_control(RECALL_OUTPUT))
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
@@ -226,5 +233,6 @@ def recall_pdf(result: dict[str, Any]) -> bytes:
             story.append(_table(header, rows, [w * mm for w in widths]))
         else:
             story.append(Paragraph("Kayıt yok.", text))
-    doc.build(story)
+    control = document_control(RECALL_OUTPUT)
+    doc.build(story, canvasmaker=controlled_canvas(control, left=12 * mm, baseline=6 * mm))
     return buffer.getvalue()

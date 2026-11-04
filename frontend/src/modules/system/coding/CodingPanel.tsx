@@ -24,6 +24,7 @@ import {
 } from "../../../api/coding";
 import { formatDateTime } from "../../../i18n/format";
 import { CodeSchemeModal } from "./CodeSchemeModal";
+import { OutputsSection } from "./OutputsSection";
 import { MigrationRuns, RecodeSection } from "./RecodeSection";
 import { cs } from "./strings";
 
@@ -31,6 +32,7 @@ const SECTIONS = {
   master: "ana-veri",
   documents: "belge",
   lots: "lot",
+  outputs: "cikti",
   migration: "goc",
   history: "gecmis",
 } as const;
@@ -245,7 +247,7 @@ function RevisionsTable() {
 }
 
 /** Sistem > Kodlama sistematiği (yalnız admin): ana veri kod biçimleri, belge ve lot numaraları,
- * değişiklik geçmişi. */
+ * çıktı doküman kodları, kod göçü ve değişiklik geçmişi. */
 export function CodingPanel() {
   const [params, setParams] = useSearchParams();
   const section = sectionFrom(params.get("bolum"));
@@ -307,6 +309,7 @@ export function CodingPanel() {
           onEdit={setEditing}
         />
       )}
+      {section === "outputs" && <OutputsSection />}
       {query.isSuccess && section === "migration" && <RecodeSection types={rows} />}
       {section === "history" && <HistorySection />}
       <CodeSchemeModal

@@ -2163,3 +2163,17 @@ değiştirme zorunlu, yalnızca admin):
     metin.
   - Göç öncesi yedek uyarısı göçü engellemez; ekran son yedeği gösterir, son 24 saatte başarılı
     yedek yoksa uyarır.
+- **Paket 2, çıktı doküman kodları: ayrıca sorulmayan kurallar** (değiştirilebilir):
+  - Çıktılar kapalı gelir (bugünkü gibi basılır). Bant, doküman no, ilk yayın tarihi ve en az bir
+    revizyon girilince açılabilir. Doküman no çıktılar arasında tektir (A-Z, 0-9, -, . ve /; en çok
+    32 karakter). Öneri kodları (`FR-KAL-001`, `LS-RAP-001` gibi) yalnızca örnektir.
+  - İlk revizyonun numarası seçilebilir: kalite sisteminde Rev. 03'te olan form sisteme 03 ile
+    girilir (varsayılan 00). Sonraki revizyonlar birer artar; revizyonlar değiştirilemez ve
+    silinemez.
+  - Revizyon onaylandıktan sonra yürürlüğe girer: onay tarihi yürürlük tarihinden sonra olamaz.
+    Tarihler ileri olamaz; yürürlük tarihi önceki revizyondan ve ilk yayın tarihinden önce olamaz.
+  - Belge kendi tarihinde yürürlükte olan revizyonla basılır. İlk revizyondan önceki tarihli belge
+    bantsız basılır (o gün de bantsızdı).
+  - Kodlar da belgenin tarihindeki haliyle basılır: irsaliyede ürün ve müşteri kodu sevk anındaki,
+    analiz sertifikasında ürün kodu karar anındaki, siparişte malzeme ve tedarikçi kodu siparişin
+    gönderildiği andaki.

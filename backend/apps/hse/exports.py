@@ -9,6 +9,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
+from apps.core.coding.outputs import document_control
+from apps.core.xlsx import apply_document_control
 from apps.hse.selectors import SdsStatus
 
 Column = tuple[str, str]  # (alan, başlık)
@@ -47,6 +49,7 @@ def sds_gaps_xlsx(rows: Sequence[SdsStatus]) -> bytes:
     for index, (_, label) in enumerate(SDS_GAPS, start=1):
         ws.column_dimensions[get_column_letter(index)].width = max(14, len(label) + 2)
     ws.freeze_panes = "A2"
+    apply_document_control(workbook, document_control("hse.sds-gaps"))
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()

@@ -11,7 +11,10 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from apps.core.coding.outputs import document_control
+from apps.core.coding.selectors import code_as_of
 from apps.core.formatting import format_money
+from apps.core.pdf import controlled_canvas
 from apps.inventory.services import format_quantity
 from apps.masterdata import services as masterdata
 from apps.purchasing import selectors
@@ -33,6 +36,9 @@ def _price(value: Any) -> str:
     return format_quantity(value)
 
 
+PURCHASE_ORDER_OUTPUT = "purchasing.order"
+
+
 def purchase_order_pdf(order: PurchaseOrder) -> bytes:
     """Siparişin tedarikçiye giden PDF'i (A4)."""
     _register_fonts()
@@ -45,6 +51,8 @@ def purchase_order_pdf(order: PurchaseOrder) -> bytes:
         return Paragraph(escape(text or "").replace("\n", "<br/>"), style)
 
     supplier = order.supplier
+    # Yeniden basımda kodlar siparişin tedarikçiye gittiği andaki haliyle (core.coding).
+    when = order.sent_at or timezone.now()
     lines = list(order.lines.select_related("material", "unit").order_by("line_no"))
     totals = selectors.order_totals(order)
     buffer = io.BytesIO()
@@ -73,7 +81,10 @@ def purchase_order_pdf(order: PurchaseOrder) -> bytes:
     ]
     header = Table([[buyer, document]], colWidths=[100 * mm, 80 * mm])
     header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    vendor = [para("Tedarikçi", bold), para(f"{supplier.code} — {supplier.name}")]
+    vendor = [
+        para("Tedarikçi", bold),
+        para(f"{code_as_of(supplier, when)} — {supplier.name}"),
+    ]
     for attr in ("address", "phone", "email"):
         value = getattr(supplier, attr, "")
         if value:
@@ -85,7 +96,7 @@ def purchase_order_pdf(order: PurchaseOrder) -> bytes:
         rows.append(
             [
                 str(index),
-                para(f"{line.material.code} — {line.material.name}"),
+                para(f"{code_as_of(line.material, when)} — {line.material.name}"),
                 f"{format_quantity(line.quantity)} {line.unit.code}",
                 f"{_price(line.unit_price)} {order.currency}",
                 _money(line.quantity * line.unit_price),
@@ -121,5 +132,6 @@ def purchase_order_pdf(order: PurchaseOrder) -> bytes:
             small,
         ),
     ]
-    doc.build(story)  # type: ignore[arg-type]
+    control = document_control(PURCHASE_ORDER_OUTPUT, on=order.order_date)
+    doc.build(story, canvasmaker=controlled_canvas(control))  # type: ignore[arg-type]
     return buffer.getvalue()

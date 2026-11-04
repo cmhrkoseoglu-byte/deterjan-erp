@@ -2,9 +2,12 @@
 
 import io
 
+from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
+from apps.core.coding.outputs import document_control
+from apps.core.xlsx import apply_document_control
 from apps.golive.models import StockComparison
 from apps.golive.services import COMPARISON_COLUMNS
 from apps.masterdata.importers import build_template_for
@@ -68,6 +71,10 @@ def comparison_xlsx(comparison: StockComparison) -> bytes:
     for letter, width in zip("ABCDEFGHI", (16, 32, 16, 12, 14, 14, 18, 8, 14), strict=True):
         sheet.column_dimensions[letter].width = width
     sheet.freeze_panes = "A5"
+    apply_document_control(
+        workbook,
+        document_control("golive.comparison", on=timezone.localtime(comparison.created_at).date()),
+    )
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
@@ -81,4 +88,6 @@ def comparison_template() -> bytes:
         "Aynı malzeme (ve lot/lokasyon) birden çok satırdaysa miktarlar toplanır.",
         "Fark = sistem − Excel. Hatalı satır varsa karşılaştırma yapılmaz.",
     )
-    return build_template_for("Stok listesi", COMPARISON_COLUMNS, notes)
+    return build_template_for(
+        "Stok listesi", COMPARISON_COLUMNS, notes, output="golive.comparison-template"
+    )

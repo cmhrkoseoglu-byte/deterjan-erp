@@ -1256,3 +1256,25 @@ Plan `docs/plan/kodlama-sistematigi.md`; kararlar DECISIONS "2026-11-04 — Kodl
     `quality/tests/test_coding_lock.py`, `inventory/tests/test_labels.py`, `test_importers.py`;
     ön yüz `coding.test.tsx`, `MasterDataPage.test.tsx`, `useOptions.test.ts`, `inventory.test.tsx`,
     `hse.test.tsx`.
+
+## 2026-11-04 — Kodlama sistematiği (Paket 2)
+
+Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — Kodlama sistematiği".
+
+- **Adım 6:** çıktı doküman kodları (Sistem > Kodlama sistematiği > Çıktılar; ISO 9001 md. 7.5).
+  - 33 çıktı modüllerin `ready()`'sinde kaydedildi: irsaliye, analiz sertifikası, satın alma
+    siparişi, geri çağırma, 7 rapor, 4 personel ve 6 maliyet çıktısı, eksik GBF listesi, stok
+    karşılaştırması ve 10 içe aktarma şablonu. Etiketlere bant basılmaz.
+  - Admin doküman no, ilk yayın tarihi ve revizyonları girer, bandı açar. Bant PDF'in her
+    sayfasının altına ("Doküman no · Yayın tarihi · Rev. no · Rev. tarihi · Sayfa x/y"), Excel'de
+    yazdırma alt bilgisine ve dosya özelliklerine basılır; hücreler değişmez.
+  - Belge kendi tarihindeki revizyonla ve kodlarla basılır (yeniden basımda da): irsaliye sevk
+    günü, analiz sertifikası karar günü, satın alma siparişi sipariş tarihi, bordro ve pusula onay
+    günü.
+  - Şablon sürümü değişip yeni revizyon girilmezse ekran uyarır; irsaliyede mali müşavir uyarısı.
+  - Modeller `OutputDocument`, `OutputDocumentRevision` (göç core.0007); uç noktalar
+    `/api/v1/coding/outputs/` (liste, oku, değiştir, revizyon ekle; yalnız admin).
+  - Kanıt: `core/tests/test_outputs.py` (kurallar, yürürlükteki revizyon, PDF'te her sayfada bant,
+    personel çıktısında bandın yeri, Excel alt bilgisi, API yetkileri), `sales/tests/
+    test_shipments.py` (yeniden basılan irsaliyede sevk anındaki kodlar ve revizyon), ön yüz
+    `coding.test.tsx` (çıktılar); tam backend ve ön yüz testleri yeşil.

@@ -301,4 +301,4 @@ def build_template() -> bytes:
             "Karıştırarak yavaşça ekleyin",
         ),
     )
-    return build_template_for(TITLE, COLUMNS, notes, examples)
+    return build_template_for(TITLE, COLUMNS, notes, examples, output="recipes.template")

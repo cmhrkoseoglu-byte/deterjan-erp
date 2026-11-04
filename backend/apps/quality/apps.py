@@ -31,3 +31,14 @@ class QualityConfig(AppConfig):
             allow_underscore=True,
             write_roles=LAB_ROLES,
         )
+
+        # Çıktı doküman kodları: Sistem > Kodlama sistematiği > Çıktılar (ISO 9001 md. 7.5).
+        from apps.core.coding.registry import register_output
+
+        register_output(
+            "quality.coa",
+            label="Analiz sertifikası",
+            group="Kalite",
+            formats=("PDF",),
+            suggested_code="FR-KAL-001",
+        )

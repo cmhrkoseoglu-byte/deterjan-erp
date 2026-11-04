@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../../api/auth";
@@ -850,5 +850,166 @@ describe("Sistem > Kodlama sistematiği > Kod göçü", () => {
     dialog = await screen.findByRole("dialog", { name: "Göç #9: geri al" });
     expect(await within(dialog).findByText("Kod göçü bulunamadı.")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "0 kaydı geri al" })).toBeDisabled();
+  });
+});
+
+describe("Sistem > Kodlama sistematiği > Çıktılar", () => {
+  const coa: codingApi.OutputDocumentRow = {
+    key: "quality.coa",
+    label: "Analiz sertifikası",
+    group: "Kalite",
+    formats: ["PDF"],
+    legal: false,
+    suggested_code: "FR-KAL-001",
+    doc_code: "",
+    first_issue_date: null,
+    is_active: false,
+    revision_no: null,
+    revision_date: null,
+    template_version: 1,
+    template_changed: false,
+    revisions: [],
+  };
+  const revision: codingApi.OutputRevision = {
+    id: 1,
+    revision_no: 1,
+    revision_date: "2026-10-15",
+    change_note: "Lot alanı eklendi",
+    approved_by_name: "Kalite Müdürü",
+    approved_on: "2026-10-14",
+    template_version: 1,
+    created_at: "2026-10-14T10:00:00+03:00",
+    created_by_name: "Sistem Yöneticisi",
+  };
+  const waybill: codingApi.OutputDocumentRow = {
+    ...coa,
+    key: "sales.waybill",
+    label: "İrsaliye",
+    group: "Sevkiyat",
+    legal: true,
+    suggested_code: "FR-SVK-001",
+    doc_code: "FR-SVK-001",
+    first_issue_date: "2026-01-10",
+    is_active: true,
+    revision_no: 1,
+    revision_date: "2026-10-15",
+    template_changed: true,
+    revisions: [revision],
+  };
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(authApi.fetchCsrf).mockResolvedValue();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    vi.mocked(workflowApi.fetchTasks).mockResolvedValue(page([]));
+    vi.mocked(workflowApi.fetchNotifications).mockResolvedValue(page([]));
+    vi.mocked(workflowApi.fetchUnreadCount).mockResolvedValue(0);
+    vi.mocked(codingApi.listCodeTypes).mockResolvedValue([MATERIAL]);
+    vi.mocked(codingApi.listOutputs).mockResolvedValue([waybill, coa]);
+  });
+
+  it("çıktıları gruplarıyla, öneriyle, revizyon ve bant durumuyla listeler", async () => {
+    renderApp("/sistem/kodlama?bolum=cikti");
+
+    expect(await screen.findByText("Analiz sertifikası")).toBeInTheDocument();
+    const groups = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
+    // Gruplar Türkçe sırayla: Kalite, Sevkiyat.
+    expect(groups.filter((text) => text === "Kalite" || text === "Sevkiyat")).toEqual([
+      "Kalite",
+      "Sevkiyat",
+    ]);
+    expect(screen.getByText("Öneri: FR-KAL-001")).toBeInTheDocument();
+    expect(screen.getByText("Basılmıyor")).toBeInTheDocument();
+    expect(screen.getByText("FR-SVK-001")).toBeInTheDocument();
+    expect(screen.getByText("Rev. 01 · 15.10.2026")).toBeInTheDocument();
+    expect(screen.getByText("Basılıyor")).toBeInTheDocument();
+    expect(screen.getByText("Yasal belge")).toBeInTheDocument();
+    expect(screen.getByText("Şablon değişti")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Düzenle: İrsaliye" }));
+    const dialog = await screen.findByRole("dialog", { name: "Çıktı: İrsaliye" });
+    expect(within(dialog).getByText(/mali müşavirinize danışın/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/yeni revizyon girin/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Lot alanı eklendi")).toBeInTheDocument();
+    expect(within(dialog).getByText("Yeni revizyon: Rev. 02")).toBeInTheDocument();
+    // Revizyonu olan çıktıda revizyon no seçilmez (birer artar).
+    expect(within(dialog).queryByLabelText(/Revizyon no/)).not.toBeInTheDocument();
+  });
+
+  it("doküman no ve ilk yayın tarihini notla kaydeder; revizyonsuz bant açılamaz", async () => {
+    vi.mocked(codingApi.updateOutput).mockResolvedValue({
+      ...coa,
+      doc_code: "FR-KAL-001",
+      first_issue_date: "2026-01-10",
+    });
+    renderApp("/sistem/kodlama?bolum=cikti");
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Düzenle: Analiz sertifikası" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Çıktı: Analiz sertifikası" });
+    expect(within(dialog).getByLabelText(/Çıktıya basılsın/)).toBeDisabled();
+    await userEvent.type(within(dialog).getByLabelText("Doküman no"), "fr-kal-001");
+    fireEvent.change(within(dialog).getByLabelText(/İlk yayın tarihi/), {
+      target: { value: "2026-01-10" },
+    });
+    const save = within(dialog).getByRole("button", { name: "Kaydet" });
+    expect(save).toBeDisabled(); // not zorunlu
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Doküman listesi");
+    await userEvent.click(save);
+
+    await waitFor(() =>
+      expect(codingApi.updateOutput).toHaveBeenCalledWith("quality.coa", {
+        note: "Doküman listesi",
+        doc_code: "FR-KAL-001",
+        first_issue_date: "2026-01-10",
+      }),
+    );
+  });
+
+  it("ilk revizyonu kalite sistemindeki numarasıyla, onayla ekler", async () => {
+    vi.mocked(codingApi.addOutputRevision).mockResolvedValue({
+      ...coa,
+      revision_no: 3,
+      revision_date: "2026-10-01",
+      revisions: [{ ...revision, revision_no: 3 }],
+    });
+    renderApp("/sistem/kodlama?bolum=cikti");
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Düzenle: Analiz sertifikası" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Çıktı: Analiz sertifikası" });
+    expect(within(dialog).getByText("İlk revizyon")).toBeInTheDocument();
+    const add = within(dialog).getByRole("button", { name: "Revizyonu ekle" });
+    expect(add).toBeDisabled(); // açıklama ve onaylayan zorunlu
+    const number = within(dialog).getByLabelText(/Revizyon no/);
+    await userEvent.clear(number);
+    await userEvent.type(number, "3");
+    fireEvent.change(within(dialog).getByLabelText(/Yürürlük tarihi/), {
+      target: { value: "2026-10-01" },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/Onay tarihi/), {
+      target: { value: "2026-09-30" },
+    });
+    await userEvent.type(within(dialog).getByLabelText(/^Onaylayan/), "Kalite Müdürü");
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik açıklaması/), "İlk yayın");
+    await userEvent.click(add);
+    const confirm = await screen.findByText(/sonradan değiştirilemez/);
+    await userEvent.click(
+      within(confirm.closest("section") ?? document.body).getByRole("button", {
+        name: "Revizyonu ekle",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(codingApi.addOutputRevision).toHaveBeenCalledWith("quality.coa", {
+        revision_date: "2026-10-01",
+        change_note: "İlk yayın",
+        approved_by_name: "Kalite Müdürü",
+        approved_on: "2026-09-30",
+        revision_no: 3,
+      }),
+    );
   });
 });

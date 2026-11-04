@@ -20,6 +20,7 @@ from django.utils import timezone
 from apps.core import event_names as ev
 from apps.core import events
 from apps.core.audit import log_change
+from apps.core.coding.outputs import document_control
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
 from apps.core.services import save_with_audit
@@ -86,9 +87,15 @@ def file_name(definition: ReportDefinition, file_format: str, at: datetime | Non
     return f"{definition.code}-{stamp:%Y%m%d-%H%M}.{file_format}"
 
 
+def output_key(definition: ReportDefinition) -> str:
+    """Raporun çıktı kodu (kodlama sistematiği > çıktı doküman kodları)."""
+    return f"reporting.{definition.code}"
+
+
 def render(data: ReportData, file_format: str) -> ReportFile:
     """Rapor dosyasını üretir."""
     definition = data.definition
+    control = document_control(output_key(definition))
     if file_format == ReportJob.Format.PDF:
         content = exports.to_pdf(
             definition.title,
@@ -97,10 +104,16 @@ def render(data: ReportData, file_format: str) -> ReportFile:
             filters=data.filters,
             summary=data.summary,
             wide=definition.landscape,
+            control=control,
         )
     elif file_format == ReportJob.Format.XLSX:
         content = exports.to_xlsx(
-            definition.title, data.columns, data.rows, filters=data.filters, summary=data.summary
+            definition.title,
+            data.columns,
+            data.rows,
+            filters=data.filters,
+            summary=data.summary,
+            control=control,
         )
     else:
         raise BusinessRuleError("unknown_format", "Dosya biçimi Excel ya da PDF olmalıdır.")

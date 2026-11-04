@@ -794,3 +794,85 @@ def test_waybill_seller_comes_from_company_profile(
         "registry": "Ticaret sicil no: Gebze 12345  MERSİS no: 0123456789000017",
     }
     assert waybill_pdf(shipment).startswith(b"%PDF")
+
+
+def test_waybill_reprint_keeps_codes_from_dispatch_time(
+    seller: User, picker: User, dock: Location, make_user: Callable[..., User]
+) -> None:
+    """Kodlama sistematiği: yeniden basılan irsaliyede ürün ve müşteri kodu sevk anındakidir."""
+    from apps.core.roles import ADMIN
+    from apps.masterdata import services as masterdata
+
+    product = finished_product()
+    lot = finished_lot(product, "10")
+    order = confirmed_order(seller, [(product, "10", "ADET")])
+    shipment = plan(seller, order, **VEHICLE)
+    services.pick_lot(picker, shipment, lot)
+    services.mark_loaded(picker, shipment)
+    services.dispatch_shipment(seller, shipment)
+    old_product, old_customer = product.code, order.customer.code
+
+    admin = make_user(ADMIN)
+    masterdata.recode_record(admin, product, "MAMUL-YENI", "Yeni kod", reason="change")
+    masterdata.recode_record(admin, order.customer, "MUSTERI-YENI", "Yeni kod", reason="change")
+    shipment.refresh_from_db()
+
+    data = selectors.waybill_data(shipment)
+    assert data["customer"]["code"] == old_customer
+    assert [line["product_code"] for line in data["lines"]] == [old_product]
+
+
+def test_waybill_band_uses_revision_in_force_on_waybill_date(
+    seller: User, picker: User, dock: Location, make_user: Callable[..., User], monkeypatch: Any
+) -> None:
+    """Çıktı doküman kodları: irsaliye kendi tarihinde yürürlükte olan revizyonla basılır."""
+    from datetime import date as date_type
+
+    from apps.core import pdf as core_pdf
+    from apps.core.coding import outputs
+    from apps.core.roles import ADMIN
+    from apps.sales.waybill import WAYBILL_OUTPUT, waybill_pdf
+
+    admin = make_user(ADMIN)
+    day = timezone.localdate()
+
+    def ago(days: int) -> date_type:
+        return day - timedelta(days=days)
+
+    outputs.update_output(
+        admin, WAYBILL_OUTPUT, note="Liste", doc_code="FR-SVK-001", first_issue_date=ago(90)
+    )
+    for days in (60, 10):
+        outputs.add_revision(
+            admin,
+            WAYBILL_OUTPUT,
+            revision_date=ago(days),
+            change_note="Revizyon",
+            approved_by_name="Kalite Müdürü",
+            approved_on=ago(days),
+        )
+    outputs.update_output(admin, WAYBILL_OUTPUT, note="Bant", is_active=True)
+
+    product = finished_product()
+    lot = finished_lot(product, "10")
+    order = confirmed_order(seller, [(product, "10", "ADET")])
+    shipment = plan(seller, order, **VEHICLE)
+    services.pick_lot(picker, shipment, lot)
+    services.mark_loaded(picker, shipment)
+    services.dispatch_shipment(seller, shipment)
+    # 30 gün önce sevk edilmiş irsaliye: o gün Rev. 00 yürürlükteydi.
+    Shipment.objects.filter(pk=shipment.pk).update(
+        dispatched_at=timezone.now() - timedelta(days=30)
+    )
+    shipment.refresh_from_db()
+
+    drawn: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        core_pdf,
+        "draw_band",
+        lambda canvas, control, page, total, **kwargs: drawn.append(
+            (control.doc_code, control.revision_no)
+        ),
+    )
+    assert waybill_pdf(shipment).startswith(b"%PDF")
+    assert drawn and set(drawn) == {("FR-SVK-001", 0)}

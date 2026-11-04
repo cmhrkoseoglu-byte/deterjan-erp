@@ -18,3 +18,21 @@ class GoLiveConfig(AppConfig):
 
         register_document_type("SK", label="Stok karşılaştırması", model="golive.stockcomparison")
         register_document_type("SB", label="Sorun bildirimi", model="golive.problemreport")
+
+        # Çıktı doküman kodları: Sistem > Kodlama sistematiği > Çıktılar (ISO 9001 md. 7.5).
+        from apps.core.coding.registry import register_output
+
+        register_output(
+            "golive.comparison",
+            label="Stok karşılaştırması",
+            group="Canlıya geçiş",
+            formats=("Excel",),
+            suggested_code="FR-DEP-001",
+        )
+        register_output(
+            "golive.comparison-template",
+            label="Stok listesi (karşılaştırma şablonu)",
+            group="İçe aktarma şablonları",
+            formats=("Excel",),
+            suggested_code="FR-SIS-010",
+        )

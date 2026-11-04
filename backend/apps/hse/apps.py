@@ -39,3 +39,14 @@ class HseConfig(AppConfig):
             label="Tehlike ve önlem ifadesi (H/P/EUH)",
             model="hse.hazardstatement",
         )
+
+        # Çıktı doküman kodları: Sistem > Kodlama sistematiği > Çıktılar (ISO 9001 md. 7.5).
+        from apps.core.coding.registry import register_output
+
+        register_output(
+            "hse.sds-gaps",
+            label="Eksik GBF listesi",
+            group="İSG",
+            formats=("Excel",),
+            suggested_code="LS-ISG-001",
+        )

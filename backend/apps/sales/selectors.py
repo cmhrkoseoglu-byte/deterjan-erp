@@ -23,6 +23,7 @@ from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
 from apps.core.audit import mask_identifier
+from apps.core.coding.selectors import code_as_of
 from apps.inventory import selectors as inventory_selectors
 from apps.inventory.models import StockReservation
 from apps.inventory.services import format_quantity
@@ -337,6 +338,8 @@ def waybill_data(shipment: Shipment) -> dict[str, Any]:
     hareketlerinden, değilse geri alınmamış toplama kayıtlarından okunur."""
     order = shipment.sales_order
     customer = order.customer
+    # Yeniden basımda kodlar sevk anındaki haliyle basılır (sonradan değişse de; core.coding).
+    when = shipment.dispatched_at or timezone.now()
     lines: list[dict[str, Any]] = []
     picks = (
         _active_picks(shipment)
@@ -349,7 +352,7 @@ def waybill_data(shipment: Shipment) -> dict[str, Any]:
         lines.append(
             {
                 "line_no": pick.line.order_line.line_no,
-                "product_code": product.code,
+                "product_code": code_as_of(product, when),
                 "product_name": product.name,
                 "gtin": getattr(product, "gtin", "") or "",
                 "lot_no": pick.lot.lot_no,
@@ -376,7 +379,7 @@ def waybill_data(shipment: Shipment) -> dict[str, Any]:
         "dispatched_at": shipment.dispatched_at,
         "company": _company(),
         "customer": {
-            "code": customer.code,
+            "code": code_as_of(customer, when),
             "name": customer.name,
             "address": customer.address,
             "tax_office": customer.tax_office,

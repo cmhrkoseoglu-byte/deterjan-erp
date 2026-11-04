@@ -39,3 +39,14 @@ class InventoryConfig(AppConfig):
         register_lot_type("H", label="Satın alma lotu (mal kabul)", counter=last_lot_number)
         register_lot_type("B", label="Üretim şarjı lotu", counter=last_lot_number)
         register_lot_type("D", label="Dolum lotu", counter=last_lot_number)
+
+        # Çıktı doküman kodları: Sistem > Kodlama sistematiği > Çıktılar (ISO 9001 md. 7.5).
+        from apps.core.coding.registry import register_output
+
+        register_output(
+            "inventory.opening-template",
+            label="Açılış stoku",
+            group="İçe aktarma şablonları",
+            formats=("Excel",),
+            suggested_code="FR-SIS-009",
+        )

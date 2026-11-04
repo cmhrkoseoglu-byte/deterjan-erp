@@ -100,3 +100,16 @@ class MasterdataConfig(AppConfig):
         register_standard_code(
             "masterdata.unitofmeasure", label="Birim", model="masterdata.unitofmeasure"
         )
+
+        # Çıktı doküman kodları: Sistem > Kodlama sistematiği > Çıktılar (ISO 9001 md. 7.5).
+        from apps.core.coding.registry import register_output
+        from apps.masterdata.importers import SPECS, template_output
+
+        for number, spec in enumerate(SPECS.values(), start=1):
+            register_output(
+                template_output(spec.kind),
+                label=spec.title,
+                group="İçe aktarma şablonları",
+                formats=("Excel",),
+                suggested_code=f"FR-SIS-{number:03d}",
+            )
