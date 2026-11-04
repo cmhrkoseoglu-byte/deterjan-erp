@@ -25,7 +25,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getErrorMessage } from "../../api/client";
+import { getErrorCode, getErrorList, getErrorMessage } from "../../api/client";
 import {
   fetchEmployeeHistory,
   getEmployee,
@@ -38,10 +38,11 @@ import type { AuditEntry } from "../../api/workflow";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { Info } from "../inventory/shared";
+import { monthAfterDay } from "./attendanceFormat";
 import { EmployeeDocuments } from "./EmployeeDocuments";
 import { EmployeeFormModal } from "./EmployeeFormModal";
 import { EmployeeStatus } from "./PersonnelPage";
-import { PERSONNEL_BASE, pe, PERSONNEL_KEY } from "./strings";
+import { ATTENDANCE_BASE, PERSONNEL_BASE, pe, PERSONNEL_KEY } from "./strings";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -88,7 +89,11 @@ function HistoryItem({ entry, employee }: { entry: AuditEntry; employee: Employe
   );
 }
 
-/** İşten ayrılış penceresi: çıkış tarihi (bugün önerilir) ve not. */
+/**
+ * İşten ayrılış penceresi: çıkış tarihi (bugün önerilir) ve not. Çıkıştan sonra puantajda kayıtlı
+ * günler varsa sunucu onları listeler; düğme "Kaydet ve günleri kaldır" olur ve ancak o tarih için
+ * onayla kaydedilir (tarih değişince onay düşer). Gün onaylı bir aydaysa puantaja bağlantı verilir.
+ */
 function TerminateModal({
   employee,
   onClose,
@@ -96,20 +101,44 @@ function TerminateModal({
 }: {
   employee: Employee;
   onClose: () => void;
-  onDone: (saved: Employee) => void;
+  onDone: (saved: Employee, removed: boolean) => void;
 }) {
   const [date, setDate] = useState(today);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | undefined>();
+  const [removal, setRemoval] = useState<{ date: string; detail: string } | null>(null);
   const mutation = useMutation({
-    mutationFn: () => terminateEmployee(employee.id, date, note.trim()),
-    onSuccess: onDone,
+    mutationFn: (vars: { date: string; remove: boolean }) =>
+      terminateEmployee(employee.id, vars.date, note.trim(), vars.remove),
+    onSuccess: (saved, vars) => onDone(saved, vars.remove),
+    onError: (failure, vars) => {
+      const failed = getErrorCode(failure);
+      if (failed === "attendance_after_exit")
+        setRemoval({ date: vars.date, detail: getErrorMessage(failure) });
+      // Onaylı kayıt iş kuralıyla reddedildiyse liste eskidir: günler yeniden sorulur. Ağ
+      // hatasında onay kalır (yeniden denenebilir).
+      else if (vars.remove && failed) setRemoval(null);
+    },
   });
+  const confirming = removal !== null && removal.date === date;
+  const code = mutation.isError ? getErrorCode(mutation.error) : "";
+  // Sunucunun bildirdiği ilk onaylı ay; yoksa çıkıştan sonraki günün ayı.
+  const lockedMonth =
+    code === "approved_attendance_after_exit"
+      ? (getErrorList(mutation.error, "months")[0] ??
+        (ISO_DATE.test(date) ? monthAfterDay(date) : undefined))
+      : undefined;
+
+  function changeDate(value: string) {
+    setDate(value);
+    setRemoval(null);
+    mutation.reset();
+  }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(date ? undefined : pe.required);
-    if (date) mutation.mutate();
+    if (date) mutation.mutate({ date, remove: confirming });
   }
 
   const account = employee.user_info;
@@ -118,23 +147,33 @@ function TerminateModal({
       <form onSubmit={handleSubmit} noValidate>
         <Stack>
           <Text size="sm">{pe.terminateIntro}</Text>
-          {mutation.isError && (
+          {mutation.isError && code !== "attendance_after_exit" && (
             <Alert color="red" variant="light" role="alert">
-              {getErrorMessage(mutation.error)}
+              <Stack gap={4}>
+                <Text size="sm">{getErrorMessage(mutation.error)}</Text>
+                {lockedMonth && (
+                  <Anchor component={Link} to={`${ATTENDANCE_BASE}?ay=${lockedMonth}`} size="sm">
+                    {pe.openAttendance}
+                  </Anchor>
+                )}
+              </Stack>
             </Alert>
           )}
           <TextInput
             type="date"
             label={pe.terminationDate}
+            description={pe.terminationDateHint}
             value={date}
-            onChange={(e) => setDate(e.currentTarget.value)}
+            onChange={(e) => changeDate(e.currentTarget.value)}
             error={error}
+            disabled={mutation.isPending}
             required
           />
           <Textarea
             label={pe.note}
             value={note}
             onChange={(e) => setNote(e.currentTarget.value)}
+            disabled={mutation.isPending}
             autosize
             minRows={2}
             maxLength={500}
@@ -144,12 +183,17 @@ function TerminateModal({
               {pe.accountStillActive(account.username)}
             </Alert>
           )}
+          {confirming && (
+            <Alert color="orange" variant="light" icon={<IconAlertTriangle size={18} />}>
+              {removal.detail}
+            </Alert>
+          )}
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose} disabled={mutation.isPending}>
               {pe.cancel}
             </Button>
             <Button type="submit" color="red" loading={mutation.isPending}>
-              {pe.terminate}
+              {confirming ? pe.terminateAndRemove : pe.terminate}
             </Button>
           </Group>
         </Stack>
@@ -356,7 +400,7 @@ export function EmployeePage() {
         <TerminateModal
           employee={employee}
           onClose={() => setTerminating(false)}
-          onDone={(saved) => done(pe.terminated(saved.full_name))}
+          onDone={(saved, removed) => done(pe.terminated(saved.full_name, removed))}
         />
       )}
       <ConfirmModal

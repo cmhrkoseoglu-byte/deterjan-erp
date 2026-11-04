@@ -114,6 +114,50 @@ def days_between(start: date, end: date) -> list[date]:
     return [start + timedelta(days=offset) for offset in range((end - start).days + 1)]
 
 
+def day_span(first: date, last: date) -> str:
+    """Aynı aydaki gün aralığı: "21.09" ya da "21–30.09"."""
+    return f"{first:%d.%m}" if first == last else f"{first:%d}–{last:%d.%m}"
+
+
+def format_hours(value: Decimal) -> str:
+    """Saat, sondaki sıfırlar atılarak: Decimal("2.50") → "2,5"."""
+    return f"{value.normalize():f}".replace(".", ",")
+
+
+# Günün özetteki ayırt edici bilgisi: durum, fazla mesai ve not olup olmadığı.
+_DayKey = tuple[str, Decimal, bool]
+
+
+def _run_label(first: date, last: date, key: _DayKey) -> str:
+    status, hours, noted = key
+    extra = []
+    if hours:
+        extra.append(f"{'günde ' if first != last else ''}{format_hours(hours)} sa FM")
+    if noted:
+        extra.append("notlu")
+    text = f"{day_span(first, last)} {ATTENDANCE_CODES.get(status, status)}"
+    return f"{text} ({', '.join(extra)})" if extra else text
+
+
+def summarize_days(entries: Iterable[AttendanceEntry]) -> str:
+    """Kayıtlı günlerin kısa özeti, ay ay. Durumu, fazla mesaisi ve not işareti aynı ardışık günler
+    aralık olur: "Eylül 2026: 21–23.09 Üİ, 24.09 Ç (2 sa FM, notlu); Ekim 2026: 05–06.10 Yİ".
+    Çok günlük aralıkta fazla mesai gün başınadır ("günde 2 sa FM"); notun metni denetim
+    kaydındadır."""
+    months: dict[tuple[int, int], list[tuple[date, date, _DayKey]]] = {}
+    for entry in sorted(entries, key=lambda item: item.date):
+        key = (entry.status, Decimal(entry.overtime_hours or 0), bool(entry.note))
+        runs = months.setdefault((entry.date.year, entry.date.month), [])
+        if runs and runs[-1][2] == key and runs[-1][1] + timedelta(days=1) == entry.date:
+            runs[-1] = (runs[-1][0], entry.date, key)
+        else:
+            runs.append((entry.date, entry.date, key))
+    return "; ".join(
+        f"{month_label(year, month)}: " + ", ".join(_run_label(*run) for run in runs)
+        for (year, month), runs in months.items()
+    )
+
+
 def rest_weekdays() -> set[int]:
     """Ay önceden dolu açılırken hafta tatili sayılan günler (pazartesi 0 … pazar 6)."""
     settings = AttendanceSettings.objects.order_by("pk").first()

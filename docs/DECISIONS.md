@@ -1460,7 +1460,8 @@ değiştirme zorunlu, yalnızca admin):
   (Türkçe i/ı dahil) var olan yazıma çevrilir.
 - **Ayrılış:** kart silinmez. "İşten ayrıldı" çıkış tarihiyle kartı pasife alır, "Yeniden işe başladı"
   geri açar (çıkış tarihi silinir, denetim günlüğünde kalır). Bağlı sistem hesabı kendiliğinden kapanmaz;
-  kartta uyarı çıkar, hesabı sistem yöneticisi pasife alır.
+  kartta uyarı çıkar, hesabı sistem yöneticisi pasife alır. (Güncelleme 2026-10-30: ayrılışta çıkıştan
+  sonraki puantaj günleri kaldırılır; bkz. "Puantajda çıkıştan sonraki günler".)
 - **Yetki ve gizlilik:** ekran ve API yalnızca admin ve yönetim (diğer roller 403); kartın değişiklik
   geçmişi kendi uç noktasında. `workflow`'un genel geçmiş ve yorum uç noktaları `personnel.employee`
   kaydını kabul etmez; aksi halde her kullanıcı değişiklik geçmişinden kişisel veriyi okuyabilirdi. KVKK
@@ -1541,7 +1542,9 @@ değiştirme zorunlu, yalnızca admin):
   Devamsızlık ve fazla mesai ileri bir güne girilemez; izin ve rapor önceden girilebilir.
 - **Varsayılan günler:** ay takvimden dolu açılır: tam gün resmi tatil RT (hafta tatiline denk gelse
   de), varsayılan hafta tatili günü HT (başlangıçta pazar; ayardan değişir), diğer günler (yarım gün
-  tatil dahil) Ç. Kişinin işe girişinden önceki ve çıkışından sonraki günler boştur. Açık ayda
+  tatil dahil) Ç. Kişinin işe girişinden önceki ve çıkışından sonraki günler boştur (2026-10-30:
+  çıkıştan sonra kayıtlı kalmış günler ayrılışta kaldırılır; bkz. "Puantajda çıkıştan sonraki
+  günler"). Açık ayda
   yalnızca değiştirilen günler saklanır; takvim ya da ayar değişirse diğer günler yeniden hesaplanır.
 - **Aralık girişi:** kişi, birim ya da herkes. Yıllık izin, mazeret izni ve devamsızlık HT ve RT
   günlerine yazılmaz (İş Kanunu m.56); rapor ve ücretsiz izin her takvim gününe yazılır.
@@ -1596,8 +1599,10 @@ değiştirme zorunlu, yalnızca admin):
   kayıtları, kişinin bugünkü birimi ile işe giriş ve çıkış tarihi, bugünkü eşleştirme ve bugünkü
   işveren payıyla hesaplanır; ay içinde birim değiştirenin bütün ayı yeni birime yazılır. Kartta tek
   bir çalışma dönemi tutulduğu için yeniden işe alımda işe giriş tarihi ileri alınırsa önceki dönem
-  geçmiş aylardan düşer; "Yeniden işe başladı" çıkış tarihini sildiği için eski çıkıştan sonra kayıtlı
-  kalmış günler yeniden sayılır. Eklenmiş işçilik oranları ve hesaplanmış lot maliyetleri değişmez.
+  geçmiş aylardan düşer. Ayrılışta çıkıştan sonraki puantaj günleri kaldırıldığı için (2026-10-30,
+  "Puantajda çıkıştan sonraki günler") "Yeniden işe başladı" bunları geri getirmez; maliyet yine de
+  yalnızca işe giriş ve çıkış arasındaki günleri sayar. Eklenmiş işçilik oranları ve hesaplanmış lot
+  maliyetleri değişmez.
   Onay anındaki dağılımı ve çalışma dönemlerini saklamak ayrı bir tasarım konusudur.
 - **İşçilik oranı önerisi:** aşamanın personel maliyeti / o ay üretilen kg (4 ondalık). Kg, lot
   maliyetindeki işçilik tabanıyla aynıdır: üretimde ay içinde biten şarjların kg'a çevrilmiş çıktısı,
@@ -1614,6 +1619,54 @@ değiştirme zorunlu, yalnızca admin):
   (docs/KVKK.md).
 - **Kapsam dışı:** bordro ve net ücret, prim ve ikramiye, yol ve yemek yardımı, kıdem tazminatı
   karşılığı, bütçe ve plan maliyeti, işveren payının tarihli değişimi, onaylı ayın dağılımının
-  saklanması. Puantajda çıkış tarihinden sonra kayıtlı kalan günlerin personel modülünde düzeltilmesi
-  ayrı iştir (maliyet bunları saymaz).
+  saklanması. (Puantajda çıkış tarihinden sonra kayıtlı kalan günler 2026-10-30'da personel modülünde
+  düzeltildi; bkz. "Puantajda çıkıştan sonraki günler".)
 - **CLAUDE.md:** modül tablosunda `costing` satırı ve bağımlılık notu güncellendi (planla onaylandı).
+
+## 2026-10-30 — Puantajda çıkıştan sonraki günler
+
+- **Karar (CUMHUR, 2026-10-30; açık aylar için "Onayla kaldırılsın", onaylı ay için "Önce ay yeniden
+  açılsın"; plan için "Plan uygun; başla"):** puantajda kişinin çıkış tarihinden sonra kayıtlı günü
+  kalmaz. Önceden ayrılış bu günlere dokunmuyordu: ileri tarihe girilmiş izin ya da ayrılıştan önce
+  onaylanmış ayın günleri tabloda görünüyor, toplamlara ve Excel'e giriyor ve düzenlenemiyordu
+  ("Personel puantajı" kararındaki "çıkışından sonraki günler boştur" kuralına aykırı). Maliyet bu
+  günleri zaten saymıyordu.
+- **Çıkış tarihi** kişinin son iş günüdür ve kendisi dahildir (`employed_on`); pencerede "Son çalışma
+  günü (o gün dahil)" yazar.
+- **Açık aylar:** ayrılış kaydedilirken çıkıştan sonraki kayıtlı günler listelenir
+  (`attendance_after_exit`; ay ay, durumu, fazla mesaisi ve not işareti aynı ardışık günler aralık
+  olarak, ör. "Eylül 2026: 21–23.09 Üİ, 24.09 Ç (2,5 sa FM, notlu); Ekim 2026: 05–06.10 Yİ").
+  "Kaydet ve günleri kaldır" (`remove_attendance`) ayrılışı kaydeder ve günleri aynı işlemde kaldırır.
+  Onay o tarih içindir; tarih değişince ya da onaylı kayıt bir iş kuralıyla reddedilince düşer ve
+  günler yeniden sorulur. İstek sürerken tarih ve not değiştirilemez. İleri tarihli çıkışta (ihbar
+  süresi) da aynı kural geçerlidir.
+- **Onaylı aylar:** günlerden biri onaylı bir aydaysa ayrılış kaydedilmez
+  (`approved_attendance_after_exit`); mesaj ayları ve günleri listeler, yanıt onaylı ayları da verir
+  (`months`, ör. "2026-09") ve pencere ilkine bağlantı verir. Bordroya giden rakam değişeceği için
+  mesajda adı geçen her ay önce gerekçeyle yeniden açılır, ayrılış kaydedilir, aylar yeniden onaylanır
+  ve yeni Excel bordroya verilir. Onaylı ay sessizce değişmez. Ay onayı penceresi "Bu ay işten ayrılan
+  varsa önce çıkışını kaydedin" diye hatırlatır.
+- **Silme ve iz (CLAUDE.md §4.6, §4.7):** kaldırılan gün silinir. Çıkıştan sonraki günler çalışma
+  dönemi dışındadır (`employed_on`); kayıt kalmayınca tabloda boş görünür. Güne başka kayıt bağlı
+  değildir, maliyet bir şey saklamaz. Yeniden açılmış ayda kaldırılan günler onayla yazılmış
+  varsayılan günleri de kapsar (önceki Excel'le bordroya gitmişlerdi). Bu, taslak reçete satırındaki
+  (2026-10-15) "kullanılmamış veri" yorumundan geniştir; CUMHUR'a ayrıca soruldu ve onayladı (açık ay
+  için "Onayla kaldırılsın", onaylı ay için "Önce ay yeniden açılsın"). Her gün silinmeden önce bütün
+  alanlarıyla ayın denetim kaydına yazılır (`entry`: [eski, null]; `id` günün kendi kayıtlarına
+  bağlar); ayrılışın notuna (kartın geçmişi) tarihli özet eklenir. Silme uç noktası yoktur; silme
+  yalnızca ayrılış servisinin içinde olur.
+- **Düzeltme ve yeniden işe başlama:** çıkış tarihi "Yeniden işe başladı" ve doğru tarihle "İşten
+  ayrıldı" ile düzeltilir. Kaldırılan günler geri gelmez; gerekirse kartın geçmişindeki özetten
+  (tarih, durum, fazla mesai) yeniden girilir; notun metni ve bütün alanlar ayın denetim kaydındadır.
+  Doğru tarih daha ileriyse ve arada onaylanmış ay varsa, o ayda iki tarih arasındaki günler boş kalır
+  (onay yalnızca eski çıkışa kadar yazmıştı; ayrılış bunu yakalamaz): ay gerekçeyle yeniden açılıp
+  yeniden onaylanır (eksik günler yazılır) ve yeni Excel bordroya verilir.
+- **Eşzamanlılık:** kilit sırası kart → ay → gün. Gün ve aralık girişi ile ay onayı önce kartları
+  kilitler ve güncel çıkış tarihini okur; aynı anda kaydedilen ayrılış çıkıştan sonraya gün bırakamaz.
+  Kilitten sonra tabloya yeni bir kart girerse (ör. o sırada yeniden işe başlatılan) onay geri alınır
+  (`attendance_cards_changed`, "ayı yeniden onaylayın").
+- **Mevcut veri:** canlıda (6 kart, ayrılan yok, tek açık ay) ve yerelde çıkıştan sonra kayıtlı gün
+  yoktu; göç ya da temizlik betiği gerekmedi.
+- **Kapsam dışı:** işe giriş tarihinden önce kayıtlı günler (yeniden işe alımda önceki dönem ya da
+  ileri alınan giriş tarihi) bugünkü gibi kalır; ileri tarihli çıkışta kart yine hemen "Ayrıldı"
+  görünür; ayrı çalışma dönemleri ayrı bir tasarım konusudur.

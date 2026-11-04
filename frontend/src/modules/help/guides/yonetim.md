@@ -98,7 +98,10 @@ Personel maliyeti brüt ücretten ve puantajdan hesaplanır. Bordro değildir; v
 
 - Arama kutusu ad, sicil no, birim ve görevde arar; birim ve **Çalışanlar / Ayrılanlar / Tümü** süzgeçleri vardır. Satıra basınca kart açılır.
 - Kartta **Düzenle** bilgileri değiştirir. **Geçmiş** bölümünde her değişiklik kimin yaptığı, tarihi, eski ve yeni değeriyle yazılıdır. TC kimlik no kartta açık görünür, geçmişte yalnızca son dört hanesiyle yazılır.
-- Kart silinmez. Ayrılan çalışanın kartında **İşten ayrıldı**'ya basıp çıkış tarihini girin; kart **Ayrılanlar**'a geçer. Yeniden işe başlarsa **Yeniden işe başladı**'ya basın.
+- Kart silinmez. Ayrılan çalışanın kartında **İşten ayrıldı**'ya basıp çıkış tarihini girin; çıkış tarihi son çalışma günüdür ve o gün dahildir. Kart **Ayrılanlar**'a geçer. Yeniden işe başlarsa **Yeniden işe başladı**'ya basın.
+- Puantajda çıkış tarihinden sonra kayıtlı gün varsa (ör. önceden girilmiş izin), pencere bu günleri listeler. **Kaydet ve günleri kaldır**'a basınca ayrılış kaydedilir ve günler puantajdan kaldırılır. Kaldırılan günler tarihi, durumu ve fazla mesaisiyle kartın **Geçmiş** bölümüne yazılır; **Yeniden işe başladı** onları geri getirmez.
+- Bu günlerden biri onaylı bir aydaysa ayrılış kaydedilmez, çünkü bordroya giden rakam değişir. Mesajda adı geçen her ayı Puantaj'da açın (**Puantajı aç** bağlantısı ilkini açar, diğerlerine ay oklarıyla geçin), **Yeniden aç**'a basıp gerekçeyi yazın, sonra ayrılışı kaydedin. Ardından bu ayları yeniden onaylayıp yeni Excel'i bordroya verin.
+- Çıkış tarihini düzeltmek için önce **Yeniden işe başladı**'ya, sonra doğru tarihle **İşten ayrıldı**'ya basın. Doğru tarih daha ileriyse ve arada onaylanmış ay varsa, o ayda iki tarih arasındaki günler boş kalır: ayı **Yeniden aç** ile gerekçeyle açıp yeniden onaylayın ve yeni Excel'i bordroya verin.
 
 > Personel kartı kişisel veridir; diğer roller göremez. Kişinin sistem hesabı ayrılışla kendiliğinden kapanmaz: kartta uyarı çıkar, hesabı sistem yöneticisi **Sistem > Kullanıcılar**'dan pasife alır.
 
@@ -127,7 +130,7 @@ Kimlik fotokopisi, bordro, sözleşme ve diploma kartın **Belgeler** bölümün
 1. Ayı oklarla seçin; gerekirse birim süzgecini kullanın.
 2. Bir güne basın. **Durum**'u seçin, varsa **Fazla mesai (saat)** ve not girin, **Kaydet**'e basın.
 3. Birkaç günlük izin ya da rapor için **Aralık gir**'e basın: kişiyi, birimi ya da herkesi seçin; başlangıç, bitiş ve durumu girin.
-4. Ay bitince **Ayı onayla**'ya basın. Değiştirilmemiş günler takvimdeki haliyle yazılır ve ay kilitlenir.
+4. Ay bitince **Ayı onayla**'ya basın. Değiştirilmemiş günler takvimdeki haliyle yazılır ve ay kilitlenir. Bu ay işten ayrılan varsa önce kartında çıkışını kaydedin.
 5. **Excel** aylık tabloyu, toplamları ve günlük fazla mesaiyi indirir; bordroya bu dosyayı verin.
 
 ![Puantaj](/kilavuz/yonetim-puantaj.jpg)
@@ -137,7 +140,8 @@ Kimlik fotokopisi, bordro, sözleşme ve diploma kartın **Belgeler** bölümün
 - Fazla mesai yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir. Tatilde çalışan kişinin günü HT ya da RT kalır; çalıştığı saat fazla mesai olarak girilir.
 - Devamsızlık ve fazla mesai ileri bir güne girilemez; izin ve rapor önceden girilebilir.
 - Toplamlarda **Eksik**, ücretsiz izin, rapor ve devamsızlık günlerinin toplamıdır; **FM** fazla mesai saatidir. Excel'de fazla mesai iş günü, hafta tatili ve resmi tatil olarak ayrı sütunlardadır.
-- Onaylı ayda düzeltme gerekirse **Yeniden aç**'a basıp gerekçeyi yazın. Günler onaydaki haliyle kalır.
+- Onaylı ayda düzeltme gerekirse **Yeniden aç**'a basıp gerekçeyi yazın. Günler onaydaki haliyle kalır. Çıkış tarihinden sonraki kayıtlı günlerden biri onaylı bir aydaysa ayrılış da ancak o ay yeniden açılınca kaydedilir.
+- Kişinin işe girişinden önceki ve çıkışından sonraki günleri takvimden doldurulmaz ve değiştirilemez; ayrılışta çıkıştan sonraki kayıtlı günler kaldırılır. İşe giriş tarihi sonradan ileri alınırsa önceden kayıtlı günler tabloda ve Excel'de kalır.
 
 ### Tatil takvimi
 

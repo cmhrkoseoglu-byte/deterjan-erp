@@ -88,6 +88,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
 class TerminateSerializer(serializers.Serializer):
     termination_date = serializers.DateField(label="işten çıkış tarihi")
     note = _blank(max_length=500, label="not")
+    # Çıkıştan sonra açık aylarda kayıtlı günler varsa ayrılış ancak bu onayla kaydedilir.
+    remove_attendance = serializers.BooleanField(
+        default=False, label="çıkıştan sonraki puantaj günlerini kaldır"
+    )
 
 
 class EmployeeDocumentSerializer(serializers.ModelSerializer):
