@@ -30,3 +30,12 @@ class HseConfig(AppConfig):
 
         register_document_type("AT", label="Atık kaydı", model="hse.wasterecord")
         register_document_type("OL", label="Olay kaydı", model="hse.incident")
+
+        # H/P/EUH ifadeleri uluslararası standart kodlardır (GHS/CLP): kodlama ayarında değişmez.
+        from apps.core.coding.registry import register_standard_code
+
+        register_standard_code(
+            "hse.hazardstatement",
+            label="Tehlike ve önlem ifadesi (H/P/EUH)",
+            model="hse.hazardstatement",
+        )

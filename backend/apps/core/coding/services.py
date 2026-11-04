@@ -294,6 +294,23 @@ def _locked_sequence(item: CodeType, prefix: str) -> CodeSequence:
     return CodeSequence.objects.select_for_update().get(key=item.key, stem=head)
 
 
+def assign_master_code(item: CodeType, instance: models.Model) -> None:
+    """Kodu boş yeni kayda etkin biçimde sıradaki kodu verir (ör. Excel'de "Kod" boş bırakıldı).
+
+    Biçim kapalıysa, serbest kodda ya da önek bulunamazsa dokunmaz (kod zorunluluğu alan
+    doğrulamasında kalır). Önek sayacı kilitlenir; transaction içinde çağrılmalıdır.
+    """
+    if item.free or _code(item, instance) or not selectors.is_active(item):
+        return
+    fmt = selectors.effective_format(item)
+    prefix = selectors.instance_prefix(item, fmt, instance)
+    if prefix is None:
+        return
+    sequence = _locked_sequence(item, prefix)
+    code, _ = selectors.next_free(item, prefix, fmt.width, sequence.last_number)
+    setattr(instance, item.field, code)
+
+
 def claim_master_code(item: CodeType, instance: models.Model, *, previous_code: str | None) -> None:
     """Kaydetme transaction'ında, kayıt yazılmadan hemen önce çağrılır.
 

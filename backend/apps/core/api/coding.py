@@ -4,21 +4,24 @@ Biçimleri okuma ve değiştirme yalnız admin içindir; kod önerisi türün ya
 Görünümler incedir: doğrula → `core.coding.services` / `selectors` → yanıt.
 """
 
-from typing import Any
+from typing import Any, cast
 
+from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied
-from django.db.models import QuerySet
+from django.db import models
+from django.db.models import Q, QuerySet
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, serializers
 from rest_framework.exceptions import NotFound
+from rest_framework.filters import SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.coding import formats, selectors, services
-from apps.core.coding.registry import KINDS, CodeType, code_type
-from apps.core.models import CodeSchemeRevision, User
+from apps.core.coding.registry import KINDS, MASTER, CodeType, code_type, master_type_for_model
+from apps.core.models import CodeHistory, CodeSchemeRevision, User
 from apps.core.pagination import StandardPagination
 from apps.core.permissions import HasRole, user_has_role
 from apps.core.roles import ADMIN
@@ -125,6 +128,55 @@ class CodeSuggestionSerializer(serializers.Serializer):
     active = serializers.BooleanField()
     code = serializers.CharField(allow_null=True)
     format = serializers.CharField(allow_blank=True)
+
+
+# --- ana veri uç noktalarında eski kodlar ----------------------------------------------------
+
+
+class FormerCodeSearchFilter(SearchFilter):
+    """`?search=` model alanlarına ek olarak kayıtlı ana veri kod türünün eski kodlarında da arar
+    (`core.CodeHistory`); kodu değişen kayıt eski koduyla da bulunur."""
+
+    def filter_queryset(self, request: Request, queryset: QuerySet[Any], view: Any) -> Any:
+        filtered = super().filter_queryset(request, queryset, view)
+        term = (request.query_params.get(self.search_param) or "").strip()
+        item = master_type_for_model(queryset.model._meta.label_lower)
+        if not term or item is None or item.kind != MASTER:
+            return filtered
+        former = CodeHistory.objects.filter(
+            content_type=ContentType.objects.get_for_model(queryset.model),
+            field=item.field,
+            code__icontains=term,
+        ).values("object_id")
+        return queryset.filter(Q(pk__in=filtered.values("pk")) | Q(pk__in=former))
+
+
+class FormerCodesListSerializer(serializers.ListSerializer):
+    """Liste yanıtında sayfadaki kayıtların eski kodlarını tek sorguyla getirir."""
+
+    def to_representation(self, data: Any) -> list[Any]:
+        items = list(data.all() if isinstance(data, models.manager.BaseManager) else data)
+        model = self.child.Meta.model  # type: ignore[union-attr]
+        context = cast(dict[str, Any], self.context)  # kök serializer'ın bağlamı (değişebilir)
+        context["former_codes"] = selectors.former_code_map(model, [i.pk for i in items])
+        return super().to_representation(items)
+
+
+class FormerCodesMixin(serializers.Serializer):
+    """Ana veri serializer'larına `former_codes` (eski kodlar, en yeniden eskiye) ekler.
+
+    Kullanan serializer `Meta.fields`'a "former_codes" yazar ve
+    `Meta.list_serializer_class = FormerCodesListSerializer` verir.
+    """
+
+    former_codes = serializers.SerializerMethodField()
+
+    def get_former_codes(self, obj: Any) -> list[str]:
+        cache = self.context.get("former_codes")
+        if cache is not None:
+            current = getattr(obj, "code", None)
+            return [code for code in cache.get(obj.pk, []) if code != current]
+        return selectors.former_codes(obj)
 
 
 def _type_or_404(key: str) -> CodeType:

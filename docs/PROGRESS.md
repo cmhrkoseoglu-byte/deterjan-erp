@@ -1195,3 +1195,18 @@ Plan `docs/plan/kodlama-sistematigi.md`; kararlar DECISIONS "2026-11-04 — Kodl
   değişince sayaç yeni önekte başlar. Kanıt: `core/tests/test_coding.py` (ayardan belge numarası,
   kaynaktaki her sabit önek kayıtlı), `inventory/tests/test_services.py` (ISO 8601 lot, ayardan
   tarih biçimi ve önek); tam backend testleri yeşil.
+- **Adım 3:** ana veri kodları kodlama sistematiğinde. Türler ve varsayılanlar (canlı düzen):
+  malzeme MLZ-0000000, kategori KAT-0000, depo DEPO-00000, lokasyon LOKASYON-0000, ekipman türe
+  göre (TANK, STOK, DOLUM, TERAZI, EKIPMAN) + 5 hane, tedarikçi TED-000000, müşteri MUS-000000,
+  yazıcı YAZICI-000, reçete REC-0000000; test tanımı serbest; birim ve H/P/EUH standart.
+  - Biçim etkinse yeni kayıtta kod önerilir (formda gelir), biçime uymayan kod reddedilir, kod
+    boşsa sistem verir (Excel'de de). Biçim kapalıyken kod bugünkü gibi serbest.
+  - Kod sonradan yalnız admin değiştirir (sunucuda 403); eski kod `CodeHistory`'ye yazılır ve aynı
+    türde başka kayda verilmez.
+  - Eski kod liste aramasında, seçim kutularında, barkod okutmada ("Eski etiket okutuldu" uyarısı)
+    ve Excel içe aktarmada (açılış stoku, stok karşılaştırması, reçete dahil) tanınır.
+  - Yönetim panelinde kodlu türlerde kod salt okunur, yeni kayıt uygulamadan açılır.
+  - Lokasyon ve lot etiketinde kod kesilmez; sığmazsa yazı küçülür (LOKASYON-0001 kesiliyordu).
+  - Kanıt: `masterdata/tests/test_coding.py`, `inventory/tests/test_coding_scan.py`, ön yüz
+    `MasterDataPage.test.tsx` (öneri, kod kilidi, eski kodlar), `components.test.tsx` (eski kod
+    uyarısı); tam backend (1608) ve ön yüz (464) testleri yeşil.

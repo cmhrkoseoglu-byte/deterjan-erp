@@ -16,6 +16,7 @@ from typing import IO, Any
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from apps.core.coding.selectors import find_by_code
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import User
 from apps.masterdata.importers import (
@@ -147,7 +148,7 @@ def _parse(rows: list[tuple[int, dict[str, Any]]]) -> tuple[list[RowResult], dic
 def _apply_group(actor: User | None, group: _Group) -> None:
     """Grubu servislerle yazar; hataları satırlara ekler (çağıran geri alır)."""
     first = group.rows[0]
-    recipe = Recipe.objects.filter(code=group.code).first()
+    recipe, _ = find_by_code(Recipe, group.code)  # eski kodla da bulunur (core.coding)
     action = "update" if recipe else "create"
     for row in group.rows:
         row.action = action

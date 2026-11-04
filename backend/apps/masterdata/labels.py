@@ -3,7 +3,7 @@ etiketi. Ölçü 100 × 150 mm (Karar D-8)."""
 
 from django.utils import timezone
 
-from apps.core.labels import Barcode, Box, Element, Label, QRCode, Text
+from apps.core.labels import Barcode, Box, Element, Label, QRCode, Text, fit_size
 from apps.masterdata.models import Location, Printer
 
 LABEL_WIDTH, LABEL_HEIGHT = 100.0, 150.0
@@ -24,7 +24,15 @@ def location_label(location: Location, company_name: str = "") -> Label:
     elements: list[Element] = [
         Text(MARGIN, MARGIN, company_name, size=8),
         Text(MARGIN, 12, "LOKASYON", size=10),
-        Text(MARGIN, 18, location.code, size=30, bold=True, max_width=INNER),
+        # Kod kesilmez: sığmazsa yazı küçülür (LOKASYON-0001 30 pt'de 90 mm'ye sığmıyor).
+        Text(
+            MARGIN,
+            18,
+            location.code,
+            size=fit_size(location.code, 30, width=INNER, bold=True),
+            bold=True,
+            max_width=INNER,
+        ),
         Text(MARGIN, 34, location.name, size=14, max_width=INNER),
         Text(
             MARGIN,

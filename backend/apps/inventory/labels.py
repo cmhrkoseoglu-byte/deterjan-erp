@@ -10,7 +10,17 @@ Okutma içerikleri (`selectors.decode_scan` çözer):
 
 from collections.abc import Sequence
 
-from apps.core.labels import Barcode, Box, Element, Gs1Elements, Label, QRCode, Text, gtin14
+from apps.core.labels import (
+    Barcode,
+    Box,
+    Element,
+    Gs1Elements,
+    Label,
+    QRCode,
+    Text,
+    fit_size,
+    gtin14,
+)
 from apps.inventory.models import Lot, PalletLabel
 from apps.masterdata.labels import INNER, LABEL_HEIGHT, LABEL_WIDTH, MARGIN, barcode_module
 from apps.masterdata.models import Material
@@ -50,7 +60,8 @@ def _header(
     if company_name:
         elements.append(Text(MARGIN, y, company_name, size=8, max_width=INNER))
         y += 5
-    elements.append(Text(MARGIN, y, material.code, size=18, bold=True, max_width=INNER))
+    code_size = fit_size(material.code, 18, width=INNER, bold=True)
+    elements.append(Text(MARGIN, y, material.code, size=code_size, bold=True, max_width=INNER))
     y += 9
     for line in _wrap(material.name, 34):
         elements.append(Text(MARGIN, y, line, size=12, max_width=INNER))
@@ -131,7 +142,8 @@ def pallet_label(pallet: PalletLabel, company_name: str = "") -> Label:
     if company_name:
         elements.append(Text(8, y, company_name, size=9, bold=True, max_width=INNER - 6))
         y += 6
-    elements.append(Text(8, y, material.code, size=14, bold=True, max_width=INNER - 6))
+    code_size = fit_size(material.code, 14, width=INNER - 6, bold=True)
+    elements.append(Text(8, y, material.code, size=code_size, bold=True, max_width=INNER - 6))
     y += 7
     elements.append(Text(8, y, material.name, size=10, max_width=INNER - 6))
     y += 7

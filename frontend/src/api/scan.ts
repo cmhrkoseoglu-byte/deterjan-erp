@@ -27,6 +27,8 @@ export interface ScanResult {
   location: { id: number; code: string; name: string; warehouse_code: string } | null;
   pallet: { id: number; sscc: string; case_count: number } | null;
   gs1: Record<string, string>;
+  /** Kayıt eski koduyla bulunduysa okutulan eski kod (etiket yenilenmeli). */
+  former_code?: string;
 }
 
 export async function scanCode(code: string): Promise<ScanResult> {

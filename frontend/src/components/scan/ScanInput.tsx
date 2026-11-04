@@ -70,11 +70,13 @@ export const ScanInput = forwardRef<ScanInputHandle, ScanInputProps>(function Sc
   const [error, setError] = useState("");
   const [warning, setWarning] = useState(false);
   const [done, setDone] = useState("");
+  const [former, setFormer] = useState("");
 
   function fail(message: string, wrongMaterial = false) {
     setError(message);
     setWarning(wrongMaterial);
     setDone("");
+    setFormer("");
     errorFeedback();
     inputRef.current?.select();
   }
@@ -89,6 +91,7 @@ export const ScanInput = forwardRef<ScanInputHandle, ScanInputProps>(function Sc
       setValue("");
       setError("");
       setDone("");
+      setFormer("");
     },
   }));
 
@@ -96,6 +99,9 @@ export const ScanInput = forwardRef<ScanInputHandle, ScanInputProps>(function Sc
     setError("");
     setWarning(false);
     setDone(message);
+    // Kodu değişmiş kayıt eski koduyla okutulduysa etiketin yenilenmesi istenir.
+    const current = result.location?.code ?? result.material?.code ?? "";
+    setFormer(result.former_code && current ? t.formerCode(current) : "");
     setValue("");
     successFeedback();
     onResult?.(result);
@@ -194,6 +200,11 @@ export const ScanInput = forwardRef<ScanInputHandle, ScanInputProps>(function Sc
             {done}
           </Text>
         </Group>
+      )}
+      {!error && former && (
+        <Text size="sm" c="var(--status-warning)" mt={4} data-testid="scan-former-code">
+          {former}
+        </Text>
       )}
     </div>
   );

@@ -20,6 +20,8 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils.exceptions import InvalidFileException
 
+from apps.core.coding import registry as coding_registry
+from apps.core.coding import selectors as coding_selectors
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import MasterDataModel, User
 from apps.masterdata import services
@@ -130,11 +132,16 @@ def choice_parser(
 
 
 def code_lookup_parser(model: type[MasterDataModel], label: str) -> Callable[[Any], Any]:
-    """Koda göre aktif kayıt bulan çözücü (ör. temel birim, kategori)."""
+    """Koda göre aktif kayıt bulan çözücü (ör. temel birim, kategori). Kodu değişmiş kayıt eski
+    koduyla da bulunur (`core.coding`)."""
 
     def parse(value: Any) -> Any:
         code = parse_code(value)
         obj = model._default_manager.filter(**{"code": code, "is_active": True}).first()
+        if obj is None:
+            former, _ = coding_selectors.find_by_code(model, code)
+            if former is not None and getattr(former, "is_active", False):
+                obj = former
         if obj is None:
             raise CellError(f"{label} bulunamadı ya da pasif: “{code}”.")
         return obj
@@ -186,7 +193,14 @@ SPECS: dict[str, ImportSpec] = {
         title="Malzemeler",
         model=Material,
         columns=(
-            Column("Kod", "code", parse_code, required=True, example="HM-LAS", help="Benzersiz"),
+            Column(
+                "Kod",
+                "code",
+                parse_code,
+                required=True,
+                example="MLZ-0000001",
+                help="Benzersiz; biçim etkinse boş bırakılabilir (sistem sıradaki kodu verir)",
+            ),
             Column("Ad", "name", parse_text, required=True, example="LAS (Lineer alkil benzen)"),
             Column(
                 "Tür",
@@ -260,7 +274,14 @@ SPECS: dict[str, ImportSpec] = {
         title="Depolar",
         model=Warehouse,
         columns=(
-            Column("Kod", "code", parse_code, required=True, example="HMD", help="Benzersiz"),
+            Column(
+                "Kod",
+                "code",
+                parse_code,
+                required=True,
+                example="DEPO-00001",
+                help="Benzersiz; biçim etkinse boş bırakılabilir (sistem sıradaki kodu verir)",
+            ),
             Column("Ad", "name", parse_text, required=True, example="Hammadde deposu"),
         ),
     ),
@@ -274,8 +295,8 @@ SPECS: dict[str, ImportSpec] = {
                 "code",
                 parse_code,
                 required=True,
-                example="A-01",
-                help="Tüm depolarda benzersiz (barkodla okutulur)",
+                example="LOKASYON-0001",
+                help="Tüm depolarda benzersiz (barkodla okutulur); biçim etkinse boş bırakılabilir",
             ),
             Column("Ad", "name", parse_text, required=True, example="A blok 1. raf"),
             Column(
@@ -283,7 +304,7 @@ SPECS: dict[str, ImportSpec] = {
                 "warehouse",
                 code_lookup_parser(Warehouse, "Depo"),
                 required=True,
-                example="HMD",
+                example="DEPO-00001",
                 help="Önce depoları yükleyin",
             ),
             Column(
@@ -301,7 +322,14 @@ SPECS: dict[str, ImportSpec] = {
         title="Ekipmanlar",
         model=Equipment,
         columns=(
-            Column("Kod", "code", parse_code, required=True, example="T-01", help="Benzersiz"),
+            Column(
+                "Kod",
+                "code",
+                parse_code,
+                required=True,
+                example="TANK-00001",
+                help="Benzersiz; biçim etkinse boş bırakılabilir (sistem sıradaki kodu verir)",
+            ),
             Column("Ad", "name", parse_text, required=True, example="Karıştırma tankı 1"),
             Column(
                 "Tür",
@@ -326,7 +354,7 @@ SPECS: dict[str, ImportSpec] = {
                 "Lokasyon kodu",
                 "location",
                 code_lookup_parser(Location, "Lokasyon"),
-                example="TANK-01",
+                example="LOKASYON-0002",
                 help="Tanklar için zorunlu (önce lokasyonları yükleyin)",
             ),
         ),
@@ -471,15 +499,46 @@ def _key_label(value: Any) -> str:
     return str(getattr(value, "code", value))
 
 
+def _auto_code_type(spec: ImportSpec) -> coding_registry.CodeType | None:
+    """Kod sütunu boş bırakılabilir mi: tür kodlama sistematiğinde kayıtlı, biçimi etkin ve
+    sıralı. Boş kodlu satıra kaydederken sistem sıradaki kodu verir."""
+    if spec.key_fields != ("code",):
+        return None
+    item = services.code_type_of(spec.model)
+    if item is None or item.free or not coding_selectors.is_active(item):
+        return None
+    return item
+
+
+def _auto_code(
+    item: coding_registry.CodeType, data: dict[str, Any], assigned: dict[str, int]
+) -> str | None:
+    """Önizlemede boş kodlu satırın alacağı kod: aynı dosyadaki önceki boş satırlardan sonraki
+    numara (kaydederken de aynı sırayla verilir)."""
+    fmt = coding_selectors.effective_format(item)
+    prefix = coding_selectors.type_prefix(item, fmt, data.get(item.type_field))
+    if prefix is None:
+        return None
+    after = max(coding_selectors.counter_value(item, prefix), assigned.get(prefix, 0))
+    code, number = coding_selectors.next_free(item, prefix, fmt.width, after)
+    assigned[prefix] = number
+    return code
+
+
 def _check_row(
-    spec: ImportSpec, row_no: int, cells: dict[str, Any], seen: dict[tuple[Any, ...], int]
+    spec: ImportSpec,
+    row_no: int,
+    cells: dict[str, Any],
+    seen: dict[tuple[Any, ...], int],
+    assigned: dict[str, int] | None = None,
 ) -> RowResult:
     result = RowResult(row=row_no, code="", action="create")
+    auto = _auto_code_type(spec)
 
     for column in spec.columns:
         raw = cells.get(column.field)
         if _text(raw) == "":
-            if column.required:
+            if column.required and not (auto is not None and column.field == "code"):
                 result.errors.append({"column": column.header, "message": "Zorunlu alan boş."})
             continue  # boş: yeni kayıtta varsayılan, güncellemede mevcut değer kalır
         try:
@@ -488,11 +547,18 @@ def _check_row(
             result.errors.append({"column": column.header, "message": str(exc)})
 
     existing = None
+    auto_code: str | None = None
     keys = tuple(result.data.get(name) for name in spec.key_fields)
     if all(value not in (None, "") for value in keys):
         result.code = " / ".join(_key_label(value) for value in keys)
         lookup = dict(zip(spec.key_fields, keys, strict=True))
         existing = spec.model._default_manager.filter(**lookup).first()
+        if existing is None and spec.key_fields == ("code",):
+            # Eski kodla gelen satır kaydı günceller, yeni kayıt açmaz.
+            former, matched = coding_selectors.find_by_code(spec.model, str(keys[0]))
+            if former is not None and matched:
+                existing = former
+                result.code = f"{keys[0]} → {_key_label(former)}"
         result.action = "update" if existing else "create"
         pks = tuple(getattr(value, "pk", value) for value in keys)
         if pks in seen:
@@ -501,6 +567,13 @@ def _check_row(
             result.errors.append({"column": header, "message": message})
         else:
             seen[pks] = row_no
+    elif auto is not None and not result.data.get("code"):
+        auto_code = _auto_code(auto, result.data, assigned if assigned is not None else {})
+        if auto_code is None:
+            message = "Kod boş ve bu satır için kod önerilemedi; kodu girin."
+            result.errors.append({"column": "Kod", "message": message})
+        else:
+            result.code = f"{auto_code} (otomatik)"
     if result.errors:
         return result
 
@@ -512,6 +585,8 @@ def _check_row(
             setattr(instance, name, value)
     else:
         instance = spec.model(**result.data)
+        if auto_code is not None:  # yalnız doğrulama için; kod kaydederken verilir
+            setattr(instance, "code", auto_code)  # noqa: B010 - kodsuz MasterDataModel tipi
     try:
         services.validate_record(instance)
     except BusinessRuleError as exc:
@@ -570,8 +645,9 @@ def _build_report(spec: ImportSpec, upload: IO[bytes], filename: str) -> ImportR
     rows, file_errors = read_table(upload, filename, spec.columns)
     report = ImportReport(kind=spec.kind, rows=[], file_errors=file_errors)
     seen: dict[tuple[Any, ...], int] = {}
+    assigned: dict[str, int] = {}
     for row_no, cells in rows:
-        report.rows.append(_check_row(spec, row_no, cells, seen))
+        report.rows.append(_check_row(spec, row_no, cells, seen, assigned))
     return report
 
 
