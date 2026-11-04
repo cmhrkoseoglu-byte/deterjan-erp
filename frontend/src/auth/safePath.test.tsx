@@ -27,6 +27,12 @@ const UNSAFE = [
   "javascript:alert(1)",
   "depo",
   "",
+  // Nokta bölümleri çözülünce "//kotu.example" kalır.
+  "/..//kotu.example",
+  "/.//kotu.example",
+  "/%2e%2e//kotu.example",
+  "/%2E%2E//kotu.example",
+  "/depo/../..//kotu.example",
 ];
 
 describe("uygulama içi yol denetimi", () => {
@@ -44,7 +50,7 @@ describe("uygulama içi yol denetimi", () => {
 });
 
 describe("girişten sonra dönüş adresi", () => {
-  it.each(["//kotu.example/giris", "/\\kotu.example", "https://kotu.example"])(
+  it.each(["//kotu.example/giris", "/\\kotu.example", "https://kotu.example", "/..//kotu.example"])(
     "uygulama dışı %j yerine ana sayfaya döner",
     async (next) => {
       vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));

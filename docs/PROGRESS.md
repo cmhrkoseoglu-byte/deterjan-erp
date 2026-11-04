@@ -704,8 +704,8 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   sayfaya dönülür), `test_problem_report_page_url_must_be_app_path`,
   `test_problem_report_accepts_app_path_with_query`. Tarayıcıda dört varyant denendi; yüklü react-router
   (6.30.6) hiçbirinde site dışına çıkmadı.
-- Açık: react-router-dom 7.x'e geçiş (uyarının kalıcı çözümü) ayrı ve kırıcı bir iş; CI'daki
-  `npm audit --audit-level=high` bu orta düzey uyarıda kırılmaz.
+- Kapandı (2026-11-04): react-router-dom 7.x'e geçildi; bkz. "2026-11-04 — react-router 7'ye geçiş
+  ve adres denetimi".
 
 ## 2026-10-25 — Giriş ekranı: PET ERP tasarımı
 
@@ -1158,3 +1158,20 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   Ayrıca: zincirde "o ay bordroda" kuralı, işe giriş tarihinin sonraki onaylı satırı koruması,
   eşitleme devrinde giriş ayı, kart değişikliğinde saklanacak hal ve mali müşavir rakamı, yeniden
   açılan ayın kart uyarısı, sığmayan pusulanın ortalanması.
+
+## 2026-11-04 — react-router 7'ye geçiş ve adres denetimi
+
+- `react-router-dom` 7.18.5 (React 18 ile çalışır; 8.x React 19 istediği için kapsam dışı). İçe
+  aktarmalar değişmedi; `npm audit --omit=dev` uyarısız. Kararlar DECISIONS "2026-11-04 —
+  react-router 7'ye geçiş".
+- Sayfa geçişleri 6'daki zamanlamada: uygulama ve testler `frontend/src/AppRouterProvider.tsx`
+  (`useTransitions={false}`) kullanır.
+- Adres denetimi: `safeAppPath` çözülmüş yolu da denetler; backend `validate_page_url` "." ve ".."
+  bölümlerini reddeder.
+- Kanıt: ön yüz testleri (`auth/safePath.test.tsx`'e beş yeni girdi ve giriş dönüşü; yeni
+  `modules/golive/problemPage.test.tsx`), backend `test_problem_report_page_url_must_be_app_path`
+  (yeni girdiler) ve `test_problem_report_accepts_dots_that_are_not_segments`. Düzeltmeler geri
+  alınınca yeni testler kırılır; `useTransitions={false}` kaldırılınca `App.test.tsx`'teki giriş
+  testi kırılır. Yerelde tarayıcıda: giriş ve dönüş adresi, reddedilen dönüş adresi, bağlantı ve geri
+  tuşu, kaydedip yeni belgeye geçme (mal kabul), sekme rotaları.
+- Tarayıcı paketi yaklaşık 10 KB (gzip) büyüdü.

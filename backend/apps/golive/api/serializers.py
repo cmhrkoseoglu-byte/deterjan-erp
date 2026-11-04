@@ -1,6 +1,15 @@
+from urllib.parse import unquote, urlsplit
+
 from rest_framework import serializers
 
 from apps.golive.models import ProblemReport, StockComparison, StockComparisonLine
+
+
+def _has_dot_segment(path: str) -> bool:
+    """Yolda "." ya da ".." bölümü var mı (kodlanmışı da, ör. "%2e%2e")? Tarayıcı bunları çözer:
+    "/..//x" çözülünce "//x" kalır ve başka sunucuya gider. Yalnızca "/" ile başlayan yolda çağrılır
+    (adres ayrıştırıcısı sunucu adı görmez, hata vermez)."""
+    return any(part in (".", "..") for part in unquote(urlsplit(path).path).split("/"))
 
 
 class CheckSerializer(serializers.Serializer):
@@ -115,8 +124,11 @@ class ProblemReportCreateSerializer(serializers.Serializer):
     def validate_page_url(self, value: str) -> str:
         """Bildirimin sayfası yalnızca uygulama içi bir yol olabilir (ör. `/depo/stok?x=1`): adres
         admin ekranında bağlantı olarak gösterilir; başka siteye giden adres ("//…", "https://…",
-        ters bölü, kontrol karakteri) açık yönlendirme olurdu."""
+        ters bölü, kontrol karakteri, çözülünce "//" kalan nokta bölümleri) açık yönlendirme
+        olurdu."""
         unsafe = any(char == "\\" or ord(char) < 32 or ord(char) == 127 for char in value)
-        if value and (not value.startswith("/") or value.startswith("//") or unsafe):
+        if value and (
+            not value.startswith("/") or value.startswith("//") or unsafe or _has_dot_segment(value)
+        ):
             raise serializers.ValidationError("Sayfa adresi uygulama içi bir yol olmalı.")
         return value

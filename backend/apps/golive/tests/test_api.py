@@ -128,7 +128,21 @@ def test_problem_reports_visible_to_reporter_and_admin(client_for, make_user):
 
 
 @pytest.mark.parametrize(
-    "page_url", ["//kotu.example/giris", "https://kotu.example", "/\\kotu.example", "depo", "/\t/x"]
+    "page_url",
+    [
+        "//kotu.example/giris",
+        "https://kotu.example",
+        "/\\kotu.example",
+        "depo",
+        "/\t/x",
+        # Nokta bölümleri tarayıcıda çözülünce "//kotu.example" kalır.
+        "/..//kotu.example",
+        "/.//kotu.example",
+        "/%2e%2e//kotu.example",
+        "/%2E%2E//kotu.example",
+        "/depo/../..//kotu.example",
+        "/depo/.%2e//kotu.example",
+    ],
 )
 def test_problem_report_page_url_must_be_app_path(client_for, page_url):
     """Sayfa adresi admin ekranında bağlantı olur; başka siteye giden adres kabul edilmez."""
@@ -146,3 +160,12 @@ def test_problem_report_accepts_app_path_with_query(client_for):
     )
     assert response.status_code == 201, response.json()
     assert ProblemReport.objects.get().page_url == "/depo/stok?durum=serbest"
+
+
+@pytest.mark.parametrize("page_url", ["/depo/.gizli", "/depo/...", "/depo/stok?yol=../x"])
+def test_problem_report_accepts_dots_that_are_not_segments(client_for, page_url):
+    """Yalnızca "." ve ".." bölümleri reddedilir; noktalı ad ya da sorgudaki ".." geçer."""
+    response = client_for("dolum").post(
+        PROBLEMS, {"description": "Ekran açılmıyor", "page_url": page_url}
+    )
+    assert response.status_code == 201, response.json()
