@@ -1393,6 +1393,8 @@ değiştirme zorunlu, yalnızca admin):
   bildirimindeki sayfa bağlantısı bundan geçer; geçmeyen adres ana sayfaya düşer ya da düz yazı kalır.
 - **Backend:** sorun bildiriminin `page_url` alanı yalnızca uygulama içi yol kabul eder (400
   `validation_error`). Önceden her adres kaydedilip admin ekranında bağlantı olarak gösteriliyordu.
+- **Sona erdi (2026-11-04):** react-router 7.18.5'e geçildi; `safePath.ts` denetimi kalır ve
+  sıkılaştı. Bkz. "2026-11-04 — react-router 7'ye geçiş".
 
 ## 2026-10-25 — İki aşamalı doğrulama canlıda geçici olarak zorunlu değil
 
@@ -2067,3 +2069,27 @@ değiştirme zorunlu, yalnızca admin):
   uygulaması gerekir; kurtarma kodları saklanır). Kontrol listesi madde 22 ve 25, kurulumlar
   bitince işaretlenir.
 - **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=` (boş) ve aynı yeniden başlatma.
+
+## 2026-11-04 — react-router 7'ye geçiş
+
+- **Karar (CUMHUR, "react-router'ı 7.x'e yükseltmeye başlayayım mı?" sorusuna "Evet, başla"; plan
+  için "Evet, uygula"):** `react-router-dom` 6.30.6'dan 7.18.5'e geçer; 2026-10-24'teki "7.x'e
+  geçilmez" kararının yerine geçer. Gerekçe: npm audit'in iki orta düzey uyarısı 7.18'de kapanır
+  (GHSA-wrjc-x8rr-h8h6, bağlantı ve yönlendirmede ters bölüyle açık yönlendirme, tek sayfalı
+  uygulamayı da kapsar; GHSA-337j-9hxr-rhxg, yalnızca sunucu tarafı çizimde). 8.x React 19 istediği
+  için kapsam dışı; 7.x React 18 ile çalışır ve bakımdadır.
+- **İçe aktarmalar değişmedi:** `react-router-dom` 7, `react-router`'ı ve DOM `RouterProvider`'ı
+  yeniden dışa aktarır.
+- **Sayfa geçişleri 6'daki zamanlamada:** v7 yönlendirici güncellemelerini varsayılan olarak React
+  transition'ı içinde çizer. Uygulama ve testler ortak `AppRouterProvider`'ı (`useTransitions={false}`)
+  kullanır. Gerekçe: uygulamada Suspense yok, transition bir şey kazandırmaz; açık olsaydı kaydedip yeni
+  sayfaya geçen formlar (mal kabul, emirler, siparişler, iadeler) geçiş çizilene kadar bir an daha
+  tıklanabilir kalırdı. Ayar kaldırılırsa `App.test.tsx`'teki "giriş yapınca istenen sayfaya döner"
+  testi kırılır.
+- **Uygulama içi adres denetimi sıkılaştı:** girişten sonraki dönüş adresi ve sorun bildirimindeki
+  sayfa bağlantısı, çözüldükten sonra başka siteye gidebilecek yolları da reddeder; sunucu da sorun
+  bildiriminin sayfa adresinde "." ve ".." bölümlerini kabul etmez. v7'nin kendi denetimi (dış adrese
+  yönlendirme hata verir) ek bir katmandır; uygulamanın denetimi kalır.
+- **Bilinen, kabul edilen:** tarayıcı paketi yaklaşık 10 KB (gzip) büyür. v7 paketinin dışa aktarma
+  haritası üretimde de geliştirme yapısını seçer; üretim paketinde birkaç geliştirici uyarısı metni
+  kalır, uygulamanın kullandığı yollarda çalışmaz.
