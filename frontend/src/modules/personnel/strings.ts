@@ -758,3 +758,109 @@ export const pn = {
   cancel: "Vazgeç",
   save: "Kaydet",
 };
+
+// Bordro onayı (4. adım; docs/DECISIONS.md "4. adım kararları"): onay, kilit, yeniden açma,
+// ödeme tarihi, ücret pusulası, onay geçmişi ve onaydaki işaretler.
+export const pa = {
+  statusApproved: (number: string, payment: string) =>
+    `Bordro onaylı · ${number} · ödeme ${payment}`,
+  statusDraft: "Bordro taslak",
+  approve: "Bordroyu onayla",
+  approveTitle: (label: string) => `${label} bordrosunu onayla`,
+  approveIntro:
+    "Onaylanınca ayın satırları (kişi bilgisi, kalemler, kümülatif, parametreler) saklanır ve ay kilitlenir: kalem, devir, mali müşavir rakamı, onaylı aya düşen ücret, parametreler ve puantaj değiştirilemez. Düzeltme için bordro gerekçeyle yeniden açılır.",
+  blockingTitle: "Onayı engelleyenler",
+  acknowledgeTitle: "Okuyup işaretleyin",
+  noticeTitle: "Bilgi",
+  acknowledge: "Okudum",
+  people: (names: string[], rest: number) =>
+    rest > 0 ? `${names.join(", ")} ve ${rest} kişi daha` : names.join(", "),
+  paymentDate: "Ödeme tarihi",
+  paymentDateHelp: "Ücretin ödendiği (ödeneceği) gün; pusulada ve listelerde yazar.",
+  paymentDateLate: "Ödeme tarihi ay sonundan 20 günden fazla sonra: doğru mu?",
+  paymentDateRange: (first: string, last: string) => `${first} ile ${last} arasında olmalı.`,
+  approveConfirm: "Onayla ve kilitle",
+  approved: (label: string, number: string) => `${label} bordrosu onaylandı (${number}).`,
+  totalsPeople: (computed: number, external: number) =>
+    `${computed} kişi ERP'de, ${external} kişi mali müşavirde`,
+  readyLine: "Bordro onaya hazır",
+  notReadyLine: (n: number) => `Onayı engelleyen ${n} konu var (onay penceresinde kişileriyle)`,
+  previousOpenLine: (label: string) => `${label} bordrosu onaylanmadı: aylar sırayla onaylanır`,
+  openPrevious: "O aya git",
+  lockedLine: (number: string) =>
+    `Bordro onaylı (${number}): ay kilitli, satırlar onaydaki haliyle; değiştirmek için gerekçeyle yeniden açın.`,
+  locked: "Bordro onaylı: değiştirmek için önce bordroyu yeniden açın.",
+  reopen: "Yeniden aç",
+  reopenTitle: (label: string) => `${label} bordrosunu yeniden aç`,
+  reopenIntro:
+    'Onay ve satırları saklanır (geçersiz olarak). Ay yeniden canlı hesaplanır; onaydaki kişiler onaydaki "Bordrosu mali müşavirde" ve "BES\'e dahil" işaretleriyle hesaplanır. Gerekçe kayda geçer.',
+  reopenReason: "Yeniden açma gerekçesi",
+  reopened: (label: string) => `${label} bordrosu yeniden açıldı.`,
+  reopenOnlyLatest: "Yalnızca en son onaylı ay yeniden açılır (aylar sondan başa).",
+  paymentFix: "Ödeme tarihini düzelt",
+  paymentFixTitle: (label: string) => `${label} · ödeme tarihi`,
+  paymentFixIntro:
+    "Tutarlar değişmez, ay kilitli kalır; eski ve yeni tarih gerekçeyle denetim günlüğüne yazılır.",
+  paymentFixReason: "Gerekçe",
+  paymentFixed: "Ödeme tarihi düzeltildi.",
+  payslips: "Ücret pusulaları (PDF)",
+  payslip: "Ücret pusulası (PDF)",
+  payslipHint:
+    "Ücret hesap pusulası bilgi amaçlı iç belgedir (imza satırı yok); resmî pusula mali müşavirin bordrosudur.",
+  history: "Onay geçmişi",
+  historyTitle: (label: string) => `${label} · onay geçmişi`,
+  historyLine: (sequence: number, name: string, when: string, payment: string) =>
+    `${sequence}. onay · ${name} · ${when} · ödeme ${payment}`,
+  historyTotals: (net: string, payable: string, cost: string) =>
+    `Net ${net} · ödenecek ${payable} · işverene maliyet ${cost}`,
+  historyReopened: (name: string, when: string, reason: string) =>
+    `Yeniden açıldı: ${name} · ${when} · ${reason}`,
+  historyCurrent: "geçerli",
+  historySuperseded: "geçersiz",
+  gate: {
+    before_start: "Başlangıç ayından önce bordro onaylanmaz",
+    attendance_open: "Puantaj onaylanmadı",
+    previous_month_open: "Bir önceki ayın bordrosu onaylanmadı (aylar sırayla onaylanır)",
+    parameters_not_saved: "Bu yılın bordro parametreleri kaydedilmedi",
+    no_employees: "Bu ay bordroda kişi yok",
+    orphan_items: "O ay işte olmayan kişiye girilmiş kalem",
+    external_items: "Mali müşavirdeki kişiye ERP'de girilmiş kalem (hesaplanmaz; listede yazar)",
+  } as Record<string, string>,
+  cardChangesTitle: "Kartı onaydan sonra değişen kişiler",
+  cardChangesHint:
+    'Yeniden açılan ayda bu kişiler son onaydaki işaretlerle hesaplanır; "Kartı izle" seçilen kişi kartın bugünkü işaretleriyle hesaplanır (seçim kayda geçer).',
+  flags: (external: boolean, bes: boolean) =>
+    `${external ? "mali müşavirde" : "ERP'de"}, ${bes ? "BES'e dahil" : "BES yok"}`,
+  cardChange: (name: string, approved: string, card: string) =>
+    `${name}: onayda ${approved}; kartta ${card}`,
+  follow: "Kartı izle",
+  unfollow: "Onaydakine dön",
+  followingBadge: "kartı izliyor",
+  followed: (name: string) => `${name} kartın bugünkü işaretleriyle hesaplanacak.`,
+  unfollowed: (name: string) => `${name} son onaydaki işaretlerle hesaplanacak.`,
+  parametersLocked:
+    "Bordrosu onaylı ayların parametreleri değiştirilemez; önce o ayların bordrosu yeniden açılır (sondan başa). Not ve kaynak düzeltilebilir.",
+  externalSwitchedTitle: "Onaylanmamış aylarda bordro kaydı var",
+  /** `kept`: yeniden açılıp kişinin onaydaki haliyle ERP'de kaldığı aylar; `others`: diğer
+   * aylarda da kayıt var. */
+  externalSwitched: (list: string, kept: string, others: boolean) =>
+    `Kart "Bordrosu mali müşavirde" işaretlendi. Onaylanmamış bordro aylarında ERP'de girilmiş kayıtları var: ${list}.` +
+    (kept
+      ? ` Yeniden açılan ${kept} son onaydaki haliyle ERP'de hesaplanır; kartın işaretiyle hesaplamak için Personel > Bordro > Ay hazırlığında "Kartı izle"ye basın.`
+      : "") +
+    (others
+      ? ` ${kept ? "Diğer aylardakileri mali müşavire" : "Mali müşavire"} bildirin; gerekmiyorsa Personel > Bordro'dan gerekçeyle kaldırın.`
+      : "") +
+    " Onaylı aylar onaydaki haliyle kalır.",
+  figureKeepsExternal:
+    "O aya mali müşavir rakamı girilmiş: rakam kaldırılana kadar mali müşavirde kalır.",
+  attendanceLocked: (number: string) =>
+    `Bu ayın bordrosu onaylı (${number}): puantajı açmadan önce Personel > Bordro'dan bordroyu gerekçeyle yeniden açın.`,
+  chainApproved: "Onaylı bordro (ay sonu kümülatifi)",
+  chainMissing: "Bordroda satırı yok (kümülatif bilinmiyor; devir gerekir)",
+  cardChangesApproveHint:
+    'Kartı izlenmeyen kişi son onaydaki işaretlerle, "kartı izliyor" olan kartın bugünkü işaretleriyle saklanır. Değiştirmek için onaydan önce Ay hazırlığında "Kartı izle" ya da "Onaydakine dön"e basın.',
+  storedAs: (flags: string) => `Onayda saklanacak: ${flags}`,
+  outputLink: (label: string, sequence: number, superseded: boolean) =>
+    `${label}: ${sequence}. onay${superseded ? " (geçersiz)" : ""}`,
+};

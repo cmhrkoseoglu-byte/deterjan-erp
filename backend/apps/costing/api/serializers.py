@@ -11,7 +11,6 @@ from apps.costing.models import (
 )
 from apps.inventory.api.serializers import UserNameField
 from apps.masterdata.models import Material
-from apps.personnel.models import Employee
 
 MATERIAL_TYPES = Material.Type.choices
 
@@ -270,19 +269,16 @@ def _unit(**kwargs: Any) -> serializers.DecimalField:
     return serializers.DecimalField(max_digits=18, decimal_places=4, **kwargs)
 
 
-class CostEmployeeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Employee
-        fields = [
-            "id",
-            "employee_no",
-            "full_name",
-            "department",
-            "hire_date",
-            "termination_date",
-            "is_active",
-        ]
-        read_only_fields = fields
+class CostEmployeeSerializer(serializers.Serializer):
+    """Kişinin bordrodaki bilgisi (onaylı bordroda onay anındaki ad ve birim)."""
+
+    id = serializers.IntegerField(source="pk")
+    employee_no = serializers.CharField()
+    full_name = serializers.CharField()
+    department = serializers.CharField()
+    hire_date = serializers.DateField(allow_null=True)
+    termination_date = serializers.DateField(allow_null=True)
+    is_active = serializers.BooleanField()
 
 
 class PersonnelCostRowSerializer(serializers.Serializer):
@@ -323,6 +319,13 @@ class PersonnelCostReportSerializer(serializers.Serializer):
     attendance_status = serializers.CharField()
     attendance_number = serializers.CharField()
     attendance_approved = serializers.BooleanField()
+    payroll_status = serializers.CharField(
+        help_text="APPROVED: bordro onaylı (saklı satırlar); OPEN: tahmin; boş: başlangıç öncesi"
+    )
+    payroll_number = serializers.CharField()
+    payroll_required = serializers.BooleanField(
+        help_text="işçilik oranı için onaylı bordro gerekir (Ekim 2026 ve sonrası)"
+    )
     employer_rate = serializers.DecimalField(
         max_digits=5,
         decimal_places=2,

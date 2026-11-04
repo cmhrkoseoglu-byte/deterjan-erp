@@ -34,7 +34,7 @@ import { formatDateTime, formatMoney, formatNumber } from "../../i18n/format";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { parseMoney } from "../costing/personnelCostFormat";
 import { ErrorAlert } from "../costing/ReportTable";
-import { pe, py } from "./strings";
+import { pa, pe, py } from "./strings";
 
 const NEW = "new";
 const BRACKETS = [1, 2, 3, 4] as const;
@@ -367,6 +367,9 @@ function ParametersForm({
         )
       )}
       {draftDefaults.isError && <ErrorAlert error={draftDefaults.error} />}
+      <Text size="xs" c="dimmed">
+        {pa.parametersLocked}
+      </Text>
       <Text fw={600}>{py.groupWage}</Text>
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
         {field(py.minimumWage, "minimum_wage")}

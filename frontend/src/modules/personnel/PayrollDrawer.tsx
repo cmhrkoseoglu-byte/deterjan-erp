@@ -15,13 +15,14 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
-import { IconAlertTriangle } from "@tabler/icons-react";
+import { IconAlertTriangle, IconFileTypePdf } from "@tabler/icons-react";
 import { useEffect, type ReactNode } from "react";
-import type {
-  PayrollItemRecord,
-  PayrollMonth,
-  PayrollOpening,
-  PayrollRow,
+import {
+  payslipsPdfUrl,
+  type PayrollItemRecord,
+  type PayrollMonth,
+  type PayrollOpening,
+  type PayrollRow,
 } from "../../api/payroll";
 import { formatDateTime, formatMoney, formatNumber } from "../../i18n/format";
 import { monthLabel } from "../costing/personnelCostFormat";
@@ -32,7 +33,7 @@ import {
   warningHelp,
   warningLabel,
 } from "./payrollFormat";
-import { pn, py } from "./strings";
+import { pa, pn, py } from "./strings";
 
 type Line = [label: ReactNode, value: string, strong?: boolean];
 
@@ -213,6 +214,8 @@ function Breakdown({ payroll, row }: { payroll: PayrollMonth; row: PayrollRow })
 function Chain({ payroll, row }: { payroll: PayrollMonth; row: PayrollRow }) {
   const source = (kind: string, month: number) => {
     if (kind === "opening") return pn.chainOpening(monthLabel(payroll.year, month));
+    if (kind === "approved") return pa.chainApproved;
+    if (kind === "missing") return pa.chainMissing;
     if (kind === "external") return pn.chainExternal;
     return pn.chainErp;
   };
@@ -259,6 +262,7 @@ function Chain({ payroll, row }: { payroll: PayrollMonth; row: PayrollRow }) {
 function ItemsTab({
   row,
   future,
+  locked,
   onAdd,
   onEdit,
   onRemove,
@@ -266,6 +270,8 @@ function ItemsTab({
   row: PayrollRow;
   /** Gelecek ay: kalem girilemez (birlikte ödendiği ücretin ayı gelince girilir). */
   future: boolean;
+  /** Bordro onaylı: kalemler yalnızca okunur. */
+  locked: boolean;
   onAdd: () => void;
   onEdit: (item: PayrollItemRecord) => void;
   onRemove: (item: PayrollItemRecord) => void;
@@ -273,12 +279,12 @@ function ItemsTab({
   return (
     <Stack>
       <Group justify="flex-end" gap="xs">
-        {future && (
+        {(future || locked) && (
           <Text size="xs" c="dimmed">
-            {pn.futureItemsHint}
+            {locked ? pa.locked : pn.futureItemsHint}
           </Text>
         )}
-        <Button size="compact-sm" onClick={onAdd} disabled={future}>
+        <Button size="compact-sm" onClick={onAdd} disabled={future || locked}>
           {pn.addItem}
         </Button>
       </Group>
@@ -301,25 +307,31 @@ function ItemsTab({
                   {item.kind === "DEDUCTION" ? minus(item.amount) : money(item.amount)}
                 </Table.Td>
                 <Table.Td>
-                  <Group gap={4} justify="flex-end" wrap="nowrap">
-                    <Button
-                      size="compact-xs"
-                      variant="light"
-                      aria-label={pn.itemAction(pn.editItem, itemLabel(item), money(item.amount))}
-                      onClick={() => onEdit(item)}
-                    >
-                      {pn.editItem}
-                    </Button>
-                    <Button
-                      size="compact-xs"
-                      variant="subtle"
-                      color="red"
-                      aria-label={pn.itemAction(pn.removeItem, itemLabel(item), money(item.amount))}
-                      onClick={() => onRemove(item)}
-                    >
-                      {pn.removeItem}
-                    </Button>
-                  </Group>
+                  {!locked && (
+                    <Group gap={4} justify="flex-end" wrap="nowrap">
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        aria-label={pn.itemAction(pn.editItem, itemLabel(item), money(item.amount))}
+                        onClick={() => onEdit(item)}
+                      >
+                        {pn.editItem}
+                      </Button>
+                      <Button
+                        size="compact-xs"
+                        variant="subtle"
+                        color="red"
+                        aria-label={pn.itemAction(
+                          pn.removeItem,
+                          itemLabel(item),
+                          money(item.amount),
+                        )}
+                        onClick={() => onRemove(item)}
+                      >
+                        {pn.removeItem}
+                      </Button>
+                    </Group>
+                  )}
                 </Table.Td>
               </Table.Tr>
             ))}
@@ -333,11 +345,14 @@ function ItemsTab({
 function OpeningTab({
   payroll,
   row,
+  locked,
   onOpening,
   onRemove,
 }: {
   payroll: PayrollMonth;
   row: PayrollRow;
+  /** Bordro onaylı: devir yalnızca okunur. */
+  locked: boolean;
   onOpening: (month: number) => void;
   onRemove: (opening: PayrollOpening) => void;
 }) {
@@ -388,12 +403,17 @@ function OpeningTab({
           {pn.openingNone}
         </Text>
       )}
-      {(future || entryFuture) && (
+      {(future || entryFuture) && !locked && (
         <Text size="xs" c="dimmed">
           {pn.futureOpeningsHint}
         </Text>
       )}
-      <Group gap="xs">
+      {locked && (
+        <Text size="xs" c="dimmed">
+          {pa.locked}
+        </Text>
+      )}
+      <Group gap="xs" display={locked ? "none" : undefined}>
         {opening && (
           <>
             <Button size="compact-sm" variant="light" onClick={() => onOpening(opening.month)}>
@@ -432,6 +452,7 @@ export function PayrollDrawer({
   onRemoveOpening,
   onFigure,
   covered = false,
+  locked = false,
 }: {
   payroll: PayrollMonth;
   row: PayrollRow;
@@ -447,6 +468,8 @@ export function PayrollDrawer({
   onFigure: (row: PayrollRow) => void;
   /** Dökümün üstünde bir pencere açık: Esc ve ok tuşları o pencereye aittir. */
   covered?: boolean;
+  /** Bordro onaylı: kalem, devir ve mali müşavir rakamı değiştirilemez. */
+  locked?: boolean;
 }) {
   const index = order.findIndex((item) => item.employee.id === row.employee.id);
   const previous = index > 0 ? order[index - 1] : null;
@@ -522,14 +545,31 @@ export function PayrollDrawer({
                 ]}
               />
             )}
-            <Group>
-              <Button onClick={() => onFigure(row)}>
-                {row.figure ? py.editFigures : py.enterFigures}
-              </Button>
-            </Group>
+            {!locked && (
+              <Group>
+                <Button onClick={() => onFigure(row)}>
+                  {row.figure ? py.editFigures : py.enterFigures}
+                </Button>
+              </Group>
+            )}
           </Stack>
         ) : (
           <Tabs defaultValue="calc" keepMounted={false}>
+            {locked && (
+              <Group justify="flex-end" mb="xs">
+                <Button
+                  component="a"
+                  href={payslipsPdfUrl(payroll.year, payroll.month, { employee: row.employee.id })}
+                  target="_blank"
+                  rel="noopener"
+                  size="compact-sm"
+                  variant="default"
+                  leftSection={<IconFileTypePdf size={14} />}
+                >
+                  {pa.payslip}
+                </Button>
+              </Group>
+            )}
             <Tabs.List>
               <Tabs.Tab value="calc">{pn.tabCalc}</Tabs.Tab>
               {payroll.net && (
@@ -546,6 +586,7 @@ export function PayrollDrawer({
             <Tabs.Panel value="items" pt="md">
               <ItemsTab
                 row={row}
+                locked={locked}
                 future={isFutureMonth(payroll.year, payroll.month)}
                 onAdd={() => onAddItem(row)}
                 onEdit={onEditItem}
@@ -556,6 +597,7 @@ export function PayrollDrawer({
               <OpeningTab
                 payroll={payroll}
                 row={row}
+                locked={locked}
                 onOpening={(month) => onOpening(month, row)}
                 onRemove={onRemoveOpening}
               />

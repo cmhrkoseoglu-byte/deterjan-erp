@@ -727,3 +727,169 @@ class PayrollItem(BaseModel):
     def __str__(self) -> str:
         # Açıklama yazılmaz (icra ya da nafaka bilgisi denetim günlüğünün başlığına düşmesin).
         return f"{self.get_category_display()} {self.employee_id} {self.month:02d}.{self.year}"
+
+
+class PayrollRun(DocumentModel):
+    """Aylık bordro (`BR-`, numara bordronun yılından). Açıkken her açılışta hesaplanır
+    (taslak); onaylanınca ayın satırları saklanır (`PayrollApproval`, `PayrollSlip`) ve aya etki
+    eden yazımlar kilitlenir. Düzeltme için gerekçeyle yeniden açılır; eski onay saklanır. Aylar
+    sırayla onaylanır, sondan başa açılır (docs/DECISIONS.md "Personel bordrosu", 4. adım)."""
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "Açık"
+        APPROVED = "APPROVED", "Onaylandı"
+
+    year = models.PositiveSmallIntegerField("yıl")
+    month = models.PositiveSmallIntegerField("ay")
+    current = models.ForeignKey(
+        "PayrollApproval",
+        verbose_name="geçerli onay",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    # Yeniden açılan ayda onaydaki işaretler yerine kartın bugünkü işaretlerine geçirilen kişiler.
+    follow_card = models.JSONField("kartı izleyen kişiler", default=list, blank=True)
+
+    class Meta:
+        verbose_name = "bordro"
+        verbose_name_plural = "bordrolar"
+        ordering = ["-year", "-month"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["year", "month"], name="personnel_payroll_run_month_uniq"
+            ),
+            models.CheckConstraint(
+                condition=Q(month__gte=1, month__lte=12), name="personnel_payroll_run_month_range"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.number} {self.month:02d}.{self.year}"
+
+
+class PayrollApproval(BaseModel):
+    """Bordronun bir onayı: onay anındaki parametreler, firma bilgisi, ödeme tarihi, toplamlar ve
+    kişi satırları (`PayrollSlip`). Yeniden açılınca `reopened_*` doldurulur ve kayıt saklanır; bir
+    sonraki onay yeni kayıttır. Tutarlar değişmez; yalnızca ödeme tarihi gerekçeyle düzeltilir."""
+
+    run = models.ForeignKey(
+        PayrollRun, verbose_name="bordro", on_delete=models.PROTECT, related_name="approvals"
+    )
+    sequence = models.PositiveSmallIntegerField("onay sırası")
+    approved_at = models.DateTimeField("onay zamanı")
+    approved_by = models.ForeignKey(
+        User, verbose_name="onaylayan", on_delete=models.PROTECT, related_name="+"
+    )
+    payment_date = models.DateField("ödeme tarihi")
+    attendance_number = models.CharField("puantaj no", max_length=32, blank=True)
+    engine_version = models.CharField("hesap motoru sürümü", max_length=16)
+    parameters = models.JSONField("parametreler")
+    company = models.JSONField("firma bilgileri")
+    acknowledged = models.JSONField("okunan uyarılar", default=list, blank=True)
+    employee_count = models.PositiveIntegerField("ERP'de hesaplanan kişi")
+    external_count = models.PositiveIntegerField("mali müşavirdeki kişi")
+    gross_total = models.DecimalField("brüt toplam", max_digits=18, decimal_places=2)
+    employer_cost = models.DecimalField("işverene maliyet", max_digits=18, decimal_places=2)
+    net_pay = models.DecimalField("net ücret", max_digits=18, decimal_places=2)
+    payable = models.DecimalField("ödenecek", max_digits=18, decimal_places=2)
+    income_tax = models.DecimalField("gelir vergisi", max_digits=18, decimal_places=2)
+    stamp_tax = models.DecimalField("damga vergisi", max_digits=18, decimal_places=2)
+    reopened_at = models.DateTimeField("yeniden açma zamanı", null=True, blank=True)
+    reopened_by = models.ForeignKey(
+        User,
+        verbose_name="yeniden açan",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    reopen_reason = models.TextField("yeniden açma gerekçesi", blank=True)
+
+    class Meta:
+        verbose_name = "bordro onayı"
+        verbose_name_plural = "bordro onayları"
+        ordering = ["run", "sequence"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "sequence"], name="personnel_payroll_approval_sequence_uniq"
+            ),
+            models.UniqueConstraint(
+                fields=["run"],
+                condition=Q(reopened_at__isnull=True),
+                name="personnel_payroll_approval_current_uniq",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.run_id} · {self.sequence}. onay"
+
+
+class PayrollSlip(BaseModel):
+    """Onaylı bordronun bir kişisi: kişi bilgisi (TC kimlik no yalnızca maskeli), onaydaki
+    işaretler, hesap satırı, kalemler, uyarılar ve kümülatifin kuruluşu onay anındaki haliyle.
+    Bordrosu mali müşavirde olan kişide tutarlar mali müşavirin rakamlarıdır, satır yalnızca
+    günler içindir.
+    Değiştirilmez ve silinmez (yasal kayıt)."""
+
+    approval = models.ForeignKey(
+        PayrollApproval, verbose_name="onay", on_delete=models.PROTECT, related_name="slips"
+    )
+    employee = models.ForeignKey(
+        Employee, verbose_name="personel", on_delete=models.PROTECT, related_name="+"
+    )
+    external = models.BooleanField("bordrosu mali müşavirde")
+    bes_enrolled = models.BooleanField("BES'e dahil")
+    person = models.JSONField("kişi bilgisi")
+    sgk_days = models.PositiveSmallIntegerField("SGK gün")
+    gross_total = models.DecimalField("brüt toplam", max_digits=18, decimal_places=2)
+    employer_cost = models.DecimalField("işverene maliyet", max_digits=18, decimal_places=2)
+    # Mali müşavirdeki kişide onay anındaki rakam kaydı: {"id", "gross_total", "employer_cost",
+    # "note"}; girilmemişse ya da ERP'de hesaplanan kişide boş.
+    figure = models.JSONField("mali müşavir rakamı", null=True, blank=True)
+    net_pay = models.DecimalField("net ücret", max_digits=18, decimal_places=2, null=True)
+    payable = models.DecimalField("ödenecek", max_digits=18, decimal_places=2, null=True)
+    income_tax = models.DecimalField("gelir vergisi", max_digits=18, decimal_places=2, null=True)
+    stamp_tax = models.DecimalField("damga vergisi", max_digits=18, decimal_places=2, null=True)
+    tax_base_after = models.DecimalField(
+        "kümülatif GV matrahı (ay sonu)", max_digits=18, decimal_places=2, null=True
+    )
+    exemption_base_after = models.DecimalField(
+        "asgari ücret istisna matrahı (ay sonu)", max_digits=18, decimal_places=2, null=True
+    )
+    line = models.JSONField("hesap satırı")
+    items = models.JSONField("ek ödeme ve kesintiler", default=list, blank=True)
+    warnings = models.JSONField("uyarılar", default=list, blank=True)
+    chain = models.JSONField("kümülatifin kuruluşu", default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "bordro satırı"
+        verbose_name_plural = "bordro satırları"
+        ordering = ["approval", "employee"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["approval", "employee"], name="personnel_payroll_slip_employee_uniq"
+            ),
+            models.CheckConstraint(
+                condition=Q(external=True)
+                | Q(
+                    net_pay__isnull=False,
+                    payable__isnull=False,
+                    tax_base_after__isnull=False,
+                    exemption_base_after__isnull=False,
+                ),
+                name="personnel_payroll_slip_computed_values",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.approval_id} · {self.employee_id}"
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise ValueError("Onaylı bordro satırı değiştirilemez.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args: Any, **kwargs: Any) -> Any:
+        raise ValueError("Onaylı bordro satırı silinemez.")

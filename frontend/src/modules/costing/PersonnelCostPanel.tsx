@@ -115,9 +115,26 @@ function AttendanceBadge({ report }: { report: PersonnelCostReport }) {
   );
 }
 
+function PayrollBadge({ report }: { report: PersonnelCostReport }) {
+  if (report.payroll_status === "APPROVED")
+    return (
+      <Badge color="teal" leftSection={<IconLock size={12} />} tt="none">
+        {kt.payrollApproved(report.payroll_number)}
+      </Badge>
+    );
+  if (report.payroll_status === "OPEN")
+    return (
+      <Badge color="gray" variant="light" tt="none">
+        {kt.payrollOpen}
+      </Badge>
+    );
+  return null;
+}
+
 /** Oran önerisi neden eklenemez; eklenebiliyorsa null. */
 function rateBlocker(report: PersonnelCostReport, stage: StageCost): string | null {
   if (!report.attendance_approved) return kt.needsApproval;
+  if (report.payroll_required && report.payroll_status !== "APPROVED") return kt.needsPayroll;
   if (Number(stage.cost) <= 0) return kt.noStageCost;
   if (stage.suggested_rate !== null) return null;
   return stage.unconverted > 0 ? kt.noKg : kt.noProduction;
@@ -161,6 +178,11 @@ function ReportView({
       {!report.attendance_approved && (
         <Alert color="yellow" variant="light" icon={<IconInfoCircle size={18} />}>
           <Text size="sm">{kt.attendanceOpenHint}</Text>
+        </Alert>
+      )}
+      {report.attendance_approved && report.payroll_status === "OPEN" && (
+        <Alert color="yellow" variant="light" icon={<IconInfoCircle size={18} />}>
+          <Text size="sm">{kt.payrollOpenHint}</Text>
         </Alert>
       )}
       {wageMissing.length > 0 && (
@@ -462,6 +484,7 @@ export function PersonnelCostPanel() {
             <IconChevronRight size={16} />
           </ActionIcon>
           {report && <AttendanceBadge report={report} />}
+          {report && <PayrollBadge report={report} />}
           {report && <ParametersBadge report={report} />}
         </Group>
         <Group gap="xs">

@@ -21,6 +21,7 @@ import {
   IconAlertTriangle,
   IconCheck,
   IconInfoCircle,
+  IconLock,
   type Icon as TablerIcon,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
@@ -35,7 +36,7 @@ import {
   type PayrollWarning,
 } from "../../api/payroll";
 import { formatDateTime, formatMoney } from "../../i18n/format";
-import { monthLabel } from "../costing/personnelCostFormat";
+import { monthLabel, shiftMonth } from "../costing/personnelCostFormat";
 import { ErrorAlert } from "../costing/ReportTable";
 import {
   CATEGORY_LABELS,
@@ -49,7 +50,8 @@ import {
   warningHelp,
   warningLabel,
 } from "./payrollFormat";
-import { ATTENDANCE_BASE, pn, py, WAGES_BASE } from "./strings";
+import { CardChanges } from "./PayrollApproval";
+import { ATTENDANCE_BASE, pa, pn, py, WAGES_BASE } from "./strings";
 
 const NO_WRAP: CSSProperties = { whiteSpace: "nowrap" };
 const STICKY: CSSProperties = {
@@ -89,13 +91,15 @@ function CheckLine({
   );
 }
 
-/** Ay hazırlığı: ayın bordrosunu etkileyen her eksik bir satır ve düzeltme bağlantısıyla. */
+/** Ay hazırlığı: ayın bordrosunu etkileyen her eksik bir satır ve düzeltme bağlantısıyla; onaya
+ * hazır mı, bir önceki ay onaylı mı. Onaylı ayda yalnızca kilit satırı. */
 export function PayrollChecklist({
   payroll,
   onParameters,
   onOpenings,
   onEmployerCost,
   onItems,
+  onPrevious,
 }: {
   payroll: PayrollMonth;
   onParameters: () => void;
@@ -103,8 +107,26 @@ export function PayrollChecklist({
   onOpenings: (target?: number) => void;
   onEmployerCost: () => void;
   onItems: () => void;
+  /** Bir önceki aya git (aylar sırayla onaylanır). */
+  onPrevious?: () => void;
 }) {
+  const state = payroll.payroll;
+  if (state.approved)
+    return (
+      <Paper withBorder p="sm" radius="md">
+        <Group gap="xs" wrap="nowrap">
+          <ThemeIcon size="sm" radius="xl" variant="light" color="teal">
+            <IconLock size={14} />
+          </ThemeIcon>
+          <Text size="sm">{pa.lockedLine(state.number)}</Text>
+        </Group>
+      </Paper>
+    );
   const ay = `${payroll.year}-${String(payroll.month).padStart(2, "0")}`;
+  const blocking = (state.gates ?? []).filter((gate) => gate.level === "block").length;
+  const [previousYear, previousMonth] = shiftMonth(payroll.year, payroll.month, -1)
+    .split("-")
+    .map(Number);
   const rows = payroll.rows;
   const has = (code: PayrollWarning) => rows.filter((row) => row.warnings.includes(code));
   const missingWages = has("missing_wage");
@@ -259,6 +281,26 @@ export function PayrollChecklist({
             {pn.checkExternalItems(notComputed.length)}
           </CheckLine>
         )}
+        {payroll.net && state.previous_open && (
+          <CheckLine
+            tone="error"
+            action={
+              onPrevious && (
+                <Anchor component="button" type="button" size="sm" onClick={onPrevious}>
+                  {pa.openPrevious}
+                </Anchor>
+              )
+            }
+          >
+            {pa.previousOpenLine(monthLabel(previousYear, previousMonth))}
+          </CheckLine>
+        )}
+        {payroll.net && state.gates !== null && (
+          <CheckLine tone={blocking ? "warn" : "ok"}>
+            {blocking ? pa.notReadyLine(blocking) : pa.readyLine}
+          </CheckLine>
+        )}
+        <CardChanges payroll={payroll} />
       </Stack>
     </Paper>
   );
@@ -526,7 +568,8 @@ export function PayrollNetView({
   );
 }
 
-/** Ayın ek ödeme ve kesintileri: süzgeç, kalem toplamları, düzelt / kaldır, kaldırılanlar. */
+/** Ayın ek ödeme ve kesintileri: süzgeç, kalem toplamları, düzelt / kaldır, kaldırılanlar.
+ * Onaylı ayda (`locked`) yalnızca okunur. */
 export function PayrollItemsView({
   payroll,
   onAdd,
@@ -534,8 +577,10 @@ export function PayrollItemsView({
   onRemove,
   onBulk,
   onCopy,
+  locked = false,
 }: {
   payroll: PayrollMonth;
+  locked?: boolean;
   onAdd: () => void;
   onEdit: (item: PayrollItemRecord) => void;
   onRemove: (item: PayrollItemRecord) => void;
@@ -568,8 +613,14 @@ export function PayrollItemsView({
   for (const item of active)
     if (!orphans.has(item.id) && !external.has(item.id))
       totals.set(item.category, (totals.get(item.category) ?? 0) + Number(item.amount));
+  const closed = future || locked;
   return (
     <Stack>
+      {locked && (
+        <Alert color="teal" variant="light" icon={<IconLock size={18} />}>
+          <Text size="sm">{pa.locked}</Text>
+        </Alert>
+      )}
       {future && (
         <Alert color="blue" variant="light" icon={<IconInfoCircle size={18} />}>
           <Text size="sm">{pn.futureItemsHint}</Text>
@@ -603,13 +654,13 @@ export function PayrollItemsView({
           />
         </Group>
         <Group gap="xs" wrap="wrap">
-          <Button variant="default" onClick={onCopy} disabled={future}>
+          <Button variant="default" onClick={onCopy} disabled={closed}>
             {pn.copyPrevious}
           </Button>
-          <Button variant="default" onClick={onBulk} disabled={future}>
+          <Button variant="default" onClick={onBulk} disabled={closed}>
             {pn.bulkAdd}
           </Button>
-          <Button onClick={onAdd} disabled={future}>
+          <Button onClick={onAdd} disabled={closed}>
             {pn.addItem}
           </Button>
         </Group>
@@ -685,7 +736,7 @@ export function PayrollItemsView({
                     </Text>
                   </Table.Td>
                   <Table.Td>
-                    {item.is_active && (
+                    {item.is_active && !locked && (
                       <Group gap={4} justify="flex-end" wrap="nowrap">
                         <Button
                           size="compact-xs"

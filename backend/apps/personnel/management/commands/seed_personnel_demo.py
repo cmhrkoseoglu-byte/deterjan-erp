@@ -1,8 +1,11 @@
 """Personel demo verisi: demo kullanıcıların kartları, sistemi kullanmayan saha çalışanları,
-ayrılmış bir personel, özlük bilgisi ile belgeleri dolu örnek bir kart, geçen ayın puantajı ve
-örnek brüt ücretler. `seed_demo` sonunda çağrılır; tekrar çalıştırmak güvenlidir (var olan sicil
-no, belgesi olan kart, kaydı olan ay ve ücreti olan kişi atlanır). Adlar, telefonlar, belgeler ve
-ücretler örnektir; TC kimlik no girilmez (eğitim ortamına gerçek kişi bilgisi girilmez)."""
+ayrılmış bir personel, özlük bilgisi ile belgeleri dolu örnek bir kart, geçen ayın puantajı,
+örnek brüt ücretler ve (Ekim 2026'dan) ön bordro örneği: yılın parametre seti, zincirin ilk ayına
+devirler ve geçen aya birkaç ek ödeme ve kesinti. `seed_demo` sonunda çağrılır; tekrar çalıştırmak
+güvenlidir (var olan sicil no, belgesi olan kart, kaydı olan ay, ücreti olan kişi, yılın seti,
+devri olan kişi ve kalemi olan ay atlanır; bordrosu onaylı aya yazılmaz). Adlar, telefonlar,
+belgeler ve tutarlar örnektir; TC kimlik no girilmez (eğitim ortamına gerçek kişi bilgisi
+girilmez)."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -29,13 +32,18 @@ from apps.core.roles import (
     URETIM,
     YONETIM,
 )
-from apps.personnel import selectors, services
+from apps.personnel import payroll, selectors, services
 from apps.personnel.models import (
     AttendanceEntry,
     AttendanceStatus,
     Employee,
     EmployeeDocument,
     EmployeeWage,
+    PayrollItem,
+    PayrollItemCategory,
+    PayrollOpeningBalance,
+    PayrollParameterSet,
+    PayrollRun,
 )
 
 # demo kullanıcı (rol kodu): (sicil no, birim, görev, kaç gün önce işe girdi)
@@ -82,6 +90,14 @@ WAGES = {
 }
 # Zam örneği: geçen ayın ilk gününden geçerli.
 RAISE = ("S-0012", "39000")
+# Ön bordro örneği: geçen ayın ek ödeme ve kesintileri (sicil no, kategori, tutar).
+PAYROLL_ITEMS = (
+    ("S-0011", PayrollItemCategory.PREMIUM, "2500"),
+    ("S-0014", PayrollItemCategory.MEAL, "1800"),
+    ("S-0012", PayrollItemCategory.ADVANCE, "3000"),
+)
+# Devrin kümülatif GV matrahı tahmini: brüt ücretin SGK ve işsizlik işçi payları (%15) düşülmüşü.
+TAX_BASE_SHARE = Decimal("0.85")
 
 
 def _phone(number: int) -> str:
@@ -191,7 +207,11 @@ def seed(write: Any = print) -> None:
         _profile(actor, profile, today)
     _attendance(actor, today)
     wages = _wages(actor, today)
-    write(f"Personel demo verisi: {created} yeni kart, {wages} personel ücreti.")
+    sets, openings, items = _payroll(actor, today)
+    write(
+        f"Personel demo verisi: {created} yeni kart, {wages} personel ücreti, {sets} parametre "
+        f"seti, {openings} devir, {items} bordro kalemi."
+    )
 
 
 def _wages(actor: User, today: date) -> int:
@@ -211,6 +231,103 @@ def _wages(actor: User, today: date) -> int:
             raised = {**values, "gross_monthly": Decimal(RAISE[1]), "note": "Demo zam"}
             services.add_wage(actor, {**raised, "valid_from": previous})
     return added
+
+
+def _approved(year: int, month: int) -> bool:
+    return PayrollRun.objects.filter(
+        year=year, month=month, status=PayrollRun.Status.APPROVED
+    ).exists()
+
+
+def _legal_values(params: payroll.Parameters) -> dict[str, Any]:
+    """Yasal değerler, parametre seti alanları olarak."""
+    names = (
+        "minimum_wage",
+        "ceiling_multiplier",
+        "employee_sgk_rate",
+        "employee_unemployment_rate",
+        "employer_sgk_rate",
+        "employer_unemployment_rate",
+        "incentive_points",
+        "stamp_tax_per_mille",
+        "bes_rate",
+        "meal_exemption_daily",
+    )
+    values: dict[str, Any] = {name: getattr(params, name) for name in names}
+    for index, limit in enumerate(params.tax_brackets, start=1):
+        values[f"tax_bracket_{index}"] = limit
+    for index, rate in enumerate(params.tax_rates, start=1):
+        values[f"tax_rate_{index}"] = rate
+    return values
+
+
+def _payroll(actor: User, today: date) -> tuple[int, int, int]:
+    """Ön bordro örneği (geçen ay başlangıç ayı ya da sonrasıysa): geçen ayın yılının parametre
+    seti (yasal değerler, Ocak'tan; o yıl set yoksa), zincirin ilk ayına (başlangıç yılında Ekim)
+    o aydan önce bu yıl çalışan kişilerin devri (ücretten tahmini) ve geçen aya birkaç ek ödeme ve
+    kesinti. Bordro onaylanmaz (eğitimde onaylansın); bordrosu onaylı aya yazılmaz. (set, devir,
+    kalem) sayılarını döner."""
+    previous = today.replace(day=1) - timedelta(days=1)
+    year, month = previous.year, previous.month
+    if not selectors.net_available(year, month):
+        return 0, 0, 0
+    sets = openings = items = 0
+    legal = payroll.legal_parameters(year)
+    saved = PayrollParameterSet.objects.filter(is_active=True, valid_from__year=year)
+    if legal is not None and not saved.exists():
+        values = {
+            **_legal_values(legal),
+            "valid_from": date(year, 1, 1),
+            "source": "Demo: yılın yasal değerleri (mali müşavirle teyit edilmedi)",
+            "note": "Demo",
+        }
+        services.create_parameter_set(actor, values)
+        sets = 1
+    start = selectors.chain_start(year)
+    if start is not None and start > 1 and not _approved(year, start):
+        first, last = selectors.month_bounds(year, start)
+        for person in selectors.employees_between(first, last).filter(payroll_external=False):
+            months = selectors.months_employed_before(person, year, start)
+            existing = PayrollOpeningBalance.objects.filter(
+                employee=person, year=year, month=start, is_active=True
+            )
+            if not months or existing.exists():
+                continue
+            wages = list(person.wages.filter(is_active=True).order_by("valid_from", "id"))
+            wage = selectors.wage_on(wages, first)
+            if wage is None:
+                continue
+            services.set_opening_balance(
+                actor,
+                person,
+                year,
+                start,
+                tax_base=(wage * TAX_BASE_SHARE * months).quantize(Decimal("0.01")),
+                exemption_months=months,
+                note="Demo devri (ücretten tahmini)",
+            )
+            openings += 1
+    month_items = PayrollItem.objects.filter(year=year, month=month, is_active=True)
+    if not _approved(year, month) and not month_items.exists():
+        first, last = selectors.month_bounds(year, month)
+        working = selectors.employees_between(first, last).filter(payroll_external=False)
+        for employee_no, category, amount in PAYROLL_ITEMS:
+            card = working.filter(employee_no=employee_no).first()
+            if card is None:
+                continue
+            services.add_payroll_item(
+                actor,
+                {
+                    "employee": card,
+                    "year": year,
+                    "month": month,
+                    "category": category,
+                    "description": "",
+                    "amount": Decimal(amount),
+                },
+            )
+            items += 1
+    return sets, openings, items
 
 
 def _attendance(actor: User, today: date) -> None:

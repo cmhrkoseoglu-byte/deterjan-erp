@@ -45,7 +45,7 @@ import { ConfirmModal } from "../common/ConfirmModal";
 import { DayModal, RangeModal, ReopenModal } from "./AttendanceModals";
 import { formatHours, monthParam } from "./attendanceFormat";
 import { PersonnelTabs } from "./PersonnelTabs";
-import { at, ATTENDANCE_BASE, pe, PERSONNEL_KEY } from "./strings";
+import { ATTENDANCE_BASE, PERSONNEL_KEY, at, pa, pe } from "./strings";
 
 // Hücre renkleri (Mantine "light" tonları; koyu temada da okunur). Çalıştı renksizdir.
 const STATUS_COLORS: Partial<Record<AttendanceStatus, string>> = {
@@ -327,6 +327,8 @@ export function AttendancePage() {
   const data = grid.data;
   const label = data?.period_label ?? `${at.months[month - 1]} ${year}`;
   const approved = data?.status === "APPROVED";
+  // Bordrosu onaylı ayın puantajı açılamaz (önce bordro yeniden açılır).
+  const payrollLocked = data?.payroll?.status === "APPROVED";
 
   function done(message: string) {
     setEditing(null);
@@ -396,14 +398,24 @@ export function AttendancePage() {
             {at.excel}
           </Button>
           {approved ? (
-            <Button
-              variant="light"
-              color="orange"
-              leftSection={<IconLockOpen size={16} />}
-              onClick={() => setReopening(true)}
+            <Tooltip
+              label={pa.attendanceLocked(data?.payroll?.number ?? "")}
+              disabled={!payrollLocked}
+              multiline
+              w={300}
             >
-              {at.reopen}
-            </Button>
+              <span>
+                <Button
+                  variant="light"
+                  color="orange"
+                  leftSection={<IconLockOpen size={16} />}
+                  disabled={payrollLocked}
+                  onClick={() => setReopening(true)}
+                >
+                  {at.reopen}
+                </Button>
+              </span>
+            </Tooltip>
           ) : (
             <Tooltip label={at.notFinished} disabled={!data || data.finished}>
               <span>

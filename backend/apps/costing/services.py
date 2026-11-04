@@ -724,9 +724,10 @@ def add_labor_rate_from_personnel_cost(
     actor: User, year: int, month: int, stage: str, valid_from: date
 ) -> CostRate:
     """Ayın gerçekleşen personel maliyetinden (aşamaya bağlı birimlerin toplam maliyeti ÷ o ay
-    üretilen kg) yeni işçilik oranı açar. Yalnızca puantajı onaylı ayda; oran sunucuda yeniden
-    hesaplanır. Eski oranlar ve hesaplanmış lot maliyetleri değişmez; aynı tarihte oran varsa
-    reddedilir (`duplicate_rate`)."""
+    üretilen kg) yeni işçilik oranı açar. Yalnızca puantajı onaylı ayda; Ekim 2026 ve sonrasında
+    bordrosu da onaylı olmalı (oranın notuna BR numarası yazılır; docs/DECISIONS.md "4. adım
+    kararları"). Oran sunucuda yeniden hesaplanır. Eski oranlar ve hesaplanmış lot maliyetleri
+    değişmez; aynı tarihte oran varsa reddedilir (`duplicate_rate`)."""
     from apps.costing.selectors import personnel_cost_report
 
     _require_personnel_cost_role(actor)
@@ -738,6 +739,12 @@ def add_labor_rate_from_personnel_cost(
             "attendance_not_approved",
             f"{report.label} puantajı onaylanmadan işçilik oranı eklenemez.",
         )
+    if report.payroll_required and not report.payroll_approved:
+        raise BusinessRuleError(
+            "payroll_not_approved",
+            f"{report.label} bordrosu onaylanmadan işçilik oranı eklenemez (Personel > Bordro); "
+            "onaysız ayın maliyeti tahmindir.",
+        )
     summary = report.stage_cost(stage)
     if summary.suggested_rate is None:
         raise BusinessRuleError(
@@ -745,8 +752,9 @@ def add_labor_rate_from_personnel_cost(
             f"{report.label} için bu aşamada personel maliyeti ya da üretilen kg yok; oran "
             "hesaplanamaz.",
         )
+    source = f"{report.label} ({report.payroll_number})" if report.payroll_number else report.label
     note = (
-        f"Personel maliyeti {report.label}: {format_money(summary.cost)} TL / "
+        f"Personel maliyeti {source}: {format_money(summary.cost)} TL / "
         f"{format_money(summary.kg)} kg"
     )
     return create_rate(

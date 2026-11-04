@@ -46,6 +46,23 @@ urlpatterns = [
     ),
     path(f"{PAYROLL}/xlsx/", views.PayrollExcelView.as_view(), name="payroll-xlsx"),
     path(
+        f"{PAYROLL}/payslips.pdf",
+        views.PayrollPayslipsPdfView.as_view(),
+        name="payroll-payslips-pdf",
+    ),
+    path(f"{PAYROLL}/approve/", views.PayrollApproveView.as_view(), name="payroll-approve"),
+    path(f"{PAYROLL}/reopen/", views.PayrollReopenView.as_view(), name="payroll-reopen"),
+    path(
+        f"{PAYROLL}/payment-date/",
+        views.PayrollPaymentDateView.as_view(),
+        name="payroll-payment-date",
+    ),
+    path(
+        f"{PAYROLL}/follow-card/",
+        views.PayrollFollowCardView.as_view(),
+        name="payroll-follow-card",
+    ),
+    path(
         "payroll/external/<int:pk>/remove/",
         views.ExternalPayrollRemoveView.as_view(),
         name="payroll-external-remove",

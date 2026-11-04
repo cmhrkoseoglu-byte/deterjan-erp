@@ -34,7 +34,6 @@ from apps.filling.models import ConsumptionKind, FillingConsumption, FillingRun
 from apps.inventory.models import Lot, StockBalance
 from apps.masterdata.models import Material
 from apps.personnel import selectors as personnel
-from apps.personnel.models import Employee
 from apps.production.models import ProductionBatch
 from apps.production.services import batch_line_quantity
 
@@ -398,9 +397,10 @@ class PersonnelCostRow:
     `missing_wage`: işte olduğu bir gün için geçerli ücret yok (o günler sıfır sayıldı) ya da
     bordrosu mali müşavirde olan kişinin (`payroll_external`) o ayın rakamları girilmedi.
     `gross_salary` normal ücret (30 gün usulü); fazla mesai ve resmî tatil ile ek ödemeler (prim,
-    ikramiye, nakit yol ve yemek) ayrıdır. Mali müşavirdeki kişide brüt toplamın tamamıdır."""
+    ikramiye, nakit yol ve yemek) ayrıdır. Mali müşavirdeki kişide brüt toplamın tamamıdır.
+    `employee` kişinin bordrodaki bilgisidir (onaylı bordroda onay anındaki ad ve birim)."""
 
-    employee: Employee
+    employee: personnel.PersonView
     stage: str
     gross_monthly: Decimal | None
     employed_days: int
@@ -461,10 +461,23 @@ class PersonnelCostReport:
     parameters_year: int
     rows: list[PersonnelCostRow]
     stages: list[StageCost]
+    # Bordro (Ekim 2026'dan): "APPROVED" onaylı (saklı satırlar), "OPEN" tahmin; başlangıçtan önce
+    # boş (bordro mali müşavirde, maliyet puantajdan hesaplanır).
+    payroll_status: str = ""
+    payroll_number: str = ""
 
     @property
     def attendance_approved(self) -> bool:
         return self.attendance_status == "APPROVED"
+
+    @property
+    def payroll_required(self) -> bool:
+        """İşçilik oranı için onaylı bordro gerekir mi (başlangıç ayı ve sonrası)?"""
+        return personnel.net_available(self.year, self.month)
+
+    @property
+    def payroll_approved(self) -> bool:
+        return self.payroll_status == "APPROVED"
 
     @property
     def missing_wage_count(self) -> int:
@@ -557,7 +570,7 @@ def _cost_row(row: personnel.PayrollRow, stage: str) -> PersonnelCostRow:
         gross = figure.gross_total if figure else ZERO
         cost = figure.employer_cost if figure else ZERO
         return PersonnelCostRow(
-            employee=row.employee,
+            employee=row.person,
             stage=stage,
             gross_monthly=None,
             employed_days=line.employed_days,
@@ -572,7 +585,7 @@ def _cost_row(row: personnel.PayrollRow, stage: str) -> PersonnelCostRow:
             payroll_external=True,
         )
     return PersonnelCostRow(
-        employee=row.employee,
+        employee=row.person,
         stage=stage,
         gross_monthly=line.monthly_wage,
         employed_days=line.employed_days,
@@ -600,15 +613,15 @@ def _labor_rate_on(stage: str, day: date) -> Decimal | None:
 def personnel_cost_report(year: int, month: int) -> PersonnelCostReport:
     """Ayın personel maliyeti: ön bordro hesabından (puantaj, ücretler ve bordro parametreleri)
     kişi başına maliyet; birim eşleştirmesine göre üretim, dolum ve genel gider toplamları; üretim
-    ve dolumda o ay üretilen kg ile gerçekleşen işçilik (TL/kg). Rapor saklanmaz, her açılışta
-    hesaplanır: geçmiş aylar da (onaylılar dahil) bugünkü ücret kayıtları, kişinin bugünkü birimi
-    ile işe giriş ve çıkış tarihi, bugünkü eşleştirme ve o yılın bordro parametreleriyle
-    hesaplanır."""
+    ve dolumda o ay üretilen kg ile gerçekleşen işçilik (TL/kg). Bordrosu onaylı ayda (Ekim
+    2026'dan) kişi satırları ve birimleri onayda saklananlardır; diğer aylar her açılışta bugünkü
+    ücret kayıtları, kişinin bugünkü birimi ile işe giriş ve çıkış tarihi ve o yılın bordro
+    parametreleriyle hesaplanır (tahmin). Aşama eşleştirmesi bugünkü haliyledir."""
     # İşveren maliyeti gelir vergisi kümülatifine bağlı değil: zincir hesaplanmaz.
     payroll = personnel.payroll_month(year, month, net=False)
     centers = _center_stages()
     rows = [
-        _cost_row(row, centers.get(personnel.fold(row.employee.department), GENERAL))
+        _cost_row(row, centers.get(personnel.fold(row.person.department), GENERAL))
         for row in payroll.rows
     ]
     last = payroll.grid.days[-1].date
@@ -640,6 +653,10 @@ def personnel_cost_report(year: int, month: int) -> PersonnelCostReport:
         parameters_year=settings.year,
         rows=rows,
         stages=stages,
+        payroll_status=(
+            ("APPROVED" if payroll.approved else "OPEN") if payroll.net_available else ""
+        ),
+        payroll_number=payroll.number if payroll.approved else "",
     )
 
 

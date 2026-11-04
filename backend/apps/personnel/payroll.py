@@ -25,9 +25,11 @@ durumudur, çıktı bordronun bütün kalemleridir. Her kalem kuruşa yarım yuk
   0: istisna yok).
 """
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, fields
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 ENGINE_VERSION = "2026.2"
 
@@ -430,6 +432,89 @@ def carry_after(result: Result) -> Carry:
         tax_base=result.cumulative_tax_base_after,
         exemption_base=result.exemption_base_before + result.exemption_base_added,
     )
+
+
+# Onaylı ayın saklanan satırı: `Result` JSON biçiminde (tutarlar metin; motor sürümüyle saklanır).
+_INT_FIELDS = frozenset(
+    {
+        "employed_days",
+        "worked_days",
+        "paid_days",
+        "unpaid_days",
+        "sick_days",
+        "unpaid_leave_days",
+        "absent_days",
+        "sgk_days",
+        "holiday_days",
+        "holiday_half_days",
+    }
+)
+_BOOL_FIELDS = frozenset({"missing_wage", "floor_applied", "ceiling_applied"})
+_ITEM_FIELDS = frozenset({"extras", "deductions"})
+
+
+def result_to_dict(result: Result) -> dict[str, Any]:
+    """Satırın saklanacak biçimi: tutarlar metin (Decimal kesinliği korunur), kalemler liste."""
+    data: dict[str, Any] = {}
+    for field in fields(Result):
+        value = getattr(result, field.name)
+        if field.name in _ITEM_FIELDS:
+            data[field.name] = [
+                {"kind": item.kind, "label": item.label, "amount": str(item.amount)}
+                for item in value
+            ]
+        elif isinstance(value, Decimal):
+            data[field.name] = str(value)
+        else:
+            data[field.name] = value  # gün sayıları, işaretler, boş ücret
+    return data
+
+
+def result_from_dict(data: Mapping[str, Any]) -> Result:
+    """Saklanan satırdan `Result` (`result_to_dict`in tersi). Eski motor sürümüyle saklanmış satır
+    da okunur: bilinmeyen anahtarlar atlanır, eksik alan boş değerini alır (gün 0, işaret hayır,
+    kalem yok, tutar 0; aylık ücret boş)."""
+    values: dict[str, Any] = {}
+    for field in fields(Result):
+        raw = data.get(field.name)
+        if field.name in _ITEM_FIELDS:
+            values[field.name] = tuple(
+                Item(str(entry["kind"]), str(entry["label"]), Decimal(entry["amount"]))
+                for entry in raw or ()
+            )
+        elif field.name in _INT_FIELDS:
+            values[field.name] = int(raw or 0)
+        elif field.name in _BOOL_FIELDS:
+            values[field.name] = bool(raw)
+        elif raw is None:
+            values[field.name] = None if field.name == "monthly_wage" else ZERO
+        else:
+            values[field.name] = Decimal(raw)
+    return Result(**values)
+
+
+_TUPLE_PARAMETERS = frozenset({"tax_brackets", "tax_rates"})
+
+
+def parameters_to_dict(params: Parameters) -> dict[str, Any]:
+    """Parametrelerin saklanacak biçimi (onayda): değerler metin, tarife listeleri."""
+    data: dict[str, Any] = {}
+    for field in fields(Parameters):
+        value = getattr(params, field.name)
+        data[field.name] = [str(item) for item in value] if isinstance(value, tuple) else str(value)
+    return data
+
+
+def parameters_from_dict(data: Mapping[str, Any]) -> Parameters:
+    """Saklanan parametrelerden `Parameters` (`parameters_to_dict`in tersi; eksik değer 0)."""
+    values: dict[str, Any] = {}
+    for field in fields(Parameters):
+        raw = data.get(field.name)
+        if field.name in _TUPLE_PARAMETERS:
+            values[field.name] = tuple(Decimal(item) for item in raw or ())
+        else:
+            values[field.name] = ZERO if raw is None else Decimal(raw)
+    return Parameters(**values)
 
 
 # Yasal değerler ve kaynakları. Parametre ekranı bunlarla doldurulur; o yıl için kayıtlı set yoksa

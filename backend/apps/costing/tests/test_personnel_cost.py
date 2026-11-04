@@ -25,6 +25,7 @@ from apps.costing import exports, selectors, services
 from apps.costing.models import CostRate, CostStage, DepartmentCostCenter
 from apps.costing.tests.factories import build_chain
 from apps.filling.models import FillingRun
+from apps.personnel import selectors as payroll_selectors
 from apps.personnel import services as personnel
 from apps.personnel.models import AttendanceMonth, AttendanceStatus, Employee, EmployeeWage
 from apps.personnel.tests.factories import employee, parameter_set
@@ -278,9 +279,36 @@ def test_stage_totals_follow_department_mapping(manager: User) -> None:
 # --- üretilen kg ve işçilik oranı ------------------------------------------------------------
 
 
+def _freeze_today(monkeypatch: pytest.MonkeyPatch, day: date) -> None:
+    original = timezone.localdate
+
+    def fake(*args: Any, **kwargs: Any) -> date:
+        return day if not args and not kwargs else original(*args, **kwargs)
+
+    monkeypatch.setattr(timezone, "localdate", fake)
+
+
+def _approve_payroll(actor: User, year: int, month: int) -> Any:
+    """Ayın bordrosunu onaylar (puantajı onaylı olmalı)."""
+    payroll = payroll_selectors.payroll_month(year, month)
+    return personnel.approve_payroll_month(
+        actor,
+        year,
+        month,
+        payment_date=date(year, month, 28),
+        fingerprint=payroll_selectors.payroll_fingerprint(payroll),
+    )
+
+
 def test_produced_kg_and_labor_rate_from_approved_month(
-    staff: dict[str, User], commit: Callable[[], Any], manager: User
+    staff: dict[str, User],
+    commit: Callable[[], Any],
+    manager: User,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Ekim 2026 ve sonrasında işçilik oranı yalnızca bordrosu onaylı aydan (oranın notunda BR
+    numarası); öncesinde onaylı puantaj yeter."""
+    _freeze_today(monkeypatch, date(2026, 11, 20))
     chain = build_chain(staff, commit)
     assert chain.batch is not None and chain.run is not None
     today = timezone.localdate()
@@ -302,6 +330,11 @@ def test_produced_kg_and_labor_rate_from_approved_month(
     production = report.stage_cost(CostStage.PRODUCTION)
     assert production.cost == D("53437.50") and production.kg == D("980")
     assert production.suggested_rate == D("54.5281")  # 53.437,50 / 980
+    assert (report.payroll_status, report.payroll_number, report.payroll_required) == (
+        "OPEN",
+        "",
+        True,
+    )
 
     start = today + timedelta(days=2)
 
@@ -314,6 +347,14 @@ def test_produced_kg_and_labor_rate_from_approved_month(
 
     assert _code(add()) == "attendance_not_approved"
     personnel.approve_attendance_month(manager, previous.year, previous.month)
+    assert _code(add()) == "payroll_not_approved"  # Ekim 2026: bordro onaylı olmalı
+    parameter_set(manager)
+    personnel.set_opening_balance(
+        manager, maker, 2026, 10, tax_base=D("344250"), exemption_months=9
+    )
+    run = _approve_payroll(manager, previous.year, previous.month)
+    report = selectors.personnel_cost_report(previous.year, previous.month)
+    assert (report.payroll_status, report.payroll_number) == ("APPROVED", run.number)
     rate = add()()
     assert (rate.stage, rate.kind, rate.rate_per_kg, rate.valid_from) == (
         CostStage.PRODUCTION,
@@ -321,15 +362,16 @@ def test_produced_kg_and_labor_rate_from_approved_month(
         D("54.5281"),
         start,
     )
-    assert rate.note == f"Personel maliyeti {report.label}: 53.437,50 TL / 980,00 kg"
+    assert rate.note == f"Personel maliyeti {report.label} ({run.number}): 53.437,50 TL / 980,00 kg"
     assert rate.created_by == manager
     assert _code(add()) == "duplicate_rate"
     assert _code(add(CostStage.FILLING)) == "no_labor_rate"  # dolumda personel yok
     assert _code(add("")) == "invalid_stage"
     assert _code(add(year=today.year, month=today.month)) == "attendance_not_approved"
-    # Personel maliyeti var ama o ay üretim yok: oran hesaplanamaz.
+    # Personel maliyeti var ama o ay üretim yok: oran hesaplanamaz (Eylül: onaylı puantaj yeter).
     earlier = previous.replace(day=1) - timedelta(days=1)
     personnel.approve_attendance_month(manager, earlier.year, earlier.month)
+    assert selectors.personnel_cost_report(earlier.year, earlier.month).payroll_status == ""
     assert _code(add(year=earlier.year, month=earlier.month)) == "no_labor_rate"
     # API: 201 ve oran kaydı.
     client = APIClient()
@@ -341,6 +383,37 @@ def test_produced_kg_and_labor_rate_from_approved_month(
     )
     assert response.status_code == 201, response.json()
     assert response.json()["rate_per_kg"] == "54.5281" and response.json()["kind"] == "LABOR"
+
+
+def test_approved_payroll_keeps_the_stored_department(
+    manager: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bordrosu onaylı ayın maliyeti onayda saklanan satırdır: kişinin birimi sonradan değişse de
+    aşama onaydaki birime göre; Excel'in özeti bordronun onaylı olduğunu yazar."""
+    _freeze_today(monkeypatch, date(2026, 11, 20))
+    parameter_set(manager)
+    maker = employee(
+        manager, full_name="Can Kaya", department="Üretim", hire_date=date(2026, 10, 1)
+    )
+    _wage(manager, maker, "45000", date(2026, 10, 1))
+    services.set_department_cost_center(manager, "Üretim", CostStage.PRODUCTION)
+    personnel.approve_attendance_month(manager, 2026, 10)
+    run = _approve_payroll(manager, 2026, 10)
+    personnel.update_employee(manager, maker, {"department": "Depo", "full_name": "Can Yılmaz"})
+    report = selectors.personnel_cost_report(2026, 10)
+    row = report.rows[0]
+    assert (row.employee.full_name, row.employee.department, row.stage) == (
+        "Can Kaya",
+        "Üretim",
+        CostStage.PRODUCTION,
+    )
+    assert row.total_cost == D("53437.50")
+    workbook = load_workbook(BytesIO(exports.personnel_cost_xlsx(report)))
+    summary = {item["Bilgi"]: item["Değer"] for item in _sheet_rows(workbook["Özet"])}
+    assert summary["Bordro"] == f"Onaylı ({run.number}): onayda saklanan satırlar"
+    # Onaylanmamış ay tahmindir.
+    november = selectors.personnel_cost_report(2026, 11)
+    assert (november.payroll_status, november.rows[0].employee.department) == ("OPEN", "Depo")
 
 
 def test_produced_kg_follows_istanbul_month_and_completed_status(

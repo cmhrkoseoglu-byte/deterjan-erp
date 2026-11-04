@@ -177,9 +177,16 @@ def personnel_cost_xlsx(report: PersonnelCostReport) -> bytes:
         attendance = f"Onaylı ({report.attendance_number})"
     else:
         attendance = "Açık (taslak)"
+    if report.payroll_approved:
+        payroll = f"Onaylı ({report.payroll_number}): onayda saklanan satırlar"
+    elif report.payroll_required:
+        payroll = "Onaylanmadı: tahmin (işçilik oranı için bordro onaylanmalı)"
+    else:
+        payroll = "Başlangıç öncesi: bordro mali müşavirde, maliyet puantajdan"
     summary: list[dict[str, Any]] = [
         {"label": "Dönem", "value": report.label},
         {"label": "Puantaj", "value": attendance},
+        {"label": "Bordro", "value": payroll},
         {"label": "Etkin işveren oranı (%)", "value": report.employer_rate},
         {"label": "Bordro parametreleri", "value": _parameters_label(report)},
         {"label": "Brüt ücret toplamı (TL)", "value": report.gross_salary},

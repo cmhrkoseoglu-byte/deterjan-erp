@@ -13,6 +13,9 @@ export function ReasonModal({
   onConfirm,
   onDone,
   onClose,
+  reasonLabel = pn.removeReason,
+  confirmColor = "red",
+  onError,
 }: {
   title: string;
   intro: string;
@@ -21,9 +24,14 @@ export function ReasonModal({
   /** Başarıdan sonra (bildirim, yenileme); pencere ardından kapanır. */
   onDone: () => void;
   onClose: () => void;
+  /** Gerekçe kutusunun adı (varsayılan "Kaldırma nedeni"). */
+  reasonLabel?: string;
+  confirmColor?: string;
+  /** Hata sonrası (ör. sayfayı yenileme); pencere hatayla açık kalır. */
+  onError?: () => void;
 }) {
   const [reason, setReason] = useState("");
-  const remove = useMutation({ mutationFn: () => onConfirm(reason.trim()) });
+  const remove = useMutation({ mutationFn: () => onConfirm(reason.trim()), onError });
   const close = () => {
     if (!remove.isPending) onClose();
   };
@@ -39,7 +47,7 @@ export function ReasonModal({
       <Stack>
         <Text size="sm">{intro}</Text>
         <Textarea
-          label={pn.removeReason}
+          label={reasonLabel}
           withAsterisk
           autosize
           minRows={2}
@@ -54,7 +62,7 @@ export function ReasonModal({
             {pn.cancel}
           </Button>
           <Button
-            color="red"
+            color={confirmColor}
             loading={remove.isPending}
             disabled={!reason.trim()}
             onClick={() =>

@@ -113,9 +113,10 @@ export interface PayrollOpening {
 /** Ay başı kümülatifin halkası. */
 export interface CarryMonth {
   month: number;
-  /** opening: devir (tutarlar o aydan önceki kümülatif); erp: o ayın eklenenleri; external: mali
-   * müşavirdeydi (zincir kopar). */
-  kind: "opening" | "erp" | "external";
+  /** opening: devir (tutarlar o aydan önceki kümülatif); approved: onaylı bordro (tutarlar o ayın
+   * sonundaki kümülatif); erp: o ayın eklenenleri; external: mali müşavirdeydi (zincir kopar);
+   * missing: kartına göre işteydi ama bordroda satırı yok (zincir kopar). */
+  kind: "opening" | "approved" | "erp" | "external" | "missing";
   tax_base: string;
   exemption_base: string;
   flags: string[];
@@ -283,6 +284,88 @@ export interface PayrollTotals {
   floor_gap: string;
 }
 
+/** Onay denetiminin kişisi. */
+export interface GatePerson {
+  id: number;
+  full_name: string;
+}
+
+/** Onay denetimi: block onayı engeller, acknowledge "okudum" ister, notice yalnızca bilgidir. */
+export interface PayrollGate {
+  code: string;
+  level: "block" | "acknowledge" | "notice";
+  employees: GatePerson[];
+}
+
+/** Bordronun bir onayı (geçmiş dahil). */
+export interface PayrollApproval {
+  sequence: number;
+  approved_at: string;
+  approved_by_name: string | null;
+  payment_date: string;
+  attendance_number: string;
+  engine_version: string;
+  employee_count: number;
+  external_count: number;
+  gross_total: string;
+  employer_cost: string;
+  net_pay: string;
+  payable: string;
+  income_tax: string;
+  stamp_tax: string;
+  reopened_at: string | null;
+  reopened_by_name: string | null;
+  reopen_reason: string;
+}
+
+/** Yeniden açılan ayda kartı son onaydakinden farklı kişi (onaydaki işaretlerle hesaplanır;
+ * `following` ise kartın bugünkü işaretleriyle). */
+export interface CardChange {
+  employee: number;
+  full_name: string;
+  approved_external: boolean;
+  approved_bes: boolean;
+  card_external: boolean;
+  card_bes: boolean;
+  following: boolean;
+  /** Onayda saklanacak hal (girilmiş mali müşavir rakamı kişiyi mali müşavirde tutar). */
+  stored_external: boolean;
+  stored_bes: boolean;
+  /** İşaretler ERP derken o aya girilmiş mali müşavir rakamı kişiyi mali müşavirde tutuyor. */
+  figure_keeps_external: boolean;
+}
+
+/** Ayın bordro durumu. Açık ayda onay denetimleri ve hesabın özeti (birim süzgeçliyken boş). */
+export interface PayrollState {
+  run: number | null;
+  number: string;
+  status: "OPEN" | "APPROVED";
+  status_display: string;
+  approved: boolean;
+  /** Geçerli onay (onaylıyken). */
+  approval: PayrollApproval | null;
+  /** Ayın onayları, eskiden yeniye (yeniden açılanlar dahil). */
+  history: PayrollApproval[];
+  /** Bir önceki bordro ayı onaylanmadı (aylar sırayla onaylanır). */
+  previous_open: boolean;
+  /** En son onaylı ay: yeniden açılabilir. */
+  can_reopen: boolean;
+  gates: PayrollGate[] | null;
+  fingerprint: string | null;
+  card_changes: CardChange[];
+}
+
+/** Aylık bordro kaydı (BR-) ve geçerli onayı. */
+export interface PayrollRun {
+  id: number;
+  number: string;
+  year: number;
+  month: number;
+  status: "OPEN" | "APPROVED";
+  status_display: string;
+  current: PayrollApproval | null;
+}
+
 export interface PayrollMonth {
   year: number;
   month: number;
@@ -301,6 +384,8 @@ export interface PayrollMonth {
   /** Bu ay işte olmayan kişilere girilmiş kalemler. */
   orphan_items: PayrollItemRecord[];
   totals: PayrollTotals;
+  /** Bordro durumu: onaylı ayda satırlar onayda saklananlardır ve ay kilitlidir. */
+  payroll: PayrollState;
 }
 
 /** Parametre setinin girilen değerleri (tutarlar ve oranlar metin, nokta ondalıklı). */
@@ -373,16 +458,82 @@ export async function getPayrollMonth(year: number, month: number): Promise<Payr
   return data;
 }
 
-export function employerCostPdfUrl(year: number, month: number): string {
-  return `/api/v1${monthPath(year, month)}/employer-cost.pdf`;
+/** Çıktı adresi; `approval` verilirse o onayın saklı satırları (yeniden açılmışsa "GEÇERSİZ"). */
+function outputUrl(year: number, month: number, path: string, query: Record<string, number>) {
+  const params = new URLSearchParams(
+    Object.entries(query).map(([name, value]) => [name, String(value)]),
+  ).toString();
+  return `/api/v1${monthPath(year, month)}/${path}${params ? `?${params}` : ""}`;
 }
 
-export function payrollExcelUrl(year: number, month: number): string {
-  return `/api/v1${monthPath(year, month)}/xlsx/`;
+export function employerCostPdfUrl(year: number, month: number, approval?: number): string {
+  return outputUrl(year, month, "employer-cost.pdf", approval ? { approval } : {});
 }
 
-export function registerPdfUrl(year: number, month: number): string {
-  return `/api/v1${monthPath(year, month)}/register.pdf`;
+export function payrollExcelUrl(year: number, month: number, approval?: number): string {
+  return outputUrl(year, month, "xlsx/", approval ? { approval } : {});
+}
+
+export function registerPdfUrl(year: number, month: number, approval?: number): string {
+  return outputUrl(year, month, "register.pdf", approval ? { approval } : {});
+}
+
+/** Ücret hesap pusulaları (onaylı bordroda): hepsi ya da `employee` ile tek kişi. */
+export function payslipsPdfUrl(
+  year: number,
+  month: number,
+  options: { employee?: number; approval?: number } = {},
+): string {
+  const query: Record<string, number> = {};
+  if (options.employee) query.employee = options.employee;
+  if (options.approval) query.approval = options.approval;
+  return outputUrl(year, month, "payslips.pdf", query);
+}
+
+/** Onayın reddindeki denetimler (400 `payroll_not_ready`, `acknowledgement_required`). */
+export function getGateErrors(error: unknown): PayrollGate[] {
+  if (!axios.isAxiosError(error)) return [];
+  const data = error.response?.data as { gates?: PayrollGate[] } | undefined;
+  return Array.isArray(data?.gates) ? data.gates : [];
+}
+
+/** Ayı onaylar. Hata kodları: payroll_not_ready ve acknowledgement_required (`getGateErrors`),
+ * payroll_changed (pencere açıkken hesap değişti), payment_date_required, invalid_payment_date,
+ * payroll_approved, before_start. */
+export async function approvePayroll(
+  year: number,
+  month: number,
+  payload: { payment_date: string; fingerprint: string; acknowledged: string[] },
+): Promise<PayrollRun> {
+  const { data } = await api.post<PayrollRun>(`${monthPath(year, month)}/approve/`, payload);
+  return data;
+}
+
+/** Hata kodları: reason_required, later_payroll_approved, invalid_transition. */
+export async function reopenPayroll(year: number, month: number, reason: string) {
+  const { data } = await api.post<PayrollRun>(`${monthPath(year, month)}/reopen/`, { reason });
+  return data;
+}
+
+/** Hata kodları: reason_required, invalid_payment_date, payroll_not_approved. */
+export async function setPaymentDate(
+  year: number,
+  month: number,
+  payload: { payment_date: string; reason: string },
+): Promise<PayrollRun> {
+  const { data } = await api.post<PayrollRun>(`${monthPath(year, month)}/payment-date/`, payload);
+  return data;
+}
+
+/** Yeniden açılan ayda kişiyi kartın bugünkü işaretlerine geçirir (`follow`) ya da onaydakine
+ * döndürür. Hata kodları: payroll_approved, not_in_approval. */
+export async function setFollowCard(
+  year: number,
+  month: number,
+  payload: { employee: number; follow: boolean },
+): Promise<PayrollRun> {
+  const { data } = await api.post<PayrollRun>(`${monthPath(year, month)}/follow-card/`, payload);
+  return data;
 }
 
 /** Hata kodları: not_external, not_employed, invalid_amount, invalid_employer_cost,

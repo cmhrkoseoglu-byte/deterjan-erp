@@ -76,6 +76,7 @@ function grid(extra: Partial<AttendanceGrid> = {}): AttendanceGrid {
     status: "OPEN",
     finished: true,
     month_record: null,
+    payroll: null,
     days,
     rows: [
       {
@@ -331,6 +332,19 @@ describe("puantaj tablosu", () => {
         "Rapor eksik girilmiş",
       ),
     );
+  });
+
+  it("bordrosu onaylı ayın puantajı yeniden açılamaz", async () => {
+    vi.mocked(attendanceApi.getAttendanceGrid).mockResolvedValue(
+      grid({
+        status: "APPROVED",
+        month_record: RECORD,
+        payroll: { number: "BR-2026-00001", status: "APPROVED" },
+      }),
+    );
+    renderApp("/personel/puantaj?ay=2026-09");
+    await screen.findByTestId("attendance");
+    expect(screen.getByRole("button", { name: "Yeniden aç" })).toBeDisabled();
   });
 
   it("personel sekmelerinden puantaja geçilir; diğer roller açamaz", async () => {

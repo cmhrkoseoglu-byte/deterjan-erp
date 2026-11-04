@@ -332,6 +332,12 @@ export interface PersonnelCostReport {
   attendance_status: "OPEN" | "APPROVED";
   attendance_number: string;
   attendance_approved: boolean;
+  /** Bordro (Ekim 2026'dan): APPROVED onaylı (onayda saklanan satırlar), OPEN tahmin; başlangıçtan
+   * önce boş (maliyet puantajdan). */
+  payroll_status: "" | "OPEN" | "APPROVED";
+  payroll_number: string;
+  /** İşçilik oranı için onaylı bordro gerekir (Ekim 2026 ve sonrası). */
+  payroll_required: boolean;
   /** Etkin işveren oranı: SGK işveren − teşvik + işsizlik işveren (bordro parametreleri). */
   employer_rate: string;
   /** Bordro parametrelerinin kaynağı: kayıtlı set, yılın yasal değerleri ya da tahmin. */

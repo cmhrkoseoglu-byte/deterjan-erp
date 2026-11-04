@@ -13,7 +13,6 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
-from apps.core.audit import mask_identifier
 from apps.personnel import selectors
 from apps.personnel.models import (
     ATTENDANCE_CODES,
@@ -23,7 +22,14 @@ from apps.personnel.models import (
     PayrollItemCategory,
     PayrollItemKind,
 )
-from apps.personnel.pdf import PRELIMINARY_NOTE, parameter_line, row_order, status_line
+from apps.personnel.pdf import (
+    DRAFT,
+    PRELIMINARY_NOTE,
+    SUPERSEDED,
+    parameter_line,
+    row_order,
+    status_line,
+)
 from apps.personnel.selectors import (
     AttendanceCell,
     AttendanceDay,
@@ -173,6 +179,23 @@ DRAFT_NOTE = (
     "TASLAK: bordro onaylanmadı; rakamlar puantaj, ücret, parametre ve mali müşavir rakamları "
     "değiştikçe değişebilir."
 )
+SUPERSEDED_NOTE = (
+    "GEÇERSİZ: bu onay bordro yeniden açılınca geçersiz oldu. Ayın geçerli rakamları yeniden "
+    "açılmamış (geçerli) onaydadır; ay yeniden onaylanmadıysa rakamlar taslak hesaptır."
+)
+
+
+def _stamp_notes(stamp: str) -> list[str]:
+    if stamp == DRAFT:
+        return [DRAFT_NOTE]
+    return [SUPERSEDED_NOTE] if stamp == SUPERSEDED else []
+
+
+def _titled(text: str, stamp: str) -> str:
+    """ "Bordro — Ekim 2026 (ön bordro · TASLAK)"."""
+    return f"{text} (ön bordro{f' · {stamp}' if stamp else ''})"
+
+
 EMPLOYER_COST_COLUMNS = (
     "Sicil no",
     "Ad soyad",
@@ -210,18 +233,18 @@ def _money_columns(ws: Worksheet, first: int, last: int, start_row: int) -> None
 
 
 def _employer_cost_sheet(
-    ws: Worksheet, month: PayrollMonth, notes: Sequence[str], *, draft: bool
+    ws: Worksheet, month: PayrollMonth, notes: Sequence[str], *, stamp: str
 ) -> None:
     ws.title = "İşveren maliyeti"
     _header(
         ws,
-        f"İşveren maliyeti — {month.label} (ön bordro{' · TASLAK' if draft else ''})",
-        [*([DRAFT_NOTE] if draft else []), status_line(month), parameter_line(month), *notes],
+        _titled(f"İşveren maliyeti — {month.label}", stamp),
+        [*_stamp_notes(stamp), status_line(month), parameter_line(month), *notes],
         EMPLOYER_COST_COLUMNS,
     )
     first_data = ws.max_row + 1
     for row in sorted(month.rows, key=row_order):
-        person = row.employee
+        person = row.person
         if row.external:
             figure = row.figure
             ws.append(
@@ -283,7 +306,7 @@ def _employer_cost_sheet(
     ws.column_dimensions["L"].width = 34
 
 
-def _parameters_sheet(ws: Worksheet, month: PayrollMonth, *, draft: bool) -> None:
+def _parameters_sheet(ws: Worksheet, month: PayrollMonth, *, stamp: str) -> None:
     settings = month.settings
     params = settings.params
     record = settings.record
@@ -312,7 +335,7 @@ def _parameters_sheet(ws: Worksheet, month: PayrollMonth, *, draft: bool) -> Non
         ("BES katkı payı (%)", params.bes_rate),
         ("Nakit yemek SGK istisnası (günlük TL)", params.meal_exemption_daily),
     ]
-    ws.append(["Bordro parametreleri", month.label + (" · TASLAK" if draft else "")])
+    ws.append(["Bordro parametreleri", month.label + (f" · {stamp}" if stamp else "")])
     ws["A1"].font = Font(bold=True, size=12)
     for label, value in rows:
         ws.append([label, value])
@@ -440,14 +463,12 @@ def _payroll_values(rows: Sequence[PayrollRow], person: Any = None) -> list[Any]
     ]
 
 
-def _payroll_sheet(
-    ws: Worksheet, month: PayrollMonth, notes: Sequence[str], *, draft: bool
-) -> None:
+def _payroll_sheet(ws: Worksheet, month: PayrollMonth, notes: Sequence[str], *, stamp: str) -> None:
     ws.title = "Bordro"
     columns = payroll_columns()
     external = sum(1 for row in month.rows if row.external)
     lines = [
-        *([DRAFT_NOTE] if draft else []),
+        *_stamp_notes(stamp),
         status_line(month),
         parameter_line(month),
         'Kümülatif GV matrahı "bu ay dahil" mali müşavir bordrolarındaki kümülatiftir; devir, '
@@ -462,17 +483,12 @@ def _payroll_sheet(
         ),
         *notes,
     ]
-    _header(
-        ws,
-        f"Bordro — {month.label} (ön bordro{' · TASLAK' if draft else ''})",
-        lines,
-        columns,
-    )
+    _header(ws, _titled(f"Bordro — {month.label}", stamp), lines, columns)
     header_row = ws.max_row
     first_data = header_row + 1
     rows = sorted(month.computed, key=row_order)
     for row in rows:
-        person = row.employee
+        person = row.person
         ws.append(
             _payroll_values(
                 [row],
@@ -480,7 +496,7 @@ def _payroll_sheet(
                     person.employee_no,
                     person.full_name,
                     person.department,
-                    mask_identifier(person.national_id),
+                    person.masked_national_id,
                 ],
             )
         )
@@ -514,7 +530,7 @@ COMPARE_FIELDS: tuple[tuple[str, str], ...] = (
 )
 
 
-def _compare_sheet(ws: Worksheet, month: PayrollMonth, *, draft: bool) -> None:
+def _compare_sheet(ws: Worksheet, month: PayrollMonth, *, stamp: str) -> None:
     """Mali müşavirle kalem kalem karşılaştırma: her kalem için ERP, mali müşavir (boş; rakamlar
     yapıştırılır) ve fark (formül; 0,01'den büyük fark kırmızı)."""
     columns = ["Sicil no", "Ad soyad"]
@@ -522,7 +538,7 @@ def _compare_sheet(ws: Worksheet, month: PayrollMonth, *, draft: bool) -> None:
         columns += [f"{label} ERP", f"{label} mali müşavir", f"{label} fark"]
     _header(
         ws,
-        f"Karşılaştırma — {month.label}{' (TASLAK)' if draft else ''}",
+        f"Karşılaştırma — {month.label}{f' ({stamp})' if stamp else ''}",
         [
             'Mali müşavirin bordrosundaki rakamları "mali müşavir" sütunlarına yapıştırın; fark '
             "kendiliğinden hesaplanır.",
@@ -533,7 +549,7 @@ def _compare_sheet(ws: Worksheet, month: PayrollMonth, *, draft: bool) -> None:
     rows = sorted(month.computed, key=row_order)
     for offset, row in enumerate(rows):
         number = first_data + offset
-        values: list[Any] = [row.employee.employee_no, row.employee.full_name]
+        values: list[Any] = [row.person.employee_no, row.person.full_name]
         for index, (name, _) in enumerate(COMPARE_FIELDS):
             erp = get_column_letter(3 + index * 3)
             theirs = get_column_letter(4 + index * 3)
@@ -599,23 +615,23 @@ def _runs(days: Sequence[Any]) -> list[str]:
     return [selectors.day_span(first, last) for first, last in spans]
 
 
-def _missing_days_sheet(ws: Worksheet, month: PayrollMonth, *, draft: bool) -> None:
+def _missing_days_sheet(ws: Worksheet, month: PayrollMonth, *, stamp: str) -> None:
     """Mali müşavire eksik gün bildirimi için: ücretsiz günü ya da ay içinde girişi/çıkışı olan
-    herkes (bordrosu mali müşavirde olanlar dahil). Rapor günleri sağlık verisidir."""
-    _header(
-        ws,
-        f"Eksik gün — {month.label}{' (TASLAK)' if draft else ''}",
-        [
-            "Eksik gün sayısı puantajdaki ücretsiz günlerdir; e-Bildirge'deki eksik gün sayısı ve "
-            "kodu mali müşavirce belirlenir (ör. 31 çeken ayda 30 güne tamamlanan kişi). Kodlar: "
-            "01 istirahat, 15 devamsızlık, 21 diğer ücretsiz izin, 12 birden fazla neden.",
-        ],
-        MISSING_DAY_COLUMNS,
-    )
+    herkes (bordrosu mali müşavirde olanlar dahil). Rapor günleri sağlık verisidir. Günler
+    puantajdandır (geçersiz onayda bugünkü puantaj)."""
+    lines = [
+        "Eksik gün sayısı puantajdaki ücretsiz günlerdir; e-Bildirge'deki eksik gün sayısı ve "
+        "kodu mali müşavirce belirlenir (ör. 31 çeken ayda 30 güne tamamlanan kişi). Kodlar: "
+        "01 istirahat, 15 devamsızlık, 21 diğer ücretsiz izin, 12 birden fazla neden.",
+    ]
+    if stamp == SUPERSEDED:
+        lines.append("Günler bugünkü puantajdandır (onaydan sonra değişmiş olabilir).")
+    title = f"Eksik gün — {month.label}{f' ({stamp})' if stamp else ''}"
+    _header(ws, title, lines, MISSING_DAY_COLUMNS)
     cells = {row.employee.pk: row.cells for row in month.grid.rows}
     first, last = selectors.month_bounds(month.year, month.month)
     for row in sorted(month.rows, key=row_order):
-        person = row.employee
+        person = row.person
         found: dict[str, list[Any]] = {status: [] for status, _, _ in MISSING_DAY_REASONS}
         for cell in cells.get(person.pk, []):
             if cell.status in found and selectors.employed_on(person, cell.date):
@@ -674,24 +690,25 @@ def _missing_days_sheet(ws: Worksheet, month: PayrollMonth, *, draft: bool) -> N
     ws.column_dimensions["N"].width = 50
 
 
-def payroll_xlsx(month: PayrollMonth, *, draft: bool = True) -> bytes:
+def payroll_xlsx(month: PayrollMonth, *, stamp: str = DRAFT) -> bytes:
     """Ön bordro Excel'i. Brütten nete hesaplanan ayda "Bordro" (kişi başına bütün kalemler),
     "İşveren maliyeti", "Karşılaştırma" (mali müşavirle), "Eksik gün" ve "Parametreler"; başlangıç
-    ayından önce "İşveren maliyeti", "Eksik gün" ve "Parametreler". Onaylanmamış bordroda
-    (`draft`) başlıklarda ve ilk not satırında "TASLAK" yazar (PDF'teki damganın karşılığı)."""
+    ayından önce "İşveren maliyeti", "Eksik gün" ve "Parametreler". Damga (`stamp`: onaylanmamış
+    bordroda "TASLAK", yeniden açılmış onayda "GEÇERSİZ") başlıklarda ve ilk not satırında yazar
+    (PDF'teki damganın karşılığı); onaylı ayda damga yoktur, onay bilgisi not satırındadır."""
     workbook = Workbook()
     ws = workbook.active
     assert ws is not None
     produced = f"Üretim zamanı: {timezone.localtime():%d.%m.%Y %H:%M}"
     notes = [PRELIMINARY_NOTE, produced]
     if month.net:
-        _payroll_sheet(ws, month, notes, draft=draft)
-        _employer_cost_sheet(workbook.create_sheet("İşveren maliyeti"), month, notes, draft=draft)
-        _compare_sheet(workbook.create_sheet("Karşılaştırma"), month, draft=draft)
+        _payroll_sheet(ws, month, notes, stamp=stamp)
+        _employer_cost_sheet(workbook.create_sheet("İşveren maliyeti"), month, notes, stamp=stamp)
+        _compare_sheet(workbook.create_sheet("Karşılaştırma"), month, stamp=stamp)
     else:
-        _employer_cost_sheet(ws, month, notes, draft=draft)
-    _missing_days_sheet(workbook.create_sheet("Eksik gün"), month, draft=draft)
-    _parameters_sheet(workbook.create_sheet("Parametreler"), month, draft=draft)
+        _employer_cost_sheet(ws, month, notes, stamp=stamp)
+    _missing_days_sheet(workbook.create_sheet("Eksik gün"), month, stamp=stamp)
+    _parameters_sheet(workbook.create_sheet("Parametreler"), month, stamp=stamp)
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()

@@ -138,7 +138,7 @@ export const kt = {
     "Gerçekleşen işçilik = aşamanın personel maliyeti / o ay üretilen kg (üretimde biten şarjların çıktısı, dolumda dolan bulk; fire hariç).",
     "Bordrosu mali müşavirde olan kişide brüt ve maliyet Personel > Bordro'da girilen aylık rakamlardır.",
     "Ek ödemeler (prim, ikramiye, nakit yol ve yemek) Personel > Bordro'da girilir; brüte eklenir, işveren payıyla maliyete girer ve ayrı sütunda görünür. Tek seferlik bir ödeme o ayın gerçekleşen işçiliğini yükseltir: oran olarak eklemeden önce kontrol edin. Kesintiler (avans, icra) ve gelir vergisi maliyeti değiştirmez.",
-    "Rapor saklanmaz: ücret, ek ödeme, kişinin birimi ya da işe giriş ve çıkış tarihi, birim eşleştirmesi ya da bordro parametreleri değişirse geçmiş aylar (onaylılar dahil) yeniden hesaplanır; eklenmiş işçilik oranları değişmez.",
+    "Bordrosu onaylı ayın (Ekim 2026'dan) kişi satırları ve birimleri onayda saklanır, sonradan değişmez. Diğer aylar saklanmaz: ücret, ek ödeme, kişinin birimi ya da işe giriş ve çıkış tarihi ya da bordro parametreleri değişirse yeniden hesaplanır (tahmin). Birim eşleştirmesi bugünkü haliyledir; eklenmiş işçilik oranları değişmez.",
   ],
   previousMonth: "Önceki ay",
   nextMonth: "Sonraki ay",
@@ -169,6 +169,12 @@ export const kt = {
   currentLabor: "Geçerli işçilik oranı (TL/kg)",
   useAsRate: "Oran olarak ekle",
   needsApproval: "Önce ayın puantajını onaylayın.",
+  needsPayroll:
+    "Önce ayın bordrosunu onaylayın (Personel > Bordro): Ekim 2026'dan işçilik oranı onaylı bordrodan eklenir; onaysız ayın maliyeti tahmindir.",
+  payrollApproved: (number: string) => `Bordro onaylı · ${number}`,
+  payrollOpen: "Bordro onaylanmadı (tahmin)",
+  payrollOpenHint:
+    "Bu ayın bordrosu onaylanmadı: maliyet bugünkü ücret, kart ve parametrelerle hesaplanan tahmindir. İşçilik oranı bordro onaylanınca eklenebilir.",
   noStageCost: "Bu aşamada personel maliyeti yok.",
   noProduction: "Bu ay bu aşamada üretim yok.",
   noKg: "Üretim kg'a çevrilemedi: malzemede yoğunluk girilmemiş.",

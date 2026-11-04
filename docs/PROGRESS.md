@@ -1101,3 +1101,60 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
 - DECISIONS ("3. adım", "İnceleme sonrası"), KVKK (ön bordro satırı ve teknik tedbir: kalem açıklaması
   çıktılara ve kart geçmişine yazılmaz, denetim günlüğünde kalır; Eksik gün sayfasında rapor
   tarihleri) ve kılavuz (yönetim "Bordro", "Personel maliyeti") güncellendi.
+
+## 2026-11-03 — Personel bordrosu, 4. adım: bordro onayı, ay kilitleri, ücret pusulası
+
+- Backend (`apps/personnel`, göç 0007):
+  - Modeller: `PayrollRun` (BR-, durum makinesi OPEN ↔ APPROVED), `PayrollApproval` (onay ve
+    yeniden açma geçmişi, parametre ve firma anlık görüntüsü, ödeme tarihi, toplamlar),
+    `PayrollSlip` (kişi başına saklı satır; değiştirilmez, silinmez). `create_document` dönem
+    yılıyla numara alır (puantaj da `PU-<ayın yılı>`).
+  - Motor: saklanan satır ve parametreler JSON'a yazılıp okunur (`result_to_dict`,
+    `result_from_dict`, `parameters_*`); eski sürümle saklanmış satır da okunur.
+  - Seçiciler: onaylı ay saklı satırlardan (`_stored_month`), açık ay canlı (`_live_month`); zincir
+    onaylı ayın ay sonu kümülatifinden kurulur (yeni halka "approved"); yeniden açılan ayda onaydaki
+    işaretler; onay denetimleri (`payroll_gates`) ve hesabın özeti (`payroll_fingerprint`); kişi
+    görünümü (`PersonView`, onaylı ayda onaydaki ad, birim ve maskeli TC).
+  - Servisler: `approve_payroll_month`, `reopen_payroll_month`, `set_payroll_payment_date`,
+    `set_payroll_follow_card`; kilitler (kalem, devir, rakam, ücret, parametre seti, puantajın
+    yeniden açılması, işe giriş tarihi; bordro yılı danışma kilidi); erişim izi bordro kaydına ve
+    kartın geçmişine; kart "mali müşavirde" işaretlenince onaylanmamış kayıtlar kartın geçmişine.
+  - Çıktılar: ücret hesap pusulası PDF'i (A4 dikey, kişi başına sayfa); onaylı ayda TASLAK yok,
+    eski onayda GEÇERSİZ; firma ve kişi onaydaki haliyle.
+  - API: `payroll/<yıl>/<ay>/approve/`, `reopen/`, `payment-date/`, `follow-card/`,
+    `payslips.pdf` (`?employee=`, `?approval=`); çıktılarda `?approval=`; ay yanıtında `payroll`
+    (durum, onay ve geçmiş, denetimler, özet, kartı değişen kişiler); puantaj tablosunda `payroll`;
+    kart güncellemesinde `payroll_external_records` ve `payroll_external_kept`; kart
+    değişikliğinde onayda saklanacak hal (`stored_external`, `stored_bes`,
+    `figure_keeps_external`).
+  - Demo verisi: yılın parametre seti, zincirin ilk ayına devirler, geçen aya üç kalem.
+- Maliyet: onaylı ayın saklı satırları ve birimleri; rapor ve Excel'de bordro durumu; Ekim 2026'dan
+  işçilik oranı onaylı bordrodan (`payroll_not_approved`), notunda BR numarası.
+- Ön yüz: Personel > Bordro'da durum rozeti, **Bordroyu onayla** penceresi (toplamlar, engelleyenler
+  ve "okudum" istenenler kişi adlarıyla, ödeme tarihi sınırı ve geç uyarısı, sunucu reddinde
+  denetimler), onaylı ayda yalnızca okunur görünümler (kalem, devir, rakam), **Ücret pusulaları
+  (PDF)** ve dökümde tek kişinin pusulası, **Yeniden aç**, **Ödeme tarihini düzelt**, **Onay
+  geçmişi** (eski onayın çıktıları), Ay hazırlığında önceki ay ve onaya hazır satırları, yeniden
+  açılan ayda kartı değişen kişiler (**Kartı izle**). Puantaj'da bordrosu onaylı ayın **Yeniden aç**'ı
+  kapalı; Maliyet > Personel maliyeti'nde bordro rozeti ve oran engeli; kart kaydında onaylanmamış
+  kayıt uyarısı; Parametreler'de kilit notu.
+- Kanıt: `personnel/tests/test_payroll_approval.py` (onay ve saklı satırlar, kart değişse de saklı
+  satır, kilitler, parametre kilidi, ay ve satır denetimleri, okunması istenenler, mali müşavir
+  kalemi bilgisi, özet ve ödeme tarihi, sıra ve sondan başa açma, eski onay, onaydaki işaretler ve
+  kartı izleme, ödeme tarihi düzeltmesi, zincirin onaylı satırdan kurulması ve devirle eşitleme,
+  mali müşavirdeki onaylı satır, sorgu sayısı, kart işareti ve API alanı, ayrılış mesajı, çıktılar ve
+  damgalar, pusula, pusula API'si ve erişim izi, API ve yetki), `test_payroll_engine.py` (saklanan
+  satır ve parametreler), `test_seed_demo.py`, `costing/tests/test_personnel_cost.py` (onaylı bordro
+  gereği, saklı birim); ön yüz `modules/personnel/payrollApproval.test.tsx`, `attendance.test.tsx`,
+  `personnel.test.tsx`, `modules/costing/personnelCost.test.tsx`.
+- DECISIONS ("4. adım kararları", "4. adım", 2026-10-29 "Personel maliyeti" notları, "Onaylılar
+  korunsun"), KVKK (onaylı bordro satırları, pusula, "Çalışan (ücret)" satırı) ve kılavuz (yönetim
+  "Personel" ayrılış adımları, "Bordro", "Personel maliyeti", "Puantaj", tatil notu) güncellendi.
+- İnceleme: çok ajanlı inceleme (27 bulgu) ve üç doğrulama turu (düzeltmelerin açtığı yan etkiler ve
+  yeni bulgular). Bulgular düzeltildi; davranış değiştiren her düzeltmenin testi var (metin ve belge
+  düzeltmeleri doğrulama turlarında okunarak denetlendi; DECISIONS "İnceleme sonrası", "İkinci
+  inceleme"); aynı yıl içinde ayrılıp yeniden işe başlatılan kişide ilk açık ayda devir
+  istenmesi değiştirilmedi, güvenli yön olarak belgelendi (yeniden işe alım kapsam dışı).
+  Ayrıca: zincirde "o ay bordroda" kuralı, işe giriş tarihinin sonraki onaylı satırı koruması,
+  eşitleme devrinde giriş ayı, kart değişikliğinde saklanacak hal ve mali müşavir rakamı, yeniden
+  açılan ayın kart uyarısı, sığmayan pusulanın ortalanması.

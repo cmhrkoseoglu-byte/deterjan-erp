@@ -83,6 +83,8 @@ export interface AttendanceGrid {
   finished: boolean;
   /** Ay hiç yazılmadıysa boş. */
   month_record: AttendanceMonthRecord | null;
+  /** Ayın bordrosu (yoksa boş): onaylıyken puantaj yeniden açılamaz. */
+  payroll: { number: string; status: "OPEN" | "APPROVED" } | null;
   days: AttendanceColumn[];
   rows: AttendanceRow[];
 }

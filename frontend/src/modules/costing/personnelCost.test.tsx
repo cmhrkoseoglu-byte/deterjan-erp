@@ -94,6 +94,9 @@ function report(extra: Partial<PersonnelCostReport> = {}): PersonnelCostReport {
     attendance_status: "APPROVED",
     attendance_number: "PT-2026-00009",
     attendance_approved: true,
+    payroll_status: "",
+    payroll_number: "",
+    payroll_required: false,
     employer_rate: "18.75",
     parameters_origin: "legal_default",
     parameters_year: 2026,
@@ -260,6 +263,36 @@ describe("personel maliyeti", () => {
     expect(screen.getByText("Puantaj açık (taslak)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Oran olarak ekle: Üretim (bulk)" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Oran olarak ekle: Dolum (mamul)" })).toBeDisabled();
+  });
+
+  it("Ekim 2026'dan bordrosu onaylanmadan oran eklenemez; onaylı ay rozetle", async () => {
+    vi.mocked(costingApi.getPersonnelCost).mockResolvedValue(
+      report({
+        month: 10,
+        period_label: "Ekim 2026",
+        payroll_status: "OPEN",
+        payroll_required: true,
+      }),
+    );
+    renderApp("/maliyet/personel?ay=2026-10");
+    expect(await screen.findByText("Bordro onaylanmadı (tahmin)")).toBeInTheDocument();
+    expect(screen.getByText(/Bu ayın bordrosu onaylanmadı/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Oran olarak ekle: Üretim (bulk)" })).toBeDisabled();
+  });
+
+  it("onaylı bordronun ayı rozetle gösterilir ve oran eklenebilir", async () => {
+    vi.mocked(costingApi.getPersonnelCost).mockResolvedValue(
+      report({
+        month: 10,
+        period_label: "Ekim 2026",
+        payroll_status: "APPROVED",
+        payroll_number: "BR-2026-00001",
+        payroll_required: true,
+      }),
+    );
+    renderApp("/maliyet/personel?ay=2026-10");
+    expect(await screen.findByText("Bordro onaylı · BR-2026-00001")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Oran olarak ekle: Üretim (bulk)" })).toBeEnabled();
   });
 
   it("üretimi kg'a çevrilemeyen aşamada neden söylenir", async () => {

@@ -495,6 +495,33 @@ describe("bordro: devirler", () => {
     );
   });
 
+  it("döküm: bordroda satırı olmayan ay zinciri keser", async () => {
+    const user = userEvent.setup();
+    vi.mocked(payrollApi.getPayrollMonth).mockResolvedValue(
+      month({
+        month: 11,
+        period_label: "Kasım 2026",
+        rows: [
+          {
+            ...AYSE,
+            warnings: ["opening_missing"],
+            opening_needed: true,
+            entry_month: 11,
+            carry_months: [
+              carry({ kind: "missing", month: 10, tax_base: "0.00", exemption_base: "0.00" }),
+            ],
+          },
+        ],
+      }),
+    );
+    renderApp("/personel/bordro?ay=2026-11");
+    await user.click(await screen.findByRole("button", { name: "Döküm: Ayşe Demir" }));
+    const drawer = await screen.findByRole("dialog", { name: "Ayşe Demir · Kasım 2026" });
+    expect(
+      tr(within(drawer).getByText("Bordroda satırı yok (kümülatif bilinmiyor; devir gerekir)")),
+    ).toHaveTextContent("Ekim 2026");
+  });
+
   it("dökümden eşitleme devri: onay istenir; satır hatası satırın altında görünür", async () => {
     const user = userEvent.setup();
     vi.mocked(payrollApi.getPayrollMonth).mockResolvedValue(

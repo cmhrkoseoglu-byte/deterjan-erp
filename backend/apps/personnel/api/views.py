@@ -2,6 +2,7 @@
 `terminate`, yeniden işe başlama `reinstate` ile kaydedilir, belge ve ücret `remove` ile
 kaldırılır."""
 
+import re
 from typing import Any
 
 import django_filters
@@ -33,6 +34,7 @@ from apps.personnel.models import (
     PayrollItem,
     PayrollOpeningBalance,
     PayrollParameterSet,
+    PayrollRun,
     PublicHoliday,
 )
 
@@ -77,13 +79,30 @@ class EmployeeViewSet(
         employee = services.create_employee(_user(request), body.validated_data)
         return Response(s.EmployeeSerializer(employee).data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        responses=OpenApiResponse(
+            response=s.EmployeeSerializer,
+            description='Kart "Bordrosu mali müşavirde" işaretlenince yanıta '
+            "`payroll_external_records` (metin listesi) eklenir: kişinin onaylanmamış bordro "
+            'aylarındaki ERP kayıtları ("Kasım 2026 Prim 5.000,00 TL"); ekran uyarır. '
+            "`payroll_external_kept` (ay adları): bunlardan yeniden açılan ayda kişi son onaydaki "
+            'haliyle ERP\'de kalır ("Kartı izle" seçilene kadar; o aya mali müşavir rakamı '
+            "girilmişse kişi mali müşavirde sayılır, listelenmez); o ayın kaydı da bunu yazar.",
+        )
+    )
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Kartı günceller (yalnızca gönderilen alanlar)."""
         instance = self.get_object()
         body = s.EmployeeSerializer(instance, data=request.data, partial=True)
         body.is_valid(raise_exception=True)
+        was_external = instance.payroll_external
         employee = services.update_employee(_user(request), instance, body.validated_data)
-        return Response(s.EmployeeSerializer(employee).data)
+        data = dict(s.EmployeeSerializer(employee).data)
+        if employee.payroll_external and not was_external:
+            # Onaylanmamış aylarda ERP'de girilmiş kayıtlar: ekran uyarır (kartın geçmişinde de).
+            data["payroll_external_records"] = selectors.unapproved_payroll_records(employee)
+            data["payroll_external_kept"] = selectors.kept_erp_months(employee)
+        return Response(data)
 
     @extend_schema(
         request=s.TerminateSerializer,
@@ -262,7 +281,8 @@ class AttendanceGridView(APIView):
     def get(self, request: Request, year: int, month: int) -> Response:
         _check_month(year, month)
         grid = selectors.attendance_grid(year, month, department=_department(request))
-        return Response(s.AttendanceGridSerializer(grid).data)
+        context = {"payroll_run": selectors.payroll_run(year, month)}
+        return Response(s.AttendanceGridSerializer(grid, context=context).data)
 
 
 class AttendanceApproveView(APIView):
@@ -487,21 +507,217 @@ def _private_file(
     return response
 
 
+APPROVAL_PARAM = OpenApiParameter(
+    "approval",
+    int,
+    required=False,
+    description="onay sırası (1, 2, …): o onayın saklı satırları (yeniden açılmış onay "
+    '"GEÇERSİZ" damgalı)',
+)
+
+
+def _positive_int(raw: str, message: str) -> int:
+    """Sorgu parametresinden pozitif tam sayı (yalnızca ASCII rakam, en çok 9 hane); değilse 404."""
+    if not re.fullmatch(r"[1-9][0-9]{0,8}", raw):
+        raise NotFound(message)
+    return int(raw)
+
+
+def _approval_param(request: Request) -> int | None:
+    raw = request.query_params.get("approval", "").strip()
+    if not raw:
+        return None
+    return _positive_int(raw, "Geçersiz onay.")
+
+
 def _payroll(
-    request: Request, year: int, month: int, *, net: bool = True
+    request: Request, year: int, month: int, *, net: bool = True, approval: bool = False
 ) -> selectors.PayrollMonth:
     _check_month(year, month)
-    return selectors.payroll_month(year, month, department=_department(request), net=net)
+    sequence = _approval_param(request) if approval else None
+    try:
+        return selectors.payroll_month(
+            year, month, department=_department(request), net=net, approval=sequence
+        )
+    except LookupError as exc:
+        raise NotFound(str(exc)) from None
+
+
+def _file_name(base: str, payroll: selectors.PayrollMonth, extension: str, suffix: str = "") -> str:
+    """Çıktının dosya adı durumu söyler: "bordro-2026-10-taslak.xlsx", onaylıda
+    "bordro-2026-10-BR-2026-00001-onay1.xlsx", eski onayda "…-onay1-gecersiz.xlsx"."""
+    name = f"{base}-{payroll.year}-{payroll.month:02d}{suffix}"
+    approval = payroll.approval
+    if approval is None:
+        name += "-taslak"
+    else:
+        name += f"-{payroll.number}-onay{approval.sequence}"
+        if payroll.superseded:
+            name += "-gecersiz"
+    return f"{name}.{extension}"
+
+
+def _stamp(payroll: selectors.PayrollMonth) -> str:
+    """Çıktının damgası: canlı hesapta TASLAK, yeniden açılmış onayda GEÇERSİZ, onaylıda yok."""
+    if payroll.superseded:
+        return pdf.SUPERSEDED
+    return "" if payroll.approved else pdf.DRAFT
+
+
+def _run_or_404(year: int, month: int) -> PayrollRun:
+    _check_month(year, month)
+    run = selectors.payroll_run(year, month)
+    if run is None:
+        raise NotFound("Bu ayın bordrosu onaylanmadı.")
+    return run
 
 
 class PayrollMonthView(APIView):
-    """Ayın ön bordrosu (canlı hesap): kişi satırları, toplamlar, parametreler ve uyarılar."""
+    """Ayın ön bordrosu: açık ayda canlı hesap, onaylı ayda onayda saklanan satırlar; kişi
+    satırları, toplamlar, parametreler, uyarılar ve bordro durumu (onay denetimleri)."""
 
     permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
 
     @extend_schema(parameters=[DEPARTMENT_PARAM], responses=s.PayrollMonthSerializer)
     def get(self, request: Request, year: int, month: int) -> Response:
-        return Response(s.PayrollMonthSerializer(_payroll(request, year, month)).data)
+        context = {"department": _department(request)}
+        payroll = _payroll(request, year, month)
+        return Response(s.PayrollMonthSerializer(payroll, context=context).data)
+
+
+class PayrollApproveView(APIView):
+    """Ayın bordrosunu onaylar: satırlar saklanır, ay kilitlenir. Engelleyen denetim ya da
+    okunmamış uyarı varsa 400 ve denetimler (`gates`)."""
+
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+
+    @extend_schema(
+        request=s.PayrollApproveSerializer,
+        responses={
+            200: s.PayrollRunSerializer,
+            400: OpenApiResponse(
+                response=s.PayrollGateErrorSerializer,
+                description="`gates` yalnızca payroll_not_ready (engelleyen denetimler) ve "
+                'acknowledgement_required (okunmamış "okudum" denetimleri) yanıtlarında '
+                "bulunur; diğer hatalar (payroll_changed, invalid_payment_date, payroll_approved, "
+                "before_start) yalnızca `code` ve `detail` taşır.",
+            ),
+        },
+    )
+    def post(self, request: Request, year: int, month: int) -> Response:
+        _check_month(year, month)
+        body = s.PayrollApproveSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            run = services.approve_payroll_month(
+                _user(request),
+                year,
+                month,
+                payment_date=data["payment_date"],
+                fingerprint=data["fingerprint"],
+                acknowledged=data["acknowledged"],
+            )
+        except services.PayrollGateError as exc:
+            gates = s.PayrollGateSerializer(exc.gates, many=True).data
+            return Response(
+                {"code": exc.code, "detail": exc.message, "gates": gates},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(s.PayrollRunSerializer(run).data)
+
+
+class PayrollReopenView(APIView):
+    """Onaylı bordroyu gerekçeyle yeniden açar (yalnızca en son onaylı ay)."""
+
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+
+    @extend_schema(request=s.ReasonSerializer, responses=s.PayrollRunSerializer)
+    def post(self, request: Request, year: int, month: int) -> Response:
+        run = _run_or_404(year, month)
+        body = s.ReasonSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        run = services.reopen_payroll_month(_user(request), run, body.validated_data["reason"])
+        return Response(s.PayrollRunSerializer(run).data)
+
+
+class PayrollPaymentDateView(APIView):
+    """Onaylı bordronun ödeme tarihini gerekçeyle düzeltir (tutarlar değişmez)."""
+
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+
+    @extend_schema(request=s.PaymentDateSerializer, responses=s.PayrollRunSerializer)
+    def post(self, request: Request, year: int, month: int) -> Response:
+        run = _run_or_404(year, month)
+        body = s.PaymentDateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        run = services.set_payroll_payment_date(
+            _user(request), run, data["payment_date"], data["reason"]
+        )
+        return Response(s.PayrollRunSerializer(selectors.payroll_run(run.year, run.month)).data)
+
+
+class PayrollFollowCardView(APIView):
+    """Yeniden açılan ayda kişiyi kartın bugünkü işaretlerine geçirir ya da onaydakine döndürür."""
+
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+
+    @extend_schema(request=s.FollowCardSerializer, responses=s.PayrollRunSerializer)
+    def post(self, request: Request, year: int, month: int) -> Response:
+        run = _run_or_404(year, month)
+        body = s.FollowCardSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        run = services.set_payroll_follow_card(
+            _user(request), run, data["employee"], follow=data["follow"]
+        )
+        return Response(s.PayrollRunSerializer(run).data)
+
+
+class PayrollPayslipsPdfView(APIView):
+    """Ücret hesap pusulaları (PDF, A4 dikey, kişi başına bir sayfa): yalnızca onaylı bordroda
+    (ya da `approval` ile eski bir onayda, "GEÇERSİZ" damgalı); `employee` ile tek kişi. Açılış
+    denetim günlüğüne (tek kişide kartın geçmişine de) yazılır."""
+
+    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("employee", int, required=False, description="tek kişinin pusulası"),
+            APPROVAL_PARAM,
+        ],
+        responses={(200, PDF): OpenApiTypes.BINARY},
+    )
+    def get(self, request: Request, year: int, month: int) -> HttpResponse:
+        payroll = _payroll(request, year, month, approval=True)
+        if payroll.approval is None:
+            raise BusinessRuleError(
+                "payroll_not_approved",
+                f"{payroll.label} bordrosu onaylanmadı; ücret pusulası onaydan sonra verilir.",
+            )
+        employee = None
+        sicil = ""
+        raw = request.query_params.get("employee", "").strip()
+        if raw:
+            wanted = _positive_int(raw, "Geçersiz personel.")
+            row = next((item for item in payroll.computed if item.employee.pk == wanted), None)
+            if row is None:
+                raise NotFound("Bu kişinin bu ay ERP'de hesaplanan bordrosu yok.")
+            employee = row.employee
+            # Dosya adında pusulaya basılan (onaydaki) sicil no.
+            sicil = row.person.employee_no or str(employee.pk)
+        content = pdf.payslips_pdf(payroll, employee_id=employee.pk if employee else None)
+        services.record_payroll_access(
+            _user(request),
+            year,
+            month,
+            "Ücret hesap pusulası (PDF)",
+            approval=payroll.approval,
+            employee=employee,
+        )
+        name = _file_name("ucret-pusulasi", payroll, "pdf", f"-{sicil}" if sicil else "")
+        return _private_file(content, PDF, name, inline=True)
 
 
 class PayrollEmployerCostPdfView(APIView):
@@ -509,12 +725,17 @@ class PayrollEmployerCostPdfView(APIView):
 
     permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
 
-    @extend_schema(parameters=[DEPARTMENT_PARAM], responses={(200, PDF): OpenApiTypes.BINARY})
+    @extend_schema(
+        parameters=[DEPARTMENT_PARAM, APPROVAL_PARAM], responses={(200, PDF): OpenApiTypes.BINARY}
+    )
     def get(self, request: Request, year: int, month: int) -> HttpResponse:
-        payroll = _payroll(request, year, month, net=False)
-        content = pdf.employer_cost_pdf(payroll, draft=True)
-        services.record_payroll_access(_user(request), year, month, "İşveren maliyeti (PDF)")
-        return _private_file(content, PDF, f"isveren-maliyeti-{year}-{month:02d}.pdf", inline=True)
+        payroll = _payroll(request, year, month, net=False, approval=True)
+        content = pdf.employer_cost_pdf(payroll, stamp=_stamp(payroll))
+        services.record_payroll_access(
+            _user(request), year, month, "İşveren maliyeti (PDF)", approval=payroll.approval
+        )
+        name = _file_name("isveren-maliyeti", payroll, "pdf")
+        return _private_file(content, PDF, name, inline=True)
 
 
 class PayrollRegisterPdfView(APIView):
@@ -523,7 +744,9 @@ class PayrollRegisterPdfView(APIView):
 
     permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
 
-    @extend_schema(parameters=[DEPARTMENT_PARAM], responses={(200, PDF): OpenApiTypes.BINARY})
+    @extend_schema(
+        parameters=[DEPARTMENT_PARAM, APPROVAL_PARAM], responses={(200, PDF): OpenApiTypes.BINARY}
+    )
     def get(self, request: Request, year: int, month: int) -> HttpResponse:
         _check_month(year, month)
         if not selectors.net_available(year, month):
@@ -533,10 +756,13 @@ class PayrollRegisterPdfView(APIView):
                 f"Bordro listesi {selectors.month_label(start_year, start_month)} ayından "
                 "başlar; önceki aylar mali müşavirdedir.",
             )
-        payroll = _payroll(request, year, month)
-        content = pdf.register_pdf(payroll, draft=True)
-        services.record_payroll_access(_user(request), year, month, "Bordro listesi (PDF)")
-        return _private_file(content, PDF, f"bordro-listesi-{year}-{month:02d}.pdf", inline=True)
+        payroll = _payroll(request, year, month, approval=True)
+        content = pdf.register_pdf(payroll, stamp=_stamp(payroll))
+        services.record_payroll_access(
+            _user(request), year, month, "Bordro listesi (PDF)", approval=payroll.approval
+        )
+        name = _file_name("bordro-listesi", payroll, "pdf")
+        return _private_file(content, PDF, name, inline=True)
 
 
 class PayrollExcelView(APIView):
@@ -545,12 +771,17 @@ class PayrollExcelView(APIView):
 
     permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
 
-    @extend_schema(parameters=[DEPARTMENT_PARAM], responses={(200, XLSX): OpenApiTypes.BINARY})
+    @extend_schema(
+        parameters=[DEPARTMENT_PARAM, APPROVAL_PARAM],
+        responses={(200, XLSX): OpenApiTypes.BINARY},
+    )
     def get(self, request: Request, year: int, month: int) -> HttpResponse:
-        payroll = _payroll(request, year, month)
-        content = exports.payroll_xlsx(payroll, draft=True)
-        services.record_payroll_access(_user(request), year, month, "Bordro (Excel)")
-        return _private_file(content, XLSX, f"bordro-{year}-{month:02d}.xlsx", inline=False)
+        payroll = _payroll(request, year, month, approval=True)
+        content = exports.payroll_xlsx(payroll, stamp=_stamp(payroll))
+        services.record_payroll_access(
+            _user(request), year, month, "Bordro (Excel)", approval=payroll.approval
+        )
+        return _private_file(content, XLSX, _file_name("bordro", payroll, "xlsx"), inline=False)
 
 
 class ExternalPayrollView(APIView):

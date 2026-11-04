@@ -486,9 +486,7 @@ def test_payroll_excel(manager: User) -> None:
     assert D(str(parameters["Asgari ücret istisna matrahı (TL)"])) == D("28075.50")
     assert D(str(parameters["Nakit yemek SGK istisnası (günlük TL)"])) == D("0")
     # Onaylı bordronun (4. adım) Excel'inde TASLAK yazmaz.
-    final = load_workbook(
-        BytesIO(exports.payroll_xlsx(selectors.payroll_month(2026, 9), draft=False))
-    )
+    final = load_workbook(BytesIO(exports.payroll_xlsx(selectors.payroll_month(2026, 9), stamp="")))
     texts = [
         value
         for name in final.sheetnames
@@ -511,10 +509,10 @@ def test_employer_cost_pdf_draft_stamp(manager: User, monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(Canvas, "drawCentredString", spy)
     month = selectors.payroll_month(2026, 9)
-    pdf.employer_cost_pdf(month, draft=True)
+    pdf.employer_cost_pdf(month, stamp=pdf.DRAFT)
     assert stamped.count("TASLAK") == 1  # tek sayfa
     stamped.clear()
-    pdf.employer_cost_pdf(month, draft=False)
+    pdf.employer_cost_pdf(month, stamp="")
     assert "TASLAK" not in stamped
 
 
@@ -571,12 +569,14 @@ def test_payroll_outputs_api(client_for: Callable[..., APIClient], manager: User
     response = client.get(f"{BASE}/payroll/2026/9/employer-cost.pdf")
     assert response.status_code == 200 and response["Content-Type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
-    assert response["Content-Disposition"] == 'inline; filename="isveren-maliyeti-2026-09.pdf"'
+    assert response["Content-Disposition"] == (
+        'inline; filename="isveren-maliyeti-2026-09-taslak.pdf"'
+    )
     assert response["Cache-Control"] == "no-store"
     assert response["X-Content-Type-Options"] == "nosniff"
     excel = client.get(f"{BASE}/payroll/2026/9/xlsx/")
     assert excel.status_code == 200
-    assert excel["Content-Disposition"] == 'attachment; filename="bordro-2026-09.xlsx"'
+    assert excel["Content-Disposition"] == 'attachment; filename="bordro-2026-09-taslak.xlsx"'
     assert excel["Cache-Control"] == "no-store"
     notes = list(
         AuditLog.objects.filter(note__startswith="Bordro çıktısı açıldı").values_list(

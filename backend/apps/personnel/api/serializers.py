@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from apps.core.api.serializers import AuditLogSerializer
 from apps.core.models import User
-from apps.personnel import payroll
+from apps.personnel import payroll, selectors
 from apps.personnel.models import (
     ATTENDANCE_CODES,
     AttendanceEntry,
@@ -18,10 +18,12 @@ from apps.personnel.models import (
     EmployeeDocument,
     EmployeeWage,
     ExternalPayrollFigure,
+    PayrollApproval,
     PayrollItem,
     PayrollItemCategory,
     PayrollOpeningBalance,
     PayrollParameterSet,
+    PayrollRun,
     PublicHoliday,
 )
 from apps.personnel.selectors import (
@@ -31,7 +33,7 @@ from apps.personnel.selectors import (
     PayrollSettings,
     engine_parameters,
 )
-from apps.personnel.state import attendance_month_states
+from apps.personnel.state import attendance_month_states, payroll_run_states
 
 
 def _blank(**kwargs: Any) -> serializers.CharField:
@@ -283,8 +285,19 @@ class AttendanceGridSerializer(serializers.Serializer):
     days = AttendanceColumnSerializer(many=True)
     rows = AttendanceRowSerializer(many=True)
 
+    payroll = serializers.SerializerMethodField(
+        help_text="ayın bordrosu (yoksa boş): onaylıyken puantaj yeniden açılamaz"
+    )
+
     def get_month_record(self, obj: AttendanceGrid) -> dict[str, Any] | None:
         return AttendanceMonthSerializer(obj.record).data if obj.record else None
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_payroll(self, obj: AttendanceGrid) -> dict[str, Any] | None:
+        run = self.context.get("payroll_run")
+        if run is None:
+            return None
+        return {"number": run.number, "status": run.status}
 
 
 class AttendanceEntrySerializer(serializers.ModelSerializer):
@@ -450,22 +463,20 @@ def _rate(**kwargs: Any) -> serializers.DecimalField:
     return serializers.DecimalField(max_digits=6, decimal_places=3, **kwargs)
 
 
-class PayrollEmployeeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Employee
-        fields = [
-            "id",
-            "employee_no",
-            "full_name",
-            "department",
-            "title",
-            "hire_date",
-            "termination_date",
-            "is_active",
-            "payroll_external",
-            "bes_enrolled",
-        ]
-        read_only_fields = fields
+class PayrollEmployeeSerializer(serializers.Serializer):
+    """Bordrodaki kişi (`selectors.PersonView`): açık ayda kartın bugünkü hali, onaylı ayda onay
+    anındaki hali. İşaretler hesapta kullanılanlardır (yeniden açılan ayda onaydaki)."""
+
+    id = serializers.IntegerField(source="pk")
+    employee_no = serializers.CharField()
+    full_name = serializers.CharField()
+    department = serializers.CharField()
+    title = serializers.CharField()
+    hire_date = serializers.DateField(allow_null=True)
+    termination_date = serializers.DateField(allow_null=True)
+    is_active = serializers.BooleanField()
+    payroll_external = serializers.BooleanField()
+    bes_enrolled = serializers.BooleanField()
 
 
 class PayrollItemSerializer(serializers.Serializer):
@@ -772,19 +783,22 @@ class BatchErrorSerializer(serializers.Serializer):
 
 class CarryMonthSerializer(serializers.Serializer):
     """Ay başı kümülatifin halkası (`kind`): "opening" (devir; tutarlar `month` ayından önceki
-    kümülatif),
-    "erp" (o ayın eklenen GV matrahı ve istisna matrahı) ya da "external" (bordro mali müşavirdeydi;
-    zincir kopar)."""
+    kümülatif), "approved" (onaylı bordro; tutarlar o ayın sonundaki kümülatif), "erp" (o ayın
+    eklenen GV matrahı ve istisna matrahı), "external" (bordro mali müşavirdeydi; zincir kopar)
+    ya da "missing" (kartına göre işteydi ama bordroda satırı yok; o ayın kümülatifi bilinmez,
+    zincir kopar ve sonraki ilk açık ay devir ister)."""
 
     month = serializers.IntegerField()
-    kind = serializers.CharField(source="source", help_text="opening, erp ya da external")
+    kind = serializers.CharField(
+        source="source", help_text="opening, approved, erp, external ya da missing"
+    )
     tax_base = _money()
     exemption_base = _money()
     flags = serializers.ListField(child=serializers.CharField())
 
 
 class PayrollRowSerializer(serializers.Serializer):
-    employee = PayrollEmployeeSerializer()
+    employee = PayrollEmployeeSerializer(source="person")
     external = serializers.BooleanField(help_text="bordrosu mali müşavirde (rakamlar `figure`)")
     figure = ExternalFigureSerializer(allow_null=True)
     warnings = serializers.ListField(child=serializers.CharField())
@@ -953,8 +967,173 @@ def totals_data(month: PayrollMonth) -> dict[str, Any]:
     return data
 
 
+def _user_name(user: User | None) -> str | None:
+    return str(user) if user else None
+
+
+class PayrollApprovalSerializer(serializers.ModelSerializer):
+    """Bordronun bir onayı (geçmiş dahil): toplamlar, ödeme tarihi; yeniden açıldıysa kim, ne
+    zaman, neden."""
+
+    approved_by_name = serializers.SerializerMethodField()
+    reopened_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PayrollApproval
+        fields = [
+            "sequence",
+            "approved_at",
+            "approved_by_name",
+            "payment_date",
+            "attendance_number",
+            "engine_version",
+            "employee_count",
+            "external_count",
+            "gross_total",
+            "employer_cost",
+            "net_pay",
+            "payable",
+            "income_tax",
+            "stamp_tax",
+            "reopened_at",
+            "reopened_by_name",
+            "reopen_reason",
+        ]
+        read_only_fields = fields
+
+    def get_approved_by_name(self, obj: PayrollApproval) -> str | None:
+        return _user_name(obj.approved_by)
+
+    def get_reopened_by_name(self, obj: PayrollApproval) -> str | None:
+        return _user_name(obj.reopened_by) if obj.reopened_by_id else None
+
+
+class GatePersonSerializer(serializers.Serializer):
+    id = serializers.IntegerField(source="pk")
+    full_name = serializers.CharField()
+
+
+class PayrollGateSerializer(serializers.Serializer):
+    """Onay denetimi: `level` block (onayı engeller), acknowledge ("okudum" istenir) ya da notice
+    (bilgi); `employees` ilgili kişiler."""
+
+    code = serializers.CharField()
+    level = serializers.CharField(help_text="block, acknowledge ya da notice")
+    employees = GatePersonSerializer(source="people", many=True)
+
+
+class CardChangeSerializer(serializers.Serializer):
+    """Yeniden açılan ayda kartı son onaydakinden farklı kişi (onaydaki işaretlerle hesaplanır;
+    `following` ise kartın bugünkü işaretleriyle). `stored_external` / `stored_bes` onayda
+    saklanacak hal; o aya girilmiş mali müşavir rakamı kişiyi mali müşavirde tutar
+    (`figure_keeps_external`)."""
+
+    employee = serializers.IntegerField(source="employee.pk")
+    full_name = serializers.CharField(source="employee.full_name")
+    approved_external = serializers.BooleanField()
+    approved_bes = serializers.BooleanField()
+    card_external = serializers.BooleanField(source="employee.payroll_external")
+    card_bes = serializers.BooleanField(source="employee.bes_enrolled")
+    following = serializers.BooleanField()
+    stored_external = serializers.BooleanField(help_text="onayda mali müşavirde saklanır")
+    stored_bes = serializers.BooleanField(help_text="onayda BES'e dahil saklanır")
+    figure_keeps_external = serializers.BooleanField(
+        help_text="işaretler ERP derken girilmiş mali müşavir rakamı kişiyi mali müşavirde tutar"
+    )
+
+
+class PayrollStateSerializer(serializers.Serializer):
+    """Ayın bordro durumu: onaylı mı (saklı satırlar), onay geçmişi; açık ayda onay denetimleri
+    ve hesabın özeti (onay penceresi gönderir). Birim süzgeçli ayda denetim ve özet boştur (onay
+    tüm ay için verilir)."""
+
+    run = serializers.IntegerField(allow_null=True)
+    number = serializers.CharField()
+    status = serializers.CharField(help_text="OPEN ya da APPROVED")
+    status_display = serializers.CharField()
+    approved = serializers.BooleanField()
+    approval = PayrollApprovalSerializer(allow_null=True, help_text="geçerli onay")
+    history = PayrollApprovalSerializer(many=True, help_text="ayın onayları, eskiden yeniye")
+    previous_open = serializers.BooleanField(help_text="bir önceki bordro ayı onaylanmadı")
+    can_reopen = serializers.BooleanField(help_text="en son onaylı ay (yeniden açılabilir)")
+    gates = PayrollGateSerializer(many=True, allow_null=True)
+    fingerprint = serializers.CharField(allow_null=True)
+    card_changes = CardChangeSerializer(many=True)
+
+
+def payroll_state(month: PayrollMonth, *, full: bool) -> dict[str, Any]:
+    run = month.run
+    status = PayrollRun.Status.APPROVED if month.approved else PayrollRun.Status.OPEN
+    can_reopen = False
+    if month.approved and run is not None:
+        latest = selectors.latest_approved_run()
+        can_reopen = latest is not None and latest.pk == run.pk
+    open_month = month.approval is None
+    return {
+        "run": run.pk if run else None,
+        "number": month.number,
+        "status": status,
+        "status_display": payroll_run_states.label(status),
+        "approved": month.approved,
+        "approval": month.approval if month.approved else None,
+        "history": list(month.history),
+        "previous_open": month.previous_open,
+        "can_reopen": can_reopen,
+        "gates": selectors.payroll_gates(month) if full and open_month else None,
+        "fingerprint": selectors.payroll_fingerprint(month) if full and open_month else None,
+        "card_changes": list(month.card_changes),
+    }
+
+
+class PayrollRunSerializer(serializers.ModelSerializer):
+    """Aylık bordro kaydı (BR-) ve geçerli onayı."""
+
+    status_display = serializers.SerializerMethodField()
+    current = PayrollApprovalSerializer(allow_null=True)
+
+    class Meta:
+        model = PayrollRun
+        fields = ["id", "number", "year", "month", "status", "status_display", "current"]
+        read_only_fields = fields
+
+    def get_status_display(self, obj: PayrollRun) -> str:
+        return payroll_run_states.label(obj.status)
+
+
+class PayrollApproveSerializer(serializers.Serializer):
+    payment_date = serializers.DateField(label="ödeme tarihi")
+    fingerprint = serializers.CharField(max_length=64, label="hesabın özeti")
+    acknowledged = serializers.ListField(
+        child=serializers.CharField(max_length=40),
+        required=False,
+        default=list,
+        max_length=20,
+        label="okunan uyarılar",
+    )
+
+
+class PayrollGateErrorSerializer(serializers.Serializer):
+    """Onayın reddi (400). `gates` yalnızca payroll_not_ready (engelleyen denetimler) ve
+    acknowledgement_required (okunmamış "okudum" denetimleri) yanıtlarındadır."""
+
+    code = serializers.CharField()
+    detail = serializers.CharField()
+    gates = PayrollGateSerializer(many=True, required=False)
+
+
+class PaymentDateSerializer(serializers.Serializer):
+    payment_date = serializers.DateField(label="ödeme tarihi")
+    reason = serializers.CharField(max_length=500, label="gerekçe")
+
+
+class FollowCardSerializer(serializers.Serializer):
+    employee = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), label="personel")
+    follow = serializers.BooleanField(label="kartın bugünkü işaretlerini izle")
+
+
 class PayrollMonthSerializer(serializers.Serializer):
-    """Ayın ön bordrosu (canlı hesap). Puantaj açıkken girilmemiş günler takvimden sayılır."""
+    """Ayın ön bordrosu: açık ayda canlı hesap (puantaj açıkken girilmemiş günler takvimden
+    sayılır), onaylı ayda onayda saklanan satırlar."""
 
     year = serializers.IntegerField()
     month = serializers.IntegerField()
@@ -974,6 +1153,7 @@ class PayrollMonthSerializer(serializers.Serializer):
         many=True, help_text="bu ay işte olmayan kişilere girilmiş kalemler"
     )
     totals = serializers.SerializerMethodField()
+    payroll = serializers.SerializerMethodField()
 
     def to_representation(self, instance: PayrollMonth) -> Any:
         # İç içe satır serileştiricileri net alanlarını bu bilgiyle boşaltır.
@@ -991,6 +1171,11 @@ class PayrollMonthSerializer(serializers.Serializer):
     @extend_schema_field(PayrollTotalsSerializer)
     def get_totals(self, obj: PayrollMonth) -> dict[str, Any]:
         return dict(PayrollTotalsSerializer(totals_data(obj)).data)
+
+    @extend_schema_field(PayrollStateSerializer)
+    def get_payroll(self, obj: PayrollMonth) -> dict[str, Any]:
+        full = not self.context.get("department")
+        return dict(PayrollStateSerializer(payroll_state(obj, full=full)).data)
 
 
 PARAMETER_VALUE_FIELDS = (

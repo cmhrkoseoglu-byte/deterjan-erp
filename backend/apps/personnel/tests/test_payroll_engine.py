@@ -4,6 +4,7 @@ kural sabitleri ve modül sınırları. Veritabanı gerekmez."""
 
 import ast
 import calendar
+import json
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
@@ -160,6 +161,115 @@ def test_bes_is_three_percent_of_the_sgk_base() -> None:
         D("26148.75"),
     )
     assert compute(month(2026, 1, "400000", bes=True)).bes_deduction == D("8918.10")  # 12.000 değil
+
+
+def test_result_round_trips_through_json() -> None:
+    """Onaylı ayın saklanan satırı: JSON'a yazılıp okunan satır aynıdır (tutarlar Decimal kalır,
+    kalemler, boş ücret ve işaretler korunur)."""
+    extras = (payroll.Item("PREMIUM", "Prim", D("5000")),)
+    deductions = (payroll.Item("ADVANCE", "Avans", D("1000.00")),)
+    full = month(2026, 10, "50000", hours={5: "2.5"}, bes=True)
+    for result in (
+        compute(replace(full, extras=extras, deductions=deductions)),
+        compute(month(2026, 10, None)),  # ücret eksik
+    ):
+        stored = json.loads(json.dumps(payroll.result_to_dict(result)))
+        assert payroll.result_from_dict(stored) == result
+    assert payroll.result_to_dict(result)["monthly_wage"] is None
+
+
+# Motorun 2026.2 sürümünün saklanan satırı: Ekim 2026, tam ay 50.000 TL + 5.000 TL prim, kümülatif
+# sıfırdan (onaylı bordro yasal kayıttır; motor değişse de eski satırlar okunmalı).
+STORED_2026_2 = {
+    "employed_days": 31,
+    "worked_days": 31,
+    "paid_days": 30,
+    "unpaid_days": 0,
+    "sick_days": 0,
+    "unpaid_leave_days": 0,
+    "absent_days": 0,
+    "sgk_days": 30,
+    "monthly_wage": "50000",
+    "missing_wage": False,
+    "salary": "50000.00",
+    "overtime_worked_hours": "0",
+    "overtime_worked_pay": "0.00",
+    "overtime_rest_hours": "0",
+    "overtime_rest_pay": "0.00",
+    "holiday_days": 0,
+    "holiday_half_days": 0,
+    "holiday_hours": "0",
+    "holiday_extra_hours": "0",
+    "holiday_pay": "0.00",
+    "extras": [{"kind": "PREMIUM", "label": "Prim", "amount": "5000"}],
+    "extras_total": "5000",
+    "gross_total": "55000.00",
+    "meal_exemption": "0.00",
+    "sgk_gross": "55000.00",
+    "sgk_base": "55000.00",
+    "floor_applied": False,
+    "ceiling_applied": False,
+    "employee_sgk": "7700.00",
+    "employee_unemployment": "550.00",
+    "tax_base": "46750.00",
+    "cumulative_tax_base_before": "0",
+    "cumulative_tax_base_after": "46750.00",
+    "income_tax_computed": "7012.50",
+    "income_tax_exemption": "4211.33",
+    "income_tax": "2801.17",
+    "exemption_base_before": "0",
+    "exemption_base_added": "28075.50",
+    "stamp_tax_computed": "417.45",
+    "stamp_tax_exemption": "250.70",
+    "stamp_tax": "166.75",
+    "net_pay": "43782.08",
+    "bes_deduction": "0",
+    "deductions": [],
+    "deductions_total": "0",
+    "payable": "43782.08",
+    "employer_sgk_gross": "11962.50",
+    "incentive": "2750.00",
+    "employer_sgk": "9212.50",
+    "employer_unemployment": "1100.00",
+    "floor_gap": "0",
+    "employer_cost": "65312.50",
+}
+
+
+def test_stored_line_of_an_older_engine_is_read() -> None:
+    """Saklanan satır sürümden bağımsız okunur: bilinmeyen anahtar atlanır, eksik alan boş değerini
+    alır (gün 0, işaret hayır, kalem yok, tutar 0, aylık ücret boş)."""
+    line = payroll.result_from_dict(STORED_2026_2)
+    extras = (payroll.Item("PREMIUM", "Prim", D("5000")),)
+    assert line == compute(replace(month(2026, 10, "50000"), extras=extras))
+    assert (line.gross_total, line.payable, line.employer_cost) == (
+        D("55000.00"),
+        D("43782.08"),
+        D("65312.50"),
+    )
+    assert line.extras == (payroll.Item("PREMIUM", "Prim", D("5000")),)
+    trimmed = {key: value for key, value in STORED_2026_2.items() if key != "meal_exemption"}
+    trimmed["future_field"] = "1"
+    older = payroll.result_from_dict(trimmed)
+    assert older.meal_exemption == D(0)
+    assert older.payable == line.payable
+    empty = payroll.result_from_dict({})
+    assert (empty.sgk_days, empty.missing_wage, empty.extras, empty.monthly_wage) == (
+        0,
+        False,
+        (),
+        None,
+    )
+    assert empty.gross_total == D(0)
+
+
+def test_parameters_round_trip_through_json() -> None:
+    """Onayda saklanan parametreler aynı değerlerle okunur; eski kayıtta olmayan değer 0'dır."""
+    params = payroll.LEGAL_DEFAULTS[2026]
+    stored = json.loads(json.dumps(payroll.parameters_to_dict(params)))
+    assert payroll.parameters_from_dict(stored) == params
+    del stored["meal_exemption_daily"]
+    assert payroll.parameters_from_dict(stored).meal_exemption_daily == D(0)
 
 
 def test_floor_gap_is_borne_by_the_employer() -> None:
@@ -348,7 +458,7 @@ def _imports(path: Path) -> set[str]:
 
 def test_engine_uses_only_the_standard_library() -> None:
     """Motor Django'suz ve uygulama modülsüz kalır (saf hesap; testler veritabanı istemez)."""
-    allowed = {"dataclasses", "datetime", "decimal"}
+    allowed = {"collections.abc", "dataclasses", "datetime", "decimal", "typing"}
     assert _imports(PERSONNEL / "payroll.py") <= allowed
 
 

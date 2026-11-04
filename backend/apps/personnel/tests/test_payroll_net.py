@@ -786,7 +786,9 @@ def test_register_pdf_api(client_for: Callable[..., APIClient], manager: User) -
     assert early.status_code == 400 and early.json()["code"] == "before_start"
     response = client.get(f"{BASE}/payroll/2026/10/register.pdf")
     assert response.status_code == 200 and response.content.startswith(b"%PDF")
-    assert response["Content-Disposition"] == 'inline; filename="bordro-listesi-2026-10.pdf"'
+    assert response["Content-Disposition"] == (
+        'inline; filename="bordro-listesi-2026-10-taslak.pdf"'
+    )
     assert response["Cache-Control"] == "no-store"
     assert AuditLog.objects.filter(
         note="Bordro çıktısı açıldı: Bordro listesi (PDF) · Ekim 2026"
@@ -838,28 +840,26 @@ def test_external_figure_rules(manager: User) -> None:
     )
 
 
-def test_external_figure_refused_while_the_month_has_items(manager: User) -> None:
-    """Rakam girilen ay mali müşavirde sayılır: o aya ERP'de girilmiş kalem hesaptan sessizce
-    düşmesin diye önce kalem kaldırılır. Kartı sonradan işaretlenen kişinin kalemi bordro listesinde
-    mali müşavir bloğunun notunda (açıklamasız) yazılır."""
+def test_external_figure_entered_while_the_month_has_items(manager: User) -> None:
+    """Kartı sonradan işaretlenen kişinin o aya ERP'de girilmiş kalemi hesaplanmaz; mali müşavir
+    rakamı yine girilir (2026-11-03 "Onaylansın, listede yazsın"). Kalem bordro listesinde mali
+    müşavir bloğunun notunda (açıklamasız) yazılır."""
     person = employee(manager, employee_no="S-1")
     _wage(manager, person)
-    item = _item(manager, person, C.ADVANCE, "1000", description="Ekim avansı")
+    _item(manager, person, C.ADVANCE, "1000", description="Ekim avansı")
     services.update_employee(manager, person, {"payroll_external": True})
-    with pytest.raises(BusinessRuleError) as exc:
-        services.set_external_payroll(
-            manager, person, 2026, 10, gross_total=D("50000"), employer_cost=D("59375")
-        )
-    assert exc.value.code == "payroll_items_external"
-    assert "Ekim 2026 Avans 1.000,00 TL" in exc.value.message
     month = selectors.payroll_month(2026, 10)
     assert pdf.external_rows(month)[0][3] == (
         "rakam girilmedi\nERP'de girilen kalemler hesaplanmadı: Avans 1.000,00"
     )
-    services.remove_payroll_item(manager, item, "Mali müşavire bildirildi")
     services.set_external_payroll(
         manager, person, 2026, 10, gross_total=D("50000"), employer_cost=D("59375")
     )
+    month = selectors.payroll_month(2026, 10)
+    assert pdf.external_rows(month)[0][3] == (
+        "ERP'de girilen kalemler hesaplanmadı: Avans 1.000,00"
+    )
+    assert "Ekim avansı" not in pdf.external_rows(month)[0][3]
 
 
 @pytest.mark.parametrize("role", OTHER_ROLES)

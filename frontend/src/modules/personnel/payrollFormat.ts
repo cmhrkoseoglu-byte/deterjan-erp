@@ -8,7 +8,7 @@ import type {
 } from "../../api/payroll";
 import { DEDUCTION_CATEGORIES, EXTRA_CATEGORIES } from "../../api/payroll";
 import { today } from "../inventory/config";
-import { pn, py } from "./strings";
+import { pa, pn, py } from "./strings";
 
 export const CATEGORY_LABELS: Record<PayrollItemCategory, string> = {
   PREMIUM: "Prim",
@@ -112,4 +112,25 @@ export function staleOpenings(payroll: PayrollMonth): [month: number, count: num
 export function openingTarget(payroll: PayrollMonth): number {
   const missing = missingOpenings(payroll);
   return missing.length ? missing[0][0] : payroll.month;
+}
+
+// Ödeme tarihi en geç bordro ayından üç ay sonrasının son günü (sunucuyla aynı kural); ay sonundan
+// 20 günden sonrası uyarılır.
+const PAYMENT_MONTHS_AFTER = 3;
+const LATE_PAYMENT_DAYS = 20;
+
+const iso = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+/** Ödeme tarihinin sınırları: ayın ilk günü, üç ay sonrasının son günü ve "geç" eşiği. */
+export function paymentBounds(year: number, month: number) {
+  const first = new Date(year, month - 1, 1);
+  const last = new Date(year, month - 1 + PAYMENT_MONTHS_AFTER + 1, 0);
+  const late = new Date(year, month, LATE_PAYMENT_DAYS);
+  return { first: iso(first), last: iso(last), late: iso(late) };
+}
+
+/** Onay denetiminin adı (ay düzeyi denetimler ya da satır uyarısı). */
+export function gateLabel(code: string): string {
+  return pa.gate[code] ?? warningLabel(code);
 }

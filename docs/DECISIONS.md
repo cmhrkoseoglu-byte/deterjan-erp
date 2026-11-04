@@ -1608,7 +1608,11 @@ değiştirme zorunlu, yalnızca admin):
   "Puantajda çıkıştan sonraki günler") "Yeniden işe başladı" bunları geri getirmez; maliyet yine de
   yalnızca işe giriş ve çıkış arasındaki günleri sayar. Eklenmiş işçilik oranları ve hesaplanmış lot
   maliyetleri değişmez.
-  Onay anındaki dağılımı ve çalışma dönemlerini saklamak ayrı bir tasarım konusudur.
+  Onay anındaki dağılımı ve çalışma dönemlerini saklamak ayrı bir tasarım konusudur. (2026-11-03:
+  bordrosu onaylı ayda (Ekim 2026'dan) kişi satırları ve birimleri onayda saklanır, yeniden
+  hesaplanmaz; o ayın satırını değiştiren ücret ve işe giriş tarihi değişikliği bordro yeniden
+  açılmadan reddedilir (`payroll_approved`). Aşama eşleştirmesi bugünkü kalır, çalışma dönemleri
+  saklanmaz. Bkz. "Personel bordrosu", 4. adım.)
 - **İşçilik oranı önerisi:** aşamanın personel maliyeti / o ay üretilen kg (4 ondalık). Kg, lot
   maliyetindeki işçilik tabanıyla aynıdır: üretimde ay içinde biten şarjların kg'a çevrilmiş çıktısı,
   dolumda ay içinde biten partilerde tüketilen bulk (fire hariç); yoğunluğu girilmemiş malzemenin
@@ -1624,7 +1628,7 @@ değiştirme zorunlu, yalnızca admin):
   (docs/KVKK.md).
 - **Kapsam dışı:** bordro ve net ücret, prim ve ikramiye, yol ve yemek yardımı, kıdem tazminatı
   karşılığı, bütçe ve plan maliyeti, işveren payının tarihli değişimi, onaylı ayın dağılımının
-  saklanması. (Puantajda çıkış tarihinden sonra kayıtlı kalan günler 2026-10-30'da personel modülünde
+  saklanması (kısmen 4. adımda: bordrosu onaylı ayın kişi satırları ve birimleri saklanır). (Puantajda çıkış tarihinden sonra kayıtlı kalan günler 2026-10-30'da personel modülünde
   düzeltildi; bkz. "Puantajda çıkıştan sonraki günler". 2026-11-02: prim, ikramiye, nakit yol ve
   yemek bordroda ek ödeme olarak girilir ve SGK işveren payıyla personel maliyetine ve işçilik oranı
   önerisine girer; bkz. "Personel bordrosu", 3. adım.)
@@ -1889,11 +1893,13 @@ değiştirme zorunlu, yalnızca admin):
       Nakit yemek ipucu parametrelerdeki günlük sınırı söyler; sınır 0 ise istisna uygulanmadığını
       uyarır.
   - İnceleme sonrası (2026-11-02, kurallar ve çıktılar):
-    - Mali müşavir rakamı, o aya ERP'de girilmiş etkin ek ödeme ya da kesinti varken ilk kez
-      girilemez (`payroll_items_external`): rakam girilen ay mali müşavirde sayılır ve kalem hesaba
-      girmezdi; önce mali müşavire bildirilip gerekçeyle kaldırılır. Kartı sonradan işaretlenen
-      kişiye girilmiş kalemler bordro listesinde mali müşavir bloğunun notunda kalem toplamlarıyla
-      (açıklamasız) yazılır. Kart işaretinin açılması için kural sorulacak (aşağıda "Açık soru").
+    - ~~Mali müşavir rakamı, o aya ERP'de girilmiş etkin ek ödeme ya da kesinti varken ilk kez
+      girilemez (`payroll_items_external`).~~ 4. adım incelemesinde kaldırıldı (2026-11-03,
+      "Onaylansın, listede yazsın" kararının gereği): rakam ancak kişinin o ayı zaten mali
+      müşavirdeyken girilir, kalemler de zaten hesaplanmaz; kural yalnızca onayı kilitliyordu.
+      Kartı sonradan işaretlenen kişiye girilmiş kalemler bordro listesinde mali müşavir bloğunun
+      notunda kalem toplamlarıyla (açıklamasız) yazılır. Kart işaretinin sonradan açılması için kural
+      aşağıdaki 2026-11-03 kararıdır.
     - Gelecek aya devir girilmez (`future_month`): bir önceki ayın kümülatifi o ay bitince belli
       olur; kalemlerdeki kuralla aynı. Ekranda gelecek ayın devir düğmeleri kapalıdır, ay hazırlığı
       "ay gelince girilir" yazar.
@@ -1911,7 +1917,137 @@ değiştirme zorunlu, yalnızca admin):
     - Kalem açıklaması ve kaldırma nedeni denetim günlüğünde eski → yeni değerleriyle kalır; kaldırma
       nedeni kartın geçmişine de yazılır. Pencereler buna göre uyarır (dosya numarası ya da kişi adı
       yazılmaz).
-    - Açık soru (4. adımdan önce sorulacak): kartta "Bordrosu mali müşavirde" işareti sonradan
-      açılınca daha önce ERP'de hesaplanmış aylar da mali müşavirde sayılıyor (işaret kartın bugünkü
-      durumudur). Onaylı aylar 4. adımda saklı satırlarla korunacak; onaysız aylar ve o aylara girilmiş
-      kalemler için kural kullanıcıya sorulacak.
+    - **Karar (CUMHUR, 2026-11-03, "Onaylılar korunsun"):** kartta "Bordrosu mali müşavirde"
+      işareti sonradan açılınca onaylı aylar saklı satırlarıyla korunur, işaretten etkilenmez (4.
+      adım). Onaysız aylar işarete uyar (yeniden açılan ayda son onayda bulunan kişiler "Kartı
+      izle"ye kadar onaydaki işaretlerle kalır; bkz. 4. adım kararları); işaret açılırken kişinin
+      onaysız aylardaki ek ödeme, kesinti ve devirleri kartın geçmişine (açıklamasız) yazılır ve
+      ekranda uyarılır (yeniden açılan ayda ERP'de kalan kayıt bunu yazar). Diğer
+      seçenekler ("İşaretin başlangıç ayı olsun", "Kalem varken açılamasın") seçilmedi.
+- **4. adım kararları (CUMHUR, 2026-11-03; tasarım eleştirisinin açtığı sorular, hepsinde önerilen
+  seçenek):**
+  - **Ücret hesap pusulası iç belgedir** ("İç belge"): başlığı "Ücret hesap pusulası (ön bordro,
+    bilgi amaçlı)", imza satırı yoktur. Resmî pusula mali müşavirinkidir; paralel aylarda iki farklı
+    imzalı belge oluşmaz.
+  - **Onayı engelleyen uyarılar** ("İkisi engellesin"): devir eksik, zincir eksik, ücret eksik, mali
+    müşavir rakamı girilmedi ve kesinti netten fazlaya ek olarak "asgari ücretin altında" ve "SGK
+    günü olmadan ödeme" de onayı engeller. "Ay içinde çıkış" ve "tavanı aşan prim" onay penceresinde
+    kişi adlarıyla listelenir, "okudum" işaretiyle onaylanır.
+  - **Mali müşavirdeki kişinin ERP kalemleri** ("Onaylansın, listede yazsın"): onayı engellemez;
+    bordro listesinin mali müşavir bölümünde kalem toplamlarıyla (açıklamasız) yazılır, onay
+    penceresinde uyarı olarak gösterilir.
+  - **Yeniden açılan ay onaydaki durumu korur** ("Onaydaki durum korunsun"): önceki onayda bulunan
+    kişiler o onaydaki "Bordrosu mali müşavirde" ve "BES'e dahil" işaretleriyle hesaplanır. Kartı
+    değişen kişiler pencerede listelenir; bir kişiyi kartın bugünkü durumuna geçirmek ayrıca seçilir
+    ve kayda geçer. Önceki onayda olmayan kişiler kartı izler.
+  - **Ödeme tarihi gerekçeyle düzeltilir** ("Gerekçeyle düzeltilsin"): onaylı bordroda yalnızca
+    ödeme tarihi gerekçeyle değiştirilebilir; tutarlar değişmez, ay kilitli kalır, eski → yeni
+    denetim günlüğüne yazılır.
+  - **İşçilik oranı onaylı bordrodan** ("Onaylı bordro gereksin"): Ekim 2026 ve sonrasında Maliyet >
+    Personel maliyeti'nden işçilik oranı yalnızca bordrosu onaylı aydan eklenir; oranın notuna BR
+    numarası yazılır. Ekim öncesinde bugünkü gibi onaylı puantaj yeter. Rapor ve Excel ayın onaylı
+    ya da tahmin olduğunu gösterir.
+- **4. adım (2026-11-03): bordro onayı, ay kilitleri, ücret hesap pusulası.**
+  - Kayıtlar (göç 0007): `PayrollRun` (BR-, numara bordronun yılından: Aralık bordrosu Ocak'ta
+    onaylansa da BR-<Aralık'ın yılı>), `PayrollApproval` (onay anındaki parametreler, firma
+    bilgisi, puantaj numarası, motor sürümü, ödeme tarihi, toplamlar ve okunan uyarılar; yeniden
+    açılınca kim, ne zaman, neden yazılır ve saklanır) ve `PayrollSlip` (kişi bilgisi, TC kimlik no
+    yalnızca maskeli; hesapta kullanılan "mali müşavirde" ve "BES" işaretleri; hesap satırı, ek
+    ödeme ve kesintiler açıklamasıyla, mali müşavir rakamı, uyarılar, kümülatifin kuruluşu ve ay
+    sonu kümülatifi). Satır değiştirilmez, silinmez; onaylı kayıt varken göç geri alınamaz.
+  - Onay koşulları "4. adım kararları"ndakilerdir; ayrıca o ay işte olmayan kişiye girilmiş kalem ve
+    bordroda hiç kişi olmaması engeller. Onay penceresi hesabın özetini gönderir: pencere açıldıktan
+    sonra hesap değiştiyse onay reddedilir (`payroll_changed`), yenilenen hesap incelenir. Ödeme
+    tarihi bordro ayının ilk gününden üç ay sonrasının son gününe kadardır; ay sonundan 20 günden
+    sonrası ekranda uyarılır. Onay tüm ay için verilir (birim süzgeçli ekranda denetim yoktur).
+  - Kilitler: kalem, devir ve mali müşavir rakamı; ücret (geçerli olacağı günler, bir sonraki
+    ücrete kadar, kişinin ERP'de hesaplanan satırı olan onaylı bir aya düşerse); parametre seti
+    (onaylı bir ayın geçerli değerleri değişecekse; not ve kaynak düzeltmesi serbest); puantajın
+    yeniden açılması; işe giriş tarihi (onaylı satırı olan ayın işte olunan günlerini
+    değiştirirse). Yeni kart ve yeniden işe başlatma onaylı ayı değiştirmez (onaylı puantaj yalnızca
+    kayıtlı günlerdir). Ayrılışta onaylı puantaj günü varsa hata önce bordronun, sonra puantajın
+    yeniden açılmasını söyler. Onay ayın kartlarını, puantaj ayını, bordro yılını (PostgreSQL
+    danışma kilidi; parametre yazımı da alır) ve önceki ile bu bordro ayını kilitler; kart kilidiyle
+    yazılan kayıtlar onayla sıraya girer.
+  - Onaylı ay saklı satırlardan okunur: ekran, çıktılar ve personel maliyeti (kişinin adı ve
+    birimi onaydaki; aşama eşleştirmesi bugünkü). Kalem, devir ve mali müşavir rakamı ay kilitli
+    olduğu için kayıtlardan okunur (kimin girdiği görünür). Yeniden açılmış eski onayın çıktıları
+    (`?approval=<sıra>`) saklanan kalem ve rakamlardan kurulur, "GEÇERSİZ" damgalıdır; Excel'in
+    Eksik gün sayfası bugünkü puantajdandır ve bunu yazar.
+  - Zincir: onaylı aylar yeniden hesaplanmaz; sonraki ayın kümülatifi kişinin yılın onaylı
+    aylarındaki son satırının ay sonu kümülatifinden kurulur. Onaylı satırdan sonraki aya girilen
+    devir onun yerine geçer (mali müşavirle eşitleme, onayla); mali müşavirdeki onaylı satır
+    zinciri keser (sonraki ilk ERP ayı devir ister).
+  - Yeniden açma yalnızca en son onaylı ayda; onay "geçersiz" olarak saklanır, yeniden onayda
+    numara aynı kalır, onay sırası artar. Yeniden açılan ayda son onayda bulunan kişiler onaydaki
+    işaretlerle hesaplanır (onayda da bu haliyle saklanır); "Kartı izle" kişiyi kartın bugünkü
+    işaretlerine geçirir, bordro kaydına ve kartın geçmişine yazılır. Kalem, devir ve rakam
+    girişleri de bu işaretlere uyar.
+  - Çıktılar: onaylı ayda TASLAK yok; başlıkta BR numarası ve onay sırası, durum satırında onay
+    zamanı, onaylayan ve ödeme tarihi; firma bilgisi onaydaki. Ücret hesap pusulası A4 dikey, kişi
+    başına bir sayfa: firma, dönem, BR numarası, ödeme tarihi; kişi (maskeli TC); günler; kazançlar
+    (saat ve gün ayrıntısıyla, ek ödemeler açıklamasıyla); SGK; gelir ve damga vergisi (hesaplanan,
+    istisna, kesilen; kümülatif matrah); net; kesintiler (BES, açıklamasıyla); ödenecek; alt sınır
+    ve tavanı aşan prim açıklaması; imza satırı yok. Bordrosu mali müşavirde olanlar son sayfada
+    adlarıyla. Açılış bordro kaydının geçmişine (onay sırasıyla), tek kişinin pusulası kartın
+    geçmişine de yazılır.
+  - Personel maliyeti: rapor ve Excel bordronun onaylı mı tahmin mi olduğunu yazar; Ekim 2026'dan
+    işçilik oranı onaylı bordrodan eklenir (`payroll_not_approved`), notunda BR numarası.
+  - Kart: "Bordrosu mali müşavirde" açılınca onaylanmamış aylardaki ek ödeme, kesinti ve devirler
+    (açıklamasız) kartın geçmişine yazılır, kayıt yanıtı ekrana uyarı olarak döner.
+  - Demo verisi: geçen ay başlangıç ayı ya da sonrasıysa o yılın parametre seti (yasal değerler),
+    zincirin ilk ayına devirler (ücretten tahmini) ve geçen aya üç kalem; bordro onaylanmaz, onaylı
+    aya yazılmaz, tekrar çalıştırmak eklemez.
+  - İnceleme sonrası (2026-11-03; yedi eksenli çok ajanlı inceleme, her bulgu ayrı ajanla
+    çürütülmeye çalışıldı; 27 bulgu doğrulandı, 5'i çürütüldü):
+    - Kartına göre işte olduğu bir ayda bordroda satırı olmayan kişide (kart onaydan sonra açıldı
+      ya da işe giriş tarihi onaylı aya çekildi; onaylı puantajda günü yok) o ayın kümülatifi
+      bilinmez: zincir kopar (döküm "Bordroda satırı yok"), sonraki ilk açık ay devir ister. Devirin
+      giriş ayı hiçbir zaman onaylı (kilitli) bir ay olmaz.
+    - Zincirde önceki açık ayın mali müşavirde sayılması o ayın kendi satırının kuralıyla aynıdır
+      (yeniden açılan ayda onaydaki işaret, kartı izleyen kişide kartın işareti).
+    - Mali müşavir rakamı ERP'de girilmiş kalem varken de girilir (yukarıdaki 2026-11-02 kuralı
+      kalktı); onay kalemleri bilgi olarak listeler.
+    - Bordro yazımları (kalem, devir, mali müşavir rakamı) bordro yılı kilidini paylaşımlı alır:
+      onayın kilitlemediği (o ay günü olmayan) karta yazılan kayıt da onayla sıraya girer. Onaylı
+      aya yazımda önce bordro kilidi söylenir (`payroll_approved`); ayrılışta önce onaylı puantaj
+      denetlenir.
+    - Onay penceresi: "okudum" denetiminin bütün kişileri listelenir; işaret kişiler değişince
+      kalkar; yeniden açılan ayda kartı değişen kişiler pencerede de yazar; red yalnızca sorunlu
+      denetimleri taşır. Ödeme tarihi düzeltmesinde de 20 gün uyarısı vardır.
+    - Pusula her durumda tek sayfadır (sığmazsa küçültülür); tablolar çerçeveye sığar. Eski onayın
+      çıktısı onaydaki devirle kurulur (devir onayda saklanır). Saklı ayda puantaj tablosu birim
+      süzgeçsiz kurulur. Çıktıların dosya adı durumu söyler (taslak, onay sırası, geçersiz); tek
+      kişinin pusulasında onaydaki sicil no.
+  - İkinci inceleme (2026-11-03; her düzeltme ayrı ajanla denetlendi, düzeltmelerin açtığı yeni
+    hatalar arandı):
+    - Zincir ve ayın kendi görünümü "kişi o ay bordroda" için aynı kuralı kullanır: kartına göre
+      işte olduğu bir günde puantajda durumu var. İşe giriş tarihi sonradan ileri alınan kişinin
+      eski günlerinin kaydı sayılmaz (o ay mali müşavirde de sayılmaz); kartı değişenler listesinde
+      yalnızca o ay bordroda olanlar yazar.
+    - Onay penceresi her kişinin onayda hangi işaretlerle saklanacağını yazar (kartı izleyende
+      kartınki, diğerinde onaydaki).
+    - Sığmayan pusula bütünüyle küçültülür ve ortalanır (tablolar ve notlar aynı hizada).
+    - Onaylı aydaki devir yeni işe giriş tarihine sığmıyorsa hata önce o ayın bordrosunun yeniden
+      açılmasını söyler; yeniden açılan ayda onaydaki haliyle ERP'de olan kişiye mali müşavir rakamı
+      girilmek istenirse hata "Kartı izle"yi gösterir.
+    - İşe giriş tarihi geri alınınca kişi, satırı olmayan onaylı bir ayda (ya da 2026'da ERP
+      bordrosundan önceki Ocak–Eylül'de) işte sayılmaya başlıyorsa ve aynı yılın sonraki ilk
+      onaylı satırı ERP'de, zinciri o aydan sonraki bir devirle başlamıyorsa değişiklik o
+      satırın kümülatifini değiştirir: reddedilir
+      (`payroll_approved`; önce o ayın bordrosu yeniden açılır, açılan ayda zincir kopar ve devir
+      istenir). Onaylı satır değişmez kuralının uygulamasıdır.
+    - "Önceki ay ERP'de" (devrin eşitleme sayılması) açık ayda da "kişi o ay bordroda" kuralıyla
+      bakılır: puantajı onaylı ayda günü olmayan kişinin sonraki ay devri eşitleme onayı istemez.
+      Giriş ayı kişinin kesintisiz ERP zincirinin ilk ayıdır: eşitleme devrinde (önceki ay ERP'de)
+      devirden önceki giriş kalır, ekran devri düzeltirken de onay ister; devirden önceki ay ERP'de
+      değilse (zincir devirden önce kopmuş olsa da) giriş ayı devir ayıdır.
+    - Kart değişikliği onayda saklanacak hali sunucudan alır: o aya girilmiş mali müşavir rakamı
+      kişiyi işaretlerden bağımsız mali müşavirde tutar ve satırında yazar.
+    - Kart "mali müşavirde" işaretlenince yeniden açılan ayda onaydaki haliyle ERP'de kalan
+      kayıtlar ayrıca yazılır ve "Kartı izle" gösterilir; diğer ayların kayıtları için "mali
+      müşavire bildirin" denir. O aya mali müşavir rakamı girilmişse kişi o ayda mali
+      müşavirdedir (ERP'de kalıyor denmez).
+    - Aynı yıl içinde ayrılıp yeniden işe başlatılan kişide kart aradaki boşluğu tutmaz: aradaki
+      onaylı ayda satırı olmadığından zincir kopar ve ilk açık ayda devir istenir (güvenli yön;
+      yeniden işe alım kapsam dışı).

@@ -1,7 +1,8 @@
-// Personel > Bordro: ayın ön bordrosu (canlı hesap): brütten nete bordro tablosu ve dökümü,
-// işverene maliyet tablosu, ek ödeme ve kesintiler, devirler, parametreler, mali müşavirde
-// hesaplanan kişilerin rakamları, PDF ve Excel (docs/DECISIONS.md "Personel bordrosu"). Ücret ve
-// kesinti bilgisi kişisel veridir; yalnızca yönetim ve admin görür.
+// Personel > Bordro: ayın ön bordrosu (açık ayda canlı hesap, onaylı ayda onayda saklanan
+// satırlar): brütten nete bordro tablosu ve dökümü, işverene maliyet tablosu, ek ödeme ve
+// kesintiler, devirler, parametreler, mali müşavirde hesaplanan kişilerin rakamları, bordro onayı
+// ve yeniden açma, ücret pusulaları, PDF ve Excel (docs/DECISIONS.md "Personel bordrosu"). Ücret
+// ve kesinti bilgisi kişisel veridir; yalnızca yönetim ve admin görür.
 import {
   ActionIcon,
   Alert,
@@ -24,24 +25,30 @@ import { notifications } from "@mantine/notifications";
 import {
   IconChevronLeft,
   IconChevronRight,
+  IconCalendarEvent,
   IconFileSpreadsheet,
   IconFileTypePdf,
+  IconHistory,
   IconInfoCircle,
   IconLock,
+  IconLockOpen,
   IconSettings,
   IconTransferIn,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
+import { attendanceKeys } from "../../api/attendance";
 import { personnelCostKeys } from "../../api/costing";
 import {
   employerCostPdfUrl,
   getPayrollMonth,
   payrollExcelUrl,
   payrollKeys,
+  payslipsPdfUrl,
   registerPdfUrl,
   removeExternalFigure,
+  reopenPayroll,
   removeOpening,
   removePayrollItem,
   setExternalFigure,
@@ -54,6 +61,12 @@ import { formatMoney, formatNumber } from "../../i18n/format";
 import { monthLabel, parseMoney, parseMonth, shiftMonth } from "../costing/personnelCostFormat";
 import { ErrorAlert } from "../costing/ReportTable";
 import { OpeningsModal } from "./OpeningsModal";
+import {
+  ApproveModal,
+  HistoryModal,
+  PaymentDateModal,
+  PayrollStatusBadge,
+} from "./PayrollApproval";
 import { isFutureMonth, openingTarget } from "./payrollFormat";
 import { PayrollDrawer } from "./PayrollDrawer";
 import { BulkItemsModal, CopyItemsModal, PayrollItemModal } from "./PayrollItemModals";
@@ -61,7 +74,7 @@ import { PayrollChecklist, PayrollItemsView, PayrollNetView } from "./PayrollNet
 import { PayrollParametersModal } from "./PayrollParametersModal";
 import { PersonnelTabs } from "./PersonnelTabs";
 import { ReasonModal } from "./ReasonModal";
-import { PAYROLL_BASE, pe, pn, py } from "./strings";
+import { PAYROLL_BASE, pa, pe, pn, py } from "./strings";
 
 const NO_WRAP: CSSProperties = { whiteSpace: "nowrap" };
 // Ad sütunu yatay kaydırmada sabit kalır (dar ekranda tablo kayar).
@@ -117,6 +130,7 @@ function StatusBadges({ payroll }: { payroll: PayrollMonth }) {
     : "";
   return (
     <>
+      <PayrollStatusBadge payroll={payroll} />
       {payroll.attendance_approved ? (
         <Badge color="green" leftSection={<IconLock size={12} />}>
           {py.attendanceApproved(payroll.attendance_number)}
@@ -195,9 +209,11 @@ function RowBadges({ row }: { row: PayrollRow }) {
 function EmployerCostTable({
   payroll,
   onFigure,
+  locked,
 }: {
   payroll: PayrollMonth;
   onFigure: (row: PayrollRow) => void;
+  locked: boolean;
 }) {
   const values = payroll.parameters.values;
   const { totals } = payroll;
@@ -244,7 +260,7 @@ function EmployerCostTable({
                   <Group gap={6} wrap="wrap">
                     <span>{row.employee.full_name}</span>
                     <RowBadges row={row} />
-                    {external && (
+                    {external && !locked && (
                       <Button
                         size="compact-xs"
                         variant="light"
@@ -456,9 +472,11 @@ function ExternalFigureModal({
 function EmployerCostView({
   payroll,
   onFigure,
+  locked,
 }: {
   payroll: PayrollMonth;
   onFigure: (row: PayrollRow) => void;
+  locked: boolean;
 }) {
   const { parameters, totals } = payroll;
   return (
@@ -482,7 +500,7 @@ function EmployerCostView({
       {payroll.rows.length === 0 ? (
         <Text c="dimmed">{py.empty}</Text>
       ) : (
-        <EmployerCostTable payroll={payroll} onFigure={onFigure} />
+        <EmployerCostTable payroll={payroll} onFigure={onFigure} locked={locked} />
       )}
     </Stack>
   );
@@ -522,9 +540,17 @@ export function PayrollPage() {
   const [removingOpening, setRemovingOpening] = useState<Opened<{
     opening: PayrollOpening;
   }> | null>(null);
+  const [approving, setApproving] = useState<Opened<object> | null>(null);
+  const [reopening, setReopening] = useState<Opened<object> | null>(null);
+  const [paymentFix, setPaymentFix] = useState<Opened<object> | null>(null);
+  const [history, setHistory] = useState<Opened<object> | null>(null);
   const [openedFor, setOpenedFor] = useState(key);
   if (openedFor !== key) {
     setOpenedFor(key);
+    setApproving(null);
+    setReopening(null);
+    setPaymentFix(null);
+    setHistory(null);
     setFigure(null);
     setDrawer(null);
     setItemModal(null);
@@ -558,8 +584,12 @@ export function PayrollPage() {
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: payrollKeys.all });
     void queryClient.invalidateQueries({ queryKey: personnelCostKeys.all });
+    void queryClient.invalidateQueries({ queryKey: attendanceKeys.all });
   };
   const net = Boolean(payroll?.net);
+  // Onaylı ay kilitli: satırlar onayda saklananlardır, aya etki eden yazım kapalı.
+  const state = payroll?.payroll;
+  const locked = Boolean(state?.approved);
   const shownView: View = net ? view : "maliyet";
   const computed = payroll?.rows.filter((row) => !row.external) ?? [];
   const warned = (row: PayrollRow) => row.warnings.length > 0;
@@ -580,6 +610,10 @@ export function PayrollPage() {
   const openingState = current(openings);
   const removingItemState = current(removingItem);
   const removingOpeningState = current(removingOpening);
+  const approvingState = current(approving);
+  const reopeningState = current(reopening);
+  const paymentFixState = current(paymentFix);
+  const historyState = current(history);
   // Dökümün üstünde bir pencere açık: Esc ve ok tuşları o pencereye aittir.
   const covered = Boolean(
     parametersOpen ||
@@ -589,7 +623,11 @@ export function PayrollPage() {
     current(copy) ||
     openingState ||
     removingItemState ||
-    removingOpeningState,
+    removingOpeningState ||
+    approvingState ||
+    reopeningState ||
+    paymentFixState ||
+    historyState,
   );
   const [startYear, startMonth] = (payroll?.start ?? "2026-10").split("-").map(Number);
   return (
@@ -629,14 +667,18 @@ export function PayrollPage() {
             {py.parameters}
           </Button>
           {net && payroll && (
-            <Button
-              variant="default"
-              leftSection={<IconTransferIn size={16} />}
-              disabled={isFutureMonth(year, openingTarget(payroll))}
-              onClick={() => setOpenings({ key })}
-            >
-              {pn.openings}
-            </Button>
+            <Tooltip label={pa.locked} disabled={!locked}>
+              <span>
+                <Button
+                  variant="default"
+                  leftSection={<IconTransferIn size={16} />}
+                  disabled={locked || isFutureMonth(year, openingTarget(payroll))}
+                  onClick={() => setOpenings({ key })}
+                >
+                  {pn.openings}
+                </Button>
+              </span>
+            </Tooltip>
           )}
           {net && (
             <Button
@@ -668,6 +710,62 @@ export function PayrollPage() {
           >
             {py.excel}
           </Button>
+          {locked && (
+            <Tooltip label={pa.payslipHint} multiline w={280}>
+              <Button
+                component="a"
+                href={payslipsPdfUrl(year, month)}
+                target="_blank"
+                rel="noopener"
+                variant="default"
+                leftSection={<IconFileTypePdf size={16} />}
+              >
+                {pa.payslips}
+              </Button>
+            </Tooltip>
+          )}
+          {state && state.history.length > 0 && (
+            <Button
+              variant="default"
+              leftSection={<IconHistory size={16} />}
+              onClick={() => setHistory({ key })}
+            >
+              {pa.history}
+            </Button>
+          )}
+          {locked && (
+            <Button
+              variant="default"
+              leftSection={<IconCalendarEvent size={16} />}
+              onClick={() => setPaymentFix({ key })}
+            >
+              {pa.paymentFix}
+            </Button>
+          )}
+          {locked && state && (
+            <Tooltip label={pa.reopenOnlyLatest} disabled={state.can_reopen}>
+              <span>
+                <Button
+                  variant="light"
+                  color="orange"
+                  leftSection={<IconLockOpen size={16} />}
+                  disabled={!state.can_reopen}
+                  onClick={() => setReopening({ key })}
+                >
+                  {pa.reopen}
+                </Button>
+              </span>
+            </Tooltip>
+          )}
+          {net && !locked && state && (
+            <Button
+              leftSection={<IconLock size={16} />}
+              disabled={state.gates === null}
+              onClick={() => setApproving({ key })}
+            >
+              {pa.approve}
+            </Button>
+          )}
         </Group>
       </Group>
       {query.isError && <ErrorAlert error={query.error} />}
@@ -685,6 +783,7 @@ export function PayrollPage() {
             onOpenings={(target) => setOpenings({ key, target })}
             onEmployerCost={() => go({ gorunum: "maliyet" })}
             onItems={() => go({ gorunum: "kalemler" })}
+            onPrevious={() => go({ ay: shiftMonth(year, month, -1) })}
           />
           {net && (
             <SegmentedControl
@@ -710,12 +809,14 @@ export function PayrollPage() {
           {shownView === "maliyet" && (
             <EmployerCostView
               payroll={payroll}
+              locked={locked}
               onFigure={(row) => setFigure({ key, employee: row.employee.id })}
             />
           )}
           {shownView === "kalemler" && (
             <PayrollItemsView
               payroll={payroll}
+              locked={locked}
               onAdd={() => setItemModal({ key })}
               onEdit={(item) => setItemModal({ key, item })}
               onRemove={(item) => setRemovingItem({ key, item })}
@@ -746,6 +847,7 @@ export function PayrollPage() {
           row={drawerRow}
           order={order}
           covered={covered}
+          locked={locked}
           onNavigate={(row) => setDrawer({ key, employee: row.employee.id })}
           onClose={() => setDrawer(null)}
           onAddItem={(row) => setItemModal({ key, employee: row.employee.id })}
@@ -806,6 +908,32 @@ export function PayrollPage() {
           }}
           onClose={() => setRemovingOpening(null)}
         />
+      )}
+      {approvingState && payroll && (
+        <ApproveModal payroll={payroll} onClose={() => setApproving(null)} />
+      )}
+      {reopeningState && payroll && (
+        <ReasonModal
+          title={pa.reopenTitle(payroll.period_label)}
+          intro={pa.reopenIntro}
+          confirmLabel={pa.reopen}
+          reasonLabel={pa.reopenReason}
+          confirmColor="orange"
+          onConfirm={(reason) => reopenPayroll(year, month, reason)}
+          onDone={() => {
+            notifications.show({ color: "green", message: pa.reopened(payroll.period_label) });
+            refresh();
+          }}
+          // Sonraki ay onaylandıysa ya da ay zaten açıldıysa sayfa yeni durumu gösterir.
+          onError={refresh}
+          onClose={() => setReopening(null)}
+        />
+      )}
+      {paymentFixState && payroll && (
+        <PaymentDateModal payroll={payroll} onClose={() => setPaymentFix(null)} />
+      )}
+      {historyState && payroll && (
+        <HistoryModal payroll={payroll} onClose={() => setHistory(null)} />
       )}
     </Stack>
   );

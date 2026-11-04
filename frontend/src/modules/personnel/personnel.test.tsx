@@ -1,3 +1,4 @@
+import { notifications } from "@mantine/notifications";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -189,6 +190,93 @@ describe("personel listesi", () => {
 });
 
 describe("personel kartı", () => {
+  it("bordrosu mali müşavirde işaretlenince onaylanmamış ayların kayıtları uyarılır", async () => {
+    const user = userEvent.setup();
+    const show = vi.spyOn(notifications, "show").mockReturnValue("bildirim");
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    vi.mocked(personnelApi.getEmployee).mockResolvedValue(employee());
+    vi.mocked(personnelApi.updateEmployee).mockResolvedValue({
+      ...employee({ payroll_external: true }),
+      payroll_external_records: ["Kasım 2026 Prim 5.000,00 TL", "Kasım 2026 devri"],
+    });
+    renderApp("/personel/1");
+    await user.click(await screen.findByRole("button", { name: "Düzenle" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByLabelText(/Bordrosu mali müşavirde/));
+    await user.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          color: "orange",
+          autoClose: false,
+          message: expect.stringContaining("Kasım 2026 Prim 5.000,00 TL; Kasım 2026 devri"),
+        }),
+      ),
+    );
+    const message = String(show.mock.calls[show.mock.calls.length - 1][0].message);
+    expect(message).toContain(". Mali müşavire bildirin;");
+    expect(message).not.toContain("Yeniden açılan");
+    show.mockRestore();
+  });
+
+  it("yeniden açılan ayda onaydaki haliyle ERP'de kalan kayıt ayrıca söylenir", async () => {
+    const user = userEvent.setup();
+    const show = vi.spyOn(notifications, "show").mockReturnValue("bildirim");
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    vi.mocked(personnelApi.getEmployee).mockResolvedValue(employee());
+    vi.mocked(personnelApi.updateEmployee).mockResolvedValue({
+      ...employee({ payroll_external: true }),
+      payroll_external_records: [
+        "Ekim 2026 Prim 5.000,00 TL (yeniden açılan ay: onaydaki haliyle ERP'de)",
+        "Kasım 2026 devri",
+      ],
+      payroll_external_kept: ["Ekim 2026"],
+    });
+    renderApp("/personel/1");
+    await user.click(await screen.findByRole("button", { name: "Düzenle" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByLabelText(/Bordrosu mali müşavirde/));
+    await user.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(expect.objectContaining({ color: "orange" })),
+    );
+    const message = String(show.mock.calls[show.mock.calls.length - 1][0].message);
+    expect(message).toContain(
+      'Yeniden açılan Ekim 2026 son onaydaki haliyle ERP\'de hesaplanır; kartın işaretiyle hesaplamak için Personel > Bordro > Ay hazırlığında "Kartı izle"ye basın.',
+    );
+    expect(message).toContain("Diğer aylardakileri mali müşavire bildirin;");
+    show.mockRestore();
+  });
+
+  it("kayıtların hepsi yeniden açılan ayda ERP'de kalıyorsa bildirme ya da kaldırma denmez", async () => {
+    const user = userEvent.setup();
+    const show = vi.spyOn(notifications, "show").mockReturnValue("bildirim");
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    vi.mocked(personnelApi.getEmployee).mockResolvedValue(employee());
+    vi.mocked(personnelApi.updateEmployee).mockResolvedValue({
+      ...employee({ payroll_external: true }),
+      payroll_external_records: [
+        "Ekim 2026 Prim 5.000,00 TL (yeniden açılan ay: onaydaki haliyle ERP'de)",
+        "Ekim 2026 devri (yeniden açılan ay: onaydaki haliyle ERP'de)",
+      ],
+      payroll_external_kept: ["Ekim 2026"],
+    });
+    renderApp("/personel/1");
+    await user.click(await screen.findByRole("button", { name: "Düzenle" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByLabelText(/Bordrosu mali müşavirde/));
+    await user.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(expect.objectContaining({ color: "orange" })),
+    );
+    const message = String(show.mock.calls[show.mock.calls.length - 1][0].message);
+    expect(message).toContain("Yeniden açılan Ekim 2026 son onaydaki haliyle ERP'de hesaplanır");
+    expect(message).toContain("Onaylı aylar onaydaki haliyle kalır.");
+    expect(message).not.toContain("bildirin");
+    expect(message).not.toContain("kaldırın");
+    show.mockRestore();
+  });
+
   it("bilgileri ve Türkçe alan adlarıyla geçmişi gösterir", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
     vi.mocked(personnelApi.getEmployee).mockResolvedValue(

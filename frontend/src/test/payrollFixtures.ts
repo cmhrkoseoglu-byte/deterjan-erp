@@ -2,11 +2,13 @@
 // bordrosu mali müşavirde, Ece asgari ücretin altında.
 import type {
   CarryMonth,
+  PayrollApproval,
   PayrollItemRecord,
   PayrollLine,
   PayrollMonth,
   PayrollOpening,
   PayrollRow,
+  PayrollState,
   PayrollValues,
 } from "../api/payroll";
 
@@ -139,6 +141,66 @@ export const ECE: PayrollRow = {
   employer_cost: "36647.63",
 };
 
+/** Açık ayın bordro durumu (onaya hazır, denetim yok). */
+export function payrollState(extra: Partial<PayrollState> = {}): PayrollState {
+  return {
+    run: null,
+    number: "",
+    status: "OPEN",
+    status_display: "Açık",
+    approved: false,
+    approval: null,
+    history: [],
+    previous_open: false,
+    can_reopen: false,
+    gates: [],
+    fingerprint: "f1",
+    card_changes: [],
+    ...extra,
+  };
+}
+
+export function approval(extra: Partial<PayrollApproval> = {}): PayrollApproval {
+  return {
+    sequence: 1,
+    approved_at: "2026-11-03T10:00:00+03:00",
+    approved_by_name: "Yönetim",
+    payment_date: "2026-11-10",
+    attendance_number: "PU-2026-00010",
+    engine_version: "2026.2",
+    employee_count: 2,
+    external_count: 1,
+    gross_total: "75000.00",
+    employer_cost: "90085.13",
+    net_pay: "63000.00",
+    payable: "63000.00",
+    income_tax: "1526.17",
+    stamp_tax: "90.85",
+    reopened_at: null,
+    reopened_by_name: null,
+    reopen_reason: "",
+    ...extra,
+  };
+}
+
+/** Onaylı ayın bordro durumu (BR-2026-00001, ödeme 10.11.2026). */
+export function approvedState(extra: Partial<PayrollState> = {}): PayrollState {
+  const current = approval();
+  return payrollState({
+    run: 7,
+    number: "BR-2026-00001",
+    status: "APPROVED",
+    status_display: "Onaylandı",
+    approved: true,
+    approval: current,
+    history: [current],
+    can_reopen: true,
+    gates: null,
+    fingerprint: null,
+    ...extra,
+  });
+}
+
 export function month(extra: Partial<PayrollMonth> = {}): PayrollMonth {
   return {
     year: 2026,
@@ -187,6 +249,7 @@ export function month(extra: Partial<PayrollMonth> = {}): PayrollMonth {
       employer_unemployment: "1560.60",
       floor_gap: "454.50",
     },
+    payroll: payrollState(),
     ...extra,
   };
 }

@@ -47,6 +47,12 @@ export interface Employee {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  /** Yalnızca kart "Bordrosu mali müşavirde" işaretlenince: onaylanmamış bordro aylarındaki ERP
+   * kayıtları ("Kasım 2026 Prim 5.000,00 TL"); ekran uyarır. */
+  payroll_external_records?: string[];
+  /** Bunlardan yeniden açılan ayda kişi son onaydaki haliyle ERP'de kalır ("Kartı izle"ye kadar):
+   * ay adları ("Ekim 2026"). */
+  payroll_external_kept?: string[];
 }
 
 export type EmployeeInput = Pick<
