@@ -4,6 +4,8 @@ import type { EducationLevel, EmployeeDocumentKind } from "../../api/personnel";
 
 export const PERSONNEL_BASE = "/personel";
 export const ATTENDANCE_BASE = `${PERSONNEL_BASE}/puantaj`;
+export const WAGES_BASE = `${PERSONNEL_BASE}/ucretler`;
+export const PAYROLL_BASE = `${PERSONNEL_BASE}/bordro`;
 export const HOLIDAYS_BASE = `${PERSONNEL_BASE}/tatiller`;
 
 export const employeePath = (id: number) => `${PERSONNEL_BASE}/${id}`;
@@ -47,6 +49,13 @@ export const pe = {
   sectionContact: "İletişim",
   sectionIdentity: "Kimlik bilgileri",
   sectionEducation: "Mezuniyet",
+  sectionPayroll: "Bordro",
+  payrollExternal: "Bordrosu mali müşavirde",
+  payrollExternalHelp:
+    "Emekli (SGDP), engelli, kısmi süreli, net ücretle anlaşılmış ya da başka işyerinde de çalışan kişinin bordrosu ERP'de hesaplanmaz; aylık rakamları Bordro sekmesinde girilir. Nedenini yazmayın (sağlık bilgisi).",
+  besEnrolled: "BES'e dahil",
+  besEnrolledHelp:
+    "Otomatik katılım: her ay SGK matrahının %3'ü netten kesilir. Cayma olursa işareti kaldırın.",
   nationalId: "TC kimlik no",
   nationalIdInvalid: "11 haneli bir sayı olmalı.",
   birthDate: "Doğum tarihi",
@@ -167,6 +176,8 @@ export const pe = {
     school: "Okul",
     field_of_study: "Bölüm",
     graduation_year: "Mezuniyet yılı",
+    payroll_external: "Bordrosu mali müşavirde",
+    bes_enrolled: "BES'e dahil",
     user: "Sistem kullanıcısı",
     is_active: "Çalışıyor",
   } as Record<string, string>,
@@ -176,7 +187,13 @@ export const pe = {
 
 /** Puantaj ve tatil takvimi metinleri. */
 export const at = {
-  tabs: { cards: "Personel kartları", attendance: "Puantaj", holidays: "Tatil takvimi" },
+  tabs: {
+    cards: "Personel kartları",
+    attendance: "Puantaj",
+    wages: "Ücretler",
+    payroll: "Bordro",
+    holidays: "Tatil takvimi",
+  },
   intro:
     "Ay takvimden dolu açılır: iş günleri “Ç”, hafta tatilleri “HT”, resmi tatiller “RT”. Yalnızca izin, rapor, devamsızlık ve fazla mesaiyi girin. Ay bitince onaylayın; onaylı ay değiştirilemez.",
   previousMonth: "Önceki ay",
@@ -246,6 +263,9 @@ export const at = {
   overtime: "Fazla mesai (saat)",
   overtimeHelp: "Yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir.",
   overtimeInvalid: "0 ile 24 arasında bir sayı yazın (ör. 2,5).",
+  halfHolidayWorked: "Öğleden sonra da çalıştı (yarım gün tatil)",
+  halfHolidayWorkedHelp:
+    "Yalnızca çalışılan güne (Ç) girilir; bordroda yarım günlük ilave ücret ödenir. Tabloda Ç½ görünür.",
   note: "Not (isteğe bağlı)",
   calendarDefault: (label: string) => `Takvime göre: ${label}`,
   holidayOn: (name: string) => `Resmi tatil: ${name}`,
@@ -292,4 +312,555 @@ export const at = {
     "Ay açılırken bu günler “HT” gelir. Açık aylarda değiştirilmemiş günler yeni ayara göre hesaplanır; onaylı aylar değişmez.",
   restDaysInvalid: "En az bir, en çok altı gün seçin.",
   settingsSaved: "Hafta tatili günleri kaydedildi.",
+};
+
+/** Ücret metinleri (Personel > Ücretler). */
+export const wt = {
+  intro:
+    "Çalışan personelin brüt aylık ücreti. Zam yeni geçerlilik tarihiyle eklenir, eski ücret geçmişte kalır; yanlış kayıt silinmez, gerekçeyle kaldırılır. Ücretleri yalnızca yönetim ve sistem yöneticisi görür; personel maliyeti bu ücretlerden hesaplanır.",
+  employeeNo: "Sicil no",
+  fullName: "Ad soyad",
+  department: "Birim",
+  currentWage: "Güncel brüt (TL)",
+  validFrom: "Geçerlilik başlangıcı",
+  grossMonthly: "Brüt aylık (TL)",
+  note: "Not",
+  noWage: "Girilmedi",
+  futureWage: "Gelecek tarihli",
+  showFormer: "Ayrılanları da göster",
+  leftOn: (date: string) => `Çıkış · ${date}`,
+  addWage: "Ücret ekle",
+  history: (n: number) => `Geçmiş (${n})`,
+  wageTitle: (name: string) => `${name} · ücret ekle`,
+  wageNow: (amount: string, date: string) => `Güncel ücret ${amount} (${date} itibarıyla).`,
+  invalidAmount: "Geçerli bir tutar girin (en çok 2 ondalık).",
+  amountPreview: (amount: string) => `${amount} olarak kaydedilir.`,
+  firstWageHint: (hasHireDate: boolean) =>
+    hasHireDate
+      ? "İlk ücret: başlangıç varsayılan olarak işe giriş tarihidir. Daha geç bir tarih seçerseniz işe girişten o tarihe kadarki günler hesapta ücret eksik görünür."
+      : "İlk ücret: kartta işe giriş tarihi olmadığı için başlangıç varsayılan olarak geçen ayın 1'idir. Hesabını göreceğiniz ilk ayın 1'inden sonra olmamalı; yoksa o ay ücret eksik görünür.",
+  wageSaved: "Ücret kaydedildi.",
+  historyTitle: (name: string) => `${name} · ücret geçmişi`,
+  enteredBy: "Giren",
+  removeWage: "Kaldır",
+  removeWageLabel: (date: string, amount: string) => `Kaldır: ${date} · ${amount}`,
+  removeWageIntro:
+    "Kayıt silinmez; kaldırılır ve hesaba girmez. Kaldırma nedeniyle birlikte denetim günlüğüne yazılır.",
+  removeReason: "Kaldırma nedeni",
+  wageRemoved: "Ücret kaydı kaldırıldı.",
+  cancel: "Vazgeç",
+  save: "Kaydet",
+};
+
+/** Ön bordro metinleri (Personel > Bordro; docs/DECISIONS.md "Personel bordrosu"). */
+export const py = {
+  intro:
+    "Ön bordro: brüt ücret, puantaj ve bordro parametrelerinden ayın bordrosu ve işverene maliyeti. SGK ve vergi bildirimi yerine geçmez; ilk aylarda mali müşavirin bordrosuyla karşılaştırın.",
+  previousMonth: "Önceki ay",
+  nextMonth: "Sonraki ay",
+  attendanceApproved: (number: string) => `Puantaj onaylı · ${number}`,
+  attendanceOpen: "Puantaj açık (taslak)",
+  attendanceOpenHint:
+    "Ayın puantajı onaylanmadı: girilmemiş günler takvimden sayıldı, rakamlar değişebilir.",
+  openAttendance: "Puantajı aç",
+  parametersSaved: (since: string) => `Parametreler kayıtlı · ${since}`,
+  parametersDefault: "Parametreler kaydedilmedi",
+  parametersFallback: "Parametreler yok (tahmin)",
+  parametersDefaultHint: (year: number) =>
+    `Bu ay için geçerli kayıtlı parametre seti yok; hesap ${year} yasal değerleriyle yapıldı. Değerleri mali müşavirle kontrol edip bu aydan (ya da Ocak'tan) geçerli bir set kaydedin (özellikle teşvik puanı).`,
+  parametersFallbackHint: (year: number, used: number) =>
+    `${year} yılı için bordro parametreleri yok; ${used} değerleriyle tahmin edildi. Yeni yılın değerlerini mali müşavirden alıp girin.`,
+  parameters: "Parametreler",
+  openParameters: "Parametreleri gir",
+  employerCostPdf: "İşveren maliyeti (PDF)",
+  excel: "Excel",
+  missingWages: (n: number) =>
+    `${n} kişinin ücreti ayın tamamı ya da bir bölümü için girilmemiş; bu günler sıfır sayıldı.`,
+  goToWages: "Ücretleri aç",
+  externalMissing: (n: number) =>
+    `Bordrosu mali müşavirde olan ${n} kişinin bu ay rakamları girilmedi; işverene maliyete katılmadı.`,
+  totalCost: "Toplam işverene maliyet",
+  grossTotal: "Brüt toplam",
+  employerSgk: "SGK işveren (teşvik sonrası)",
+  employerUnemployment: "İşsizlik işveren",
+  employerRate: "Etkin işveren oranı",
+  empty: "Bu ay işte olan personel yok.",
+  employerCostTitle: "İşveren maliyeti",
+  employerCostHint:
+    "İşverene maliyet = brüt toplam + SGK işveren payı (teşvik sonrası) + işsizlik işveren payı + alt sınır farkı. Ücret SGK alt sınırının altındaysa farkın primini işçi payı dahil işveren öder (5510 s. Kanun m.82). Asgari ücret desteği düşülmez.",
+  col: {
+    employeeNo: "Sicil no",
+    fullName: "Ad soyad",
+    department: "Birim",
+    sgkDays: "SGK gün",
+    grossTotal: "Brüt toplam",
+    sgkBase: "SGK matrahı",
+    employerSgk: (rate: string) => `SGK işveren (%${rate})`,
+    incentive: (points: string) => `Teşvik (${points} puan)`,
+    employerUnemployment: (rate: string) => `İşsizlik işveren (%${rate})`,
+    floorGap: "Alt sınır farkı",
+    employerCost: "İşverene maliyet",
+    share: "Maliyet / brüt",
+  },
+  totals: "Genel toplam",
+  warning: {
+    missing_wage: "Ücret eksik",
+    below_minimum_wage: "Asgari ücretin altında",
+    external_missing: "Rakam girilmedi",
+    exit_in_month: "Ay içinde çıkış",
+    pay_without_sgk_days: "SGK günü yok",
+  } as Record<string, string>,
+  warningHelp: {
+    below_minimum_wage:
+      'Aylık brüt ücret asgari ücretin altında (İş Kanunu m.39); ücreti kontrol edin. Brüt SGK alt sınırının altında kalırsa matrah alt sınıra çıkarılır ("Alt sınır" etiketi).',
+    exit_in_month: "Kıdem, ihbar ve kullanılmamış izin ücreti hesaplanmaz; mali müşavire bildirin.",
+  } as Record<string, string>,
+  floorApplied: "Alt sınır",
+  ceilingApplied: "Tavan",
+  external: "Bordrosu mali müşavirde",
+  enterFigures: "Rakamları gir",
+  editFigures: "Rakamları düzelt",
+  figuresTitle: (name: string) => `${name} · mali müşavir bordrosu`,
+  figuresIntro: (period: string) =>
+    `${period} için mali müşavirin bordrosundaki brüt toplamı ve işverene maliyeti girin. İşveren maliyeti tablosu ve personel maliyeti bu rakamları kullanır.`,
+  figureGross: "Brüt toplam (TL)",
+  figureCost: "İşverene maliyet (TL)",
+  figureNote: "Not",
+  figureNoteHelp:
+    "Kısa açıklama (ör. hangi bordrodan alındığı). Özel durumun nedenini (emeklilik, engellilik gibi) yazmayın: engellilik sağlık verisidir ve not denetim günlüğünden silinmez.",
+  figureCostBelowGross: "İşverene maliyet brüt toplamdan az olamaz.",
+  invalidAmount: "Geçerli bir tutar girin (en çok 2 ondalık).",
+  figuresSaved: "Rakamlar kaydedildi.",
+  cancel: "Vazgeç",
+  save: "Kaydet",
+  // Parametreler penceresi
+  parametersTitle: "Bordro parametreleri",
+  parametersIntro:
+    "Bir yılın yasal değerleri; seçilen aydan geçerli olur (yıl içinde değişirse o aydan yeni set açın). Değerler yalnızca kendi yılına uygulanır. Kaydetmeden önce mali müşavirle kontrol edin.",
+  setLabel: (since: string) => `${since} itibarıyla`,
+  newSet: "Yeni set",
+  editing: "Set",
+  validFrom: "Geçerlilik (ay)",
+  fillLegal: (year: number) => `${year} yasal değerleriyle doldur`,
+  fillNearest: (used: number) => `En yakın yılın (${used}) değerleriyle doldur`,
+  legalUnknown: (year: number, used: number) =>
+    `${year} yılının yasal değerleri sistemde yok; ${used} değerleri dolduruldu. Yeni yılın değerlerini mali müşavirden alıp girin; ${used} değerleriyle kaydetmeyin.`,
+  yearUnknown: (year: number) =>
+    `${year} yılının yasal değerleri sistemde yok. Yeni yılın değerlerini mali müşavirden alıp girin.`,
+  groupWage: "Asgari ücret ve SGK sınırları",
+  groupRates: "Prim oranları",
+  groupTax: "Vergiler",
+  minimumWage: "Asgari ücret (aylık brüt, TL)",
+  ceilingMultiplier: "SGK üst sınır çarpanı",
+  employeeSgkRate: "SGK işçi payı (%)",
+  employeeUnemploymentRate: "İşsizlik işçi payı (%)",
+  employerSgkRate: "SGK işveren payı (%)",
+  employerUnemploymentRate: "İşsizlik işveren payı (%)",
+  incentivePoints: "SGK işveren teşviki",
+  incentiveOptions: [
+    { value: "5", label: "5 puan (imalat işyeri, NACE C)" },
+    { value: "2", label: "2 puan (diğer sektörler)" },
+    { value: "0", label: "Teşvik yok (şartlar sağlanmıyor)" },
+  ],
+  incentiveHelp:
+    "5510 s. Kanun m.81/ı: bildirge ve ödeme zamanında, prim borcu yoksa. İmalatta 5 puan 2026 sonuna kadar.",
+  stampTax: "Damga vergisi (binde)",
+  bracket: (n: number) => `${n}. dilim üst sınırı (TL)`,
+  rate: (n: number) => `${n}. dilim oranı (%)`,
+  besRate: "BES katkı payı (%)",
+  mealExemptionDaily: "Nakit yemek SGK istisnası (günlük TL)",
+  mealExemptionHelp:
+    "Nakit yemek ödemesinin fiilen çalışılan gün × bu tutara kadarki kısmı SGK matrahına girmez (gelir ve damga vergisine tabidir). Mali müşavirden alıp girin; girilene kadar 0.",
+  source: "Kaynak",
+  note: "Not",
+  derived: (floor: string, ceiling: string, rate: string) =>
+    `Günlük SGK alt / üst sınır ${floor} / ${ceiling} TL · etkin işveren oranı %${rate}`,
+  checkedAndSave: "Mali müşavirle kontrol ettim, kaydet",
+  parametersSaved_: "Parametreler kaydedildi.",
+  removeSet: "Seti kaldır",
+  removeSetIntro:
+    "Set silinmez; kaldırılır. O ay ve sonrası aynı yılın bir önceki setiyle, yoksa o yılın yasal değerleriyle hesaplanır; yılın yasal değerleri sistemde yoksa en yakın yılın değerleriyle tahmin edilir (kırmızı uyarıyla). Başka yılın kayıtlı seti kullanılmaz.",
+  removeReason: "Kaldırma nedeni",
+  setRemoved: "Parametre seti kaldırıldı.",
+  invalidNumber: "Geçerli bir sayı girin.",
+  invalidRate: "0 ile 100 arasında, en çok 2 ondalık (ör. 21,75).",
+  invalidStampTax: "0 ile 100 arasında, en çok 3 ondalık (ör. 7,59).",
+  invalidMultiplier: "En az 1, en çok 2 ondalık (ör. 9).",
+  updatedBy: (name: string, when: string) => `Son değişiklik: ${name} · ${when}`,
+};
+
+/** Brütten nete ön bordro metinleri (3. adım: bordro tablosu, döküm, devir, ek ödeme ve kesinti). */
+export const pn = {
+  viewPayroll: "Bordro",
+  viewEmployerCost: "İşveren maliyeti",
+  viewItems: "Ek ödeme ve kesintiler",
+  registerPdf: "Bordro listesi (PDF)",
+  openings: "Devirler",
+  beforeStart: (start: string) =>
+    `Brütten nete bordro ${start} ayından başlar; önceki aylar mali müşavirdedir. Bu ayın işveren maliyeti hesaplanır.`,
+  // Ay hazırlığı
+  checklistTitle: "Ay hazırlığı",
+  checkAttendanceOk: (number: string) => `Puantaj onaylı (${number})`,
+  checkParametersOk: "Bordro parametreleri kayıtlı",
+  checkOpeningsOk: "Devirler tamam",
+  checkOpeningsMissing: (n: number, month: string) =>
+    `${n} kişinin ${month} devri girilmedi: gelir vergisi düşük, net yüksek hesaplanır`,
+  checkNegative: (n: number) => `${n} kişide kesintiler netten fazla`,
+  checkCarry: (n: number) =>
+    `${n} kişide kümülatif eksik: önceki bir ayda ücret eksik, parametre tahmini ya da devir eski parametrelerle kaydedilmiş`,
+  checkOrphans: (n: number) => `Bu ay işte olmayan kişilere girilmiş ${n} kalem`,
+  checkStaleOpenings: (n: number, month: string) =>
+    `${n} kişinin ${month} devri kaydedildikten sonra parametreler değişti: devri yeniden kaydedin`,
+  staleOpeningAction: "Devri yeniden kaydet",
+  futureOpeningLater: "ay gelince girilir",
+  checkExternalItems: (n: number) =>
+    `Bordrosu mali müşavirde olan kişilere girilmiş ${n} kalem (ERP bordrosunda hesaplanmaz)`,
+  onlyWarnings: "Yalnızca uyarılı kişiler",
+  // Bordro tablosu
+  col: {
+    employeeNo: "Sicil no",
+    fullName: "Ad soyad",
+    department: "Birim",
+    sgkDays: "SGK gün",
+    salary: "Normal ücret",
+    overtime: "Fazla mesai ve tatil",
+    extras: "Ek ödeme",
+    gross: "Brüt toplam",
+    employeeSgk: "SGK işçi",
+    employeeUnemployment: "İşsizlik işçi",
+    incomeTax: "Gelir vergisi",
+    stampTax: "Damga vergisi",
+    net: "Net ücret",
+    bes: "BES",
+    deductions: "Diğer kesintiler (BES ayrı)",
+    payable: "Ödenecek (ele geçen)",
+  },
+  totals: "Toplam (ERP)",
+  externalLine: (n: number, gross: string, cost: string) =>
+    `Bordrosu mali müşavirde olan ${n} kişi: brüt ${gross} · işverene maliyet ${cost} (yukarıdaki toplamlara katılmadı).`,
+  statPeople: "Kişi (ERP / mali müşavirde)",
+  statGross: "Brüt toplam (ERP)",
+  statNet: "Net ücret",
+  statPayable: "Ödenecek",
+  statIncomeTax: "Gelir vergisi",
+  statStampTax: "Damga vergisi",
+  warningCount: (n: number) => `${n} uyarı`,
+  openBreakdown: (name: string) => `Döküm: ${name}`,
+  emptyComputed: "Bu ay ERP'de hesaplanan kişi yok.",
+  // Uyarılar (bordro)
+  warning: {
+    opening_missing: "Devir eksik",
+    carry_incomplete: "Zincir eksik",
+    negative_payable: "Kesinti netten fazla",
+    ceiling_with_bonus: "Tavanı aşan prim",
+  } as Record<string, string>,
+  warningHelp: {
+    opening_missing:
+      "Giriş ayının devri girilmedi: gelir vergisi kümülatifsiz hesaplandı (düşük), net yüksek. Mali müşavirin bir önceki ay bordrosundaki kümülatif matrahı girin.",
+    carry_incomplete:
+      'Önceki bir ayda ücret eksik, parametreler tahmini ya da devir kaydedildikten sonra parametreler değişti: kümülatif matrah eksik olabilir. Dökümdeki zincir tablosuna bakın. Parametreleri değişen devri Ay hazırlığındaki "Devri yeniden kaydet" bağlantısıyla ya da dökümün Devir sekmesinde "Devri düzelt" ile değiştirmeden yeniden kaydedin; tahmini parametrede önce yılın parametrelerini kaydedin.',
+    negative_payable:
+      "Kesintiler (BES dahil) netten fazla: ödenecek negatif. Kesintiyi azaltın, kalanını sonraki aya girin; bu haliyle onaylanmaz.",
+    ceiling_with_bonus:
+      "Prim ya da ikramiyeyle SGK tavanı aşıldı: aşan kısım izleyen iki aya devreder (5510 m.80); bu devri ERP hesaplamaz, mali müşavirle kontrol edin.",
+  } as Record<string, string>,
+  // Döküm
+  drawerTitle: (name: string, period: string) => `${name} · ${period}`,
+  previous: "Önceki kişi",
+  next: "Sonraki kişi",
+  tabCalc: "Hesap",
+  tabItems: "Ek ödeme ve kesinti",
+  tabOpening: "Devir",
+  sectionDays: "Günler",
+  sectionEarnings: "Kazançlar",
+  sectionSgk: "SGK",
+  sectionIncomeTax: "Gelir vergisi",
+  sectionStamp: "Damga vergisi",
+  sectionDeductions: "Netten kesintiler",
+  sectionEmployer: "İşveren",
+  sectionChain: "Kümülatif nasıl kuruldu",
+  employedDays: "İşte olunan gün",
+  paidDays: "Ücretli gün (30 gün usulü)",
+  sgkDaysFull: "SGK gün (tam ay 30)",
+  sgkDaysPartial: (employed: number, unpaid: number) =>
+    `SGK gün (${employed} işte olunan − ${unpaid} eksik, en çok 30)`,
+  workedDays: "Fiilen çalışılan gün",
+  sickDays: "Rapor",
+  unpaidLeaveDays: "Ücretsiz izin",
+  absentDays: "Devamsızlık",
+  monthlyWage: "Aylık brüt ücret",
+  normalSalary: "Normal ücret",
+  overtimeWorked: (hours: string) => `Fazla mesai iş günü (${hours} sa × saat ücreti × 1,5)`,
+  overtimeRest: (hours: string) => `Fazla mesai hafta tatili (${hours} sa × 1,5)`,
+  holidayPay: (days: number, half: number, extra: string) =>
+    `Resmî tatil (${days} gün, ${half} yarım gün, 7,5 saati aşan ${extra} sa)`,
+  grossTotal: "Brüt toplam",
+  mealExemption: "Nakit yemek SGK istisnası",
+  sgkGross: "SGK'ya tabi brüt",
+  sgkBase: "SGK matrahı",
+  floorApplied: "alt sınıra çıkarıldı",
+  ceilingApplied: "tavanla kesildi",
+  employeeSgk: (rate: string) => `SGK işçi payı (%${rate})`,
+  employeeUnemployment: (rate: string) => `İşsizlik işçi payı (%${rate})`,
+  floorGap: "Alt sınır farkı (işveren öder)",
+  taxBase: "GV matrahı (brüt − SGK − işsizlik)",
+  cumulativeBefore: "Kümülatif GV matrahı (önceki aylar)",
+  cumulativeAfter: "Kümülatif GV matrahı (bu ay dahil)",
+  incomeTaxComputed: "Hesaplanan gelir vergisi",
+  exemptionBefore: "Asgari ücret istisna matrahı (önceki aylar)",
+  exemptionAdded: "Asgari ücret istisna matrahı (bu ay)",
+  incomeTaxExemption: "Asgari ücret GV istisnası",
+  incomeTax: "Kesilen gelir vergisi",
+  bracketCrossed: "Bu ay vergi dilimi değişti.",
+  stampComputed: (rate: string) => `Hesaplanan damga vergisi (binde ${rate})`,
+  stampExemption: "Asgari ücret DV istisnası",
+  stampTax: "Kesilen damga vergisi",
+  netPay: "Net ücret",
+  besDeduction: (rate: string) => `BES (SGK matrahının %${rate})`,
+  payable: "Ödenecek (ele geçen)",
+  employerSgk: (rate: string) => `SGK işveren payı (%${rate})`,
+  incentive: (points: string) => `Teşvik (−${points} puan)`,
+  employerUnemployment: (rate: string) => `İşsizlik işveren payı (%${rate})`,
+  employerCost: "İşverene maliyet",
+  chainMonth: "Ay",
+  chainSource: "Kaynak",
+  chainTaxBase: "GV matrahı",
+  chainExemption: "İstisna matrahı",
+  chainOpening: (month: string) => `Devir (${month} öncesi)`,
+  chainErp: "ERP hesabı",
+  chainExternal: "Mali müşavirde (zincir kopar)",
+  chainFlags: {
+    missing_wage: "ücret eksik",
+    fallback_parameters: "parametre tahmini",
+    opening_stale: "parametreler değişti: devri yeniden kaydedin",
+  } as Record<string, string>,
+  chainEmpty: "Yılın ilk ERP ayı: kümülatif sıfırdan başlar.",
+  externalDrawer:
+    "Bu kişinin bordrosu mali müşavirde; ERP'de hesaplanmaz. İşveren maliyeti için mali müşavirin rakamları kullanılır.",
+  // Kalemler
+  addItem: "Kalem ekle",
+  bulkAdd: "Toplu ekle",
+  copyPrevious: "Geçen aydan kopyala",
+  showRemoved: "Kaldırılanları göster",
+  itemsEmpty: "Bu ay girilmiş ek ödeme ya da kesinti yok.",
+  itemPerson: "Kişi",
+  itemCategory: "Kalem",
+  itemDescription: "Açıklama",
+  itemAmount: "Tutar (TL)",
+  itemEnteredBy: "Giren",
+  itemRemovedBy: "Kaldıran",
+  itemRemovedReason: (name: string, when: string, reason: string) =>
+    `Kaldırıldı: ${name} · ${when} · ${reason}`,
+  groupExtra: "Ek ödeme (brüt; SGK'ya ve vergiye tabi)",
+  groupDeduction: "Kesinti (netten)",
+  descriptionRequired: "Diğer kalemde açıklama yazın (pusulada görünür).",
+  garnishmentHelp:
+    "Dosya numarası yazılabilir; alacaklının ya da nafaka alanın adını yazmayın: açıklama denetim günlüğünden silinmez.",
+  mealHelp: (limit: string) =>
+    `Nakit yemek: fiilen çalışılan gün × günlük ${limit} TL'ye kadarki kısmı SGK'ya girmez; gelir ve damga vergisine tabidir.`,
+  mealNoLimit:
+    "Nakit yemek için günlük SGK istisna sınırı girilmedi (0 TL): yemeğin tamamı SGK'ya tabi hesaplanır. Sınırı mali müşavirden alıp Parametreler'e girin.",
+  mealNoLimitShort: "günlük sınır girilmedi",
+  futureItemsHint:
+    "Ek ödeme ve kesinti, birlikte ödendiği ücretin bordro ayı gelince girilir; gelecek aya girilemez.",
+  futureOpeningsHint:
+    "Devir, bir önceki ayın kümülatifi o ay bitince belli olduğu için ay gelince girilir; gelecek aya girilemez.",
+  itemAction: (action: string, label: string, amount: string) => `${action}: ${label} · ${amount}`,
+  descriptionHelp:
+    "Kısa açıklama (ör. Ekim primi). Kişisel bilgi yazmayın: açıklama denetim günlüğünden silinmez.",
+  laterMonthsHint:
+    "Bu değişiklik sonraki ayların kümülatif matrahını ve gelir vergisini de değiştirir.",
+  itemSaved: "Kalem kaydedildi.",
+  itemsSaved: (n: number) => `${n} kalem eklendi.`,
+  itemRemoved: "Kalem kaldırıldı.",
+  editItem: "Düzelt",
+  removeItem: "Kaldır",
+  itemTitleNew: "Ek ödeme ya da kesinti",
+  itemTitleEdit: (name: string) => `${name} · kalemi düzelt`,
+  itemKindLocked: "Tür (ek ödeme ya da kesinti) değiştirilemez; gerekirse kaldırıp yenisini girin.",
+  removeItemTitle: "Kalemi kaldır",
+  removeItemIntro:
+    "Kalem silinmez; kaldırılır ve hesaba girmez. Kaldırma nedeni kartın geçmişine ve denetim günlüğüne yazılır: dosya numarası ya da kişi adı yazmayın.",
+  removeReason: "Kaldırma nedeni",
+  bulkTitle: "Toplu ekle",
+  bulkIntro:
+    "Aynı kalemi seçili kişilere ekler. Biri kaydedilemezse hiçbiri kaydedilmez; hatalar aşağıda yazılır.",
+  bulkPeople: "Kişiler",
+  selectAll: "Hepsini seç",
+  copyTitle: (from: string) => `${from} kalemlerini kopyala`,
+  copyIntro:
+    "Geçen ayın kalemleri işaretli gelir, bu ayda zaten olanlar işaretsiz; gözden geçirip bu aya ekleyin. Bu ay bordrosu ERP'de hesaplanmayan kişilerin kalemleri seçilemez.",
+  copyEmpty: "Geçen ay kalem yok.",
+  copyUnavailable: "bu ay hesaplanmıyor",
+  copyPresent: "bu ayda var",
+  copyExisting: (n: number) =>
+    `Bu ayda zaten olan ${n} kalem (aynı kişi, kalem, tutar ve açıklama) işaretsiz geldi; iki kez eklemeyin.`,
+  copyAdd: (n: number) => `${n} kalemi ekle`,
+  rowError: (name: string, detail: string) => `${name}: ${detail}`,
+  categoryTotals: "Kalem toplamları",
+  orphanAlert: (n: number) =>
+    `Bu ay işte olmayan kişilere girilmiş ${n} kalem var; hesaba girmez. Gerekçeyle kaldırın; kalem kişinin çalıştığı bir aya aitse o aya yeniden girin.`,
+  itemNotEmployed: "bu ay işte değil",
+  itemExternal: "bordrosu mali müşavirde",
+  externalItemsAlert: (n: number) =>
+    `Bordrosu mali müşavirde olan kişilere girilmiş ${n} kalem var; ERP bordrosunda hesaplanmaz. Mali müşavire bildirin ya da gerekçeyle kaldırın.`,
+  // Devir
+  openingTitle: (month: string, previous: string) => `${month} devri — ${previous} sonu kümülatif`,
+  openingIntro: (previous: string) =>
+    `Mali müşavirin ${previous} bordrosundaki kümülatif gelir vergisi matrahını (${previous} dahil) ve asgari ücret istisnasının bu işyerinde uygulandığı ay sayısını girin; boş bıraktığınız satırlar kaydedilmez. Excel'den yapıştırabilirsiniz: yalnızca tutar sütunu ekrandaki sırayla dolar; sicil no sütunuyla birlikte yapıştırırsanız satırlar sicil no ile eşleşir. Tutarın sağındaki sütun istisna ay sayısı olarak alınır.`,
+  openingTaxBase: (previous: string) => `Kümülatif GV matrahı (${previous} dahil)`,
+  openingMonths: "İstisna ay",
+  openingNote: "Not",
+  openingSuggestion: (months: number, base: string) => `Öneri: ${months} ay (${base} TL)`,
+  openingHire: (date: string) => `İşe giriş ${date}`,
+  openingHireUnknown: "İşe giriş tarihi yok: Ocak'tan sayıldı",
+  openingMonthsHelp:
+    "Bu işyerinde ücret alınan aylar; ay ortasındaki giriş ayı tam sayılır, tamamı ücretsiz geçen ay sayılmaz.",
+  openingPlausible: (expected: string) => `Olası hata: beklenen yaklaşık ${expected} TL`,
+  openingBelowExemption: "Kümülatif matrah asgari ücret istisna matrahından az: kontrol edin.",
+  openingUnreadable: (n: number) => `${n} satırda tutar okunamadı: düzeltin ya da boşaltın.`,
+  openingPasteUnmatched: (list: string) =>
+    `Sicil no'su bu listede olmayan satırlar yapıştırılmadı: ${list}.`,
+  openingPasteSicil: (n: number) => `${n} değer sicil no ile eşleştirildi.`,
+  openingPasteNoAmount: (list: string) => `Tutarı bulunamayan satırlar yapıştırılmadı: ${list}.`,
+  openingPasteRepeated: (list: string) =>
+    `Birden fazla satırda farklı değerle geçen sicil no'lar yapıştırılmadı: ${list}.`,
+  openingPasteAmbiguous:
+    "Tutar sütunu belirlenemedi: sicil no'dan sonra birden çok sayı sütunu var (ör. TC kimlik no, gün). Yalnızca sicil no, ad soyad, tutar ve istisna ay sütunlarını kopyalayın; hiçbir kutu doldurulmadı.",
+  openingPastePosition: (n: number) =>
+    `${n} değer ekrandaki sırayla yerleştirildi; kişileri kontrol edin.`,
+  openingEntered: "Girildi",
+  openingSaved: (n: number) => `${n} devir kaydedildi.`,
+  openingFilterNeeded: "Yalnızca girilmeyenler",
+  openingCount: (done: number, all: number) => `${done}/${all} girildi`,
+  openingEveryone: "Herkes (mali müşavirle eşitleme)",
+  openingOverride:
+    "Seçili kişiler bir önceki ay ERP'de hesaplandı: devir o ayların ERP hesabının yerine geçer. Onaylıyorum.",
+  openingNoCandidates: "Bu ay devri gereken kişi yok.",
+  openingMonth: "Devir ayı",
+  openingResultTax: "Bu ay gelir vergisi",
+  removeOpening: "Devri kaldır",
+  removeOpeningIntro:
+    "Devir silinmez; kaldırılır. Zincir bir önceki devirden ya da yılın ilk ERP ayından yeniden kurulur.",
+  openingRemoved: "Devir kaldırıldı.",
+  openingNone: "Bu kişi için devir girilmedi.",
+  openingUsed: (month: string) => `Kullanılan devir: ${month} öncesi`,
+  openingEnter: "Devir gir",
+  openingEdit: "Devri düzelt",
+  openingReanchor: "Bu aydan devir gir (mali müşavirle eşitleme)",
+  invalidMonths: (max: number) => `0 ile ${max} arasında olmalı.`,
+  // Mali müşavir rakamı
+  removeFigures: "Rakamları kaldır",
+  removeFiguresIntro:
+    "Rakamlar silinmez; kaldırılır. O ay kişinin kartındaki işarete göre yeniden hesaplanır.",
+  figuresRemoved: "Rakamlar kaldırıldı.",
+  enteredAt: (name: string, when: string) => `${name} · ${when}`,
+  cancel: "Vazgeç",
+  save: "Kaydet",
+};
+
+// Bordro onayı (4. adım; docs/DECISIONS.md "4. adım kararları"): onay, kilit, yeniden açma,
+// ödeme tarihi, ücret pusulası, onay geçmişi ve onaydaki işaretler.
+export const pa = {
+  statusApproved: (number: string, payment: string) =>
+    `Bordro onaylı · ${number} · ödeme ${payment}`,
+  statusDraft: "Bordro taslak",
+  approve: "Bordroyu onayla",
+  approveTitle: (label: string) => `${label} bordrosunu onayla`,
+  approveIntro:
+    "Onaylanınca ayın satırları (kişi bilgisi, kalemler, kümülatif, parametreler) saklanır ve ay kilitlenir: kalem, devir, mali müşavir rakamı, onaylı aya düşen ücret, parametreler ve puantaj değiştirilemez. Düzeltme için bordro gerekçeyle yeniden açılır.",
+  blockingTitle: "Onayı engelleyenler",
+  acknowledgeTitle: "Okuyup işaretleyin",
+  noticeTitle: "Bilgi",
+  acknowledge: "Okudum",
+  people: (names: string[], rest: number) =>
+    rest > 0 ? `${names.join(", ")} ve ${rest} kişi daha` : names.join(", "),
+  paymentDate: "Ödeme tarihi",
+  paymentDateHelp: "Ücretin ödendiği (ödeneceği) gün; pusulada ve listelerde yazar.",
+  paymentDateLate: "Ödeme tarihi ay sonundan 20 günden fazla sonra: doğru mu?",
+  paymentDateRange: (first: string, last: string) => `${first} ile ${last} arasında olmalı.`,
+  approveConfirm: "Onayla ve kilitle",
+  approved: (label: string, number: string) => `${label} bordrosu onaylandı (${number}).`,
+  totalsPeople: (computed: number, external: number) =>
+    `${computed} kişi ERP'de, ${external} kişi mali müşavirde`,
+  readyLine: "Bordro onaya hazır",
+  notReadyLine: (n: number) => `Onayı engelleyen ${n} konu var (onay penceresinde kişileriyle)`,
+  previousOpenLine: (label: string) => `${label} bordrosu onaylanmadı: aylar sırayla onaylanır`,
+  openPrevious: "O aya git",
+  lockedLine: (number: string) =>
+    `Bordro onaylı (${number}): ay kilitli, satırlar onaydaki haliyle; değiştirmek için gerekçeyle yeniden açın.`,
+  locked: "Bordro onaylı: değiştirmek için önce bordroyu yeniden açın.",
+  reopen: "Yeniden aç",
+  reopenTitle: (label: string) => `${label} bordrosunu yeniden aç`,
+  reopenIntro:
+    'Onay ve satırları saklanır (geçersiz olarak). Ay yeniden canlı hesaplanır; onaydaki kişiler onaydaki "Bordrosu mali müşavirde" ve "BES\'e dahil" işaretleriyle hesaplanır. Gerekçe kayda geçer.',
+  reopenReason: "Yeniden açma gerekçesi",
+  reopened: (label: string) => `${label} bordrosu yeniden açıldı.`,
+  reopenOnlyLatest: "Yalnızca en son onaylı ay yeniden açılır (aylar sondan başa).",
+  paymentFix: "Ödeme tarihini düzelt",
+  paymentFixTitle: (label: string) => `${label} · ödeme tarihi`,
+  paymentFixIntro:
+    "Tutarlar değişmez, ay kilitli kalır; eski ve yeni tarih gerekçeyle denetim günlüğüne yazılır.",
+  paymentFixReason: "Gerekçe",
+  paymentFixed: "Ödeme tarihi düzeltildi.",
+  payslips: "Ücret pusulaları (PDF)",
+  payslip: "Ücret pusulası (PDF)",
+  payslipHint:
+    "Ücret hesap pusulası bilgi amaçlı iç belgedir (imza satırı yok); resmî pusula mali müşavirin bordrosudur.",
+  history: "Onay geçmişi",
+  historyTitle: (label: string) => `${label} · onay geçmişi`,
+  historyLine: (sequence: number, name: string, when: string, payment: string) =>
+    `${sequence}. onay · ${name} · ${when} · ödeme ${payment}`,
+  historyTotals: (net: string, payable: string, cost: string) =>
+    `Net ${net} · ödenecek ${payable} · işverene maliyet ${cost}`,
+  historyReopened: (name: string, when: string, reason: string) =>
+    `Yeniden açıldı: ${name} · ${when} · ${reason}`,
+  historyCurrent: "geçerli",
+  historySuperseded: "geçersiz",
+  gate: {
+    before_start: "Başlangıç ayından önce bordro onaylanmaz",
+    attendance_open: "Puantaj onaylanmadı",
+    previous_month_open: "Bir önceki ayın bordrosu onaylanmadı (aylar sırayla onaylanır)",
+    parameters_not_saved: "Bu yılın bordro parametreleri kaydedilmedi",
+    no_employees: "Bu ay bordroda kişi yok",
+    orphan_items: "O ay işte olmayan kişiye girilmiş kalem",
+    external_items: "Mali müşavirdeki kişiye ERP'de girilmiş kalem (hesaplanmaz; listede yazar)",
+  } as Record<string, string>,
+  cardChangesTitle: "Kartı onaydan sonra değişen kişiler",
+  cardChangesHint:
+    'Yeniden açılan ayda bu kişiler son onaydaki işaretlerle hesaplanır; "Kartı izle" seçilen kişi kartın bugünkü işaretleriyle hesaplanır (seçim kayda geçer).',
+  flags: (external: boolean, bes: boolean) =>
+    `${external ? "mali müşavirde" : "ERP'de"}, ${bes ? "BES'e dahil" : "BES yok"}`,
+  cardChange: (name: string, approved: string, card: string) =>
+    `${name}: onayda ${approved}; kartta ${card}`,
+  follow: "Kartı izle",
+  unfollow: "Onaydakine dön",
+  followingBadge: "kartı izliyor",
+  followed: (name: string) => `${name} kartın bugünkü işaretleriyle hesaplanacak.`,
+  unfollowed: (name: string) => `${name} son onaydaki işaretlerle hesaplanacak.`,
+  parametersLocked:
+    "Bordrosu onaylı ayların parametreleri değiştirilemez; önce o ayların bordrosu yeniden açılır (sondan başa). Not ve kaynak düzeltilebilir.",
+  externalSwitchedTitle: "Onaylanmamış aylarda bordro kaydı var",
+  /** `kept`: yeniden açılıp kişinin onaydaki haliyle ERP'de kaldığı aylar; `others`: diğer
+   * aylarda da kayıt var. */
+  externalSwitched: (list: string, kept: string, others: boolean) =>
+    `Kart "Bordrosu mali müşavirde" işaretlendi. Onaylanmamış bordro aylarında ERP'de girilmiş kayıtları var: ${list}.` +
+    (kept
+      ? ` Yeniden açılan ${kept} son onaydaki haliyle ERP'de hesaplanır; kartın işaretiyle hesaplamak için Personel > Bordro > Ay hazırlığında "Kartı izle"ye basın.`
+      : "") +
+    (others
+      ? ` ${kept ? "Diğer aylardakileri mali müşavire" : "Mali müşavire"} bildirin; gerekmiyorsa Personel > Bordro'dan gerekçeyle kaldırın.`
+      : "") +
+    " Onaylı aylar onaydaki haliyle kalır.",
+  figureKeepsExternal:
+    "O aya mali müşavir rakamı girilmiş: rakam kaldırılana kadar mali müşavirde kalır.",
+  attendanceLocked: (number: string) =>
+    `Bu ayın bordrosu onaylı (${number}): puantajı açmadan önce Personel > Bordro'dan bordroyu gerekçeyle yeniden açın.`,
+  chainApproved: "Onaylı bordro (ay sonu kümülatifi)",
+  chainMissing: "Bordroda satırı yok (kümülatif bilinmiyor; devir gerekir)",
+  cardChangesApproveHint:
+    'Kartı izlenmeyen kişi son onaydaki işaretlerle, "kartı izliyor" olan kartın bugünkü işaretleriyle saklanır. Değiştirmek için onaydan önce Ay hazırlığında "Kartı izle" ya da "Onaydakine dön"e basın.',
+  storedAs: (flags: string) => `Onayda saklanacak: ${flags}`,
+  outputLink: (label: string, sequence: number, superseded: boolean) =>
+    `${label}: ${sequence}. onay${superseded ? " (geçersiz)" : ""}`,
 };

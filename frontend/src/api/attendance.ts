@@ -33,6 +33,8 @@ export interface AttendanceCell {
   status: AttendanceStatus | "";
   code: string;
   overtime_hours: string;
+  /** Yarım gün tatilde (28 Ekim, arife) öğleden sonra da çalıştı (bordroda yarım günlük ilave). */
+  holiday_half_worked: boolean;
   note: string;
   /** Kayıtlı gün; değilse takvimden varsayılan. */
   explicit: boolean;
@@ -81,6 +83,8 @@ export interface AttendanceGrid {
   finished: boolean;
   /** Ay hiç yazılmadıysa boş. */
   month_record: AttendanceMonthRecord | null;
+  /** Ayın bordrosu (yoksa boş): onaylıyken puantaj yeniden açılamaz. */
+  payroll: { number: string; status: "OPEN" | "APPROVED" } | null;
   days: AttendanceColumn[];
   rows: AttendanceRow[];
 }
@@ -90,6 +94,8 @@ export interface AttendanceDayInput {
   date: string;
   status: AttendanceStatus;
   overtime_hours?: string;
+  /** Yalnızca yarım gün tatil olan çalışılan güne (Ç). */
+  holiday_half_worked?: boolean;
   note?: string;
 }
 

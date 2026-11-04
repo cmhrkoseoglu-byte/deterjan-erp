@@ -3,8 +3,9 @@
 Lotun maliyeti oluştuğunda / şarj ya da dolum partisi bittiğinde bir kez hesaplanıp `LotCost`
 (kalem kalem `LotCostLine`) olarak saklanır; sonradan yeniden hesaplama yeni sürüm açar, eski
 sürümler kalır. Lotun güncel birim maliyeti `inventory.Lot.unit_cost`'a da yazılır. Tutarlar
-yalnızca yonetim ve admin rolüne gösterilir (Karar D-15). Personel maliyeti için ücret, birim
-eşleştirmesi ve işveren payı da burada tutulur (2026-10-29). Bu dosyada iş mantığı yoktur.
+yalnızca yonetim ve admin rolüne gösterilir (Karar D-15). Personel maliyeti için birim
+eşleştirmesi ve işveren payı da burada tutulur (2026-10-29); ücretler 2026-11-01'den beri personel
+modülündedir (`personnel.EmployeeWage`). Bu dosyada iş mantığı yoktur.
 """
 
 from decimal import Decimal
@@ -15,7 +16,6 @@ from django.db.models import Q
 from apps.core.models import BaseModel, MasterDataModel, User
 from apps.inventory.models import Lot
 from apps.masterdata.models import Material
-from apps.personnel.models import Employee
 
 
 class CostStage(models.TextChoices):
@@ -196,51 +196,6 @@ class LotCostLine(BaseModel):
 
 
 # --- personel maliyeti (2026-10-29, docs/DECISIONS.md "Personel maliyeti") ----------------------
-
-
-class EmployeeWage(BaseModel):
-    """Kişinin brüt aylık ücreti, bir tarihten itibaren geçerli. Zam yeni tarihle eklenir; yanlış
-    kayıt silinmez, gerekçeyle kaldırılır. Kişisel veri: yalnızca yönetim ve admin görür
-    (docs/KVKK.md)."""
-
-    employee = models.ForeignKey(
-        Employee, verbose_name="personel", on_delete=models.PROTECT, related_name="wages"
-    )
-    gross_monthly = models.DecimalField("brüt aylık ücret (TL)", max_digits=18, decimal_places=2)
-    valid_from = models.DateField("geçerlilik başlangıcı")
-    note = models.CharField("not", max_length=200, blank=True)
-    is_active = models.BooleanField("aktif", default=True, db_index=True)
-    removed_at = models.DateTimeField("kaldırılma zamanı", null=True, blank=True)
-    removed_by = models.ForeignKey(
-        User,
-        verbose_name="kaldıran",
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="+",
-    )
-    removal_reason = models.CharField("kaldırma nedeni", max_length=500, blank=True)
-
-    class Meta:
-        verbose_name = "ücret"
-        verbose_name_plural = "ücretler"
-        ordering = ["employee", "-valid_from", "-id"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["employee", "valid_from"],
-                condition=Q(is_active=True),
-                name="costing_wage_employee_date_uniq",
-                violation_error_message="Bu kişinin bu tarihte başlayan bir ücreti zaten var.",
-            ),
-            models.CheckConstraint(
-                condition=Q(gross_monthly__gt=0),
-                name="costing_wage_positive",
-                violation_error_message="Brüt ücret sıfırdan büyük olmalı.",
-            ),
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.employee_id} {self.gross_monthly} ({self.valid_from})"
 
 
 class DepartmentCostCenter(BaseModel):

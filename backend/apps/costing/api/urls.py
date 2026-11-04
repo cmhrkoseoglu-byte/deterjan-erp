@@ -9,7 +9,6 @@ router = SimpleRouter()
 router.register("lot-costs", views.LotCostViewSet, basename="lot-cost")
 router.register("rates", views.CostRateViewSet, basename="rate")
 router.register("standard-costs", views.StandardCostViewSet, basename="standard-cost")
-router.register("wages", views.EmployeeWageViewSet, basename="wage")
 
 PERSONNEL_MONTH = "personnel-costs/<int:year>/<int:month>"
 
@@ -37,11 +36,6 @@ urlpatterns = [
         name="personnel-cost-labor-rate",
     ),
     path("cost-centers/", views.CostCenterView.as_view(), name="cost-centers"),
-    path(
-        "personnel-cost-settings/",
-        views.PersonnelCostSettingsView.as_view(),
-        name="personnel-cost-settings",
-    ),
 ]
 for name, (json_view, excel_view) in REPORTS.items():
     urlpatterns += [

@@ -396,6 +396,7 @@ def test_grid_day_range_approve_and_export_api(api: APIClient, manager: User) ->
         "status",
         "code",
         "overtime_hours",
+        "holiday_half_worked",
         "note",
         "explicit",
         "editable",

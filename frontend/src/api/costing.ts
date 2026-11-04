@@ -268,7 +268,8 @@ export function reportExcelUrl(name: ReportName, params: ReportParams = {}): str
 
 // --- personel maliyeti -----------------------------------------------------------------------
 // Brüt ücret + puantajdan aylık maliyet ve işçilik oranı önerisi (docs/DECISIONS.md "Personel
-// maliyeti"). Ücretler kişisel veridir (docs/KVKK.md); yalnızca yönetim ve admin erişir.
+// maliyeti"). Ücretler kişisel veridir (docs/KVKK.md); yalnızca yönetim ve admin erişir. Ücretlerin
+// kendisi personel modülündedir (api/wages.ts).
 
 /** Birimin maliyet aşaması; boş = genel gider. */
 export type CostCenterStage = CostStage | "";
@@ -297,11 +298,16 @@ export interface PersonnelCostRow {
   overtime_hours: string;
   gross_salary: string;
   overtime_pay: string;
+  /** Ek ödemeler (prim, ikramiye, nakit yol ve yemek). */
+  extras_total: string;
   gross_total: string;
   employer_share: string;
   total_cost: string;
-  /** Ayın en az bir günü için ücret yok (o günler sıfır sayıldı). */
+  /** Ayın en az bir günü için ücret yok (o günler sıfır sayıldı) ya da bordrosu mali müşavirde
+   * olan kişinin o ay rakamları girilmedi. */
   missing_wage: boolean;
+  /** Bordrosu mali müşavirde: brüt ve maliyet girilen rakamlardır. */
+  payroll_external: boolean;
 }
 
 export interface StageCost {
@@ -326,37 +332,26 @@ export interface PersonnelCostReport {
   attendance_status: "OPEN" | "APPROVED";
   attendance_number: string;
   attendance_approved: boolean;
+  /** Bordro (Ekim 2026'dan): APPROVED onaylı (onayda saklanan satırlar), OPEN tahmin; başlangıçtan
+   * önce boş (maliyet puantajdan). */
+  payroll_status: "" | "OPEN" | "APPROVED";
+  payroll_number: string;
+  /** İşçilik oranı için onaylı bordro gerekir (Ekim 2026 ve sonrası). */
+  payroll_required: boolean;
+  /** Etkin işveren oranı: SGK işveren − teşvik + işsizlik işveren (bordro parametreleri). */
   employer_rate: string;
+  /** Bordro parametrelerinin kaynağı: kayıtlı set, yılın yasal değerleri ya da tahmin. */
+  parameters_origin: "saved" | "legal_default" | "fallback";
+  parameters_year: number;
   missing_wage_count: number;
   gross_salary: string;
   overtime_pay: string;
+  /** Ek ödemeler (prim, ikramiye, nakit yol ve yemek). */
+  extras_total: string;
   employer_share: string;
   total_cost: string;
   stages: StageCost[];
   rows: PersonnelCostRow[];
-}
-
-export interface EmployeeWage {
-  id: number;
-  employee: number;
-  employee_name: string;
-  gross_monthly: string;
-  valid_from: string;
-  note: string;
-  is_active: boolean;
-  removal_reason: string;
-  created_at: string;
-  created_by_name: string | null;
-}
-
-export interface WageSummaryRow {
-  employee: CostEmployee;
-  stage: CostCenterStage;
-  /** Bugün geçerli ücret; yoksa (hiç girilmedi ya da gelecek tarihli) boş. */
-  current_wage: string | null;
-  current_valid_from: string | null;
-  /** Kaldırılmamış ücretler, en yenisi önce. */
-  history: EmployeeWage[];
 }
 
 export interface CostCenter {
@@ -364,19 +359,10 @@ export interface CostCenter {
   stage: CostCenterStage;
 }
 
-export interface PersonnelCostSettings {
-  employer_rate: string;
-  /** Ayar hiç kaydedilmediyse boş (varsayılan oran). */
-  updated_at: string | null;
-}
-
 export const personnelCostKeys = {
   all: ["costing", "personnel-cost"] as const,
   report: (year: number, month: number) => ["costing", "personnel-cost", year, month] as const,
-  wages: ["costing", "wages"] as const,
-  wageList: (includeFormer: boolean) => ["costing", "wages", includeFormer] as const,
   costCenters: ["costing", "cost-centers"] as const,
-  settings: ["costing", "personnel-cost-settings"] as const,
 };
 
 const personnelMonth = (year: number, month: number) => `/costing/personnel-costs/${year}/${month}`;
@@ -401,31 +387,6 @@ export async function addLaborRateFromPersonnelCost(
   return data;
 }
 
-/** Çalışanlar (çıkış tarihi bugün ya da sonra olanlar dahil); `includeFormer` ile ayrılanlar da. */
-export async function getWageSummary(includeFormer = false): Promise<WageSummaryRow[]> {
-  const { data } = await api.get<WageSummaryRow[]>("/costing/wages/summary/", {
-    params: includeFormer ? { include_former: true } : undefined,
-  });
-  return data;
-}
-
-/** Hata kodları: employee_required, valid_from_required, invalid_valid_from, invalid_wage,
- * duplicate_wage. */
-export async function addWage(payload: {
-  employee: number;
-  gross_monthly: string;
-  valid_from: string;
-  note: string;
-}): Promise<EmployeeWage> {
-  const { data } = await api.post<EmployeeWage>("/costing/wages/", payload);
-  return data;
-}
-
-export async function removeWage(id: number, reason: string): Promise<EmployeeWage> {
-  const { data } = await api.post<EmployeeWage>(`/costing/wages/${id}/remove/`, { reason });
-  return data;
-}
-
 export async function listCostCenters(): Promise<CostCenter[]> {
   const { data } = await api.get<CostCenter[]>("/costing/cost-centers/");
   return data;
@@ -433,19 +394,5 @@ export async function listCostCenters(): Promise<CostCenter[]> {
 
 export async function setCostCenter(payload: CostCenter): Promise<CostCenter> {
   const { data } = await api.put<CostCenter>("/costing/cost-centers/", payload);
-  return data;
-}
-
-export async function getPersonnelCostSettings(): Promise<PersonnelCostSettings> {
-  const { data } = await api.get<PersonnelCostSettings>("/costing/personnel-cost-settings/");
-  return data;
-}
-
-export async function updatePersonnelCostSettings(
-  employerRate: string,
-): Promise<PersonnelCostSettings> {
-  const { data } = await api.patch<PersonnelCostSettings>("/costing/personnel-cost-settings/", {
-    employer_rate: employerRate,
-  });
   return data;
 }

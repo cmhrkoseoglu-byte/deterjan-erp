@@ -919,8 +919,9 @@ const SHOTS = [
     run: async (page) => go(page, "/maliyet/oranlar", "Oran ekle"),
   },
   {
-    // Ücretler ve birim eşleştirmesi seed_costing_demo'dan gelir. Bu ay biten demo şarjları
-    // sayesinde üretim satırında gerçekleşen işçilik görünür (puantaj açık, oran eklenemez).
+    // Ücretler seed_personnel_demo'dan, birim eşleştirmesi seed_costing_demo'dan gelir. Bu ay
+    // biten demo şarjları sayesinde üretim satırında gerçekleşen işçilik görünür (puantaj açık,
+    // oran eklenemez).
     name: "yonetim-personel-maliyeti",
     user: "yonetim",
     run: async (page) => {

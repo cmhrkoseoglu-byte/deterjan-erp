@@ -143,9 +143,12 @@ PERSONNEL_COST: Sequence[Column] = (
     ("overtime_hours", "Fazla mesai (saat)"),
     ("gross_salary", "Brüt ücret (TL)"),
     ("overtime_pay", "Fazla mesai (TL)"),
+    ("extras_total", "Ek ödeme (TL)"),
     ("employer_share", "İşveren payı (TL)"),
     ("total_cost", "Toplam maliyet (TL)"),
     ("missing_wage", "Ücret eksik"),
+    ("payroll_external", "Bordrosu mali müşavirde"),
+    ("figures_missing", "Mali müşavir rakamı girilmedi"),
 )
 PERSONNEL_STAGES: Sequence[Column] = (
     ("stage", "Maliyet merkezi"),
@@ -155,9 +158,17 @@ PERSONNEL_STAGES: Sequence[Column] = (
     ("unconverted", "Kg'a çevrilemeyen malzeme"),
     ("suggested_rate", "Gerçekleşen işçilik (TL/kg)"),
     ("current_rate", "Geçerli işçilik oranı (TL/kg)"),
-    ("missing_wage_count", "Ücreti eksik kişi"),
+    ("missing_wage_count", "Ücreti ya da mali müşavir rakamı eksik kişi"),
 )
 SUMMARY: Sequence[Column] = (("label", "Bilgi"), ("value", "Değer"))
+
+
+def _parameters_label(report: PersonnelCostReport) -> str:
+    if report.parameters_origin == "saved":
+        return f"Kayıtlı ({report.parameters_year})"
+    if report.parameters_origin == "legal_default":
+        return f"Kaydedilmedi ({report.parameters_year} yasal değerleri)"
+    return f"{report.year} için yok ({report.parameters_year} değerleriyle tahmin)"
 
 
 def personnel_cost_xlsx(report: PersonnelCostReport) -> bytes:
@@ -166,15 +177,32 @@ def personnel_cost_xlsx(report: PersonnelCostReport) -> bytes:
         attendance = f"Onaylı ({report.attendance_number})"
     else:
         attendance = "Açık (taslak)"
+    if report.payroll_approved:
+        payroll = f"Onaylı ({report.payroll_number}): onayda saklanan satırlar"
+    elif report.payroll_required:
+        payroll = "Onaylanmadı: tahmin (işçilik oranı için bordro onaylanmalı)"
+    else:
+        payroll = "Başlangıç öncesi: bordro mali müşavirde, maliyet puantajdan"
     summary: list[dict[str, Any]] = [
         {"label": "Dönem", "value": report.label},
         {"label": "Puantaj", "value": attendance},
-        {"label": "İşveren payı (%)", "value": report.employer_rate},
+        {"label": "Bordro", "value": payroll},
+        {"label": "Etkin işveren oranı (%)", "value": report.employer_rate},
+        {"label": "Bordro parametreleri", "value": _parameters_label(report)},
         {"label": "Brüt ücret toplamı (TL)", "value": report.gross_salary},
         {"label": "Fazla mesai toplamı (TL)", "value": report.overtime_pay},
+        {"label": "Ek ödeme toplamı (TL)", "value": report.extras_total},
         {"label": "İşveren payı toplamı (TL)", "value": report.employer_share},
         {"label": "Toplam personel maliyeti (TL)", "value": report.total_cost},
-        {"label": "Ücreti eksik kişi", "value": report.missing_wage_count},
+        # Ekrandaki iki uyarı gibi: eksik ücret Ücretler'de, mali müşavir rakamı Bordro'da girilir.
+        {
+            "label": "Ücreti eksik kişi",
+            "value": sum(1 for row in report.rows if row.missing_wage and not row.payroll_external),
+        },
+        {
+            "label": "Mali müşavir rakamı girilmemiş kişi",
+            "value": sum(1 for row in report.rows if row.missing_wage and row.payroll_external),
+        },
     ]
     rows = [
         {
@@ -189,9 +217,12 @@ def personnel_cost_xlsx(report: PersonnelCostReport) -> bytes:
             "overtime_hours": row.overtime_hours,
             "gross_salary": row.gross_salary,
             "overtime_pay": row.overtime_pay,
+            "extras_total": row.extras_total,
             "employer_share": row.employer_share,
             "total_cost": row.total_cost,
-            "missing_wage": row.missing_wage,
+            "missing_wage": row.missing_wage and not row.payroll_external,
+            "payroll_external": row.payroll_external,
+            "figures_missing": row.missing_wage and row.payroll_external,
         }
         for row in report.rows
     ]

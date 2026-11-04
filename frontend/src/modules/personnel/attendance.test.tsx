@@ -62,6 +62,7 @@ function grid(extra: Partial<AttendanceGrid> = {}): AttendanceGrid {
     status: day.rest ? "WEEKLY_REST" : "WORKED",
     code: day.rest ? "HT" : "Ç",
     overtime_hours: "0.00",
+    holiday_half_worked: false,
     note: "",
     explicit: false,
     editable: true,
@@ -75,6 +76,7 @@ function grid(extra: Partial<AttendanceGrid> = {}): AttendanceGrid {
     status: "OPEN",
     finished: true,
     month_record: null,
+    payroll: null,
     days,
     rows: [
       {
@@ -167,6 +169,7 @@ describe("puantaj tablosu", () => {
         date: target.date,
         status: "WORKED",
         overtime_hours: "2.5",
+        holiday_half_worked: false,
         note: "Sipariş",
       }),
     );
@@ -189,6 +192,57 @@ describe("puantaj tablosu", () => {
     await waitFor(() =>
       expect(attendanceApi.setAttendanceDay).toHaveBeenCalledWith(
         expect.objectContaining({ status: "ANNUAL_LEAVE", overtime_hours: "0" }),
+      ),
+    );
+  });
+
+  it("yarım gün tatilde öğleden sonra çalışma yalnızca çalışılan güne işaretlenir", async () => {
+    const user = userEvent.setup();
+    const base = grid();
+    const target = firstWorkday(base);
+    const index = base.days.findIndex((day) => day.date === target.date);
+    // Başka bir yarım gün tatil daha önce işaretlenmiş: tabloda Ç½ görünür. Tatili sonradan
+    // kaldırılmış işaretli gün ise düz Ç görünür (bordro ve Excel gibi).
+    const worked = (after: number) =>
+      base.rows[0].cells.findIndex((cell, i) => i > after && cell.status === "WORKED");
+    const other = worked(index);
+    const stale = worked(other);
+    const days = base.days.map((day, i) =>
+      i === index || i === other ? { ...day, holiday_name: "Arife", half_day: true } : day,
+    );
+    const marked = base.rows[0].cells.map((cell, i) =>
+      i === other || i === stale ? { ...cell, holiday_half_worked: true } : cell,
+    );
+    vi.mocked(attendanceApi.getAttendanceGrid).mockResolvedValue({
+      ...base,
+      days,
+      rows: [{ ...base.rows[0], cells: marked }],
+    });
+    renderApp("/personel/puantaj?ay=2026-09");
+    const table = await screen.findByTestId("attendance");
+    expect(within(table).getAllByText("Ç½")).toHaveLength(1);
+    expect(
+      within(table).getByRole("button", {
+        name: `Ayşe Demir ${formatDate(days[stale].date)}: Çalıştı`,
+      }),
+    ).toHaveTextContent(/^Ç$/);
+    await user.click(
+      within(table).getByRole("button", { name: `Ayşe Demir ${formatDate(target.date)}: Çalıştı` }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    const half = within(dialog).getByLabelText(/Öğleden sonra da çalıştı/);
+    expect(half).toBeEnabled();
+    expect(half).not.toBeChecked();
+    await user.click(half);
+    await user.click(within(dialog).getByRole("textbox", { name: "Durum" }));
+    await user.click(await screen.findByRole("option", { name: "Yİ · Yıllık izin" }));
+    expect(within(dialog).getByLabelText(/Öğleden sonra da çalıştı/)).toBeDisabled();
+    await user.click(within(dialog).getByRole("textbox", { name: "Durum" }));
+    await user.click(await screen.findByRole("option", { name: "Ç · Çalıştı" }));
+    await user.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(attendanceApi.setAttendanceDay).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "WORKED", holiday_half_worked: true }),
       ),
     );
   });
@@ -278,6 +332,19 @@ describe("puantaj tablosu", () => {
         "Rapor eksik girilmiş",
       ),
     );
+  });
+
+  it("bordrosu onaylı ayın puantajı yeniden açılamaz", async () => {
+    vi.mocked(attendanceApi.getAttendanceGrid).mockResolvedValue(
+      grid({
+        status: "APPROVED",
+        month_record: RECORD,
+        payroll: { number: "BR-2026-00001", status: "APPROVED" },
+      }),
+    );
+    renderApp("/personel/puantaj?ay=2026-09");
+    await screen.findByTestId("attendance");
+    expect(screen.getByRole("button", { name: "Yeniden aç" })).toBeDisabled();
   });
 
   it("personel sekmelerinden puantaja geçilir; diğer roller açamaz", async () => {

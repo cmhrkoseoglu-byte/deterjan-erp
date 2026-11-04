@@ -42,7 +42,7 @@ import { monthAfterDay } from "./attendanceFormat";
 import { EmployeeDocuments } from "./EmployeeDocuments";
 import { EmployeeFormModal } from "./EmployeeFormModal";
 import { EmployeeStatus } from "./PersonnelPage";
-import { ATTENDANCE_BASE, PERSONNEL_BASE, pe, PERSONNEL_KEY } from "./strings";
+import { ATTENDANCE_BASE, PERSONNEL_BASE, PERSONNEL_KEY, pa, pe } from "./strings";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -393,7 +393,22 @@ export function EmployeePage() {
         <EmployeeFormModal
           employee={employee}
           onClose={() => setEditing(false)}
-          onSaved={(saved) => done(pe.saved(saved.full_name))}
+          onSaved={(saved) => {
+            done(pe.saved(saved.full_name));
+            const records = saved.payroll_external_records ?? [];
+            const kept = saved.payroll_external_kept ?? [];
+            // Yeniden açılan ayda onaydaki haliyle ERP'de kalanlar dışındaki aylarda da kayıt var mı.
+            const others = records.some(
+              (record) => !kept.some((month) => record.startsWith(`${month} `)),
+            );
+            if (records.length)
+              notifications.show({
+                color: "orange",
+                autoClose: false,
+                title: pa.externalSwitchedTitle,
+                message: pa.externalSwitched(records.join("; "), kept.join(", "), others),
+              });
+          }}
         />
       )}
       {terminating && (

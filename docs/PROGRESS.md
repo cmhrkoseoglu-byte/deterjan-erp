@@ -934,3 +934,227 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   gerekmedi.
 - Kılavuz `yonetim.md` (Personel ve Puantaj), DECISIONS ("Puantajda çıkıştan sonraki günler" ve
   önceki kararlara notlar), KVKK güncellendi.
+
+## 2026-11-01 — Personel bordrosu, 1. adım: ücretler Personel'de
+
+- Plan (onaylı; DECISIONS "Personel bordrosu (ön bordro)"): 1) ücretlerin Personel'e taşınması;
+  2) hesap motoru, bordro parametreleri, işveren maliyeti tablosu (PDF, Excel) ve Maliyet'in aynı
+  hesaba geçmesi; 3) brütten nete bordro, devir, ek ödeme, kesinti ve BES, bordro listesi;
+  4) onay, kilitler, ücret hesap pusulaları, belgeler ve demo verisi.
+- Backend: `EmployeeWage` personel modülüne taşındı (yalnızca model durumu: costing/0003 ve
+  personnel/0004; tablo ve kısıt adları korundu, içerik türü personele aktarıldı, geri alınabilir).
+  Servisler `personnel.services.add_wage` / `remove_wage`; seçiciler `wages_by_employee`, `wage_on`,
+  `wage_summary` (maliyet aşaması olmadan). API `/api/v1/personnel/wages/` (liste, kayıt, ekleme,
+  `remove`, `summary?include_former=`); maliyetteki `wages/` uçları kaldırıldı. Personel maliyeti
+  ücretleri personelden okur, hesap değişmedi. Örnek ücretler `seed_personnel_demo`'ya taşındı.
+- Ön yüz: Personel > Ücretler sekmesi (`/personel/ucretler`; eski `/maliyet/ucretler` adresi
+  "Ayrılanları da göster" süzgeciyle yönlenir). Birim eşleştirmesi ve işveren payı Maliyet > Personel
+  maliyeti'nin altında (`PersonnelCostSettings.tsx`). Ücret değişince personel maliyeti raporu da
+  yenilenir.
+- İnceleme: dört eksenli çok ajanlı tur, her bulgu ayrı ajanla çürütülmeye çalışıldı: 8 bulgudan 2'si
+  doğrulandı (düşük), 6'sı çürütüldü. Düzeltilenler: eski sekmenin kalktığını denetleyen test sayfa
+  yüklenmeden çalışıyordu (artık sekme listesi yüklendikten sonra denetlenir); kılavuz metinleri
+  (admin.md, yönetim "Personel") ve ekran görüntüsü betiğinin notu. Kılavuz ekran görüntüleri arayüz
+  4. adımda tamamlanınca bir kez yenilenecek. Ayrıca geçiş testi başarısız olsa da şemayı son geçişe
+  döndürür; geçiş notları netleştirildi.
+- Kanıt: `personnel/tests/test_wages.py` (kurallar, gün başına geçerli ücret, ayrılanlar, sorgu
+  sayısı, eşzamanlı ekleme, yetki, API), `test_wage_migration.py` (kayıtlar, kimlikler, denetim
+  geçmişi, geri alma, hedefte boş içerik türü), `test_seed_demo.py`;
+  `costing/tests/test_personnel_cost.py` (kaldırılan ücret hesapta yok, eski uç yok); ön yüz
+  `modules/personnel/wages.test.tsx` (yönlendirme dahil), `modules/costing/personnelCost.test.tsx`.
+  Backend 1343 test, ruff, mypy, göç kontrolü, OpenAPI; ön yüz 369 test, ESLint, Prettier, tsc,
+  derleme.
+- CLAUDE.md modül tablosu ve bağımlılık notu (planla onaylandı), DECISIONS, KVKK ve kılavuz
+  güncellendi.
+
+## 2026-11-02 — Personel bordrosu, 2. adım: hesap motoru, parametreler, işveren maliyeti
+
+- Backend (`apps/personnel`, göç 0005):
+  - Hesap motoru `payroll.py` (yalnızca standart kitaplık): 30 gün usulü ücret (her gün o gün geçerli
+    ücretle), SGK günü, SGK matrahının günlük alt ve üst sınırı, işçi payları ve işverenin üstlendiği
+    alt sınır farkı (5510 m.82), kümülatif gelir vergisi (tarife farkı), asgari ücret gelir ve damga
+    vergisi istisnası, BES (SGK matrahının %3'ü), fazla mesai ve resmî tatil ("günlük ücret", yarım
+    gün tatil). 2026 yasal değerleri ve kaynakları motorda.
+  - Modeller: `PayrollParameterSet` (yıl içinde ay başından geçerli, gerekçeyle kaldırılır),
+    `ExternalPayrollFigure`, puantajda `holiday_half_worked`, kartta `payroll_external` ve
+    `bes_enrolled`.
+  - Seçiciler `payroll_parameters` (kayıtlı set → o yılın yasal değerleri → en yakın yılın değerleri,
+    uyarıyla) ve `payroll_month` (satır uyarıları: ücret eksik, asgari ücretin altında, mali müşavir
+    rakamı yok, ay içinde çıkış, SGK günü yok).
+  - Çıktılar: `pdf.py` işveren maliyeti tablosu (A4 yatay, birim ara toplamları, Sayfa x/y, TASLAK
+    damgası); Excel "İşveren maliyeti" ve "Parametreler" (TASLAK). Dosyalar `no-store`, her açılış
+    denetim günlüğüne.
+  - API `/api/v1/personnel/payroll/<yıl>/<ay>/` (ve `employer-cost.pdf`, `xlsx/`, `external/`) ile
+    `payroll/parameters/` (liste, kayıt, düzeltme, `remove`, `defaults`).
+- Maliyet: Personel maliyeti aynı hesaptan beslenir (SGK alt sınırı, 2026 oranları, teşvik); tek işveren
+  payı ayarı ve ucu kalktı, model durur. Excel'de "Bordrosu mali müşavirde" ve "Mali müşavir rakamı
+  girilmedi"; Excel önbelleğe alınmaz, açılışı kayda geçer.
+- Ön yüz: Personel > Bordro sekmesi (ay seçici, durum rozetleri, uyarılar, işveren maliyeti tablosu, PDF
+  ve Excel, Parametreler penceresi, mali müşavir rakamları penceresi); puantajda yarım gün tatil kutusu
+  ve Ç½; kartta Bordro bölümü; Maliyet > Personel maliyeti'nde parametre rozeti, Bordro bağlantısı ve
+  ayrı eksik uyarıları.
+- İnceleme: dört eksenli çok ajanlı tur (bordro hukuku, arka uç, ön yüz, belgeler ve kurallar), her
+  bulgu ayrı ajanla çürütülmeye çalışıldı. Kullanım sınırında yarıda kalan tur kaldığı yerden
+  tamamlandı: 30 bulgudan 20'si doğrulandı (5'i orta, gerisi düşük önemde), 10'u çürütüldü; hepsi
+  düzeltildi. Başlıcaları:
+  - PDF'te mali müşavirdeki kişinin brütü notun altında kalıyordu; Excel'de TASLAK yoktu.
+  - Asgari ücret uyarısı ay içi giriş ve çıkışta verilmiyordu; tatil kaldırılınca tabloda Ç½ kalıyordu.
+  - Mali müşavir rakamı 0 girilemiyordu.
+  - Yasal değeri olmayan yılın parametre penceresi uyarısız eski yılla doluyordu; form noktalı oranı
+    binlik sayıyor, sunucu hatalarını alanın altında göstermiyordu; pencere istek sürerken kapanabiliyordu.
+  - Maliyet uyarısı mali müşavir rakamı eksiğini Ücretler'e yönlendiriyordu; maliyet Excel'i önbelleğe
+    alınabiliyordu; kılavuzda Bordro bölümü yoktu; motorun bazı kuralları test edilmiyordu.
+  İkinci tur düzeltmeleri inceledi: 9 bulgudan 7'si doğrulandı (1 orta), hepsi düzeltildi. Bunlar zam
+  ayında zamdan önceki ücretin uyarısı, maliyet Excel'indeki eksik etiketleri, alan düzeltilince genel
+  hata uyarısının yeniden çıkması, mali müşavir penceresinin geç yanıtla kapanması, iki metin ve zayıf
+  testlerdi.
+- Kanıt: `personnel/tests/test_payroll_engine.py` (ÇSGB asgari ücret maliyeti, 50.000 TL yıllık zincir,
+  SGK tavanı, kıst ay ve eksik gün, gün başına sınırlar, alt sınır farkı, Eylül devri, istisna dilimleri,
+  BES matrahı, resmî tatil, yuvarlama, modül sınırları), `test_payroll.py` (parametre kuralları ve
+  eşzamanlılık, yıl ve geçerlilik, puantajdan hesap, yarım gün işareti ve tatil değişikliği, uyarılar,
+  mali müşavir rakamları, yetki, PDF hücreleri ve TASLAK damgası, Excel, sorgu sayısı, API),
+  `costing/tests/test_personnel_cost.py`; ön yüz `modules/personnel/payroll.test.tsx`,
+  `attendance.test.tsx`, `personnel.test.tsx`, `modules/costing/personnelCost.test.tsx`.
+  Backend 1427 test, ruff, mypy, göç kontrolü, OpenAPI; ön yüz 384 test, ESLint, Prettier,
+  tsc, derleme. Bu Windows kopyasında git `core.autocrlf=true` olduğundan dosyalar CRLF açılıyor;
+  yerelde Prettier `--end-of-line auto` ile denetlendi (CI LF ile denetler).
+- Tasarım eleştirisi (3. adım için, kod yazılmadan önce, üç eksen): 47 bulgu; iş kuralı soruları
+  kullanıcıya soruldu, cevaplar DECISIONS "3. adım kararları"nda. Teknik bulgular 3. adımda uygulanacak
+  (devrin kaldırılabilmesi ve zincirin gerçek başlangıcına göre "devir eksik", mali müşavirde geçen ayın
+  zinciri kesmesi, aralık yükleyicili zincir ve sorgu sınırı, toplu giriş ve geçen aydan kopyalama,
+  bordro listesinde maskeli TC, istisna sütunları ve icmal sayfası, karşılaştırma sayfası).
+- DECISIONS ("2. adım", "İnceleme sonrası", "3. adım kararları"), KVKK (ön bordro satırı, teknik tedbir)
+  ve kılavuz (yönetim "Bordro", kartta Bordro adımı, puantajda Ç½; admin) güncellendi.
+
+## 2026-11-02 — Personel bordrosu, 3. adım: brütten nete bordro, devir, ek ödeme ve kesinti
+
+- Backend (`apps/personnel`, göç 0006):
+  - Modeller: `PayrollOpeningBalance` (devir; Şubat–Aralık, gerekçeyle kaldırılır, etkin devir kişi ve
+    ay başına tek), `PayrollItem` (ek ödeme ve kesinti; tür kategoriden gelir, gerekçeyle kaldırılır),
+    `ExternalPayrollFigure` gerekçeyle kaldırılır, parametrelerde `meal_exemption_daily`.
+  - Motor (sürüm 2026.2): nakit yemek SGK istisnası (fiilen çalışılan gün × günlük sınır),
+    `worked_days`, `sgk_gross`.
+  - Seçiciler: `payroll_month` Ekim 2026'dan brütten nete hesaplar. Kümülatif zincir devirden ve ERP
+    aylarından kurulur, mali müşavirde geçen ay zinciri koparır. Ay aralığı tek seferde yüklenir
+    (`attendance_grids`, `parameter_settings`); sorgu sayısı kişi sayısıyla artmaz. Satırda kalemler,
+    devir, giriş ayı, devir önerisi ve zincirin halkaları; yeni uyarılar devir eksik, zincir eksik,
+    kesinti netten fazla, tavanı aşan prim; o ay işte olmayan kişilere girilmiş kalemler ayrı.
+    Maliyet brütten nete hesabı çağırmaz (`net=False`).
+  - Servisler: devir (tek ve toplu, eşitlemede onay, kaldırma), kalem (tek, toplu, düzeltme,
+    kaldırma), mali müşavir rakamının kaldırılması; işe giriş tarihi ve ayrılışta bordro kayıtları
+    denetlenir. Toplu kayıt hepsi ya da hiçbiridir (`PayrollBatchError`, satır hatalarıyla).
+    Değişmeyen kayıt kartın geçmişine not düşürmez.
+  - Çıktılar: bordro listesi PDF'i (maskeli TC, istisna sütunları, uyarı harfleri, birim ara
+    toplamları, mali müşavirdekiler ayrı blokta, icmal sayfası, TASLAK); Excel'e "Bordro",
+    "Karşılaştırma" ve "Eksik gün" sayfaları; Parametreler sayfasında nakit yemek sınırı.
+  - API: `payroll/items/` (liste, ekleme, düzeltme, `remove`, `batch`; silme yok),
+    `payroll/openings/` (liste, kayıt, `remove`, `batch`), `payroll/external/<id>/remove/`,
+    `payroll/<yıl>/<ay>/register.pdf`.
+- Maliyet: Personel maliyeti brütten nete hesabı kullanmaz; ek ödemeler ayrı sütunda ve özette, Excel'de
+  de ayrı.
+- Ön yüz: Personel > Bordro'da üç görünüm (`?gorunum=` bordro, maliyet, kalemler; ay değişince
+  korunur); Ay hazırlığı listesi; brütten nete tablo ("Yalnızca uyarılı kişiler"); döküm çekmecesi
+  (Hesap, Ek ödeme ve kesinti, Devir sekmeleri; önceki / sonraki kişi ve ok tuşları); kalem penceresi,
+  toplu ekleme, geçen aydan kopyalama; devir penceresi (Excel'den sütun yapıştırma, olası hata
+  ipuçları, eşitleme onayı, satır hataları); gerekçeyle kaldırma penceresi; mali müşavir rakamlarının
+  kaldırılması; Parametreler'de nakit yemek günlük sınırı. Başlangıçtan önceki ayda yalnızca işveren
+  maliyeti görünür.
+- Kanıt: `personnel/tests/test_payroll_net.py` (zincir ve devir, eşitleme onayı, toplu kayıt, kalem
+  kuralları, kart geçmişinde açıklama yok, değişmeyen kayıtta not yok, nakit yemek, uyarılar, işe
+  giriş ve ayrılışla kayıtlar, işte olmayana girilen kalem, sorgu sayısı, yetki, bordro listesi,
+  Excel, API), `test_payroll_engine.py` (nakit yemek istisnası), `test_payroll.py`,
+  `costing/tests/test_personnel_cost.py` (ek ödeme ayrı); ön yüz `modules/personnel/payrollNet.test.tsx`
+  (tablo ve ay hazırlığı, döküm ve gezinme, kalem düzeltme ve kaldırma, görünüm adreste, başlangıç
+  öncesi ay, kalem ekleme, toplu eklemede satır hatası, geçen aydan kopyalama, devir yapıştırma,
+  değişmeyen devir, eşitleme onayı ve satır hatası, devir kaldırma; inceleme düzeltmelerinin
+  testleri: yapıştırmanın kenar durumları, Esc ve ok tuşları, süzgeç ve ay değişimi, gelecek ay,
+  kopyalama, eskiyen devir), `payroll.test.tsx`, `modules/costing/personnelCost.test.tsx`. Ortak
+  bordro test verisi `src/test/payrollFixtures.ts`. Backend 1479 test, ruff, mypy, göç kontrolü,
+  OpenAPI; ön yüz 427 test, ESLint, Prettier, tsc, derleme.
+- İnceleme: beş eksenli çok ajanlı tur (bordro hukuku, arka uç, ön yüz, uç durumlar, belgeler ve
+  kurallar), her bulgu ayrı ajanla çürütülmeye çalışıldı; kullanım sınırında yarıda kalan doğrulamalar
+  kaldığı yerden tamamlandı. Yinelenenler birleştirilince 29 bulgu doğrulandı, 6'sı çürütüldü (onaylı
+  karar ya da 3. adımdan önceki tasarım). Başlıcaları:
+  - Devir penceresine Excel'den yapıştırmada aradaki boş hücre sonraki herkesi kaydırıyor, tutar ve
+    ay sütunları tek tutara birleşiyordu; okunamayan tutar sessizce atlanıyor, pencerede kaldırılan
+    devir sonraki kayıtta yeniden oluşuyor, Esc devir penceresini de kapatıyordu. Artık boş hücre
+    kişiyi atlar, ikinci sütun istisna ay sayısıdır, sicil no ile eşleştirme var.
+  - Geçen aydan kopyalama aynı kalemleri ikinci kez ekleyebiliyordu (avans ve icra iki kez kesilirdi).
+  - İşe giriş tarihi ileri alınınca devrin istisna ay sayısı fazla kalıyor (asgari ücret istisnası
+    fazla), işe giriş denetimi kartı kilitlemeden yapılıyordu.
+  - Bordrosu mali müşavirde olan kişiye girilmiş kalemler hesaptan sessizce düşüp ekranda toplamlara
+    katılıyordu; devrin kayıtlı istisna matrahı parametreler değişince eskiyordu.
+  - Bordro listesi kişi başına işverene maliyeti göstermiyor, tablo sayfadan taşıyordu.
+  - Döküm üstünde pencere açıkken ok tuşları arkadaki kişiyi değiştiriyor; uyarı süzgeci, ay değişimi
+    ve gelecek ay pencerelerde karışıklık yaratıyordu.
+  - KVKK belgesi, açıklamanın ve kaldırma nedeninin denetim günlüğünde kaldığını söylemiyordu.
+  Hepsi düzeltildi ve her biri için test eklendi. İkinci tur düzeltmeleri inceledi: 15 bulgu
+  doğrulandı (hiçbir sicil eşleşmeyince sicil no'nun tutar sayılması, süzgecin gönderilecek satırı
+  gizlemesi, başta TL ve i / İ, önceki ayın devrinin görünmemesi, eskiyen devrin sonraki aydan
+  yeniden kaydedilememesi, gelecek ayda devir pencereleri, kopyalamada önbellekteki listeyle seçim,
+  aynı kalemlerin erişilebilir adları), 4'ü çürütüldü. Üçüncü tur yalnızca bu düzeltmelere baktı: 8
+  bulgunun hepsi düzeltildi (boş tutar hücresinde ay sayısının tutar sayılması, TC kimlik no ya da
+  gün sütunu, aynı sicil no'nun iki satırı, düzenlenen satırın süzgeçle kaybolması, ay hazırlığında
+  çelişen "Devirler tamam", geçen ayın önbellekteki listesi, gerçek tarihe bağlı testler). Açık soru:
+  kart işareti "Bordrosu mali müşavirde" sonradan açılınca önceki ERP ayları da mali müşavirde
+  sayılıyor; 4. adımdan önce kullanıcıya sorulacak.
+- DECISIONS ("3. adım", "İnceleme sonrası"), KVKK (ön bordro satırı ve teknik tedbir: kalem açıklaması
+  çıktılara ve kart geçmişine yazılmaz, denetim günlüğünde kalır; Eksik gün sayfasında rapor
+  tarihleri) ve kılavuz (yönetim "Bordro", "Personel maliyeti") güncellendi.
+
+## 2026-11-03 — Personel bordrosu, 4. adım: bordro onayı, ay kilitleri, ücret pusulası
+
+- Backend (`apps/personnel`, göç 0007):
+  - Modeller: `PayrollRun` (BR-, durum makinesi OPEN ↔ APPROVED), `PayrollApproval` (onay ve
+    yeniden açma geçmişi, parametre ve firma anlık görüntüsü, ödeme tarihi, toplamlar),
+    `PayrollSlip` (kişi başına saklı satır; değiştirilmez, silinmez). `create_document` dönem
+    yılıyla numara alır (puantaj da `PU-<ayın yılı>`).
+  - Motor: saklanan satır ve parametreler JSON'a yazılıp okunur (`result_to_dict`,
+    `result_from_dict`, `parameters_*`); eski sürümle saklanmış satır da okunur.
+  - Seçiciler: onaylı ay saklı satırlardan (`_stored_month`), açık ay canlı (`_live_month`); zincir
+    onaylı ayın ay sonu kümülatifinden kurulur (yeni halka "approved"); yeniden açılan ayda onaydaki
+    işaretler; onay denetimleri (`payroll_gates`) ve hesabın özeti (`payroll_fingerprint`); kişi
+    görünümü (`PersonView`, onaylı ayda onaydaki ad, birim ve maskeli TC).
+  - Servisler: `approve_payroll_month`, `reopen_payroll_month`, `set_payroll_payment_date`,
+    `set_payroll_follow_card`; kilitler (kalem, devir, rakam, ücret, parametre seti, puantajın
+    yeniden açılması, işe giriş tarihi; bordro yılı danışma kilidi); erişim izi bordro kaydına ve
+    kartın geçmişine; kart "mali müşavirde" işaretlenince onaylanmamış kayıtlar kartın geçmişine.
+  - Çıktılar: ücret hesap pusulası PDF'i (A4 dikey, kişi başına sayfa); onaylı ayda TASLAK yok,
+    eski onayda GEÇERSİZ; firma ve kişi onaydaki haliyle.
+  - API: `payroll/<yıl>/<ay>/approve/`, `reopen/`, `payment-date/`, `follow-card/`,
+    `payslips.pdf` (`?employee=`, `?approval=`); çıktılarda `?approval=`; ay yanıtında `payroll`
+    (durum, onay ve geçmiş, denetimler, özet, kartı değişen kişiler); puantaj tablosunda `payroll`;
+    kart güncellemesinde `payroll_external_records` ve `payroll_external_kept`; kart
+    değişikliğinde onayda saklanacak hal (`stored_external`, `stored_bes`,
+    `figure_keeps_external`).
+  - Demo verisi: yılın parametre seti, zincirin ilk ayına devirler, geçen aya üç kalem.
+- Maliyet: onaylı ayın saklı satırları ve birimleri; rapor ve Excel'de bordro durumu; Ekim 2026'dan
+  işçilik oranı onaylı bordrodan (`payroll_not_approved`), notunda BR numarası.
+- Ön yüz: Personel > Bordro'da durum rozeti, **Bordroyu onayla** penceresi (toplamlar, engelleyenler
+  ve "okudum" istenenler kişi adlarıyla, ödeme tarihi sınırı ve geç uyarısı, sunucu reddinde
+  denetimler), onaylı ayda yalnızca okunur görünümler (kalem, devir, rakam), **Ücret pusulaları
+  (PDF)** ve dökümde tek kişinin pusulası, **Yeniden aç**, **Ödeme tarihini düzelt**, **Onay
+  geçmişi** (eski onayın çıktıları), Ay hazırlığında önceki ay ve onaya hazır satırları, yeniden
+  açılan ayda kartı değişen kişiler (**Kartı izle**). Puantaj'da bordrosu onaylı ayın **Yeniden aç**'ı
+  kapalı; Maliyet > Personel maliyeti'nde bordro rozeti ve oran engeli; kart kaydında onaylanmamış
+  kayıt uyarısı; Parametreler'de kilit notu.
+- Kanıt: `personnel/tests/test_payroll_approval.py` (onay ve saklı satırlar, kart değişse de saklı
+  satır, kilitler, parametre kilidi, ay ve satır denetimleri, okunması istenenler, mali müşavir
+  kalemi bilgisi, özet ve ödeme tarihi, sıra ve sondan başa açma, eski onay, onaydaki işaretler ve
+  kartı izleme, ödeme tarihi düzeltmesi, zincirin onaylı satırdan kurulması ve devirle eşitleme,
+  mali müşavirdeki onaylı satır, sorgu sayısı, kart işareti ve API alanı, ayrılış mesajı, çıktılar ve
+  damgalar, pusula, pusula API'si ve erişim izi, API ve yetki), `test_payroll_engine.py` (saklanan
+  satır ve parametreler), `test_seed_demo.py`, `costing/tests/test_personnel_cost.py` (onaylı bordro
+  gereği, saklı birim); ön yüz `modules/personnel/payrollApproval.test.tsx`, `attendance.test.tsx`,
+  `personnel.test.tsx`, `modules/costing/personnelCost.test.tsx`.
+- DECISIONS ("4. adım kararları", "4. adım", 2026-10-29 "Personel maliyeti" notları, "Onaylılar
+  korunsun"), KVKK (onaylı bordro satırları, pusula, "Çalışan (ücret)" satırı) ve kılavuz (yönetim
+  "Personel" ayrılış adımları, "Bordro", "Personel maliyeti", "Puantaj", tatil notu) güncellendi.
+- İnceleme: çok ajanlı inceleme (27 bulgu) ve üç doğrulama turu (düzeltmelerin açtığı yan etkiler ve
+  yeni bulgular). Bulgular düzeltildi; davranış değiştiren her düzeltmenin testi var (metin ve belge
+  düzeltmeleri doğrulama turlarında okunarak denetlendi; DECISIONS "İnceleme sonrası", "İkinci
+  inceleme"); aynı yıl içinde ayrılıp yeniden işe başlatılan kişide ilk açık ayda devir
+  istenmesi değiştirilmedi, güvenli yön olarak belgelendi (yeniden işe alım kapsam dışı).
+  Ayrıca: zincirde "o ay bordroda" kuralı, işe giriş tarihinin sonraki onaylı satırı koruması,
+  eşitleme devrinde giriş ayı, kart değişikliğinde saklanacak hal ve mali müşavir rakamı, yeniden
+  açılan ayın kart uyarısı, sığmayan pusulanın ortalanması.

@@ -142,17 +142,19 @@ def create_document[D: DocumentModel](
     machine: StateMachine,
     note: str = "",
     event_payload: dict[str, Any] | None = None,
+    year: int | None = None,
 ) -> D:
     """Yeni belgeyi numara (`next_document_number(prefix)`) ve başlangıç durumuyla oluşturur.
 
     Denetim kaydı (`create`) yazılır ve commit sonrası `<makine_adı>.created` olayı yayınlanır.
-    `event_payload` olayın standart alanlarına eklenir.
+    `event_payload` olayın standart alanlarına eklenir. `year` verilirse numara o yılın sayacından
+    alınır (dönem belgeleri: Aralık bordrosu Ocak'ta açılsa da `BR-<Aralık'ın yılı>`).
     """
     if not instance._state.adding:
         raise ValueError("create_document yalnızca yeni belge için kullanılır.")
     assert machine.initial is not None
     with transaction.atomic():
-        instance.number = next_document_number(prefix)
+        instance.number = next_document_number(prefix, year=year)
         instance.status = machine.initial
         _save_with_audit(instance, actor, note=note)
         events.publish(

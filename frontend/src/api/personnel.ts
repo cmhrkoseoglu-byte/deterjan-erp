@@ -37,12 +37,22 @@ export interface Employee {
   school: string;
   field_of_study: string;
   graduation_year: number | null;
+  /** Bordrosu mali müşavirde (emekli, engelli, kısmi süreli, net ücretli…); ERP'de hesaplanmaz. */
+  payroll_external: boolean;
+  /** BES otomatik katılım: kesinti her ay SGK matrahının yüzdesi. */
+  bes_enrolled: boolean;
   /** Bağlı sistem kullanıcısı (yoksa sistemi kullanmıyor). */
   user: number | null;
   user_info: LinkedUser | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  /** Yalnızca kart "Bordrosu mali müşavirde" işaretlenince: onaylanmamış bordro aylarındaki ERP
+   * kayıtları ("Kasım 2026 Prim 5.000,00 TL"); ekran uyarır. */
+  payroll_external_records?: string[];
+  /** Bunlardan yeniden açılan ayda kişi son onaydaki haliyle ERP'de kalır ("Kartı izle"ye kadar):
+   * ay adları ("Ekim 2026"). */
+  payroll_external_kept?: string[];
 }
 
 export type EmployeeInput = Pick<
@@ -62,6 +72,8 @@ export type EmployeeInput = Pick<
   | "school"
   | "field_of_study"
   | "graduation_year"
+  | "payroll_external"
+  | "bes_enrolled"
   | "user"
 >;
 

@@ -138,6 +138,7 @@ def test_exit_removes_later_days_after_confirmation(manager: User) -> None:
         "date": "2026-09-21",
         "status": "UNPAID_LEAVE",
         "overtime_hours": "0.00",
+        "holiday_half_worked": False,
         "note": "",
     }
     overtime_day = removed[3].changes["entry"][0]

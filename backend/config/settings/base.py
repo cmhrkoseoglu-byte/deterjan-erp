@@ -195,6 +195,8 @@ SPECTACULAR_SETTINGS = {
         "AttachmentKindEnum": "apps.core.models.Attachment.Kind",
         "EmployeeDocumentKindEnum": "apps.personnel.models.EmployeeDocument.Kind",
         "AttendanceStatusEnum": "apps.personnel.models.AttendanceStatus",
+        "PayrollItemCategoryEnum": "apps.personnel.models.PayrollItemCategory",
+        "PayrollItemKindEnum": "apps.personnel.models.PayrollItemKind",
         "CostStageEnum": "apps.costing.models.CostStage",
         "LotLabelKindEnum": "apps.inventory.api.serializers.LOT_LABEL_KINDS",
         "FillingOrderStatusEnum": "apps.filling.models.FillingOrder.Status",

@@ -40,9 +40,11 @@ import {
   type StageCost,
 } from "../../api/costing";
 import { formatDate, formatMoney, formatNumber } from "../../i18n/format";
-import { COSTING_BASE } from "./config";
+import { PAYROLL_BASE, WAGES_BASE } from "../personnel/strings";
+import { CostCentersSection } from "./PersonnelCostSettings";
 import {
   monthLabel,
+  monthParam,
   nextMonthStart,
   parseMonth,
   shiftMonth,
@@ -83,6 +85,22 @@ function Stat({
   );
 }
 
+function ParametersBadge({ report }: { report: PersonnelCostReport }) {
+  if (report.parameters_origin === "saved")
+    return (
+      <Badge color="blue" variant="light">
+        {kt.parametersSaved(report.parameters_year)}
+      </Badge>
+    );
+  return (
+    <Badge color={report.parameters_origin === "fallback" ? "red" : "yellow"} variant="light">
+      {report.parameters_origin === "fallback"
+        ? kt.parametersFallback(report.parameters_year)
+        : kt.parametersDefault}
+    </Badge>
+  );
+}
+
 function AttendanceBadge({ report }: { report: PersonnelCostReport }) {
   if (report.attendance_approved)
     return (
@@ -97,9 +115,26 @@ function AttendanceBadge({ report }: { report: PersonnelCostReport }) {
   );
 }
 
+function PayrollBadge({ report }: { report: PersonnelCostReport }) {
+  if (report.payroll_status === "APPROVED")
+    return (
+      <Badge color="teal" leftSection={<IconLock size={12} />} tt="none">
+        {kt.payrollApproved(report.payroll_number)}
+      </Badge>
+    );
+  if (report.payroll_status === "OPEN")
+    return (
+      <Badge color="gray" variant="light" tt="none">
+        {kt.payrollOpen}
+      </Badge>
+    );
+  return null;
+}
+
 /** Oran önerisi neden eklenemez; eklenebiliyorsa null. */
 function rateBlocker(report: PersonnelCostReport, stage: StageCost): string | null {
   if (!report.attendance_approved) return kt.needsApproval;
+  if (report.payroll_required && report.payroll_status !== "APPROVED") return kt.needsPayroll;
   if (Number(stage.cost) <= 0) return kt.noStageCost;
   if (stage.suggested_rate !== null) return null;
   return stage.unconverted > 0 ? kt.noKg : kt.noProduction;
@@ -133,8 +168,11 @@ function ReportView({
   report: PersonnelCostReport;
   onRate: (stage: CostStage) => void;
 }) {
-  // Ücreti eksik ayrılan personel varsa ücretler sekmesi ayrılanlarla açılır.
-  const formerMissing = report.rows.some((row) => row.missing_wage && !row.employee.is_active);
+  // Ücreti eksik kişi Ücretler'e (ayrılan varsa ayrılanlarla), rakamı girilmemiş mali müşavir
+  // kişisi Bordro'ya yönlendirilir (orada ücret kullanılmaz).
+  const wageMissing = report.rows.filter((row) => row.missing_wage && !row.payroll_external);
+  const figuresMissing = report.rows.filter((row) => row.missing_wage && row.payroll_external);
+  const formerMissing = wageMissing.some((row) => !row.employee.is_active);
   return (
     <Stack>
       {!report.attendance_approved && (
@@ -142,13 +180,18 @@ function ReportView({
           <Text size="sm">{kt.attendanceOpenHint}</Text>
         </Alert>
       )}
-      {report.missing_wage_count > 0 && (
+      {report.attendance_approved && report.payroll_status === "OPEN" && (
+        <Alert color="yellow" variant="light" icon={<IconInfoCircle size={18} />}>
+          <Text size="sm">{kt.payrollOpenHint}</Text>
+        </Alert>
+      )}
+      {wageMissing.length > 0 && (
         <Alert color="orange" variant="light" icon={<IconAlertTriangle size={18} />}>
           <Group gap="xs" justify="space-between">
-            <Text size="sm">{kt.missingWages(report.missing_wage_count)}</Text>
+            <Text size="sm">{kt.missingWages(wageMissing.length)}</Text>
             <Anchor
               component={Link}
-              to={`${COSTING_BASE}/ucretler${formerMissing ? "?ayrilanlar=1" : ""}`}
+              to={`${WAGES_BASE}${formerMissing ? "?ayrilanlar=1" : ""}`}
               size="sm"
             >
               {kt.goToWages}
@@ -156,10 +199,25 @@ function ReportView({
           </Group>
         </Alert>
       )}
-      <SimpleGrid cols={{ base: 2, sm: 4 }}>
+      {figuresMissing.length > 0 && (
+        <Alert color="orange" variant="light" icon={<IconAlertTriangle size={18} />}>
+          <Group gap="xs" justify="space-between">
+            <Text size="sm">{kt.figuresMissingHint(figuresMissing.length)}</Text>
+            <Anchor
+              component={Link}
+              to={`${PAYROLL_BASE}?ay=${monthParam(report.year, report.month)}`}
+              size="sm"
+            >
+              {kt.enterFigures}
+            </Anchor>
+          </Group>
+        </Alert>
+      )}
+      <SimpleGrid cols={{ base: 2, sm: 5 }}>
         <Stat label={kt.totalPersonnelCost} value={formatMoney(report.total_cost, "TL")} strong />
         <Stat label={kt.grossSalary} value={formatMoney(report.gross_salary, "TL")} />
         <Stat label={kt.overtimePay} value={formatMoney(report.overtime_pay, "TL")} />
+        <Stat label={kt.extrasTotal} value={formatMoney(report.extras_total, "TL")} />
         <Stat
           label={kt.employerShare(formatNumber(report.employer_rate, 2))}
           value={formatMoney(report.employer_share, "TL")}
@@ -230,9 +288,14 @@ function ReportView({
             render: (r) => (
               <Group gap={6} wrap="nowrap">
                 <span>{r.employee.full_name}</span>
+                {r.payroll_external && (
+                  <Badge color="violet" variant="light" size="sm" tt="none">
+                    {kt.payrollExternal}
+                  </Badge>
+                )}
                 {r.missing_wage && (
                   <Badge color="orange" variant="light" size="sm" tt="none">
-                    {kt.missingWage}
+                    {r.payroll_external ? kt.figuresMissing : kt.missingWage}
                   </Badge>
                 )}
                 {r.employee.termination_date && (
@@ -259,6 +322,7 @@ function ReportView({
           },
           { label: kt.grossSalary, right: true, render: (r) => money(r.gross_salary) },
           { label: kt.overtimePay, right: true, render: (r) => money(r.overtime_pay) },
+          { label: kt.extrasTotal, right: true, render: (r) => money(r.extras_total) },
           { label: kt.employerShareShort, right: true, render: (r) => money(r.employer_share) },
           {
             label: kt.totalCost,
@@ -420,15 +484,26 @@ export function PersonnelCostPanel() {
             <IconChevronRight size={16} />
           </ActionIcon>
           {report && <AttendanceBadge report={report} />}
+          {report && <PayrollBadge report={report} />}
+          {report && <ParametersBadge report={report} />}
         </Group>
-        <Button
-          component="a"
-          href={personnelCostExcelUrl(year, month)}
-          variant="default"
-          leftSection={<IconFileSpreadsheet size={16} />}
-        >
-          {kt.excel}
-        </Button>
+        <Group gap="xs">
+          <Button
+            component={Link}
+            to={`${PAYROLL_BASE}?ay=${shiftMonth(year, month, 0)}`}
+            variant="default"
+          >
+            {kt.openPayroll}
+          </Button>
+          <Button
+            component="a"
+            href={personnelCostExcelUrl(year, month)}
+            variant="default"
+            leftSection={<IconFileSpreadsheet size={16} />}
+          >
+            {kt.excel}
+          </Button>
+        </Group>
       </Group>
       {query.isError && <ErrorAlert error={query.error} />}
       {query.isLoading && <Loader />}
@@ -443,6 +518,7 @@ export function PersonnelCostPanel() {
           onClose={() => setRating(null)}
         />
       )}
+      <CostCentersSection />
     </Stack>
   );
 }

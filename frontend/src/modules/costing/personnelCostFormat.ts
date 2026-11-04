@@ -53,10 +53,13 @@ export function stageLabel(stage: CostCenterStage): string {
 }
 
 /** "30.000", "30000", "30.000,50", "30000,5" → "30000", "30000", "30000.50", "30000.5";
- * geçersiz, sıfır ya da 2'den çok ondalıklıysa null. Noktayla gruplanmış binler tanınır. */
-export function parseMoney(text: string): string | null {
+ * geçersiz, sıfır (`allowZero` verilmedikçe) ya da 2'den çok ondalıklıysa null. Noktayla
+ * gruplanmış binler tanınır. */
+export function parseMoney(text: string, { allowZero = false } = {}): string | null {
   const value = text.trim().replace(/\s/g, "");
   const grouped = /^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(value);
   const normalized = grouped ? value.replace(/\./g, "").replace(",", ".") : normalizeDecimal(value);
-  return /^\d+(\.\d{1,2})?$/.test(normalized) && Number(normalized) > 0 ? normalized : null;
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
+  const amount = Number(normalized);
+  return amount > 0 || (allowZero && amount === 0) ? normalized : null;
 }
