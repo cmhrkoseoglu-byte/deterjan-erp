@@ -65,11 +65,12 @@ sıfırla doldurulur ve hane sayısı ayarlanabilir.
   Biçime uymayan mevcut bir kaydın kodu değişmedikçe kayıt düzenlenebilir.
 - **Öneri:** sayaç, verilen son numarayı tutar. Öneri, sayaçtan sonraki ilk boş numaradır. Dolu
   ya da başka bir kaydın eski kodu olan numaralar atlanır.
-- **Sayaç ilerlemesi:** önerilenden en çok 10 ileri bir numara yazılırsa sayaç o numaraya
-  ilerler. Daha ileri bir numara kabul edilir ama sayacı ilerletmez; böylece yanlış yazılmış tek
-  bir kod numaraları tüketmez.
+- **Sayaç ilerlemesi:** önerilen kod ya da ondan en çok 10 ileri bir numara yazılırsa sayaç o
+  numaraya ilerler (öneri, sayaçtan sonraki ilk boş numaradır). Daha ileri bir numara kabul edilir
+  ama sayacı ilerletmez; böylece yanlış yazılmış tek bir kod numaraları tüketmez.
 - **Sayaç düzeltme:** admin sayacı ekrandan not yazarak düzeltebilir. Sayaç geri alınsa bile
-  öneri dolu numarayı atlar.
+  öneri dolu numarayı atlar. Sıradaki numara en çok 15 hanelidir ve kod, türün en uzun kod
+  sınırını aşamaz. Ekrandaki örnek, sayaç düzeltmesi kaydedilmiş gibi gösterilir.
 - **Sıra taşması:** sıra hanesini aşan numara bir hane uzar (MLZ-9999999 → MLZ-10000000). Uzun
   biçimde ilk hane sıfır olamaz.
 - **Kod kilidi:** kayıt açıldıktan sonra kodu yalnızca admin değiştirir (karar 6). Kural
@@ -139,7 +140,11 @@ Uygulama yalnızca kod kurallarını denetler: biçim, tekillik ve eski kod. Kay
 yeniden doğrulanmaz. Her değişiklik denetim günlüğüne yazılır (`code: [eski, yeni]`, not "Kod göçü
 #n"). Stok defterine, lotlara ve belge numaralarına dokunulmaz.
 
-Canlıda uygulamadan önce yedek alınır.
+Kayıtlar başka bir işlemde kilitliyse (5 saniye beklenir) ya da kilitlenme olursa göç ve geri alma
+reddedilir (`recode_busy`); hiçbir şey değişmez, birkaç saniye sonra yeniden denenir.
+
+Canlıda uygulamadan önce yedek alınır. Ekran, uygula düğmesinin yanında son yedeğin zamanını ve
+durumunu gösterir; son 24 saatte başarılı yedek yoksa uyarır (uygulamayı engellemez).
 
 ## 4. Kodlama motoru (`apps/core/coding/`)
 
@@ -184,7 +189,7 @@ Ekran `/sistem/kodlama` adresindedir. Sistem sayfası zaten yalnızca admin'e a�
 | Ana veri kodları | Tür, biçim, örnek, sıradaki kod, durum (Kapalı / Etkin / Standart). Düzenleme penceresinde önek, sıra hanesi, ekipmanda türe göre önekler, sayaç ve "Biçimi etkinleştir" bulunur. |
 | Belge numaraları | 17 tür: önek, yıl, sıra hanesi, bu yıl verilen son numara. SV salt okunur. |
 | Lot numaraları | H, B, D: önek, tarih biçimi, sıra hanesi, bugün verilen son numara. |
-| Kod göçü | Tür seçimi, önizleme tablosu (Değişecek / Aynı kalır), uygula, geri al, son yedek bilgisi. |
+| Kod göçü | Tür seçimi, önizleme tablosu (Değişecek / Aynı kalır), uygula, geri al; uygula düğmesinin yanında son yedeğin zamanı ve durumu, son 24 saatte başarılı yedek yoksa uyarı. |
 | Geçmiş | Biçim revizyonları ve göçler. |
 | Çıktı doküman kodları, GS1 | Paket 2. |
 
@@ -266,6 +271,13 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
    - kodu yalnızca admin'in değiştirebilmesi,
    - kullanılmış bir kodun başka kayda verilememesi,
    - lokasyon etiketindeki kodun artık kesilmemesi.
+
+   Yayından hemen sonra, biçimler etkinleştirilmeden ve kodlar değiştirilmeden önce, Paket 1'den
+   önce kodu değişmiş kayıtların eski kodları denetim günlüğünden eski kod geçmişine yüklenir:
+   önce `python manage.py backfill_code_history --dry-run` (tür başına kaç eski kod yazılacağını
+   gösterir, hiçbir şey yazmaz), sonra `--dry-run` olmadan. Böylece bu kodlar başka kayda
+   verilmez; aramada, okutmada ve içe aktarmada eski kod olarak tanınır. Komutu tekrar çalıştırmak
+   bir şey yazmaz.
 2. Admin Kodlama sistematiği ekranında ana veri biçimlerini etkinleştirir.
 3. Canlıdaki biçime uymayan kodlar için göç önizlemesi çalıştırılır ve sahibe gösterilir. Yedek
    alındıktan sonra göç uygulanır.

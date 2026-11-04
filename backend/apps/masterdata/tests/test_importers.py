@@ -2,13 +2,22 @@ import io
 from decimal import Decimal
 
 import pytest
+from django.urls import reverse
 from openpyxl import Workbook, load_workbook
 
+from apps.core.coding import formats, registry, selectors
+from apps.core.coding import services as coding
 from apps.core.exceptions import BusinessRuleError
-from apps.core.models import AuditLog
-from apps.masterdata import importers
-from apps.masterdata.models import Material, Supplier
-from apps.masterdata.tests.factories import MaterialCategoryFactory, MaterialFactory, unit
+from apps.core.models import AuditLog, CodeSequence
+from apps.masterdata import importers, services
+from apps.masterdata.models import Location, Material, Supplier
+from apps.masterdata.tests.factories import (
+    LocationFactory,
+    MaterialCategoryFactory,
+    MaterialFactory,
+    WarehouseFactory,
+    unit,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -101,7 +110,9 @@ def test_business_rule_errors_are_reported_per_row():
 
     report = importers.preview_import("materials", upload, "m.xlsx").as_dict()
 
-    assert "temel birimi değiştirilemez" in report["rows"][0]["errors"][0]["message"]
+    error = report["rows"][0]["errors"][0]
+    assert "temel birimi değiştirilemez" in error["message"]
+    assert error["column"] == ""  # kodla ilgisiz kural satırın genelinde
 
 
 def test_missing_required_column_is_a_file_error():
@@ -271,3 +282,295 @@ def test_new_kinds_have_templates(kind):
     workbook = load_workbook(io.BytesIO(importers.build_template(kind)))
     headers = [cell.value for cell in workbook.worksheets[0][1]]
     assert headers == [c.header for c in importers.get_spec(kind).columns]
+
+
+# --- kodlama sistematiği: boş kod, dosyadaki kodlar, tekrar, şablon örnekleri ----------------
+
+
+@pytest.fixture
+def activate(make_user):
+    """`activate("masterdata.material")`: türün biçimini etkinleştirir (admin)."""
+    admin = make_user("admin")
+
+    def _activate(key):
+        coding.update_scheme(admin, key, is_active=True, note="Biçim etkinleştirildi")
+
+    return _activate
+
+
+def material_row(code, name):
+    return [code, name, "Hammadde", "KG", None, None]
+
+
+@pytest.mark.parametrize("typed_first", [False, True])
+def test_auto_code_skips_codes_typed_in_the_same_file(activate, make_user, typed_first):
+    """Boş kodlu satıra dosyada elle yazılmış kod önerilmez ve kaydedilen kod önizlemede
+    gösterilendir; satır sırası sonucu değiştirmez."""
+    MaterialFactory(code="MLZ-0000024")
+    activate("masterdata.material")
+    blanks = [material_row(None, "A"), material_row(None, "B")]
+    typed = [material_row("mlz-0000025", "C"), material_row("MLZ-0000027", "D")]
+    rows = [MATERIAL_HEADERS, *(typed + blanks if typed_first else blanks + typed)]
+
+    preview = importers.preview_import("materials", xlsx(rows), "m.xlsx").as_dict()
+
+    assert preview["invalid"] == 0, preview["rows"]
+    assert {row["code"] for row in preview["rows"]} == {
+        "MLZ-0000026 (otomatik)",
+        "MLZ-0000028 (otomatik)",
+        "MLZ-0000025",
+        "MLZ-0000027",
+    }
+    report = importers.run_import(make_user("planlama"), "materials", xlsx(rows), "m.xlsx")
+    assert [row["code"] for row in report.as_dict()["rows"]] == [
+        row["code"] for row in preview["rows"]
+    ]
+    saved = Material.objects.filter(name__in=["A", "B", "C", "D"]).values_list("name", "code")
+    assert dict(saved) == {
+        "A": "MLZ-0000026",
+        "B": "MLZ-0000028",
+        "C": "MLZ-0000025",
+        "D": "MLZ-0000027",
+    }
+
+
+def test_auto_code_skips_long_typed_runs_in_few_lookups(activate, monkeypatch):
+    """Elle sıralanmış uzun listede boş satır ilk boş numarayı alır (dosyadaki ve sistemdeki
+    kodlar atlanır); ardışık kodlar tek seferde atlanır, her kod için ayrı sorgu yapılmaz."""
+    MaterialFactory(code="MLZ-0000024")
+    MaterialFactory(code="MLZ-0000075")  # sistemde dolu; sayaç 24'te
+    CodeSequence.objects.create(key="masterdata.material", stem="MLZ-", last_number=24)
+    activate("masterdata.material")
+    numbers = [*range(25, 75), *range(76, 125)]
+    typed = [material_row(f"MLZ-{n:07d}", f"M{n}") for n in numbers]
+    rows = [MATERIAL_HEADERS, material_row(None, "A"), *typed, material_row(None, "B")]
+    lookups = []
+    next_free = selectors.next_free
+
+    def counted(*args):
+        lookups.append(args)
+        return next_free(*args)
+
+    monkeypatch.setattr(selectors, "next_free", counted)
+
+    preview = importers.preview_import("materials", xlsx(rows), "m.xlsx").as_dict()
+
+    assert preview["invalid"] == 0
+    codes = [preview["rows"][0]["code"], preview["rows"][-1]["code"]]
+    assert codes == ["MLZ-0000125 (otomatik)", "MLZ-0000126 (otomatik)"]
+    assert len(lookups) <= 4
+
+
+def _take_as_current(code):
+    MaterialFactory(code=code)  # başka kullanıcı bu kodla kayıt açtı
+
+
+def _take_as_former(code):
+    other = MaterialFactory(code="MLZ-0000099")  # başka kaydın kodu değişti, eski kodu bu oldu
+    coding.record_code_change(None, registry.get_code_type("masterdata.material"), other, code)
+
+
+@pytest.mark.parametrize("take", [_take_as_current, _take_as_former])
+def test_write_error_is_reported_on_its_row(activate, make_user, monkeypatch, take):
+    """Önizlemedeki kodu bu arada başka kayıt aldıysa aktarma o satırın hatasıyla reddedilir
+    (genel "Gönderilen bilgiler geçersiz" hatası değil); hiçbir satır yazılmaz."""
+    MaterialFactory(code="MLZ-0000024")
+    activate("masterdata.material")
+    build = importers._build_report
+
+    def racing_build(spec, upload, filename):
+        report = build(spec, upload, filename)
+        take(report.rows[1].data["code"])
+        return report
+
+    monkeypatch.setattr(importers, "_build_report", racing_build)
+    rows = [MATERIAL_HEADERS, material_row(None, "A"), material_row(None, "B")]
+
+    with pytest.raises(importers.ImportHasErrors) as exc:
+        importers.run_import(make_user("planlama"), "materials", xlsx(rows), "m.xlsx")
+
+    first, second = exc.value.report.as_dict()["rows"]
+    assert first["errors"] == []
+    assert [error["column"] for error in second["errors"]] == ["Kod"]
+    assert list(Material.objects.values_list("code", flat=True)) == ["MLZ-0000024"]
+
+
+def test_api_confirm_returns_row_report_for_write_error(activate, client_for, monkeypatch):
+    """Yazarken çıkan hata API'de de satır raporuyla döner (`import_has_errors`)."""
+    MaterialFactory(code="MLZ-0000024")
+    activate("masterdata.material")
+    build = importers._build_report
+
+    def racing_build(spec, upload, filename):
+        report = build(spec, upload, filename)
+        _take_as_current(report.rows[0].data["code"])
+        return report
+
+    monkeypatch.setattr(importers, "_build_report", racing_build)
+    url = reverse("masterdata:import", args=["materials"])
+
+    def upload():
+        file = xlsx([MATERIAL_HEADERS, material_row(None, "A")])
+        file.name = "m.xlsx"
+        return {"file": file, "confirm": "true"}
+
+    assert client_for("depo").post(url, upload(), format="multipart").status_code == 403
+    response = client_for("planlama").post(url, upload(), format="multipart")
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["code"] == "import_has_errors"
+    assert body["report"]["rows"][0]["errors"][0]["column"] == "Kod"
+    assert not Material.objects.filter(name="A").exists()
+
+
+def test_write_rule_error_unrelated_to_code_is_a_row_error(make_user, monkeypatch):
+    """Kodla ilgisiz yazma hatası da satıra eklenir (sütunsuz, satırın genelinde)."""
+
+    def fail(*args, **kwargs):
+        raise BusinessRuleError("inactive_reference", "Pasif birim seçilemez: KG.")
+
+    monkeypatch.setattr(importers.services, "create_record", fail)
+    upload = xlsx([MATERIAL_HEADERS, material_row("HM-A", "A")])
+
+    with pytest.raises(importers.ImportHasErrors) as exc:
+        importers.run_import(make_user("planlama"), "materials", upload, "m.xlsx")
+
+    assert exc.value.report.as_dict()["rows"][0]["errors"] == [
+        {"column": "", "message": "Pasif birim seçilemez: KG."}
+    ]
+
+
+def test_code_rule_error_is_shown_under_code_column(activate):
+    activate("masterdata.material")
+    upload = xlsx([MATERIAL_HEADERS, material_row("HM-1", "A")])
+
+    report = importers.preview_import("materials", upload, "m.xlsx").as_dict()
+
+    [error] = report["rows"][0]["errors"]
+    assert error["column"] == "Kod"
+    assert "biçimine uymuyor" in error["message"]
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("code_format", True),
+        ("code_reserved", True),
+        ("code_taken", True),
+        ("code_too_long", True),
+        ("code_must_start_with_letter", True),
+        ("invalid_characters", True),
+        ("duplicate", True),
+        ("inactive_reference", False),
+        ("recipe_product_not_bulk", False),
+        ("tank_location_required", False),
+    ],
+)
+def test_is_code_error_separates_code_rules_from_other_rules(code, expected):
+    assert importers.is_code_error(BusinessRuleError(code, "x")) is expected
+
+
+@pytest.mark.parametrize("former_first", [True, False])
+def test_former_and_current_code_of_one_record_is_a_repeat(make_user, former_first):
+    """Eski kod da kaydı bulduğundan aynı kaydın eski ve güncel kodlu iki satırı tekrar sayılır;
+    kayıt iki kez güncellenmez."""
+    material = MaterialFactory(code="ESKI-1", name="Eski ad")
+    services.update_record(make_user("admin"), material, {"code": "MLZ-0000001"})
+    former, current = material_row("eski-1", "Ad X"), material_row("MLZ-0000001", "Ad Y")
+    rows = [MATERIAL_HEADERS, *([former, current] if former_first else [current, former])]
+
+    report = importers.preview_import("materials", xlsx(rows), "m.xlsx").as_dict()
+
+    first, second = report["rows"]
+    assert (first["action"], first["errors"]) == ("update", [])
+    assert second["errors"] == [
+        {"column": "Kod", "message": "Kayıt dosyada tekrar ediyor (satır 2)."}
+    ]
+    with pytest.raises(importers.ImportHasErrors):
+        importers.run_import(make_user("planlama"), "materials", xlsx(rows), "m.xlsx")
+    material.refresh_from_db()
+    assert material.name == "Eski ad"
+
+
+def follows_default_format(key, code, type_value=None):
+    item = registry.get_code_type(key)
+    fmt = selectors.default_format(item)
+    prefix = selectors.type_prefix(item, fmt, type_value)
+    return prefix is not None and formats.master_number(code, prefix, fmt.width) is not None
+
+
+@pytest.mark.parametrize(
+    ("kind", "header", "key"),
+    [
+        ("materials", "Kod", "masterdata.material"),
+        ("suppliers", "Kod", "masterdata.supplier"),
+        ("customers", "Kod", "masterdata.customer"),
+        ("warehouses", "Kod", "masterdata.warehouse"),
+        ("locations", "Kod", "masterdata.location"),
+        ("locations", "Depo kodu", "masterdata.warehouse"),
+        ("equipment", "Kod", "masterdata.equipment"),
+        ("equipment", "Lokasyon kodu", "masterdata.location"),
+        ("conversions", "Malzeme kodu", "masterdata.material"),
+    ],
+)
+def test_template_example_codes_follow_default_formats(kind, header, key):
+    """Şablon örnekleri kodlama sistematiğinin varsayılan biçimindedir (MLZ-0000001 gibi)."""
+    spec = importers.get_spec(kind)
+    example = next(c.example for c in spec.columns if c.header == header)
+    # Önek türe göreyse (ekipman) örnek satırın türü: Karıştırma tankı → TANK.
+    item = registry.get_code_type(key)
+    types = [c.parse(c.example) for c in spec.columns if c.field == item.type_field]
+
+    assert follows_default_format(key, example, types[0] if types else None), example
+
+
+@pytest.mark.parametrize("kind", ["materials", "suppliers", "customers", "warehouses"])
+def test_template_round_trip_is_valid_when_format_is_active(kind, activate):
+    """Biçim etkinken de indirilen şablon olduğu gibi önizlemeden hatasız geçer."""
+    activate(services.code_type_of(importers.get_spec(kind).model).key)
+    template = importers.build_template(kind)
+
+    report = importers.preview_import(kind, io.BytesIO(template), "sablon.xlsx").as_dict()
+
+    assert report["file_errors"] == []
+    assert report["invalid"] == 0, report["rows"]
+
+
+@pytest.mark.parametrize("kind", ["locations", "equipment"])
+def test_referencing_template_is_valid_when_example_records_exist(kind, activate):
+    """Lokasyon ve ekipman şablonunun örnekleri birbirine uyar: örnek depo (DEPO-00001) ve tank
+    lokasyonu (LOKASYON-0002) varken biçim etkin olsa da şablon olduğu gibi geçer."""
+    LocationFactory(
+        code="LOKASYON-0002",
+        location_type=Location.Type.TANK,
+        warehouse=WarehouseFactory(code="DEPO-00001"),
+    )
+    activate(services.code_type_of(importers.get_spec(kind).model).key)
+    template = importers.build_template(kind)
+
+    report = importers.preview_import(kind, io.BytesIO(template), "sablon.xlsx").as_dict()
+
+    assert report["file_errors"] == []
+    assert report["invalid"] == 0, report["rows"]
+    assert report["to_create"] == 1
+
+
+@pytest.mark.parametrize(
+    ("kind", "key", "expected"),
+    [
+        ("suppliers", "masterdata.supplier", "TED-000001"),
+        ("customers", "masterdata.customer", "MUS-000001"),
+    ],
+)
+def test_partner_code_may_be_left_blank_when_active(kind, key, expected, activate, make_user):
+    """Tedarikçi ve müşteri şablonu da kodun boş bırakılabileceğini söyler; sistem kodu verir."""
+    spec = importers.get_spec(kind)
+    assert "boş bırakılabilir" in next(c.help for c in spec.columns if c.field == "code")
+    activate(key)
+    upload = csv_file("Kod;Ünvan\n;Örnek Kimya A.Ş.\n")
+
+    report = importers.run_import(make_user("planlama"), kind, upload, "t.csv").as_dict()
+
+    assert report["rows"][0]["code"] == f"{expected} (otomatik)"
+    assert spec.model._default_manager.get().code == expected

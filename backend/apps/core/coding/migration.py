@@ -6,22 +6,30 @@
   türün modülü kendi servisiyle değiştirir (`CodeType.recode`); kaydın öteki alanları yeniden
   doğrulanmaz. Her değişiklik denetim günlüğüne ve eski kod geçmişine yazılır.
 - `revert_recode`: kodu hâlâ göçteki yeni kod olan kayıtlar eski koduna döner.
+- Kayıtlar başka bir işlemde kilitliyse (`LOCK_TIMEOUT_MS` dolarsa ya da kilitlenme olursa) göç
+  ve geri alma `recode_busy` ile reddedilir.
 
 Stok defterine, lotlara ve belge numaralarına dokunulmaz; ilişkiler kimlik üzerinden kurulduğu için
 bozulmaz.
 """
 
+import functools
 import hashlib
 import json
+from collections.abc import Callable
 from typing import Any
 
-from django.db import connection, models, transaction
+from django.db import OperationalError, connection, models, transaction
 
 from apps.core.coding import formats, selectors
 from apps.core.coding.registry import MASTER, CodeType
 from apps.core.coding.services import get_type, lock_sequence, require_admin
-from apps.core.exceptions import BusinessRuleError
+from apps.core.exceptions import BusinessRuleError, is_busy_error
 from apps.core.models import CodeMigrationRun, CodeSequence, User
+
+# Göç kilit beklerken en çok bu kadar bekler (milisaniye); süre dolarsa reddedilir.
+LOCK_TIMEOUT_MS = 5000
+# PostgreSQL: kilit beklerken süre doldu (lock_not_available), kilitlenme (deadlock_detected).
 
 
 def _migratable(key: str) -> CodeType:
@@ -101,16 +109,38 @@ def preview_recode(key: str) -> dict[str, Any]:
 def _lock_timeout() -> None:
     # Göç sırasında kayıtlar kilitlenir; açık bir işlem uzun beklerse göç bekletilmez, reddedilir.
     with connection.cursor() as cursor:
-        cursor.execute("SET LOCAL lock_timeout = '5s'")
+        cursor.execute("SELECT set_config('lock_timeout', %s, true)", [f"{LOCK_TIMEOUT_MS}ms"])
 
 
+def _reject_when_busy[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+    """Kayıtlar başka bir işlemde kilitliyse (bekleme süresi doldu ya da kilitlenme) göç geri
+    alınır ve `recode_busy` ile reddedilir (sunucu hatası değil)."""
+
+    @functools.wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return func(*args, **kwargs)
+        except OperationalError as exc:
+            if not is_busy_error(exc):
+                raise
+            raise BusinessRuleError(
+                "recode_busy",
+                "Kayıtlar şu an başka bir işlemde kullanılıyor; birkaç saniye sonra yeniden "
+                "deneyin.",
+            ) from exc
+
+    return wrapper
+
+
+@_reject_when_busy
 @transaction.atomic
 def apply_recode(actor: User, key: str, *, checksum: str, note: str) -> CodeMigrationRun:
     """Önizlemedeki göçü uygular (yalnız admin; not zorunlu).
 
     Kayıtlar kilitlenip eşleme yeniden hesaplanır; önizlemeden sonra kayıtlar değiştiyse
     `recode_stale`. Değişecek kod yoksa `recode_nothing`, öneki tanımsız kayıt varsa
-    `recode_problem`. Önek sayaçları verilen en büyük numaraya ilerletilir.
+    `recode_problem`, kayıtlar başka bir işlemde kilitliyse `recode_busy`. Önek sayaçları
+    verilen en büyük numaraya ilerletilir.
     """
     require_admin(actor)
     item = _migratable(key)
@@ -148,10 +178,10 @@ def apply_recode(actor: User, key: str, *, checksum: str, note: str) -> CodeMigr
     for row in changes:
         record = model._base_manager.get(pk=row["id"])
         item.recode(actor, record, row["new"], f"Kod göçü #{run.pk}: {note}", run.pk, "migration")
-        prefix = selectors.instance_prefix(item, fmt, record)
-        number = formats.master_number(row["new"], prefix, fmt.width) if prefix else None
-        if prefix and number is not None:
-            highest[prefix] = max(highest.get(prefix, 0), number)
+        head = selectors.instance_prefix(item, fmt, record)
+        number = formats.master_number(row["new"], head, fmt.width) if head else None
+        if head and number is not None:
+            highest[head] = max(highest.get(head, 0), number)
     for prefix, number in highest.items():
         sequence = lock_sequence(item, prefix)
         if sequence.last_number < number:
@@ -201,21 +231,23 @@ def preview_revert(run_id: int) -> dict[str, Any]:
     }
 
 
+@_reject_when_busy
 @transaction.atomic
 def revert_recode(actor: User, run_id: int, *, note: str) -> CodeMigrationRun:
     """Göçü geri alır (yalnız admin; not zorunlu): kodu hâlâ göçteki yeni kod olan kayıtlar eski
-    koduna döner, kodu sonradan değişmiş kayıtlar olduğu gibi kalır. Göç bir kez geri alınır."""
+    koduna döner, kodu sonradan değişmiş kayıtlar olduğu gibi kalır. Göç bir kez geri alınır;
+    kayıtlar başka bir işlemde kilitliyse `recode_busy`."""
     require_admin(actor)
     note = (note or "").strip()
     if not note:
         raise BusinessRuleError("note_required", "Geri alma notu yazın (geçmişte görünür).")
+    _lock_timeout()
     run = _run(run_id, lock=True)
     item = _migratable(run.key)
     if run.kind != CodeMigrationRun.Kind.APPLY:
         raise BusinessRuleError("revert_not_allowed", "Geri alma kaydı geri alınamaz.")
     if run.reverted_by.exists():
         raise BusinessRuleError("already_reverted", "Bu göç zaten geri alındı.")
-    _lock_timeout()
     model = selectors.model_class(item)
     records = {
         record.pk: record

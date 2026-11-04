@@ -5,11 +5,12 @@ import pytest
 from django.urls import reverse
 from openpyxl import Workbook, load_workbook
 
+from apps.core.coding import services as coding
 from apps.core.models import AuditLog
 from apps.masterdata.importers import ImportHasErrors
 from apps.masterdata.models import Material
 from apps.masterdata.tests.factories import BulkMaterialFactory, MaterialFactory, unit
-from apps.recipes import importers
+from apps.recipes import importers, services
 from apps.recipes.models import Recipe, RecipeVersion
 from apps.recipes.tests.factories import RecipeFactory, RecipeVersionFactory
 
@@ -145,6 +146,90 @@ def test_template_has_example_recipe():
     rows = list(sheet.iter_rows(values_only=True))
     assert list(rows[0]) == [c.header for c in importers.COLUMNS]
     assert len(rows) == 3
+
+
+def activate_recipe_format(make_user):
+    coding.update_scheme(
+        make_user("admin"), "recipes.recipe", is_active=True, note="Biçim etkinleştirildi"
+    )
+
+
+def row_errors(report):
+    return [[(e["column"], e["message"]) for e in row["errors"]] for row in report["rows"]]
+
+
+def test_code_rules_are_reported_under_recipe_code(materials, make_user):
+    """Biçim etkinken reçete kodunun kural ihlali "Reçete kodu", ürün kuralı "Ürün kodu"
+    sütununda gösterilir."""
+    activate_recipe_format(make_user)
+    upload = xlsx(
+        [
+            HEADERS,
+            ["RC-BUL", "Eski biçim", "YM-BUL", 1000, "KG", "HM-SU", 1, None, None, None],
+            ["REC-0000001", "Hammadde ürün", "HM-LAS", 1000, "KG", "HM-SU", 1, None, None, None],
+            ["REC-0000002", "Doğru", "YM-BUL", 1000, "KG", "HM-SU", 1, None, None, None],
+        ]
+    )
+
+    errors = row_errors(importers.preview_import(upload, "r.xlsx").as_dict())
+
+    [(column, message)] = errors[0]
+    assert column == "Reçete kodu" and "biçimine uymuyor" in message
+    assert errors[1] == [("Ürün kodu", "Reçetenin ürünü yarı mamul (dökme) bir malzeme olmalıdır.")]
+    assert errors[2] == []
+
+
+def test_field_errors_of_new_recipe_are_reported_under_their_column(materials):
+    upload = xlsx(
+        [
+            HEADERS,
+            ["R" * 33, "Uzun kod", "YM-BUL", 1000, "KG", "HM-SU", 1, None, None, None],
+            ["RC-AD", "x" * 201, "YM-BUL", 1000, "KG", "HM-SU", 1, None, None, None],
+        ]
+    )
+
+    errors = row_errors(importers.preview_import(upload, "r.xlsx").as_dict())
+
+    assert [column for column, _ in errors[0]] == ["Reçete kodu"]
+    assert [column for column, _ in errors[1]] == ["Reçete adı"]
+
+
+def test_template_passes_as_is_when_recipe_format_is_active(make_user):
+    """Şablonun örnek reçetesi varsayılan biçimde (REC-0000001, MLZ-…): örnek malzemeler
+    varken biçim etkin olsa da olduğu gibi geçer."""
+    MaterialFactory(code="MLZ-0000001")  # LAS
+    MaterialFactory(code="MLZ-0000002")  # şebeke suyu
+    BulkMaterialFactory(code="MLZ-0000003")  # ürün (dökme)
+    activate_recipe_format(make_user)
+    template = io.BytesIO(importers.build_template())
+
+    report = importers.preview_import(template, "sablon.xlsx").as_dict()
+
+    assert report["file_errors"] == []
+    assert report["invalid"] == 0, report["rows"]
+    assert not Recipe.objects.exists()
+
+
+@pytest.mark.parametrize("former_first", [True, False])
+def test_former_and_current_code_of_one_recipe_is_a_repeat(materials, make_user, former_first):
+    """Eski kod da reçeteyi bulduğundan aynı reçetenin eski ve güncel kodlu iki grubu tekrar
+    sayılır (ikinci grup için yanıltıcı "taslak sürümü var" hatası verilmez)."""
+    recipe = RecipeFactory(code="RC-ESKI", product=Material.objects.get(code="YM-BUL"))
+    services.update_recipe(make_user("admin"), recipe, {"code": "REC-0000001"})
+    former = ["rc-eski", None, None, 1000, "KG", "HM-SU", 1, None, None, None]
+    current = ["REC-0000001", None, None, 1000, "KG", "HM-LAS", 1, None, None, None]
+    rows = [HEADERS, *([former, current] if former_first else [current, former])]
+
+    report = importers.preview_import(xlsx(rows), "r.xlsx").as_dict()
+
+    first, second = report["rows"]
+    assert (first["action"], first["errors"]) == ("update", [])
+    assert second["errors"] == [
+        {"column": "Reçete kodu", "message": "Reçete dosyada tekrar ediyor (satır 2)."}
+    ]
+    with pytest.raises(ImportHasErrors):
+        importers.run_import(make_user("planlama"), xlsx(rows), "r.xlsx")
+    assert not recipe.versions.exists()
 
 
 def test_api_import_permissions_and_flow(materials, client_for):

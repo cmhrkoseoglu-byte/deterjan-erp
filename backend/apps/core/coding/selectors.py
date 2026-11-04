@@ -146,9 +146,13 @@ def used_codes(code_type: CodeType, prefix: str) -> set[str]:
 
 
 def highest_number(code_type: CodeType, prefix: str) -> int:
-    """Güncel ve eski kodlarda bu önekten sonraki en büyük sayı (sayacın başlangıcı)."""
+    """Güncel ve eski kodlarda bu önekten sonraki en büyük sayı (sayacın başlangıcı). Sayaç
+    sınırını (`formats.MAX_COUNTER`) aşan sayı sayılmaz; böyle bir kod sayacı taşırmaz."""
     numbers = (formats.loose_number(code, prefix) for code in used_codes(code_type, prefix))
-    return max((number for number in numbers if number is not None), default=0)
+    return max(
+        (number for number in numbers if number is not None and number <= formats.MAX_COUNTER),
+        default=0,
+    )
 
 
 def counter_value(code_type: CodeType, prefix: str) -> int:
@@ -240,7 +244,11 @@ def former_code_map(
 
 
 def code_as_of(instance: models.Model, when: datetime, *, field: str = "code") -> str:
-    """Kaydın `when` anındaki kodu (belgeler yeniden basılırken belgenin tarihindeki kod)."""
+    """Kaydın `when` anındaki kodu (belgeler yeniden basılırken belgenin tarihindeki kod).
+
+    Aralıklar çakışırsa en erken biten geçerlidir: kaydın ilk eski kod satırı oluşturulma anından
+    başlar; denetim günlüğünden sonradan yüklenen önceki kodların (`backfill_code_history`)
+    aralığı onun içinde kalır."""
     row = (
         CodeHistory.objects.filter(
             content_type=ContentType.objects.get_for_model(instance),
@@ -249,7 +257,7 @@ def code_as_of(instance: models.Model, when: datetime, *, field: str = "code") -
             valid_from__lte=when,
             valid_to__gt=when,
         )
-        .order_by("-valid_to", "-id")
+        .order_by("valid_to", "id")
         .first()
     )
     return row.code if row is not None else str(getattr(instance, field))
@@ -302,9 +310,10 @@ def used_prefixes(kind: str, *, exclude_key: str = "") -> dict[str, str]:
 def candidate_format(
     code_type: CodeType, row: CodeScheme | None, values: Mapping[str, Any]
 ) -> Format:
-    """Mevcut biçimin üzerine istenen değişiklikler (kaydedilmez)."""
+    """Mevcut biçimin üzerine istenen değişiklikler (kaydedilmez). Türe göre önekler yalnız
+    önekini kaydın türünden alan kodda dikkate alınır."""
     current = format_from_row(code_type, row)
-    type_prefixes = values.get("type_prefixes")
+    type_prefixes = values.get("type_prefixes") if code_type.type_field else None
     return Format(
         kind=code_type.kind,
         prefix=str(values.get("prefix", current.prefix) or "").strip().upper(),
@@ -318,6 +327,63 @@ def candidate_format(
         date_format=str(values.get("date_format", current.date_format)),
         free=code_type.free,
     )
+
+
+def scheme_lock_error(code_type: CodeType) -> BusinessRuleError | None:
+    """Biçimi ekrandan değiştirilemeyen türün hatası (`scheme_locked`): standart kod ya da
+    kilitli belge numarası (SV). Değiştirilebilirse None."""
+    if code_type.kind == STANDARD:
+        return BusinessRuleError("scheme_locked", "Standart kodlar değiştirilmez.")
+    if code_type.locked:
+        return BusinessRuleError(
+            "scheme_locked", f"{code_type.label} numarasının biçimi ekrandan değiştirilemez."
+        )
+    return None
+
+
+def format_prefixes(code_type: CodeType, fmt: Format) -> list[str]:
+    """Ana veri biçiminin denetlenen önekleri: türe göre önekte her türün öneki, değilse biçimin
+    öneki. Sayaç düzeltme yalnız bu öneklerde yapılır."""
+    if code_type.type_field:
+        return list(fmt.type_prefixes.values())
+    return [fmt.prefix]
+
+
+def clean_counters(code_type: CodeType, fmt: Format, counters: Mapping[str, Any]) -> dict[str, int]:
+    """Sayaç düzeltmesini ("sıradaki numara", `{"MLZ": 25}`) denetler; önek büyük harfe çevrilir.
+
+    - Yalnız sıralı ana veri kodunda (`counters_not_allowed`), biçimin öneklerinde
+      (`unknown_prefix`).
+    - Sıradaki numara 1 ile `formats.MAX_COUNTER` arasında olmalı ve kodu türün en uzun kod
+      sınırını aşmamalı (`invalid_counter`).
+    """
+    if code_type.kind != MASTER or code_type.free:
+        raise BusinessRuleError("counters_not_allowed", "Bu türde sayaç düzeltilmez.")
+    allowed = set(format_prefixes(code_type, fmt))
+    result: dict[str, int] = {}
+    for prefix, value in counters.items():
+        prefix = str(prefix).strip().upper()
+        if prefix not in allowed:
+            raise BusinessRuleError("unknown_prefix", f"“{prefix}” bu türün öneki değil.")
+        if (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or not 1 <= value <= formats.MAX_COUNTER
+        ):
+            raise BusinessRuleError(
+                "invalid_counter",
+                "Sıradaki numara 1 ya da daha büyük, en fazla "
+                f"{formats.COUNTER_DIGITS} haneli bir tam sayı olmalıdır.",
+            )
+        code = formats.master_code(prefix, fmt.width, value)
+        if len(code) > code_type.max_length:
+            raise BusinessRuleError(
+                "invalid_counter",
+                f"Bu sıradaki numarayla kod {len(code)} karakter olur ({code}); en fazla "
+                f"{code_type.max_length} olabilir.",
+            )
+        result[prefix] = value
+    return result
 
 
 def _check_prefixes_free(code_type: CodeType, prefixes: Iterable[str]) -> None:
@@ -363,9 +429,7 @@ def check_format(code_type: CodeType, fmt: Format, *, today: date | None = None)
                 raise BusinessRuleError(
                     "invalid_type_prefixes", "Her tür için bir önek girilmelidir."
                 )
-            prefixes = list(fmt.type_prefixes.values())
-        else:
-            prefixes = [fmt.prefix]
+        prefixes = format_prefixes(code_type, fmt)
         for prefix in prefixes:
             formats.validate_prefix(MASTER, prefix)
             longest = formats.master_code(prefix, fmt.width, formats.largest_number(fmt.width))
@@ -400,12 +464,22 @@ def describe(
     fmt: Format | None = None,
     today: date | None = None,
     with_row: bool = True,
+    counters: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
-    """Kodlama ekranındaki satır: biçim, örnek, sıradaki ve verilen son numara, durum."""
+    """Kodlama ekranındaki satır: biçim, örnek, sıradaki ve verilen son numara, durum.
+
+    `counters` (ana veride önek → sıradaki numara) verilirse o öneklerde sayaç düzeltilmiş gibi
+    gösterilir (önizleme; hiçbir şey yazılmaz)."""
     today = today or timezone.localdate()
     if with_row and row is None:
         row = scheme_row(code_type)
     fmt = fmt or format_from_row(code_type, row)
+
+    def master_last(prefix: str) -> int:
+        if counters and prefix in counters:
+            return counters[prefix] - 1
+        return counter_value(code_type, prefix)
+
     body: dict[str, Any] = {
         "key": code_type.key,
         "kind": code_type.kind,
@@ -436,7 +510,7 @@ def describe(
         if code_type.type_field:
             for value, label in code_type.type_choices:
                 prefix = fmt.type_prefixes.get(value, "")
-                last = counter_value(code_type, prefix) if prefix else 0
+                last = master_last(prefix) if prefix else 0
                 body["types"].append(
                     {
                         "value": value,
@@ -453,7 +527,7 @@ def describe(
                 body["last_number"] = first["last_number"]
                 body["longest"] = formats.master_code(first["prefix"], fmt.width, largest)
         elif fmt.prefix:
-            last = counter_value(code_type, fmt.prefix)
+            last = master_last(fmt.prefix)
             body["last_number"] = last
             body["format"] = formats.master_code(fmt.prefix, fmt.width, 0)
             body["next"] = next_free(code_type, fmt.prefix, fmt.width, last)[0]
@@ -491,16 +565,28 @@ def overview(kind: str | None = None) -> list[dict[str, Any]]:
 
 
 def preview(code_type: CodeType, values: Mapping[str, Any]) -> dict[str, Any]:
-    """Kaydetmeden istenen biçimin örnekleri ve (varsa) ilk kural ihlali."""
+    """Kaydetmeden istenen biçimin örnekleri ve (varsa) ilk kural ihlali; biçim değiştirmeyle
+    aynı kurallar. `values["counters"]` ana veride sıradaki numaradır (`{"MLZ": 25}`); örnek
+    sayaç düzeltilmiş gibi gösterilir. Hiçbir şey yazılmaz."""
+    locked = scheme_lock_error(code_type)
+    if locked is not None:
+        return {
+            "valid": False,
+            "error": {"code": locked.code, "detail": locked.message},
+            "example": None,
+        }
     row = scheme_row(code_type)
     error: dict[str, str] | None = None
     try:
         fmt = candidate_format(code_type, row, values)
         check_format(code_type, fmt)
+        counters = values.get("counters")
+        cleaned = clean_counters(code_type, fmt, counters) if counters else {}
     except (BusinessRuleError, ValueError, TypeError) as exc:
         if isinstance(exc, BusinessRuleError):
             error = {"code": exc.code, "detail": exc.message}
         else:
             error = {"code": "invalid_value", "detail": "Biçim değerleri geçersiz."}
         return {"valid": False, "error": error, "example": None}
-    return {"valid": True, "error": None, "example": describe(code_type, row=row, fmt=fmt)}
+    example = describe(code_type, row=row, fmt=fmt, counters=cleaned)
+    return {"valid": True, "error": None, "example": example}

@@ -2148,3 +2148,18 @@ değiştirme zorunlu, yalnızca admin):
 - **CLAUDE.md:** kural 10'un metni geçerliliğini korur; değişiklik gerekmedi. Numara hâlâ
   `next_document_number` ile, yıl bazında ve kilitli üretilir; `UE-2026-00001` varsayılan biçimdir.
 - **D-18:** değişmedi. Kartlar bu sistemde açılır ve muhasebeye bu kodlarla gider.
+- **İnceleme sonrası netleşen kurallar** (2026-11-05, bağımsız incelemenin doğrulanmış bulguları):
+  - Sayaç penceresi önerilen koddan ölçülür: önerilen kod ya da ondan en çok 10 ileri numara
+    sayacı ilerletir. Böylece sayacın üstünde dolu numaralar varken sayaç takılı kalmaz.
+  - Sayaç düzeltmede sıradaki numara en çok 15 hanedir (veritabanında ve ön yüzde tam sayı kesin
+    kalsın; gerçekte bu kadar kayıt olmaz).
+  - Paket 1'den önceki kod değişiklikleri `backfill_code_history` komutuyla denetim günlüğünden
+    eski kod geçmişine yüklenir (canlıya alma adımı). Komut tekrar çalıştırılınca bir şey yazmaz.
+    Eski kod şu an başka bir kaydın koduysa (sistematikten önce o kayda verilmişti) eski kod olarak
+    yazılmaz ve özette listelenir: o kaydın kodu ona aittir, göçü geri alınabilir.
+  - Kilit çakışması (bekleme süresi doldu ya da kilitlenme) sunucu hatası sayılmaz: istek geri
+    alınır, 400 `busy` ("birkaç saniye sonra yeniden deneyin"); kod göçünde `recode_busy`.
+  - Yetki hatalarında (403) servisin Türkçe mesajı döner (ör. kod kilidi); mesajsız hatada genel
+    metin.
+  - Göç öncesi yedek uyarısı göçü engellemez; ekran son yedeği gösterir, son 24 saatte başarılı
+    yedek yoksa uyarır.

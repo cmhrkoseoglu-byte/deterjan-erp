@@ -1,9 +1,13 @@
 """Ana veri kodları ve kodlama sistematiği: öneri, biçim, kod kilidi, eski kodlar (arama, içe
 aktarma, yönetim paneli) ve etikette kodun kesilmemesi."""
 
+import io
+
 import pytest
 from django.contrib import admin as django_admin
+from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.management import call_command
 from django.test import RequestFactory
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
@@ -12,7 +16,8 @@ from apps.core.coding import registry, selectors
 from apps.core.coding import services as coding
 from apps.core.exceptions import BusinessRuleError
 from apps.core.labels import FONT_BOLD, Text, register_fonts
-from apps.core.models import CodeHistory, CodeSequence
+from apps.core.models import AuditLog, CodeHistory, CodeMigrationRun, CodeSequence
+from apps.core.services import save_with_audit
 from apps.masterdata import importers, labels, services
 from apps.masterdata.models import Equipment, Material, MaterialCategory, UnitOfMeasure
 from apps.masterdata.tests.factories import (
@@ -127,6 +132,83 @@ def test_only_admin_changes_code_and_old_code_is_kept(admin, planner):
     assert selectors.former_codes(back) == ["MLZ-0000009"]
 
 
+def test_reserved_code_is_rechecked_when_the_code_is_claimed(admin, planner, monkeypatch):
+    """Yeni kaydın eski kod denetiminden sonra öteki kayıt kodu bırakırsa (eşzamanlı kod
+    değişikliği) kod, kaydetme sırasındaki denetimle yine verilmez."""
+    holder = MaterialFactory(code="MLZ-0000001")
+    original = coding.check_master_code
+
+    def check_then_release(item, instance, *, previous_code):
+        original(item, instance, previous_code=previous_code)
+        if instance.pk is None:
+            Material.objects.filter(pk=holder.pk).update(code="MLZ-0000009")
+            holder.refresh_from_db()
+            coding.record_code_change(admin, item, holder, "MLZ-0000001")
+
+    monkeypatch.setattr(coding, "check_master_code", check_then_release)
+    with pytest.raises(BusinessRuleError) as exc:
+        services.create_record(planner, Material, material_data(code="MLZ-0000001"))
+    assert exc.value.code == "code_reserved"
+    assert Material.objects.count() == 1
+
+
+def test_recode_record_rules(admin):
+    """Kod göçü kancası: kodu değiştirir, günlüğe ve eski kod geçmişine yazar; başka kaydın
+    güncel ya da eski kodunu vermez; kayıt kendi eski koduna dönebilir."""
+    first = MaterialFactory(code="ESKI-1")
+    second = MaterialFactory(code="MLZ-0000002")
+    run = CodeMigrationRun.objects.create(
+        key=MATERIAL, kind=CodeMigrationRun.Kind.APPLY, mapping=[], note="Göç", created_by=admin
+    )
+    recoded = services.recode_record(admin, first, "mlz-0000001", "Kod göçü", run.pk, "migration")
+    assert recoded.code == "MLZ-0000001"
+    log = AuditLog.objects.get(
+        content_type=ContentType.objects.get_for_model(Material),
+        object_id=first.pk,
+        action=AuditLog.Action.UPDATE,
+    )
+    assert (log.changes, log.note) == ({"code": ["ESKI-1", "MLZ-0000001"]}, "Kod göçü")
+    history = CodeHistory.objects.get(object_id=first.pk)
+    assert (history.code, history.reason, history.run_id, history.created_by) == (
+        "ESKI-1",
+        "migration",
+        run.pk,
+        admin,
+    )
+    for taken in ("MLZ-0000001", "ESKI-1"):  # güncel kod, eski kod
+        with pytest.raises(BusinessRuleError) as exc:
+            services.recode_record(admin, second, taken, "Not")
+        assert exc.value.code == "recode_conflict"
+    second.refresh_from_db()
+    assert second.code == "MLZ-0000002"
+    assert not CodeHistory.objects.filter(object_id=second.pk).exists()
+    back = services.recode_record(admin, first, "ESKI-1", "Geri", None, "revert")
+    assert back.code == "ESKI-1"
+    assert CodeHistory.objects.filter(
+        object_id=first.pk, code="MLZ-0000001", reason="revert"
+    ).exists()
+    with pytest.raises(ValueError):  # standart kod (birim) göçe girmez
+        services.recode_record(admin, unit("KG"), "KGM", "Not")
+
+
+def test_backfill_reserves_codes_changed_before_the_feature(admin, planner, client_for):
+    """Sistematikten önce kodu değişen kaydın eski kodu yalnızca denetim günlüğündeydi;
+    `backfill_code_history` ile başka kayda verilmez ve eski koduyla bulunur."""
+    material = MaterialFactory(code="ESKI-1")
+    material.code = "MLZ-0000001"
+    save_with_audit(material, planner)  # önceki sürümde kod değişikliği yalnız günlüğe yazılırdı
+    assert selectors.find_by_code(Material, "ESKI-1") == (None, False)
+    call_command("backfill_code_history", stdout=io.StringIO())
+    with pytest.raises(BusinessRuleError) as exc:
+        services.create_record(planner, Material, material_data(code="ESKI-1"))
+    assert exc.value.code == "code_reserved"
+    assert selectors.find_by_code(Material, "ESKI-1") == (material, True)
+    body = client_for("planlama").get("/api/v1/masterdata/materials/", {"search": "eski"}).json()
+    assert [(row["code"], row["former_codes"]) for row in body["results"]] == [
+        ("MLZ-0000001", ["ESKI-1"])
+    ]
+
+
 def test_equipment_code_prefix_follows_type(admin, planner):
     activate(admin, "masterdata.equipment")
     item = registry.get_code_type("masterdata.equipment")
@@ -168,6 +250,7 @@ def test_api_code_change_requires_admin(client_for):
     url = f"/api/v1/masterdata/materials/{material.pk}/"
     denied = client_for("planlama").patch(url, {"code": "MLZ-0000002"}, format="json")
     assert denied.status_code == 403
+    assert denied.json() == {"code": "permission_denied", "detail": coding.CODE_LOCK_MESSAGE}
     allowed = client_for("admin").patch(url, {"code": "MLZ-0000002"}, format="json")
     assert allowed.status_code == 200 and allowed.json()["former_codes"] == ["MLZ-0000001"]
 

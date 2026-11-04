@@ -1199,14 +1199,16 @@ Plan `docs/plan/kodlama-sistematigi.md`; kararlar DECISIONS "2026-11-04 — Kodl
   malzeme MLZ-0000000, kategori KAT-0000, depo DEPO-00000, lokasyon LOKASYON-0000, ekipman türe
   göre (TANK, STOK, DOLUM, TERAZI, EKIPMAN) + 5 hane, tedarikçi TED-000000, müşteri MUS-000000,
   yazıcı YAZICI-000, reçete REC-0000000; test tanımı serbest; birim ve H/P/EUH standart.
-  - Biçim etkinse yeni kayıtta kod önerilir (formda gelir), biçime uymayan kod reddedilir, kod
-    boşsa sistem verir (Excel'de de). Biçim kapalıyken kod bugünkü gibi serbest.
+  - Biçim etkinse yeni kayıtta kod önerilir (formda gelir) ve biçime uymayan kod reddedilir.
+    Excel içe aktarmada kod boş bırakılırsa sistem sıradaki kodu verir (formda kod zorunludur).
+    Biçim kapalıyken kod bugünkü gibi serbest.
   - Kod sonradan yalnız admin değiştirir (sunucuda 403); eski kod `CodeHistory`'ye yazılır ve aynı
     türde başka kayda verilmez.
   - Eski kod liste aramasında, seçim kutularında, barkod okutmada ("Eski etiket okutuldu" uyarısı)
     ve Excel içe aktarmada (açılış stoku, stok karşılaştırması, reçete dahil) tanınır.
   - Yönetim panelinde kodlu türlerde kod salt okunur, yeni kayıt uygulamadan açılır.
-  - Lokasyon ve lot etiketinde kod kesilmez; sığmazsa yazı küçülür (LOKASYON-0001 kesiliyordu).
+  - Lokasyon, lot, koli ve palet etiketinde kod ve lot no kesilmez; sığmazsa yazı küçülür
+    (LOKASYON-0001 ve kodlama ekranının kabul ettiği uzun lot numaraları kesiliyordu).
   - Kanıt: `masterdata/tests/test_coding.py`, `inventory/tests/test_coding_scan.py`, ön yüz
     `MasterDataPage.test.tsx` (öneri, kod kilidi, eski kodlar), `components.test.tsx` (eski kod
     uyarısı); tam backend (1608) ve ön yüz (464) testleri yeşil.
@@ -1226,3 +1228,31 @@ Plan `docs/plan/kodlama-sistematigi.md`; kararlar DECISIONS "2026-11-04 — Kodl
   kayıtlar eski koduna döner; bir göç bir kez geri alınır. Kanıt: `core/tests/test_coding.py`,
   `inventory/tests/test_coding_recode.py` (stok değişmezleri, canlıdaki gibi reçete kodları), ön
   yüz `coding.test.tsx` (önizle, uygula, geri al).
+- **İnceleme düzeltmeleri** (2026-11-05): bağımsız incelemenin 27 doğrulanmış bulgusu (tekrarlar
+  çıkınca 20) düzeltildi, düzeltmeler ayrıca denetlendi. Kararlar DECISIONS "İnceleme sonrası
+  netleşen kurallar".
+  - Kod motoru: sayaç penceresi önerilen koddan ölçülür; eski kod, kaydetme anında kilit altında
+    yeniden denetlenir; sayaç düzeltmesi en çok 15 hane; ekipman dışı türde türe göre önek yok
+    sayılır; standart türün önizlemesi hata vermez; önizleme sayaç düzeltmesini gösterir; kodlarda
+    yalnız ASCII rakam sıra no sayılır.
+  - Yeni komut `backfill_code_history [--dry-run]`: Paket 1'den önce kodu değişmiş kayıtların eski
+    kodlarını denetim günlüğünden eski kod geçmişine yükler (canlıya alma adımı, KURULUM §8). Eski
+    kod şu an başka kaydın koduysa yazılmaz, özette listelenir; tekrar çalıştırmak bir şey yazmaz.
+  - Kilit çakışması (bekleme süresi ya da kilitlenme) sunucu hatası değil: göçte `recode_busy`,
+    öteki isteklerde `busy` (400, "birkaç saniye sonra yeniden deneyin"). 403'te servisin Türkçe
+    mesajı döner (ör. kod kilidi).
+  - Excel içe aktarma: boş kodlu satır önizlemede gösterilen kodu alır, dosyada yazılmış kodlar boş
+    satırlara önerilmez; yazarken çıkan hata o satırın hatası olarak raporlanır; aynı kaydın eski
+    ve güncel kodlu iki satırı tekrar sayılır; reçetede kod hataları "Reçete kodu" sütununda.
+    Şablon örnekleri varsayılan biçimlerde (MLZ-0000001, TED-000001, REC-0000001 …).
+  - Ekran: yeni form yeniden açılınca önerilen kod yine gelir; kaydederken önerilen kod başka
+    kayda verilmişse sıradaki öneri yazılır ve uyarı çıkar; eski kodlar elle kurulan bütün seçim
+    kutularında da aranır. Biçim penceresinde sayaç düzenlenen önekin sayacını gösterir; sıra
+    hanesi silinince en küçük değere atlamaz. Kod göçünde son yedeğin zamanı ve durumu gösterilir
+    (son 24 saatte başarılı yedek yoksa uyarı); notlar tür ya da göç değişince taşınmaz; Geçmiş
+    uygulanan göçleri de listeler.
+  - Kanıt: `core/tests/test_coding.py`, `test_backfill_code_history.py`, `test_exceptions.py`,
+    `masterdata/tests/test_coding.py`, `test_importers.py`, `recipes/tests/test_coding_lock.py`,
+    `quality/tests/test_coding_lock.py`, `inventory/tests/test_labels.py`, `test_importers.py`;
+    ön yüz `coding.test.tsx`, `MasterDataPage.test.tsx`, `useOptions.test.ts`, `inventory.test.tsx`,
+    `hse.test.tsx`.

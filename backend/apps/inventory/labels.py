@@ -75,7 +75,9 @@ def lot_label(lot: Lot, company_name: str = "") -> Label:
     elements, y = _header(company_name, lot.material)
     y += 2
     elements.append(Text(MARGIN, y, "LOT", size=9))
-    elements.append(Text(MARGIN, y + 4, lot.lot_no, size=24, bold=True, max_width=INNER))
+    # Lot no kesilmez (okutulamazsa etiketten elle girilir): sığmazsa yazı küçülür.
+    lot_size = fit_size(lot.lot_no, 24, width=INNER, bold=True)
+    elements.append(Text(MARGIN, y + 4, lot.lot_no, size=lot_size, bold=True, max_width=INNER))
     y += 16
     details = [f"SKT: {_date(lot.expiry_date)}", f"Üretim: {_date(lot.manufactured_at)}"]
     if lot.supplier_lot_no:
@@ -119,7 +121,8 @@ def case_label(lot: Lot, company_name: str = "", units_per_case: int | None = No
         rows.append(("KOLİ İÇİ", f"{units_per_case} adet"))
     for caption, value in rows:
         elements.append(Text(MARGIN, y, caption, size=9))
-        elements.append(Text(30, y - 1, value, size=14, bold=True, max_width=INNER - 25))
+        value_size = fit_size(value, 14, width=INNER - 25, bold=True)  # uzun lot no kesilmez
+        elements.append(Text(30, y - 1, value, size=value_size, bold=True, max_width=INNER - 25))
         y += 8
     elements.append(QRCode(65, max(y, 70), 28, lot_scan_code(lot)))
     gs1 = case_gs1(lot)
@@ -157,7 +160,8 @@ def pallet_label(pallet: PalletLabel, company_name: str = "") -> Label:
         rows.append(("TOPLAM", f"{pallet.case_count * pallet.units_per_case} adet"))
     for caption, value in rows:
         elements.append(Text(8, y, caption, size=8))
-        elements.append(Text(38, y - 1, value, size=11, bold=True, max_width=INNER - 36))
+        value_size = fit_size(value, 11, width=INNER - 36, bold=True)  # uzun lot no kesilmez
+        elements.append(Text(38, y - 1, value, size=value_size, bold=True, max_width=INNER - 36))
         y += 6
     if material.gtin:
         # İçerik iki barkoda bölünür (GS1 lojistik etiketi): genişlik etikete sığsın.

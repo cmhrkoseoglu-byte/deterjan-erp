@@ -43,6 +43,10 @@ PREFIX_RULES: dict[str, tuple[re.Pattern[str], str]] = {
 }
 # GS1 AI (10) lot alanı en çok 20 karakter; SK numarası Excel sayfa adı olduğu için en çok 31.
 MAX_LENGTH: dict[str, int] = {DOCUMENT: 31, LOT: 20}
+# Ana veri sayacında sıradaki numara en çok 15 hanelidir (sayaç veritabanında bigint; ön yüzde
+# tam sayı olarak kesin kalır).
+COUNTER_DIGITS = 15
+MAX_COUNTER = 10**COUNTER_DIGITS - 1
 
 
 @dataclass(frozen=True)
@@ -80,7 +84,7 @@ def master_code(prefix: str, width: int, number: int) -> str:
 
 def master_number(code: str, prefix: str, width: int) -> int | None:
     """`MLZ-0000024` → 24; biçime (önek ve sıra hanesi) uymuyorsa None."""
-    pattern = rf"^{re.escape(stem(prefix))}(\d{{{width}}}|[1-9]\d{{{width},}})$"
+    pattern = rf"^{re.escape(stem(prefix))}([0-9]{{{width}}}|[1-9][0-9]{{{width},}})$"
     match = re.match(pattern, code or "")
     return int(match.group(1)) if match else None
 
@@ -89,7 +93,8 @@ def loose_number(code: str, prefix: str) -> int | None:
     """Sıra hanesine bakmadan önekten sonraki sayı (`MLZ-24` → 24); sayaç başlangıcı için."""
     head = stem(prefix)
     rest = (code or "")[len(head) :] if (code or "").startswith(head) else ""
-    return int(rest) if rest.isdigit() else None
+    # Yalnız ASCII rakam: "²" ya da Arap rakamı isdigit() der ama sıra no sayılmaz.
+    return int(rest) if rest.isascii() and rest.isdigit() else None
 
 
 def year_text(year: int, year_format: str) -> str:

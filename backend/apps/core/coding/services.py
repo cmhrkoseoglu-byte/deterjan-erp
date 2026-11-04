@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from apps.core.audit import log_change
 from apps.core.coding import formats, selectors
-from apps.core.coding.registry import DOCUMENT, LOT, MASTER, STANDARD, CodeType, code_type
+from apps.core.coding.registry import DOCUMENT, LOT, MASTER, CodeType, code_type
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import (
     AuditLog,
@@ -76,25 +76,6 @@ def _new_row(item: CodeType) -> CodeScheme:
     )
 
 
-def _clean_counters(
-    item: CodeType, fmt: formats.Format, counters: Mapping[str, Any]
-) -> dict[str, int]:
-    if item.kind != MASTER or item.free:
-        raise BusinessRuleError("counters_not_allowed", "Bu türde sayaç düzeltilmez.")
-    allowed = set(fmt.prefixes())
-    result: dict[str, int] = {}
-    for prefix, value in counters.items():
-        prefix = str(prefix).strip().upper()
-        if prefix not in allowed:
-            raise BusinessRuleError("unknown_prefix", f"“{prefix}” bu türün öneki değil.")
-        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-            raise BusinessRuleError(
-                "invalid_counter", "Sıradaki numara 1 ya da daha büyük bir tam sayı olmalıdır."
-            )
-        result[prefix] = value
-    return result
-
-
 def _set_counters(item: CodeType, counters: Mapping[str, int]) -> dict[str, list[int]]:
     """Sayaçları "sıradaki numara"ya göre düzeltir; eski → yeni (sıradaki numara) döner."""
     changes: dict[str, list[int]] = {}
@@ -129,17 +110,14 @@ def update_scheme(
       (`scheme_locked`); değişiklik notu zorunlu (`note_required`).
     - Önek tüm türlerde tektir, geçmişte başka türün kullandığı önek verilmez (`prefix_in_use`);
       sıra hanesi bu dönemin sayacına yetmeli (`sequence_too_narrow`).
-    - `counters` ana veride sıradaki numarayı düzeltir: `{"MLZ": 25}`.
+    - `counters` ana veride sıradaki numarayı düzeltir: `{"MLZ": 25}` (`selectors.clean_counters`).
     - Değişiklik denetim günlüğüne (alan farkları, not) ve `CodeSchemeRevision`'a yazılır.
     """
     require_admin(actor)
     item = get_type(key)
-    if item.kind == STANDARD:
-        raise BusinessRuleError("scheme_locked", "Standart kodlar değiştirilmez.")
-    if item.locked:
-        raise BusinessRuleError(
-            "scheme_locked", f"{item.label} numarasının biçimi ekrandan değiştirilemez."
-        )
+    locked = selectors.scheme_lock_error(item)
+    if locked is not None:
+        raise locked
     note = (note or "").strip()
     if not note:
         raise BusinessRuleError("note_required", "Değişiklik notu yazın (geçmişte görünür).")
@@ -157,7 +135,7 @@ def update_scheme(
             values[name] = value
     fmt = selectors.candidate_format(item, row, values)
     selectors.check_format(item, fmt)
-    clean_counters = _clean_counters(item, fmt, counters) if counters else {}
+    clean_counters = selectors.clean_counters(item, fmt, counters) if counters else {}
     if is_active is not None and item.kind != MASTER:
         raise BusinessRuleError("not_applicable", "Bu türde biçim etkinleştirilmez.")
 
@@ -241,6 +219,14 @@ def _code(item: CodeType, instance: models.Model) -> str:
     return str(getattr(instance, item.field) or "")
 
 
+def _check_not_reserved(item: CodeType, instance: models.Model, code: str) -> None:
+    """Kullanılmış kod başka kayda verilmez; kayıt kendi eski koduna dönebilir."""
+    if selectors.code_reserved(item, code, exclude_pk=instance.pk):
+        raise BusinessRuleError(
+            "code_reserved", f"{code} başka bir kaydın eski kodu; yeni kod olarak kullanılamaz."
+        )
+
+
 def check_master_code(item: CodeType, instance: models.Model, *, previous_code: str | None) -> None:
     """Kayıt yazılmadan önce kod kuralları (yeni kayıtta ya da kod değiştiyse).
 
@@ -251,10 +237,8 @@ def check_master_code(item: CodeType, instance: models.Model, *, previous_code: 
     code = _code(item, instance)
     if previous_code is not None and code == previous_code:
         return
-    if code and selectors.code_reserved(item, code, exclude_pk=instance.pk):
-        raise BusinessRuleError(
-            "code_reserved", f"{code} başka bir kaydın eski kodu; yeni kod olarak kullanılamaz."
-        )
+    if code:
+        _check_not_reserved(item, instance, code)
     row = selectors.scheme_row(item)
     if row is None or not row.is_active:
         return
@@ -311,15 +295,36 @@ def assign_master_code(item: CodeType, instance: models.Model) -> None:
     setattr(instance, item.field, code)
 
 
+def _advances_counter(item: CodeType, prefix: str, width: int, last: int, number: int) -> bool:
+    """Numara sayacı ilerletir mi: önerilen numaradan (sayaçtan sonraki ilk boş numara) en çok
+    `COUNTER_WINDOW` ileri. Öneri en az `last + 1` olduğundan yalnız gerektiğinde aranır; öneri
+    bulunamazsa (`sequence_exhausted`) sayaç ilerlemez, kayıt engellenmez."""
+    if number <= last:
+        return False
+    if number <= last + 1 + COUNTER_WINDOW:
+        return True
+    try:
+        _, suggested = selectors.next_free(item, prefix, width, last)
+    except BusinessRuleError:
+        return False
+    return number <= suggested + COUNTER_WINDOW
+
+
 def claim_master_code(item: CodeType, instance: models.Model, *, previous_code: str | None) -> None:
     """Kaydetme transaction'ında, kayıt yazılmadan hemen önce çağrılır.
 
-    Kod biçime uyuyorsa önek sayacı kilitlenir; kod bu arada başka kayda verildiyse yeni öneriyle
-    `code_taken`. Önerilenden en çok `COUNTER_WINDOW` ileri numara sayacı ilerletir. Kilit
-    transaction bitene kadar aynı önekte kod alan öteki kayıtları bekletir.
+    - Eski kod denetimi (`code_reserved`) burada, alan doğrulamasının benzersizlik denetiminden
+      sonra yinelenir: kodu bu arada bırakan kaydın eski kod satırı artık görünür.
+    - Kod biçime uyuyorsa önek sayacı kilitlenir; kod bu arada başka kayda verildiyse yeni
+      öneriyle `code_taken`. Önerilen numara ya da ondan en çok `COUNTER_WINDOW` ileri numara
+      sayacı ilerletir. Kilit transaction bitene kadar aynı önekte kod alan öteki kayıtları
+      bekletir.
     """
     code = _code(item, instance)
-    if item.free or not code or (previous_code is not None and code == previous_code):
+    if not code or (previous_code is not None and code == previous_code):
+        return
+    _check_not_reserved(item, instance, code)
+    if item.free:
         return
     fmt = selectors.effective_format(item)
     prefix = selectors.instance_prefix(item, fmt, instance)
@@ -332,7 +337,7 @@ def claim_master_code(item: CodeType, instance: models.Model, *, previous_code: 
         raise BusinessRuleError(
             "code_taken", f"{code} az önce başka bir kayda verildi. Yeni öneri: {suggestion}."
         )
-    if sequence.last_number < number <= sequence.last_number + COUNTER_WINDOW:
+    if _advances_counter(item, prefix, fmt.width, sequence.last_number, number):
         sequence.last_number = number
         sequence.save(update_fields=["last_number"])
 

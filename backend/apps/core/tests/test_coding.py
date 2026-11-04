@@ -6,7 +6,7 @@ import threading
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied
-from django.db import connection, transaction
+from django.db import OperationalError, connection, transaction
 from django.utils import timezone
 
 from apps.core.coding import formats, registry, selectors, services
@@ -59,6 +59,10 @@ def test_master_code_and_number():
     assert formats.master_number("MLZX-0000024", "MLZ", 7) is None
     assert formats.loose_number("MLZ-24", "MLZ") == 24
     assert formats.loose_number("MLZ-A1", "MLZ") is None
+    # Yalnız ASCII rakam sıra no sayılır (biçim kapalıyken serbest kodlar sayacı bozmasın).
+    assert formats.loose_number("MLZ-²", "MLZ") is None
+    assert formats.loose_number("MLZ-٠٠٠٠٠٠١", "MLZ") is None
+    assert formats.master_number("MLZ-٠٠٠٠٠٠١", "MLZ", 7) is None
 
 
 def test_document_and_lot_numbers():
@@ -247,6 +251,48 @@ def test_counter_correction_is_audited(admin):
     assert exc.value.code == "unknown_prefix"
 
 
+@pytest.mark.django_db
+def test_counter_correction_is_bounded(admin):
+    item = widget_type()
+    # Sayaç sınırını aşan kod (biçim kapalıyken girilmiş) sayacın başlangıcını taşırmaz.
+    Widget.objects.create(name="dev", code="WDG-" + "9" * 16)
+    assert selectors.highest_number(item, "WDG") == 0
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(admin, WIDGET, counters={"WDG": formats.MAX_COUNTER + 1}, note="Not")
+    assert exc.value.code == "invalid_counter"
+    # Sıradaki numarayla kod türün en uzun kod sınırını aşamaz (deneme parçası: 20 karakter).
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(
+            admin, WIDGET, prefix="WDGXYZ", counters={"WDGXYZ": 10**14}, note="Not"
+        )
+    assert exc.value.code == "invalid_counter"
+    assert "22 karakter" in exc.value.message
+    assert not CodeSequence.objects.exists() and not CodeScheme.objects.exists()
+    services.update_scheme(admin, WIDGET, counters={"WDG": formats.MAX_COUNTER}, note="Sınır")
+    assert CodeSequence.objects.get(key=WIDGET).last_number == formats.MAX_COUNTER - 1
+    assert selectors.describe(item)["next"] == f"WDG-{formats.MAX_COUNTER}"
+
+
+@pytest.mark.django_db
+def test_type_prefixes_only_for_types_with_type_field(admin):
+    """Türe göre önek yalnız önekini kaydın türünden alan kodda geçerlidir; öteki türde yok
+    sayılır, sayaç düzeltmesine önek olarak giremez."""
+    with pytest.raises(BusinessRuleError) as exc:
+        services.update_scheme(
+            admin, WIDGET, type_prefixes={"x": "ÇÖP"}, counters={"ÇÖP": 5}, note="Not"
+        )
+    assert exc.value.code == "unknown_prefix"
+    assert not CodeSequence.objects.exists()
+    row = services.update_scheme(
+        admin, WIDGET, type_prefixes={"x": "ÇÖP"}, counters={"WDG": 25}, note="Sayaç"
+    )
+    assert row.type_prefixes == {}
+    assert list(CodeSequence.objects.values_list("stem", "last_number")) == [("WDG-", 24)]
+    assert CodeSchemeRevision.objects.get(scheme=row).counters == {"WDG": 25}
+    preview = selectors.preview(widget_type(), {"type_prefixes": {"x": "ÇÖP"}})
+    assert preview["valid"] and preview["example"]["type_prefixes"] == {}
+
+
 # --- öneri, kod alma, eski kodlar ------------------------------------------------------------
 
 
@@ -319,6 +365,41 @@ def test_claim_advances_counter_only_within_window(admin):
     # Biçime uymayan kod (biçim kapalıyken girilmiş) sayaca dokunmaz.
     services.claim_master_code(item, Widget(name="d", code="SERBEST"), previous_code=None)
     assert CodeSequence.objects.get(key=WIDGET).last_number == 11
+
+
+@pytest.mark.django_db
+def test_counter_window_is_measured_from_the_suggestion(admin):
+    """Pencere önerilen numaradan ölçülür: sayacın hemen üstünde dolu numaralar olsa da öneriyi
+    kaydetmek sayacı ilerletir (sayaç takılı kalmaz)."""
+    item = widget_type()
+    for number in range(1, 16):
+        Widget.objects.create(name=f"w{number}", code=formats.master_code("WDG", 4, number))
+    activate(admin)
+    services.update_scheme(admin, WIDGET, counters={"WDG": 3}, note="Sayaç geri alındı")
+    assert selectors.suggest_code(item) == "WDG-0016"
+    services.claim_master_code(item, Widget(name="a", code="WDG-0016"), previous_code=None)
+    assert CodeSequence.objects.get(key=WIDGET).last_number == 16
+    # Öneri WDG-0017: en çok 10 ileri (WDG-0027) sayacı ilerletir, daha ilerisi ilerletmez.
+    services.claim_master_code(item, Widget(name="b", code="WDG-0027"), previous_code=None)
+    assert CodeSequence.objects.get(key=WIDGET).last_number == 27
+    services.claim_master_code(item, Widget(name="c", code="WDG-0039"), previous_code=None)
+    assert CodeSequence.objects.get(key=WIDGET).last_number == 27
+
+
+@pytest.mark.django_db
+def test_claim_rechecks_reserved_code(admin):
+    """Kod alınırken eski kod denetimi yinelenir: kodu bu arada bırakan kaydın eski kodu yeni
+    kayda verilmez; kayıt kendi eski koduna dönebilir."""
+    item = widget_type()
+    first = Widget.objects.create(name="a", code="WDG-0002")
+    services.record_code_change(admin, item, first, "WDG-0001")
+    services.record_code_change(admin, item, first, "ESKI-1")
+    for code in ("WDG-0001", "ESKI-1"):  # biçime uyan ve uymayan (sayaç kilidi yok) kod
+        with pytest.raises(BusinessRuleError) as exc:
+            services.claim_master_code(item, Widget(name="b", code=code), previous_code=None)
+        assert exc.value.code == "code_reserved"
+    first.code = "WDG-0001"
+    services.claim_master_code(item, first, previous_code="WDG-0002")
 
 
 @pytest.mark.django_db
@@ -458,6 +539,81 @@ def test_api_list_detail_update_preview_and_revisions(client_for):
 
     revisions = client.get(f"{BASE}/types/{WIDGET}/revisions/").json()
     assert [row["note"] for row in revisions["results"]] == ["Biçim"]
+
+
+@pytest.mark.django_db
+def test_api_preview_with_counters_writes_nothing(client_for):
+    """Önizleme sıradaki numarayı biçim değiştirmedeki kurallarla denetler ve örneği sayaç
+    düzeltilmiş gibi gösterir; hiçbir şey yazılmaz."""
+    Widget.objects.create(name="a", code="WDG-0007")
+    TypedWidget.objects.create(code="ALF-001", name="t", kind="ALPHA")
+    client = client_for(ADMIN)
+    logs = AuditLog.objects.count()
+    url = f"{BASE}/types/{WIDGET}/preview/"
+
+    def example(body):
+        response = client.post(url, body, format="json")
+        assert response.status_code == 200, response.json()
+        return response.json()["example"]
+
+    body = example({})
+    assert (body["next"], body["last_number"]) == ("WDG-0008", 7)
+    body = example({"counters": {"wdg": 50}})
+    assert (body["next"], body["last_number"]) == ("WDG-0050", 49)
+    # Geri alınan sayaç dolu numarayı atlar (kaydedilince olacağı gibi).
+    body = example({"counters": {"WDG": 7}})
+    assert (body["next"], body["last_number"]) == ("WDG-0008", 6)
+    # Önek de değişiyorsa sayaç yeni önektedir.
+    assert example({"prefix": "PRC", "counters": {"PRC": 12}})["next"] == "PRC-0012"
+    typed = client.post(
+        f"{BASE}/types/{TYPED}/preview/", {"counters": {"ALF": 5, "BET": 3}}, format="json"
+    ).json()["example"]
+    assert [(t["prefix"], t["next"], t["last_number"]) for t in typed["types"]] == [
+        ("ALF", "ALF-005", 4),
+        ("BET", "BET-003", 2),
+    ]
+    assert (typed["next"], typed["last_number"]) == ("ALF-005", 4)
+
+    for key, body, code in [
+        (WIDGET, {"counters": {"XYZ": 3}}, "unknown_prefix"),
+        (WIDGET, {"prefix": "WDGXYZ", "counters": {"WDGXYZ": 10**14}}, "invalid_counter"),
+        ("document.TD", {"counters": {"TD": 3}}, "counters_not_allowed"),
+    ]:
+        response = client.post(f"{BASE}/types/{key}/preview/", body, format="json").json()
+        assert (response["valid"], response["error"]["code"]) == (False, code), response
+    for value in (0, formats.MAX_COUNTER + 1, 2**63):
+        response = client.post(url, {"counters": {"WDG": value}}, format="json")
+        assert response.status_code == 400 and response.json()["code"] == "validation_error"
+
+    assert not CodeSequence.objects.exists() and not CodeScheme.objects.exists()
+    assert not CodeSchemeRevision.objects.exists() and AuditLog.objects.count() == logs
+
+
+@pytest.mark.django_db
+def test_api_preview_of_standard_and_locked_types(client_for):
+    client = client_for(ADMIN)
+    for key in ("masterdata.unitofmeasure", "document.TK"):
+        response = client.post(f"{BASE}/types/{key}/preview/", {}, format="json")
+        assert response.status_code == 200, response.json()
+        body = response.json()
+        assert (body["valid"], body["error"]["code"], body["example"]) == (
+            False,
+            "scheme_locked",
+            None,
+        )
+
+
+@pytest.mark.django_db
+def test_api_counter_correction_rejects_huge_numbers(client_for):
+    client = client_for(ADMIN)
+    for value in (formats.MAX_COUNTER + 1, 2**63 + 1):
+        response = client.put(
+            f"{BASE}/types/{WIDGET}/", {"counters": {"WDG": value}, "note": "x"}, format="json"
+        )
+        assert response.status_code == 400
+        assert response.json()["code"] == "validation_error"
+        assert "WDG" in response.json()["errors"]["counters"]
+    assert not CodeSequence.objects.exists()
 
 
 @pytest.mark.django_db
@@ -649,5 +805,89 @@ def test_recode_api(client_for):
 
     planner = client_for(PLANLAMA)
     assert planner.get(f"{BASE}/recode/{WIDGET}/").status_code == 403
+    apply_url = f"{BASE}/recode/{WIDGET}/apply/"
+    assert planner.post(apply_url, {"checksum": "x", "note": "x"}, format="json").status_code == 403
     assert planner.get(f"{BASE}/runs/").status_code == 403
+    assert planner.get(f"{BASE}/runs/{run['id']}/revert-preview/").status_code == 403
     assert planner.post(f"{BASE}/runs/{run['id']}/revert/", {"note": "x"}).status_code == 403
+
+
+def test_busy_lock_errors_become_business_errors():
+    """Kilit bekleme süresi dolması (55P03) ve kilitlenme (40P01) göçü `recode_busy` ile
+    reddeder; öteki veritabanı hataları olduğu gibi geçer."""
+    from apps.core.coding import migration
+
+    class Cause(Exception):
+        def __init__(self, sqlstate: str) -> None:
+            super().__init__(sqlstate)
+            self.sqlstate = sqlstate
+
+    def failing(sqlstate: str):
+        @migration._reject_when_busy
+        def run() -> None:
+            raise OperationalError("kilit") from Cause(sqlstate)
+
+        return run
+
+    for sqlstate in ("55P03", "40P01"):
+        with pytest.raises(BusinessRuleError) as exc:
+            failing(sqlstate)()
+        assert exc.value.code == "recode_busy"
+    with pytest.raises(OperationalError):
+        failing("08006")()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_recode_is_rejected_while_records_are_locked(client_for, monkeypatch):
+    """Kayıtlar başka bir işlemde kilitliyken göç ve geri alma beklemez: 400 `recode_busy`,
+    hiçbir şey değişmez."""
+    from apps.core.coding import migration
+    from apps.core.models import CodeMigrationRun
+
+    monkeypatch.setattr(migration, "LOCK_TIMEOUT_MS", 100)
+    widget = Widget.objects.create(name="a", code="ESKI-A")
+    CodeSequence.objects.create(key=WIDGET, stem="WDG-", last_number=0)
+    client = client_for(ADMIN)
+
+    def while_locked(lock, call):
+        """`lock` başka bir bağlantının açık işleminde kilitliyken `call`'ı çalıştırır."""
+        locked, release = threading.Event(), threading.Event()
+
+        def hold() -> None:
+            try:
+                with transaction.atomic():
+                    lock()
+                    locked.set()
+                    release.wait(10)
+            finally:
+                connection.close()
+
+        thread = threading.Thread(target=hold)
+        thread.start()
+        try:
+            assert locked.wait(10)
+            return call()
+        finally:
+            release.set()
+            thread.join()
+
+    checksum = client.get(f"{BASE}/recode/{WIDGET}/").json()["checksum"]
+    body = {"checksum": checksum, "note": "Göç"}
+    busy = while_locked(
+        lambda: CodeSequence.objects.select_for_update().get(key=WIDGET),
+        lambda: client.post(f"{BASE}/recode/{WIDGET}/apply/", body, format="json"),
+    )
+    assert busy.status_code == 400 and busy.json()["code"] == "recode_busy", busy.json()
+    assert not CodeMigrationRun.objects.exists()
+    applied = client.post(f"{BASE}/recode/{WIDGET}/apply/", body, format="json")
+    assert applied.status_code == 201, applied.json()
+
+    run_id = applied.json()["id"]
+    busy = while_locked(
+        lambda: Widget.objects.select_for_update().get(pk=widget.pk),
+        lambda: client.post(f"{BASE}/runs/{run_id}/revert/", {"note": "Geri"}, format="json"),
+    )
+    assert busy.status_code == 400 and busy.json()["code"] == "recode_busy", busy.json()
+    widget.refresh_from_db()
+    assert widget.code == "WDG-0001"
+    assert CodeMigrationRun.objects.count() == 1

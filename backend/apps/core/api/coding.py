@@ -80,10 +80,18 @@ class CodeFormatValuesSerializer(serializers.Serializer):
     date_format = serializers.ChoiceField(choices=DATE_FORMAT_CHOICES, required=False)
 
 
-class CodeSchemeUpdateSerializer(CodeFormatValuesSerializer):
-    is_active = serializers.BooleanField(required=False)
+class CodePreviewRequestSerializer(CodeFormatValuesSerializer):
+    """Önizleme isteği: istenen biçim ve (ana veride) sıradaki numara; hiçbir şey kaydedilmez."""
+
     # Ana veride sıradaki numara: {"MLZ": 25}
-    counters = serializers.DictField(child=serializers.IntegerField(min_value=1), required=False)
+    counters = serializers.DictField(
+        child=serializers.IntegerField(min_value=1, max_value=formats.MAX_COUNTER),
+        required=False,
+    )
+
+
+class CodeSchemeUpdateSerializer(CodePreviewRequestSerializer):
+    is_active = serializers.BooleanField(required=False)
     note = serializers.CharField(allow_blank=True, max_length=1000)
 
 
@@ -238,14 +246,16 @@ class CodeTypeDetailView(APIView):
 
 
 class CodeTypePreviewView(APIView):
-    """Kaydetmeden istenen biçimin örnekleri ve kural ihlali (yalnız admin)."""
+    """Kaydetmeden istenen biçimin örnekleri ve kural ihlali (yalnız admin). `counters`
+    (sıradaki numara) biçim değiştirmedeki gibi denetlenir; örnek sayaç düzeltilmiş gibi
+    gösterilir. Hiçbir şey yazılmaz."""
 
     permission_classes = [HasRole(ADMIN)]
 
-    @extend_schema(request=CodeFormatValuesSerializer, responses=CodePreviewSerializer)
+    @extend_schema(request=CodePreviewRequestSerializer, responses=CodePreviewSerializer)
     def post(self, request: Request, key: str) -> Response:
         item = _type_or_404(key)
-        body = CodeFormatValuesSerializer(data=request.data)
+        body = CodePreviewRequestSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         return Response(CodePreviewSerializer(selectors.preview(item, body.validated_data)).data)
 

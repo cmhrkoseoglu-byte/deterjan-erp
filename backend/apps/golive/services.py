@@ -51,7 +51,7 @@ COMPARISON_COLUMNS: tuple[Column, ...] = (
         "material",
         code_lookup_parser(Material, "Malzeme"),
         required=True,
-        example="HM-LAS",
+        example="MLZ-0000001",
     ),
     Column(
         "Lot no",
@@ -64,7 +64,7 @@ COMPARISON_COLUMNS: tuple[Column, ...] = (
         "Lokasyon kodu",
         "location",
         code_lookup_parser(Location, "Lokasyon"),
-        example="A-01",
+        example="LOKASYON-0001",
         help="Doluysa lokasyon bazında karşılaştırılır (tüm satırlarda dolu olmalı)",
     ),
     Column("Miktar", "quantity", parse_decimal, required=True, example="1250,5"),
