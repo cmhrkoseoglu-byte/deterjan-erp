@@ -2069,6 +2069,8 @@ değiştirme zorunlu, yalnızca admin):
   uygulaması gerekir; kurtarma kodları saklanır). Kontrol listesi madde 22 ve 25, kurulumlar
   bitince işaretlenir.
 - **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=` (boş) ve aynı yeniden başlatma.
+- **Sona erdi (2026-11-04):** 2FA yine geçici olarak zorunlu değil; bkz. "2026-11-04 — İki aşamalı
+  doğrulama canlıda yine geçici olarak zorunlu değil".
 
 ## 2026-11-04 — react-router 7'ye geçiş
 
@@ -2093,3 +2095,21 @@ değiştirme zorunlu, yalnızca admin):
 - **Bilinen, kabul edilen:** tarayıcı paketi yaklaşık 10 KB (gzip) büyür. v7 paketinin dışa aktarma
   haritası üretimde de geliştirme yapısını seçer; üretim paketinde birkaç geliştirici uyarısı metni
   kalır, uygulamanın kullandığı yollarda çalışmaz.
+
+## 2026-11-04 — İki aşamalı doğrulama canlıda yine geçici olarak zorunlu değil
+
+- **Karar (CUMHUR, "iki aşamalı doğrulamayı kaldıralım"; kapsam sorusuna "Herkesten", kayıt için
+  "Geçici"):** canlıda giriş şimdilik yine yalnızca şifreyle; ileride yeniden zorunlu yapılacak.
+  Aynı günün "İki aşamalı doğrulama canlıda yeniden zorunlu" kararının yerine geçer;
+  2026-10-25'teki düzene dönülür.
+- **Uygulama (kod değişmedi):** canlı `.env.prod` içinde `OTP_REQUIRED_ROLES=` (boş), ardından
+  `scripts/prod-compose.sh up -d --wait`. Kurulu doğrulayıcılar için kullanıcıya soruldu; seçimine
+  göre sunucu kabuğundan `security.reset_otp` kullanıldı (denetim günlüğünde "İki aşamalı doğrulama
+  sıfırlandı"). Öncesinde `.env.prod.yedek-20261104-151959` ve veritabanı yedeği `20261104T152000`
+  alındı.
+- **Etkisi:** kimse 2FA kurmaya zorlanmaz; isteyen kullanıcı Güvenlik sayfasından kendisi açabilir
+  (açan her girişte kod girer). Yönetim paneli girişi de şifreyle. Bordro ve ücret verisine de
+  yalnızca şifreyle erişilir.
+- **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=admin,yonetim` ve aynı yeniden başlatma. Bu
+  rollerdeki kullanıcılar bir sonraki işleminde Güvenlik sayfasında kurulumu yapar; kontrol listesi
+  madde 22 ve 25 o zaman yeniden işaretlenir.
