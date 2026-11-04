@@ -6,6 +6,8 @@
 # takıldı. Sonraki commit alfabeyi string modülünden üretir; bulgu yalnızca bu commit'te kaldı.
 83084780de355950168e202abad8d447be9cdf09:backend/apps/core/services.py:generic-api-key:295
 #
-# 34fb091: docs/PROGRESS.md'deki "API: `payroll/items/` ..." satırı; bordro uçlarının adres yolu
-# (gizli bilgi değil) generic-api-key kuralına takıldı.
+# 34fb091: docs/PROGRESS.md satır 1050'deki bordro uç adresi (gizli bilgi değil) generic-api-key
+# kuralına takıldı. 881af6e: bu dosyadaki ilk açıklama o satırı alıntıladığı için o da takıldı;
+# açıklama sonraki commit'te alıntısız yazıldı.
 34fb0914a0b1b716f9c96eb1f1bf40cbe5b9bd4b:docs/PROGRESS.md:generic-api-key:1050
+881af6e7f8004be8bd7c91383a00187da666dc0e:.gitleaksignore:generic-api-key:9
