@@ -49,7 +49,6 @@ function StateBadge({ row }: { row: CodeTypeRow }) {
       <Badge color={row.is_active ? "teal" : "gray"}>
         {row.is_active ? cs.state.active : cs.state.inactive}
       </Badge>
-      {row.free && <Badge variant="light">{cs.state.free}</Badge>}
     </Group>
   );
 }
@@ -76,7 +75,7 @@ function nextCell(row: CodeTypeRow) {
     return (
       <Stack gap={0}>
         {row.types.map((type) => (
-          <Text key={type.value} size="sm" ff="monospace">
+          <Text key={type.value} size="sm" ff="monospace" style={{ whiteSpace: "nowrap" }}>
             {type.next}
           </Text>
         ))}
@@ -84,7 +83,7 @@ function nextCell(row: CodeTypeRow) {
     );
   }
   return (
-    <Text size="sm" ff="monospace">
+    <Text size="sm" ff="monospace" style={{ whiteSpace: "nowrap" }}>
       {row.next}
     </Text>
   );

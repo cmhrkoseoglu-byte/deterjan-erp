@@ -156,6 +156,7 @@ export function CodeSchemeModal({ row, onClose, onSaved }: Props) {
               onChange={(event) => setPrefix(event.currentTarget.value.toUpperCase())}
             />
             <NumberInput
+              size="md"
               label={cs.width}
               description={cs.widthHelp(minWidth, maxWidth)}
               min={minWidth}
@@ -169,6 +170,7 @@ export function CodeSchemeModal({ row, onClose, onSaved }: Props) {
         {sequence && typed && (
           <Stack gap="xs">
             <NumberInput
+              size="md"
               label={cs.width}
               description={cs.widthHelp(minWidth, maxWidth)}
               min={minWidth}
@@ -182,6 +184,13 @@ export function CodeSchemeModal({ row, onClose, onSaved }: Props) {
               {cs.typePrefixes}
             </Text>
             <Table withTableBorder>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{cs.colType}</Table.Th>
+                  <Table.Th>{cs.prefix}</Table.Th>
+                  <Table.Th>{cs.counter}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
               <Table.Tbody>
                 {row.types.map((type) => (
                   <Table.Tr key={type.value}>
@@ -201,6 +210,7 @@ export function CodeSchemeModal({ row, onClose, onSaved }: Props) {
                     </Table.Td>
                     <Table.Td>
                       <NumberInput
+                        size="md"
                         aria-label={`${cs.counter}: ${type.label}`}
                         min={1}
                         allowDecimal={false}
@@ -220,14 +230,26 @@ export function CodeSchemeModal({ row, onClose, onSaved }: Props) {
           </Stack>
         )}
         {kind === "document" && (
-          <SimpleGrid cols={{ base: 1, sm: 3 }}>
-            <TextInput
-              label={cs.prefix}
-              description={cs.prefixHelp}
-              value={prefix}
-              maxLength={10}
-              onChange={(event) => setPrefix(event.currentTarget.value.toUpperCase())}
-            />
+          <Stack gap="sm">
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+              <TextInput
+                label={cs.prefix}
+                description={cs.prefixHelp}
+                value={prefix}
+                maxLength={10}
+                onChange={(event) => setPrefix(event.currentTarget.value.toUpperCase())}
+              />
+              <NumberInput
+                size="md"
+                label={cs.width}
+                description={cs.widthHelp(minWidth, maxWidth)}
+                min={minWidth}
+                max={maxWidth}
+                allowDecimal={false}
+                value={width}
+                onChange={(value) => setWidth(Number(value) || minWidth)}
+              />
+            </SimpleGrid>
             <Select
               label={cs.yearFormat}
               data={Object.entries(cs.years).map(([value, label]) => ({ value, label }))}
@@ -235,26 +257,29 @@ export function CodeSchemeModal({ row, onClose, onSaved }: Props) {
               allowDeselect={false}
               onChange={(value) => value && setYearFormat(value as YearFormat)}
             />
-            <NumberInput
-              label={cs.width}
-              description={cs.widthHelp(minWidth, maxWidth)}
-              min={minWidth}
-              max={maxWidth}
-              allowDecimal={false}
-              value={width}
-              onChange={(value) => setWidth(Number(value) || minWidth)}
-            />
-          </SimpleGrid>
+          </Stack>
         )}
         {kind === "lot" && (
-          <SimpleGrid cols={{ base: 1, sm: 3 }}>
-            <TextInput
-              label={cs.prefix}
-              description={cs.lotPrefixHelp}
-              value={prefix}
-              maxLength={4}
-              onChange={(event) => setPrefix(event.currentTarget.value.toUpperCase())}
-            />
+          <Stack gap="sm">
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+              <TextInput
+                label={cs.prefix}
+                description={cs.lotPrefixHelp}
+                value={prefix}
+                maxLength={4}
+                onChange={(event) => setPrefix(event.currentTarget.value.toUpperCase())}
+              />
+              <NumberInput
+                size="md"
+                label={cs.width}
+                description={cs.widthHelp(minWidth, maxWidth)}
+                min={minWidth}
+                max={maxWidth}
+                allowDecimal={false}
+                value={width}
+                onChange={(value) => setWidth(Number(value) || minWidth)}
+              />
+            </SimpleGrid>
             <Select
               label={cs.dateFormat}
               data={Object.entries(cs.dates).map(([value, label]) => ({ value, label }))}
@@ -262,16 +287,7 @@ export function CodeSchemeModal({ row, onClose, onSaved }: Props) {
               allowDeselect={false}
               onChange={(value) => value && setDateFormat(value as DateFormat)}
             />
-            <NumberInput
-              label={cs.width}
-              description={cs.widthHelp(minWidth, maxWidth)}
-              min={minWidth}
-              max={maxWidth}
-              allowDecimal={false}
-              value={width}
-              onChange={(value) => setWidth(Number(value) || minWidth)}
-            />
-          </SimpleGrid>
+          </Stack>
         )}
         {kind === "master" && (
           <Switch
@@ -283,6 +299,7 @@ export function CodeSchemeModal({ row, onClose, onSaved }: Props) {
         )}
         {sequence && !typed && (
           <NumberInput
+            size="md"
             label={cs.counter}
             description={cs.counterHelp}
             min={1}
@@ -301,6 +318,14 @@ export function CodeSchemeModal({ row, onClose, onSaved }: Props) {
           >
             {previewError ? (
               <Text size="sm">{previewError}</Text>
+            ) : example && example.types.length > 0 ? (
+              <Stack gap={2}>
+                {example.types.map((type) => (
+                  <Text key={type.value} size="sm">
+                    {type.label}: <b>{type.next}</b>
+                  </Text>
+                ))}
+              </Stack>
             ) : example ? (
               <Text size="sm">
                 {cs.next}: <b>{example.next}</b> · {cs.longest}: {example.longest}
@@ -313,6 +338,7 @@ export function CodeSchemeModal({ row, onClose, onSaved }: Props) {
           </Alert>
         )}
         <Textarea
+          size="md"
           label={cs.note}
           placeholder={cs.notePlaceholder}
           withAsterisk

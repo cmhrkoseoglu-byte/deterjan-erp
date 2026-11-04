@@ -166,6 +166,7 @@ export function RecodeSection({ types }: { types: CodeTypeRow[] }) {
                 <Text size="sm">{cs.migrationBackup}</Text>
               </Alert>
               <Textarea
+                size="md"
                 label={cs.migrationNote}
                 withAsterisk
                 autosize
@@ -315,6 +316,7 @@ function RevertModal({ run, onClose }: { run: CodeMigrationRun | null; onClose: 
           </Table>
         )}
         <Textarea
+          size="md"
           label={cs.revertNote}
           withAsterisk
           autosize
