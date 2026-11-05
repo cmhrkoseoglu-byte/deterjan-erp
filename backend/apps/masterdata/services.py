@@ -9,7 +9,7 @@ import socket
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from types import EllipsisType
 from typing import Any
 
@@ -42,11 +42,12 @@ from apps.masterdata.models import (
     MaterialCategory,
     MaterialUnitConversion,
     Printer,
+    RetiredGtin,
     Supplier,
     UnitOfMeasure,
     Warehouse,
 )
-from apps.masterdata.selectors import gtin_owner
+from apps.masterdata.selectors import gtin_owner, retired_gtin
 
 # --- birim dönüşümü --------------------------------------------------------------------------
 
@@ -218,8 +219,8 @@ def _check_gtin_format(gtin: str) -> None:
 
 
 def material_has_lots(material: Material) -> bool:
-    """Malzemenin lotu var mı? Lotu olan malzemenin dolu GTIN'i ve koli GTIN'i değiştirilemez:
-    o GTIN'le basılmış koli ve palet etiketleri okutulamaz olur."""
+    """Malzemenin lotu var mı? Lotu olan mamulün dolu GTIN'i ve koli GTIN'i değiştirilemez: o
+    GTIN'le basılmış koli ve palet etiketleri okutulamaz olur (`gtin_locked`)."""
     if material.pk is None:
         return False
     lots = getattr(material, _LOT_RELATION, None)
@@ -252,23 +253,37 @@ def _gtin_change_locked(old: str, new: str) -> bool:
 
 
 def gtin_locked(material: Material) -> bool:
-    """Malzemenin GTIN'i kilitli mi: GTIN dolu (ve geçerli) ve malzemenin lotu var. Sorgudaki
-    `has_lots` eki (`lot_exists`) varsa ek sorgu yapılmaz."""
-    if not _lockable(material.gtin):
+    """Malzemenin GTIN'i kilitli mi: malzeme mamul, GTIN dolu (ve geçerli) ve lotu var. Kilit
+    yalnız mamulde (CUMHUR, 2026-11-05): hammadde, ambalaj ve dökme ürün (tedarikçi) GTIN'ini lotu
+    olsa da düzeltebilir. Sorgudaki `has_lots` eki (`lot_exists`) varsa ek sorgu yapılmaz."""
+    if material.material_type != Material.Type.FINISHED or not _lockable(material.gtin):
         return False
     flag = getattr(material, "has_lots", None)
     return bool(flag) if flag is not None else material_has_lots(material)
 
 
 def case_gtin_locked(conversion: MaterialUnitConversion) -> bool:
-    """Koli GTIN'i kilitli mi: koli GTIN'i dolu (ve geçerli) ve malzemenin lotu var. Dönüşümde
-    `material_has_lots`, malzemede `has_lots` eki varsa ek sorgu yapılmaz."""
-    if not _lockable(conversion.gtin):
+    """Koli GTIN'i kilitli mi: malzeme mamul, koli GTIN'i dolu (ve geçerli) ve malzemenin lotu var.
+    Kilitli koli GTIN'inde koli içi miktar yalnız yeni koli GTIN'iyle değişir
+    (`_case_pack_change`). Dönüşümde `material_has_lots`, malzemede `has_lots` eki varsa ek sorgu
+    yapılmaz."""
+    material = conversion.material
+    if material.material_type != Material.Type.FINISHED or not _lockable(conversion.gtin):
         return False
     flag = getattr(conversion, "material_has_lots", None)
     if flag is None:
-        flag = getattr(conversion.material, "has_lots", None)
-    return bool(flag) if flag is not None else material_has_lots(conversion.material)
+        flag = getattr(material, "has_lots", None)
+    return bool(flag) if flag is not None else material_has_lots(material)
+
+
+def _locked_by_lots(material: Material, gtin: str) -> bool:
+    """Kayıtlı `gtin` lot kilidinde mi: malzeme mamul, GTIN dolu ve geçerli, malzemenin lotu var
+    (dönüşüm kuralları; malzemenin türü veritabanındaki türdür)."""
+    return (
+        material.material_type == Material.Type.FINISHED
+        and _lockable(gtin)
+        and material_has_lots(material)
+    )
 
 
 def _lock_gtins() -> None:
@@ -295,8 +310,17 @@ def _ensure_gtin_free(
 ) -> None:
     """GTIN 14 haneli normal biçimde başka bir malzemenin ürün GTIN'i ya da herhangi bir koli
     dönüşümünün GTIN'i olmamalı (pasif kayıtlar dahil; `gtin_taken`). Malzemenin kendi koli GTIN'i
-    de ürün GTIN'i olamaz: koli ayrı bir ticari üründür. Kilit işlem sonuna kadar tutulur."""
+    de ürün GTIN'i olamaz: koli ayrı bir ticari üründür. Arşivdeki eski koli GTIN'i (koli içi
+    miktar değişince arşivlenen) hiçbir ürüne ya da koliye, kendi malzemesine de bir daha
+    verilmez. Kilit işlem sonuna kadar tutulur."""
     _lock_gtins()
+    archived = retired_gtin(gtin)
+    if archived is not None:
+        raise BusinessRuleError(
+            "gtin_taken",
+            f"Bu GTIN {archived.conversion.material.code} malzemesinin eski koli GTIN'i (arşivde); "
+            "bir daha kullanılamaz.",
+        )
     owner, owner_conversion = gtin_owner(gtin)
     if owner is None:
         return
@@ -321,25 +345,53 @@ def _ensure_gtin_free(
     )
 
 
-def _gtin_locked_error(material: Material, what: str) -> BusinessRuleError:
-    return BusinessRuleError(
-        "gtin_locked",
-        f"{material.code}: lotu olan malzemenin {what} değiştirilemez ya da silinemez (basılmış "
-        "koli ve palet etiketleri bu GTIN'i taşır).",
+def _gtin_locked_error(
+    material: Material, what: str, *, pack_hint: bool = False
+) -> BusinessRuleError:
+    message = (
+        f"{material.code}: lotu olan mamulün {what} değiştirilemez ya da silinemez (basılmış koli "
+        "ve palet etiketleri bu GTIN'i taşır)."
     )
+    if pack_hint:  # koli GTIN'i: miktar değişikliği yeni GTIN'le yapılır (`_case_pack_change`)
+        message += " Koli içi miktar değiştiyse yeni miktarla birlikte yeni koli GTIN'i girin."
+    return BusinessRuleError("gtin_locked", message)
 
 
 def _validate_material(material: Material) -> None:
     _require_active(material.base_unit, "birim")
     _require_active(material.category, "kategori")
     material.gtin = (material.gtin or "").strip()
-    old_gtin = "" if material._state.adding else str(_db_value(material, "gtin") or "")
+    old_gtin, old_type = "", material.material_type
+    if not material._state.adding:
+        stored = (
+            type(material)
+            ._base_manager.filter(pk=material.pk)
+            .values_list("gtin", "material_type")
+            .first()
+        )
+        if stored is not None:
+            old_gtin, old_type = str(stored[0] or ""), str(stored[1])
+        # Lotu olan malzemenin türü mamulden ya da mamule değişmez (CUMHUR, 2026-11-05): GTIN
+        # kilidi, koli içi miktar kuralı ve eski koli GTIN'leri mamule bağlıdır.
+        finished_now = material.material_type == Material.Type.FINISHED
+        if (old_type == Material.Type.FINISHED) != finished_now and material_has_lots(material):
+            raise BusinessRuleError(
+                "material_type_locked",
+                f"{material.code}: lotu olan malzemenin türü mamulden ya da mamule değiştirilemez "
+                "(GTIN kilidi, koli içi miktar kuralı ve eski koli GTIN'leri mamule bağlıdır).",
+            )
     # Kurallar GTIN değişince uygulanır: eski veride kalmış GTIN öteki alanların kaydını
     # engellemez.
     if material.gtin != old_gtin:
         _check_gtin_format(material.gtin)
-        # Boştan ilk kez girmek serbest; dolu GTIN lot açıldıktan sonra değişmez.
-        if _gtin_change_locked(old_gtin, material.gtin) and material_has_lots(material):
+        # Boştan ilk kez girmek serbest; mamulün dolu GTIN'i lot açıldıktan sonra değişmez. Kilit
+        # eski ya da yeni tür mamulse uygulanır: türü aynı istekte değiştirmek kilidi kaldırmaz.
+        finished = Material.Type.FINISHED in (old_type, material.material_type)
+        if (
+            finished
+            and _gtin_change_locked(old_gtin, material.gtin)
+            and material_has_lots(material)
+        ):
             raise _gtin_locked_error(material, "GTIN'i")
         if material.gtin:
             _ensure_gtin_free(material.gtin, material=material)
@@ -368,7 +420,7 @@ def _validate_conversion(conversion: MaterialUnitConversion) -> None:
             f"{unit.code} temel birime ({material.base_unit.code}) zaten genel katsayıyla "
             "çevrilir; malzemeye özel dönüşüm tanımlanmaz.",
         )
-    old_gtin = ""
+    old: MaterialUnitConversion | None = None
     if not conversion._state.adding:
         old = type(conversion)._base_manager.get(pk=conversion.pk)
         if (old.material_id, old.unit_id) != (conversion.material_id, conversion.unit_id):
@@ -376,8 +428,15 @@ def _validate_conversion(conversion: MaterialUnitConversion) -> None:
                 "conversion_key_locked",
                 "Dönüşümün malzemesi ve birimi değiştirilemez; yeni dönüşüm tanımlayın.",
             )
-        old_gtin = old.gtin
+    old_gtin = old.gtin if old is not None else ""
     conversion.gtin = (conversion.gtin or "").strip()
+    factor = _factor_value(conversion.factor_to_base)
+    if factor is not None and factor <= 0:
+        # Sıfır ya da eksi katsayıyı alan doğrulaması reddeder ("Dönüşüm katsayısı sıfırdan büyük
+        # olmalıdır."); koli GTIN'i kuralları bu değerle yanıltıcı hata vermesin.
+        return
+    # Kilitli koli GTIN'inde koli içi miktar yalnız yeni koli GTIN'iyle değişir.
+    pack_change = old is not None and _case_pack_change(conversion, old)
     if conversion.gtin != old_gtin:
         if conversion.gtin and unit.code != CASE_UNIT:
             raise BusinessRuleError(
@@ -386,10 +445,75 @@ def _validate_conversion(conversion: MaterialUnitConversion) -> None:
                 "boş bırakın.",
             )
         _check_gtin_format(conversion.gtin)
-        if _gtin_change_locked(old_gtin, conversion.gtin) and material_has_lots(material):
-            raise _gtin_locked_error(material, "koli GTIN'i")
+        if (
+            not pack_change
+            and _gtin_change_locked(old_gtin, conversion.gtin)
+            and _locked_by_lots(material, old_gtin)
+        ):
+            raise _gtin_locked_error(material, "koli GTIN'i", pack_hint=unit.code == CASE_UNIT)
         if conversion.gtin:
             _ensure_gtin_free(conversion.gtin, conversion=conversion)
+
+
+def _factor_value(value: object) -> Decimal | None:
+    """Katsayı sayı olarak; sayıya çevrilemezse None (alan doğrulaması reddeder)."""
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except InvalidOperation:
+        return None
+
+
+def _same_factor(old: Decimal, new: object) -> bool:
+    """Koli içi miktar aynı mı: sayı olarak karşılaştırılır (12 ile 12.000000 aynıdır). Sayıya
+    çevrilemeyen değer burada aynı sayılır; alan doğrulaması (`full_clean`) onu reddeder."""
+    try:
+        value = new if isinstance(new, Decimal) else Decimal(str(new))
+    except InvalidOperation:
+        return True
+    return value == old
+
+
+def _case_pack_change(conversion: MaterialUnitConversion, old: MaterialUnitConversion) -> bool:
+    """Koli içi miktar değişikliği (CUMHUR, 2026-11-05): lotu olan mamulün kilitli koli GTIN'inde
+    (KOLI dönüşümü, kayıtlı geçerli koli GTIN'i) koli içi miktar (`factor_to_base`) yalnız yeni
+    koli GTIN'iyle birlikte değişir (GS1); eski GTIN eski miktarıyla arşivlenir (`RetiredGtin`).
+
+    Miktar değişip koli GTIN'i aynı kaldıysa (14 haneli biçimde) ya da silindiyse
+    `case_gtin_required`. Yeni koli GTIN'iyle değişiklikte True: biçim ve tekillik çağıranda
+    denetlenir, arşiv satırı kayıttan sonra yazılır (`_retired_case_gtin`). Miktar aynıysa ya da
+    koli GTIN'i kilitli değilse False (bugünkü kurallar)."""
+    if conversion.unit.code != CASE_UNIT or _same_factor(
+        old.factor_to_base, conversion.factor_to_base
+    ):
+        return False
+    if not _locked_by_lots(conversion.material, old.gtin):
+        return False
+    if not conversion.gtin or gtin14(conversion.gtin) == gtin14(old.gtin):
+        raise BusinessRuleError(
+            "case_gtin_required",
+            "Koli içi miktar değişince GS1 yeni koli GTIN'i ister: yeni koli GTIN'ini de girin. "
+            "Eski GTIN eski miktarıyla arşivlenir; depodaki eski koliler okutulmaya devam eder.",
+        )
+    return True
+
+
+def _retired_case_gtin(instance: models.Model) -> RetiredGtin | None:
+    """Doğrulanmış koli dönüşümünde koli içi miktar yeni koli GTIN'iyle değişiyorsa
+    (`_case_pack_change`) eski koli GTIN'inin arşiv satırı (kaydedilmemiş): 14 haneli GTIN, eski
+    miktar, yerine gelen GTIN. Öteki kayıtlarda None."""
+    if not isinstance(instance, MaterialUnitConversion) or instance._state.adding:
+        return None
+    old = type(instance)._base_manager.get(pk=instance.pk)
+    if not _case_pack_change(instance, old):
+        return None
+    return RetiredGtin(
+        conversion=instance,
+        gtin=gtin14(old.gtin),
+        factor_to_base=old.factor_to_base,
+        replaced_by=gtin14(instance.gtin),
+    )
 
 
 def _validate_partner(partner: Supplier | Customer) -> None:
@@ -539,6 +663,7 @@ def _save[M: MasterDataModel](instance: M, actor: User | None, note: str) -> M:
     if item is not None and previous is None:
         coding.assign_master_code(item, instance)  # kod boşsa etkin biçimde sıradaki kod
     validate_record(instance)
+    retired = _retired_case_gtin(instance)
     try:
         with transaction.atomic():
             if item is not None:
@@ -552,6 +677,10 @@ def _save[M: MasterDataModel](instance: M, actor: User | None, note: str) -> M:
                 gtin = str(getattr(saved, "gtin", "") or "")
                 if gtin and gtin != previous_gtin:
                     _advance_item_reference(actor, gtin)
+            if retired is not None:
+                # Koli içi miktar yeni koli GTIN'iyle değişti: eski GTIN eski miktarıyla arşivde
+                # (aynı işlemde, GTIN kilidi altında; denetim günlüğüne değişiklik notuyla).
+                save_with_audit(retired, actor, note=note)
             return saved
     except IntegrityError as exc:  # eşzamanlı aynı kod
         raise BusinessRuleError("duplicate", "Bu kayıt zaten var (kod tekrarı).") from exc
@@ -1066,10 +1195,13 @@ def _gtin14_values(queryset: QuerySet[Any], start: str, among: Collection[str]) 
 
 
 def used_gtin14s(*, start: str = "", among: Collection[str] = ()) -> set[str]:
-    """Kullanılmış ürün ve koli GTIN'lerinin 14 haneli normal biçimleri (pasif kayıtlar dahil):
-    `start` ile başlayanlar ve/veya `among` içindekiler."""
-    return _gtin14_values(Material._base_manager.all(), start, among) | _gtin14_values(
-        MaterialUnitConversion._base_manager.all(), start, among
+    """Kullanılmış ürün ve koli GTIN'lerinin ve arşivdeki eski koli GTIN'lerinin (bir daha
+    verilmez) 14 haneli normal biçimleri (pasif kayıtlar dahil): `start` ile başlayanlar ve/veya
+    `among` içindekiler."""
+    return (
+        _gtin14_values(Material._base_manager.all(), start, among)
+        | _gtin14_values(MaterialUnitConversion._base_manager.all(), start, among)
+        | _gtin14_values(RetiredGtin._base_manager.all(), start, among)
     )
 
 
@@ -1192,6 +1324,46 @@ def case_gtin(material: Material) -> str:
         .first()
     )
     return str(value or "")
+
+
+def case_gtin_at(material: Material, when: datetime | None) -> str:
+    """`when` anında yürürlükteki koli GTIN'i: o andan sonra arşivlenmiş en eski koli GTIN'i (koli
+    içi miktar değişmeden önceki GTIN; `RetiredGtin`), yoksa bugünkü koli GTIN'i (`case_gtin`);
+    hiçbiri yoksa "". `when` None ise bugünkü koli GTIN'i. Lotun koli ve palet etiketleri lotun
+    açıldığı andaki koli GTIN'iyle basılır (`inventory.labels`).
+
+    Önce bugünkü GTIN, sonra arşiv okunur: yeni GTIN ve arşiv satırı birlikte yazılır; iki okuma
+    arasında koli düzeni değişirse arşiv satırı görülür ve eski lot yine eski GTIN'ini alır."""
+    current = case_gtin(material)
+    if when is not None:
+        retired = _archived_after(material, when).values_list("gtin", flat=True).first()
+        if retired:
+            return str(retired)
+    return current
+
+
+def case_factor_at(material: Material, when: datetime | None) -> Decimal | None:
+    """`when` anında yürürlükteki koli içi miktar (temel birimde): o andan sonra arşivlenmiş en eski
+    koli GTIN'inin miktarı (koli düzeni değişmeden önceki), yoksa bugünkü aktif KOLI dönüşümünün
+    katsayısı; koli dönüşümü yoksa None. İrsaliyede koli sayısı lotun açıldığı andaki koli içi
+    miktarla hesaplanır (CUMHUR, 2026-11-05). Okuma sırası `case_gtin_at`'teki gibidir."""
+    case_unit = UnitOfMeasure.objects.filter(code=CASE_UNIT).first()
+    current = unit_factor_to_base(material, case_unit) if case_unit is not None else None
+    if when is not None:
+        retired = _archived_after(material, when).values_list("factor_to_base", flat=True).first()
+        if retired is not None:
+            return Decimal(retired)
+    return current
+
+
+def _archived_after(material: Material, when: datetime) -> QuerySet[RetiredGtin]:
+    """Malzemenin KOLI dönüşümünde `when` anından sonra arşivlenmiş koli GTIN'leri (eskiden
+    yeniye)."""
+    return RetiredGtin.objects.filter(
+        conversion__material=material,
+        conversion__unit__code=CASE_UNIT,
+        created_at__gt=when,
+    ).order_by("created_at", "pk")
 
 
 def send_to_printer(

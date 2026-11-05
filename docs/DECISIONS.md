@@ -2217,3 +2217,24 @@ değiştirme zorunlu, yalnızca admin):
     denetlenmez. Ülke ve dil kodları ISO listesiyle denetlenir.
   - Excel'de boş ülke kodu TR, GBF'de boş dil tr sayılır.
   - GBF dilinin eski serbest metin değerleri göçte koda çevrilir; tanınmayan değer silinmez.
+- **Paket 2, GS1: sahibin kararları (CUMHUR, 2026-11-05, soruların yanıtları):**
+  - Koli içi adet: "Yeni koli GTIN'iyle". Lotu olan mamulde koli içi miktar ancak aynı kayıtta yeni
+    koli GTIN'i girilerek değişir. Eski koli GTIN'i eski miktarıyla arşivlenir, bir daha kimseye
+    verilmez; depodaki eski koliler okutulunca eski miktar önerilir. Gerekçe: GS1'de ticari birimin
+    içeriği değişince yeni GTIN gerekir.
+  - GTIN kilidi: "Yalnız mamulde". Hammadde, ambalaj ve yarı mamulde tedarikçi GTIN'i lot olsa da
+    düzeltilebilir; biçim ve tekillik kuralları her türde geçerlidir.
+  - Tür kilidi: "Lot varken değişmesin". Lotu olan malzemenin türü mamulden ya da mamule
+    değiştirilemez (ekran, Excel aktarımı ve yönetim paneli); yanlış türde açılmış kart için yeni
+    kart açılır. Gerekçe: GTIN kilidi, koli içi miktar kuralı ve eski koli GTIN'leri mamule
+    bağlıdır.
+  - İrsaliyede koli sayısı: "Lotun koli düzeniyle". Koli sayısı lotun açıldığı gün geçerli koli içi
+    miktarla hesaplanır; sevk edilmiş irsaliyenin yeniden basımı değişmez.
+- **Bu kararlardan çıkan, ayrıca sorulmayan kurallar** (değiştirilebilir):
+  - Lotun koli ve palet etiketleri lotun açıldığı andaki koli GTIN'iyle basılır: eski lotun yeniden
+    basılan etiketi eski GTIN'i taşır.
+  - Arşivdeki GTIN aynı malzemeye de yeniden verilmez.
+  - Okutmada önce ürün GTIN'i, sonra güncel koli GTIN'i ((02)'de önce koli GTIN'i), en son arşiv
+    aranır; arşivdeki miktar dönüşüm pasif olsa da kullanılır.
+  - Sıfır ya da eksi koli içi miktarı alan doğrulaması reddeder; koli GTIN'i kuralları bu değerde
+    ayrıca hata vermez.

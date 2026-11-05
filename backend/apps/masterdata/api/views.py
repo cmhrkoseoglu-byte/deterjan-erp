@@ -1,6 +1,6 @@
 from typing import Any, ClassVar
 
-from django.db.models import QuerySet
+from django.db.models import Prefetch, QuerySet
 from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -38,6 +38,7 @@ from apps.masterdata.models import (
     MaterialCategory,
     MaterialUnitConversion,
     Printer,
+    RetiredGtin,
     Supplier,
     UnitOfMeasure,
     Warehouse,
@@ -129,6 +130,14 @@ class MaterialCategoryViewSet(MasterDataViewSet):
     ordering = ["name"]
 
 
+def retired_gtins(prefix: str = "") -> Prefetch:
+    """Dönüşümlerin eski koli GTIN'leri ve değiştiren kullanıcıları tek sorguda (`retired_gtins`
+    alanı satır başına sorgu yapmaz)."""
+    return Prefetch(
+        f"{prefix}retired_gtins", queryset=RetiredGtin.objects.select_related("created_by")
+    )
+
+
 class MaterialViewSet(MasterDataViewSet):
     serializer_class = s.MaterialSerializer
     filterset_fields = {
@@ -147,7 +156,9 @@ class MaterialViewSet(MasterDataViewSet):
             has_lots=services.lot_exists("pk")
         )
         if self.action == "retrieve":
-            queryset = queryset.prefetch_related("conversions__unit")
+            queryset = queryset.prefetch_related(
+                "conversions__unit", retired_gtins("conversions__")
+            )
         return queryset
 
     def get_serializer_class(self) -> type[s.MaterialSerializer]:
@@ -166,7 +177,8 @@ class MaterialViewSet(MasterDataViewSet):
 
 class MaterialUnitConversionViewSet(MasterDataViewSet):
     """Malzemeye özel birim dönüşümleri (`?material=<id>`). Koli (KOLI) dönüşümünde koli GTIN'i
-    tutulur."""
+    ve eski koli GTIN'leri (`retired_gtins`) tutulur. Lotu olan mamulün kilitli koli GTIN'inde
+    koli içi miktar yalnız yeni koli GTIN'iyle değişir (`case_gtin_required`)."""
 
     queryset = MaterialUnitConversion.objects.select_related("material__base_unit", "unit")
     serializer_class = s.MaterialUnitConversionSerializer
@@ -176,8 +188,14 @@ class MaterialUnitConversionViewSet(MasterDataViewSet):
     ordering = ["material__code", "unit__code"]
 
     def get_queryset(self) -> QuerySet[MaterialUnitConversion]:
-        # Koli GTIN'i kilidi (`gtin_locked`) için malzemenin lotu var mı bilgisi tek sorguda.
-        return super().get_queryset().annotate(material_has_lots=services.lot_exists("material"))
+        # Koli GTIN'i kilidi (`gtin_locked`) için malzemenin lotu var mı bilgisi ve eski koli
+        # GTIN'leri tek sorguda.
+        return (
+            super()
+            .get_queryset()
+            .annotate(material_has_lots=services.lot_exists("material"))
+            .prefetch_related(retired_gtins())
+        )
 
 
 class WarehouseViewSet(MasterDataViewSet):

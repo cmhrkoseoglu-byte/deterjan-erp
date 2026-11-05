@@ -3,7 +3,7 @@ sipariş geçmişi, SKT'si yaklaşan rezerve lotlar; sevkiyat satırları, topla
 verisi ve müşteriye sevk edilen lotlar (Adım 3.2)."""
 
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -28,7 +28,7 @@ from apps.inventory import selectors as inventory_selectors
 from apps.inventory.models import StockReservation
 from apps.inventory.services import format_quantity
 from apps.masterdata import services as masterdata
-from apps.masterdata.models import Customer, Material, UnitOfMeasure
+from apps.masterdata.models import Customer, Material
 from apps.sales.models import SalesOrder, SalesOrderLine, Shipment, ShipmentLine, ShipmentPick
 
 EXPIRY_WARNING_DAYS = 30
@@ -309,11 +309,14 @@ def pick_suggestions(shipment: Shipment) -> list[dict[str, Any]]:
     return result
 
 
-def case_breakdown(material: Material, quantity: Decimal) -> tuple[int | None, Decimal]:
+def case_breakdown(
+    material: Material, quantity: Decimal, when: datetime | None = None
+) -> tuple[int | None, Decimal]:
     """Miktarın tam koli sayısı ve koliye girmeyen kalan (temel birimde). Mamulün koli dönüşümü
-    yoksa (None, miktar)."""
-    case = UnitOfMeasure.objects.filter(code=CASE_UNIT).first()
-    factor = masterdata.unit_factor_to_base(material, case) if case is not None else None
+    yoksa (None, miktar). `when` verilirse o anda yürürlükteki koli içi miktarla: irsaliye lotun
+    açıldığı andaki koli düzenini kullanır (CUMHUR, 2026-11-05; eski koliler eski adetle sayılır,
+    sevk edilmiş irsaliyenin yeniden basımı değişmez)."""
+    factor = masterdata.case_factor_at(material, when)
     if not factor or factor <= 0:
         return None, quantity
     cases = int(quantity // factor)
@@ -348,7 +351,7 @@ def waybill_data(shipment: Shipment) -> dict[str, Any]:
     )
     for pick in picks:
         product = pick.line.order_line.product
-        cases, rest = case_breakdown(product, pick.quantity)
+        cases, rest = case_breakdown(product, pick.quantity, pick.lot.created_at)
         lines.append(
             {
                 "line_no": pick.line.order_line.line_no,

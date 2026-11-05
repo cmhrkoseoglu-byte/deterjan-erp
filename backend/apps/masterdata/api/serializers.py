@@ -1,5 +1,6 @@
 from typing import Any
 
+from django.db.models.manager import BaseManager
 from rest_framework import serializers
 
 from apps.core.api.coding import FormerCodesListSerializer, FormerCodesMixin
@@ -14,6 +15,7 @@ from apps.masterdata.models import (
     MaterialCategory,
     MaterialUnitConversion,
     Printer,
+    RetiredGtin,
     Supplier,
     UnitOfMeasure,
     Warehouse,
@@ -58,12 +60,48 @@ class MaterialCategorySerializer(FormerCodesMixin, serializers.ModelSerializer):
 GTIN_INPUT: dict[str, Any] = {"max_length": 32}
 
 
+class RetiredGtinListSerializer(serializers.ListSerializer):
+    """Eski koli GTIN'leri en yeniden eskiye. Liste ve detay sorgusu satırları önceden getirir
+    (`prefetch_related`); sıralama burada yapılır, satır başına sorgu olmaz."""
+
+    def to_representation(self, data: Any) -> list[Any]:
+        rows = data.all() if isinstance(data, BaseManager) else data
+        newest_first = sorted(rows, key=lambda row: (row.created_at, row.pk), reverse=True)
+        return super().to_representation(newest_first)
+
+
+class RetiredGtinSerializer(serializers.ModelSerializer):
+    """Eski koli GTIN'i (salt okunur): koli içi miktar değişince eski miktarıyla arşivlenir; bir
+    daha verilmez, okutulunca eski koli düzeniyle çözülür."""
+
+    retired_at = serializers.DateTimeField(
+        source="created_at", read_only=True, help_text="GTIN'in değiştiği an"
+    )
+    retired_by_name = serializers.SerializerMethodField(help_text="Değiştiren kullanıcı")
+
+    class Meta:
+        model = RetiredGtin
+        list_serializer_class = RetiredGtinListSerializer
+        fields = ["gtin", "factor_to_base", "replaced_by", "retired_at", "retired_by_name"]
+        read_only_fields = fields
+
+    def get_retired_by_name(self, instance: RetiredGtin) -> str:
+        user = instance.created_by
+        return (user.full_name or user.username) if user is not None else ""
+
+
 class MaterialUnitConversionSerializer(serializers.ModelSerializer):
     unit_code = serializers.CharField(source="unit.code", read_only=True)
     material_code = serializers.CharField(source="material.code", read_only=True)
     base_unit_code = serializers.CharField(source="material.base_unit.code", read_only=True)
     gtin_locked = serializers.SerializerMethodField(
-        help_text="Koli GTIN'i dolu ve malzemenin lotu var: değiştirilemez."
+        help_text="Lotu olan mamulde koli GTIN'i dolu: değiştirilemez; koli içi miktar yalnız "
+        "yeni koli GTIN'iyle değişir (eski GTIN arşivlenir)."
+    )
+    retired_gtins = RetiredGtinSerializer(
+        many=True,
+        read_only=True,
+        help_text="Eski koli GTIN'leri (koli içi miktar değişince arşivlenir), en yeniden eskiye",
     )
 
     class Meta:
@@ -78,6 +116,7 @@ class MaterialUnitConversionSerializer(serializers.ModelSerializer):
             "base_unit_code",
             "gtin",
             "gtin_locked",
+            "retired_gtins",
             *AUDIT_FIELDS,
         ]
         read_only_fields = AUDIT_FIELDS
@@ -95,7 +134,7 @@ class MaterialSerializer(FormerCodesMixin, serializers.ModelSerializer):
     base_unit_code = serializers.CharField(source="base_unit.code", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True, default=None)
     gtin_locked = serializers.SerializerMethodField(
-        help_text="GTIN dolu ve malzemenin lotu var: değiştirilemez."
+        help_text="Mamul, GTIN dolu ve lotu var: değiştirilemez (kilit yalnız mamulde)."
     )
 
     class Meta:

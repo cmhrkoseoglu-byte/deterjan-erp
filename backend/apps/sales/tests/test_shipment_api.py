@@ -3,6 +3,7 @@ irsaliye (JSON ve PDF), toplama önerisi, müşteriye sevk edilen lotlar ve rol 
 
 from collections.abc import Callable
 from datetime import timedelta
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -11,7 +12,7 @@ from rest_framework.test import APIClient
 
 from apps.core.labels import gs1_check_digit
 from apps.core.models import User
-from apps.masterdata.models import Location, MaterialUnitConversion
+from apps.masterdata.models import Location, MaterialUnitConversion, RetiredGtin
 from apps.masterdata.tests.factories import CustomerFactory
 from apps.sales import services
 from apps.sales.models import SalesOrder, Shipment
@@ -344,6 +345,64 @@ def test_pick_by_case_barcode_and_pallet_sscc(
     picked = {p["lot"]: p["quantity"] for p in by_pallet.json()["picks"]}
     assert picked == {lot_a.pk: "12.0000", lot_b.pk: "12.0000"}
     assert client_for("sevkiyat").post(pick, {"lot_no": "ORTAK-2"}).status_code == 403
+
+
+OLD_CASE_GTIN = "28690000000016"  # eski koli GTIN'i (arşivde): o düzende 1 koli = 6 ADET
+SCAN = "/api/v1/inventory/scan/"
+
+
+def test_pick_by_archived_case_barcode_suggests_one_old_case(
+    client_for: Client, seller: User, dock: Location
+) -> None:
+    """Koli içi miktar değişince koliye yeni GTIN verilir, eski GTIN eski miktarıyla arşivlenir
+    (CUMHUR, 2026-11-05); depodaki eski koliler okutulmaya devam eder. Okutma yanıtı eski koli içi
+    miktarı (`units_per_case`) ve uyarıyı verir, toplama ekranı 1 eski koli önerir. Toplama lotu
+    güncel koli GTIN'indeki gibi bulur: GTIN ürünü belirler, aynı lot no iki üründe olsa da."""
+    from apps.inventory.models import Lot
+
+    depo = client_for("depo")
+    first, second = finished_product(), finished_product()
+    case = MaterialUnitConversion.objects.get(material=first, unit__code="KOLI")
+    MaterialUnitConversion.objects.filter(pk=case.pk).update(gtin=CASE_GTIN)
+    # Arşiv satırı doğrudan (yazan servis masterdata'da).
+    RetiredGtin.objects.create(
+        conversion=case, gtin=OLD_CASE_GTIN, factor_to_base=Decimal(6), replaced_by=CASE_GTIN
+    )
+    lot_a = finished_lot(first, "24")
+    lot_b = finished_lot(second, "24")
+    Lot.objects.filter(pk__in=[lot_a.pk, lot_b.pk]).update(lot_no="ORTAK-4")
+    order = confirmed_order(seller, [(first, "2", "KOLI"), (second, "1", "KOLI")])
+    shipment = services.plan_shipment(seller, order, {"planned_date": timezone.localdate()})
+    pick = f"{URL}{shipment.pk}/pick/"
+
+    def scan_and_pick(code: str) -> tuple[Any, Any]:
+        """Toplama ekranı gibi: okut, önerilen miktarla (1 koli) topla."""
+        scanned = depo.get(SCAN, {"code": code})
+        assert scanned.status_code == 200, scanned.json()
+        quantity = scanned.json()["units_per_case"]
+        return scanned.json(), depo.post(
+            pick, {"lot_no": code, "quantity": quantity}, format="json"
+        )
+
+    old_case = f"(01){OLD_CASE_GTIN}(10)ORTAK-4"
+    scanned, picked = scan_and_pick(old_case)
+    assert [row["id"] for row in scanned["lots"]] == [lot_a.pk]
+    assert (scanned["unit"], scanned["units_per_case"]) == ("KOLI", "6.0000")
+    assert scanned["warnings"] == [
+        "Eski koli GTIN'i okutuldu: koli düzeni değişti; bu kolide 1 koli = 6 ADET."
+    ]
+    assert picked.status_code == 200, picked.json()
+    assert [(p["lot"], p["quantity"]) for p in picked.json()["picks"]] == [(lot_a.pk, "6.0000")]
+    # Güncel koli GTIN'i: güncel koli içi miktar, uyarısız.
+    scanned, picked = scan_and_pick(f"]C101{CASE_GTIN}10ORTAK-4")
+    assert (scanned["units_per_case"], scanned["warnings"]) == ("12.0000", [])
+    assert picked.status_code == 200, picked.json()
+    assert [(p["lot"], p["quantity"]) for p in picked.json()["picks"]] == [
+        (lot_a.pk, "6.0000"),
+        (lot_a.pk, "12.0000"),
+    ]
+    sevkiyat = client_for("sevkiyat")
+    assert sevkiyat.post(pick, {"lot_no": old_case}, format="json").status_code == 403
 
 
 def test_lot_of_a_product_outside_the_shipment_is_not_in_shipment(

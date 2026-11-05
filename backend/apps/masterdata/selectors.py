@@ -3,8 +3,8 @@
 from django.db.models import QuerySet, Value
 from django.db.models.functions import LPad
 
-from apps.core.labels import gtin14
-from apps.masterdata.models import Material, MaterialUnitConversion
+from apps.core.labels import gtin14, is_ascii_digits
+from apps.masterdata.models import Material, MaterialUnitConversion, RetiredGtin
 
 
 def _by_gtin14[M: (Material, MaterialUnitConversion)](
@@ -34,3 +34,16 @@ def gtin_owner(gtin: str) -> tuple[Material | None, MaterialUnitConversion | Non
     if conversion is not None:
         return conversion.material, conversion
     return None, None
+
+
+def retired_gtin(gtin: str) -> RetiredGtin | None:
+    """Eski koli GTIN'i, 14 haneli normal biçimde aranır (GTIN-8/12/13/14 eşleşir); dönüşümü,
+    malzemesi, temel birimi ve birimiyle. Boş ya da rakam olmayan girişte None."""
+    gtin = (gtin or "").strip()
+    if not gtin or not is_ascii_digits(gtin) or len(gtin) > 14:
+        return None
+    return (
+        RetiredGtin.objects.select_related("conversion__material__base_unit", "conversion__unit")
+        .filter(gtin=gtin14(gtin))
+        .first()
+    )

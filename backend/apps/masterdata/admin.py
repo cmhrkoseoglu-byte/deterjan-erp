@@ -1,8 +1,11 @@
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from django.contrib import admin
+from django.db.models import Model
+from django.http import HttpRequest
 
-from apps.core.admin import AuditedAdminMixin
+from apps.core.admin import AuditedAdminMixin, ReadOnlyAdmin
+from apps.masterdata import services
 from apps.masterdata.models import (
     Customer,
     Equipment,
@@ -10,6 +13,7 @@ from apps.masterdata.models import (
     Material,
     MaterialCategory,
     MaterialUnitConversion,
+    RetiredGtin,
     Supplier,
     UnitOfMeasure,
     Warehouse,
@@ -66,6 +70,14 @@ class MaterialAdmin(MasterDataAdmin):
     readonly_fields = (*MasterDataAdmin.readonly_fields, "gtin")
     inlines = [MaterialUnitConversionInline]
 
+    def get_readonly_fields(self, request: HttpRequest, obj: Model | None = None) -> Any:
+        # Lotu olan malzemenin türü panelden de değişmez (servis kuralı `material_type_locked`;
+        # panel kaydı servisleri atlar).
+        fields = super().get_readonly_fields(request, obj)
+        if isinstance(obj, Material) and services.material_has_lots(obj):
+            return (*fields, "material_type")
+        return fields
+
 
 @admin.register(Warehouse)
 class WarehouseAdmin(MasterDataAdmin):
@@ -95,3 +107,11 @@ class SupplierAdmin(MasterDataAdmin):
 class CustomerAdmin(MasterDataAdmin):
     list_filter = ("is_active",)
     list_display = ("code", "name", "tax_number", "phone", "is_active")
+
+
+@admin.register(RetiredGtin)
+class RetiredGtinAdmin(ReadOnlyAdmin):
+    """Eski koli GTIN'leri salt okunur: değiştirilmez, silinmez."""
+
+    list_display = ("gtin", "conversion", "factor_to_base", "replaced_by", "created_at")
+    search_fields = ("gtin", "replaced_by", "conversion__material__code")

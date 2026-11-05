@@ -229,7 +229,8 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
   - (15) ve (17) alanlarında gün 00 ayın son günü sayılır,
   - üretim, dolum ve sevkiyatta lot çözümü ortaktır.
 - **GTIN tekilliği:** 14 haneli normal biçimde denetlenir; ürün ve koli GTIN'lerinin tamamında tek
-  olur. Lotu olan malzemenin GTIN'i değişmez.
+  olur. Lotu olan mamulün GTIN'i değişmez (kilit yalnız mamulde; lotu olan malzemenin türü
+  mamulden ya da mamule değişmez).
 - **GTIN önerisi:** yalnızca mamulde, firma öneki ve ilk boş ürün referansı girildikten sonra
   açılır.
 - **Koli GTIN'i:** KOLI dönüşümünde tutulur.
@@ -237,6 +238,9 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
     (37) koli sayısı basılır.
   - Okutmada koli GTIN'i koli birimiyle çözülür.
   - Tanımlı değilse bugünkü davranış sürer ve uyarı verilir.
+- **Koli düzeni değişimi** (CUMHUR, 2026-11-05): lotu olan mamulde koli içi miktar değişince koliye
+  yeni GTIN verilir; eski GTIN eski miktarıyla arşivlenir ve bir daha verilmez. Okutmada eski
+  miktar önerilir; etikette ve irsaliyede lotun açıldığı günkü koli düzeni geçerlidir.
 - **Etiket:** yalnız okutulabilen GS1 barkodu basılır (geçerli GTIN, GS1'e uyan lot no); değilse
   firma içi `LOT:` barkodu. Türkçe harfli ya da > içeren lot numarasında çizgi barkod yerine QR
   okutulur.

@@ -1,7 +1,8 @@
 """GS1 (Kodlama sistematiği, Paket 2, Adım 7): koli ve palet etiketinde koli GTIN'i, okutulamayan
 GS1 barkodunun ve Türkçe harfli ya da ">" taşıyan lot noda firma içi barkodun basılmaması, ZPL'de
 "^" ve "~" taşıyan lot no, palette koli sayısı sınırı, SSCC'nin yeniden verilmemesi, lotu olan
-malzemede GTIN kilidi (eski veriler dahil)."""
+mamulde GTIN kilidi (eski veriler dahil), koli içi miktar değişince lotun etiketinde lotun açıldığı
+andaki koli GTIN'i (3. tur; kurallar `masterdata/tests/test_pack_change.py`)."""
 
 import re
 from datetime import date
@@ -23,6 +24,7 @@ from apps.core.labels import (
 )
 from apps.core.roles import ADMIN, DEPO, DOLUM, PLANLAMA
 from apps.inventory import services
+from apps.inventory.api.serializers import LotSerializer
 from apps.inventory.labels import (
     NO_BARCODE_QR,
     NO_BARCODE_SSCC,
@@ -35,7 +37,7 @@ from apps.inventory.models import Lot, PalletLabel
 from apps.inventory.selectors import decode_scan
 from apps.inventory.tests.factories import stocked_lot
 from apps.masterdata import services as masterdata
-from apps.masterdata.models import LabelSettings, Material, MaterialUnitConversion
+from apps.masterdata.models import LabelSettings, Material, MaterialUnitConversion, RetiredGtin
 from apps.masterdata.tests.factories import MaterialFactory, unit
 
 pytestmark = pytest.mark.django_db
@@ -45,6 +47,8 @@ MATERIALS = "/api/v1/masterdata/materials/"
 PREFIX = "8691234"
 GTIN = "8690000000012"
 CASE_GTIN = "18690000000019"  # GTIN'in gösterge hanesi 1 ile koli GTIN'i
+NEW_CASE_GTIN = "28690000000016"  # gösterge hanesi 2 (koli içi miktar değişince)
+THIRD_CASE_GTIN = "38690000000013"  # gösterge hanesi 3
 OTHER_GTIN = "8690000000029"
 
 
@@ -500,11 +504,16 @@ def test_existing_material_with_gtin_and_lots_keeps_working(
         {"material": material, "unit": unit("KOLI"), "factor_to_base": Decimal(12), "gtin": ""},
     )
     case = masterdata.update_record(planner, case, {"gtin": CASE_GTIN})
-    for value in ("28690000000016", ""):
+    for value in (NEW_CASE_GTIN, ""):
         with pytest.raises(BusinessRuleError) as exc:
             masterdata.update_record(planner, case, {"gtin": value})
         assert exc.value.code == "gtin_locked"
-    masterdata.update_record(planner, case, {"factor_to_base": Decimal(24)})
+    # Koli içi miktar yalnız yeni koli GTIN'iyle değişir (CUMHUR, 2026-11-05); eski GTIN eski
+    # miktarıyla arşivlenir, önceden açılmış lotun etiketinde kalır.
+    with pytest.raises(BusinessRuleError) as exc:
+        masterdata.update_record(planner, case, {"factor_to_base": Decimal(24)})
+    assert exc.value.code == "case_gtin_required"
+    masterdata.update_record(planner, case, {"factor_to_base": Decimal(24), "gtin": NEW_CASE_GTIN})
     assert case_gs1(lot)[0] == ("01", CASE_GTIN)  # type: ignore[index]
 
     client = client_for(PLANLAMA)
@@ -545,3 +554,143 @@ def test_legacy_invalid_gtin_does_not_block_saving_and_can_be_corrected(
     with pytest.raises(BusinessRuleError) as exc:
         masterdata.update_record(planner, material, {"gtin": OTHER_GTIN})
     assert exc.value.code == "gtin_locked"
+
+
+# --- koli içi miktar değişikliği: lotun açıldığı andaki koli GTIN'i ------------------------------
+
+
+def change_pack(actor, material: Material, factor: int, gtin: str) -> None:
+    """Koli içi miktar yeni koli GTIN'iyle değişir; eski GTIN eski miktarıyla arşivlenir."""
+    case = MaterialUnitConversion.objects.get(material=material, unit__code="KOLI")
+    masterdata.update_record(actor, case, {"factor_to_base": Decimal(factor), "gtin": gtin})
+
+
+def content_gtins(label: Label) -> list[str]:
+    """Etiketteki GS1 içerik barkodlarının (01) ve (02) GTIN'leri (SSCC sayılmaz)."""
+    return [
+        value
+        for element in label.elements
+        if isinstance(element, Barcode) and element.gs1 is not None
+        for ai, value in element.gs1
+        if ai in ("01", "02")
+    ]
+
+
+def test_labels_carry_the_case_gtin_in_force_when_the_lot_was_made(
+    make_user, admin, client_for, invariants
+) -> None:
+    """Önceden açılmış lotun koli ve palet etiketi yeniden basılınca da eski koli GTIN'ini taşır,
+    sonra açılan lot yenisini; iki değişiklikte her lot kendi dönemindeki GTIN'le basılır."""
+    enable_gs1(admin)
+    planner, actor = make_user(PLANLAMA), make_user(DEPO)
+    material = finished(case_gtin=CASE_GTIN)
+    before = finished_lot(material, "D-261015-001")
+    change_pack(planner, material, 24, NEW_CASE_GTIN)
+    between = finished_lot(material, "D-261015-002")
+    change_pack(planner, material, 36, THIRD_CASE_GTIN)
+    after = finished_lot(material, "D-261015-003")
+    gtins = (CASE_GTIN, NEW_CASE_GTIN, THIRD_CASE_GTIN)
+    for made, gtin in zip((before, between, after), gtins, strict=True):
+        lot = Lot.objects.get(pk=made.pk)  # yeniden basım: kayıt veritabanından
+        others = set(gtins) - {gtin}
+        case = case_label(lot)
+        assert content_gtins(case) == [gtin]
+        assert case_gs1(lot)[0] == ("01", gtin)  # type: ignore[index]
+        assert zpl_gs1_fields(case) == [f"(01){gtin}(17)281015(10){lot.lot_no}"]
+        assert gtin in texts(case) and not others & set(texts(case))
+        pallet = pallet_label(services.create_pallet_label(actor, lot, 10))
+        assert content_gtins(pallet) == [gtin]
+        assert gs1_barcodes(pallet)[0] == f"{FNC1}02{gtin}3710"
+        assert gtin in texts(pallet) and not others & set(texts(pallet))
+    # Koli etiketi uç noktası da lotun dönemindeki GTIN'i basar.
+    response = client_for(DOLUM).get(f"{LOTS}{before.pk}/case-label/", {"output": "zpl"})
+    zpl = response.content.decode()
+    assert f"^FD(01){CASE_GTIN}(17)281015(10)D-261015-001^FS" in zpl
+    assert THIRD_CASE_GTIN not in zpl
+
+
+def test_other_materials_keep_their_own_gtin_after_a_pack_change(
+    make_user, admin, client_for, invariants
+) -> None:
+    """Bir mamulün koli içi miktar değişikliği başka malzemenin etiketine dokunmaz: değişiklikten
+    önce açılmış öteki lotların koli ve palet etiketi kendi koli GTIN'ini, koli GTIN'i yoksa ürün
+    GTIN'ini taşır; değişen mamulün arşivdeki eski koli GTIN'i onlara basılmaz."""
+    enable_gs1(admin)
+    planner, actor = make_user(PLANLAMA), make_user(DEPO)
+    changed = finished(case_gtin=CASE_GTIN)
+    finished_lot(changed, "D-261015-001")  # lotu var: koli GTIN'i kilitli
+    other = finished(OTHER_GTIN, case_gtin="18690000000026")
+    plain = finished("8690000000036")  # koli GTIN'i yok: ürün GTIN'i basılır
+    lots = [
+        (finished_lot(other, "D-261015-002"), "18690000000026"),
+        (finished_lot(plain, "D-261015-003"), "08690000000036"),
+    ]
+    change_pack(planner, changed, 24, NEW_CASE_GTIN)
+    assert RetiredGtin.objects.get().gtin == CASE_GTIN
+    client = client_for(DOLUM)
+    for made, gtin in lots:
+        lot = Lot.objects.get(pk=made.pk)  # yeniden basım: kayıt veritabanından
+        assert case_gs1(lot)[0] == ("01", gtin)  # type: ignore[index]
+        case = case_label(lot)
+        assert content_gtins(case) == [gtin]
+        assert gtin in texts(case) and CASE_GTIN not in texts(case)
+        pallet = pallet_label(services.create_pallet_label(actor, lot, 10))
+        assert content_gtins(pallet) == [gtin]
+        assert gtin in texts(pallet) and CASE_GTIN not in texts(pallet)
+        zpl = client.get(f"{LOTS}{lot.pk}/case-label/", {"output": "zpl"}).content.decode()
+        assert f"^FD(01){gtin}(17)281015(10){lot.lot_no}^FS" in zpl
+        assert CASE_GTIN not in zpl
+
+
+def test_label_fallbacks_still_apply_after_a_pack_change(make_user, admin, invariants) -> None:
+    """2. turun kuralları: (10) alanına uymayan lot noda firma içi `LOT:` basılır, lotun
+    dönemindeki koli GTIN'i yazı olarak kalır. Geçersiz (okutulamayan eski) koli GTIN'i basılmaz ve
+    ürün GTIN'ine düşmez; kilitlenmediği için miktarı da GTIN'i de değişir, arşive düşmez. Koli
+    GTIN'i olmayan malzemede ürün GTIN'i basılır."""
+    enable_gs1(admin)
+    planner, actor = make_user(PLANLAMA), make_user(DEPO)
+    material = finished(case_gtin=CASE_GTIN)
+    odd = finished_lot(material, "LOT 12")
+    change_pack(planner, material, 24, NEW_CASE_GTIN)
+    for label in (case_label(odd), pallet_label(services.create_pallet_label(actor, odd, 10))):
+        assert content_gtins(label) == []
+        assert [barcode.data for barcode in internal_barcodes(label)] == ["LOT:LOT 12"]
+        assert CASE_GTIN in texts(label) and NEW_CASE_GTIN not in texts(label)
+
+    legacy = finished(OTHER_GTIN, case_gtin="18690000000027")  # kontrol hanesi yanlış eski veri
+    old = finished_lot(legacy, "D-261015-004")
+    case = MaterialUnitConversion.objects.get(material=legacy)
+    masterdata.update_record(planner, case, {"factor_to_base": Decimal(24)})  # kilitli değil
+    assert case_gs1(old) is None and "GTIN" not in texts(case_label(old))
+    masterdata.update_record(planner, case, {"gtin": "18690000000026"})  # düzeltme serbest
+    assert not RetiredGtin.objects.filter(conversion=case).exists()
+    assert case_gs1(old)[0] == ("01", "18690000000026")  # type: ignore[index]
+
+    plain = finished_lot(finished("8690000000036"), "D-261015-005")
+    assert case_gs1(plain)[0] == ("01", "08690000000036")  # type: ignore[index]
+
+
+def test_lot_gs1_flag_matches_the_labels_after_a_pack_change(
+    make_user, admin, client_for, invariants
+) -> None:
+    """`LotSerializer.gs1_label` (ön yüzün etiket ipucu) bugünkü koli GTIN'iyle hesaplanır; etiket
+    lotun dönemindeki koli GTIN'ini basar. Arşivlenen koli GTIN'i her zaman geçerli olduğundan
+    (yalnız kilitli, geçerli GTIN arşivlenir) ikisi aynı sonucu verir."""
+    enable_gs1(admin)
+    material = finished(case_gtin=CASE_GTIN)
+    lots = [finished_lot(material, "D-261015-001"), finished_lot(material, "LOT 12")]
+    change_pack(make_user(PLANLAMA), material, 24, NEW_CASE_GTIN)
+    lots.append(finished_lot(material, "D-261015-002"))
+
+    def gs1_on_labels(lot: Lot) -> bool:
+        pallet = PalletLabel(sscc="0" * 18, lot=lot, case_count=10)  # kaydedilmez, yalnız çizilir
+        printed = [content_gtins(case_label(lot)), content_gtins(pallet_label(pallet))]
+        assert printed[0] == printed[1]
+        return bool(printed[0])
+
+    expected = {lot.pk: gs1_on_labels(lot) for lot in lots}
+    assert list(expected.values()) == [True, False, True]
+    rows = client_for(DEPO).get(LOTS).json()["results"]
+    assert {row["id"]: row["gs1_label"] for row in rows} == expected
+    for lot in lots:
+        assert LotSerializer(Lot.objects.get(pk=lot.pk)).data["gs1_label"] is expected[lot.pk]

@@ -6,7 +6,7 @@ from rest_framework.test import APIClient
 
 from apps.inventory.models import Lot
 from apps.inventory.tests.factories import stocked_lot
-from apps.masterdata.models import Material, MaterialUnitConversion
+from apps.masterdata.models import Material, MaterialUnitConversion, RetiredGtin
 from apps.masterdata.tests.factories import unit
 from apps.production import services
 from apps.production.models import ProductionOrder
@@ -290,6 +290,49 @@ def test_pick_by_gs1_barcode(plant, planner, depo, operator):
     wrong = pick(f"(01){CASE_GTIN[:-1]}0(10){las.lot_no}")
     assert wrong.status_code == 400 and wrong.data["code"] == "gs1_check_digit"
     assert pick(f"(01){CASE_GTIN}(10){las.lot_no}", user=operator).status_code == 403
+
+
+OLD_CASE_GTIN = "28690000000016"  # eski koli GTIN'i (arşivde)
+
+
+def test_pick_by_archived_case_gtin(plant, planner, depo, operator):
+    """Eski koli GTIN'i (arşiv: koli içi miktar değişince yerine yenisi verildi) depodaki eski
+    kolilerde kalır: üretim ortak lot çözümüyle lotu güncel koli GTIN'indeki gibi, yalnızca
+    ihtiyacın malzemesinde bulur. Arşiv satırı doğrudan yazılır (okutma malzeme türüne bakmaz)."""
+    las, sles = plant.lots["las"], plant.lots["sles"]
+    with_case_gtin(plant)
+    RetiredGtin.objects.create(
+        conversion=MaterialUnitConversion.objects.get(material=plant.las, unit__code="KOLI"),
+        gtin=OLD_CASE_GTIN,
+        factor_to_base=D("20"),
+        replaced_by=CASE_GTIN,
+    )
+    order = approved_order(plant, planner)
+    requirement = plant.requirement(order, plant.las)
+
+    def pick(code, user=depo):
+        body = {"requirement": requirement.pk, "lot_no": code, "quantity": "10"}
+        return client(user).post(url("order-picks", order.pk), body, format="json")
+
+    codes = [
+        f"(01){OLD_CASE_GTIN}(10){las.lot_no}",
+        f"]C101{OLD_CASE_GTIN}10{las.lot_no}\x1d17281015",
+        f"\xa0(01){OLD_CASE_GTIN}(10){las.lot_no.lower()}\x1e",
+    ]
+    for code in codes:
+        response = pick(code)
+        assert response.status_code == 201, (repr(code), response.data)
+        assert response.data["lot_no"] == las.lot_no
+    # GTIN malzemeyi belirler: başka malzemenin lot no'su bu ihtiyaçta bulunmaz.
+    other = pick(f"(01){OLD_CASE_GTIN}(10){sles.lot_no}")
+    assert (other.status_code, other.data) == (
+        400,
+        {
+            "code": "lot_not_found",
+            "detail": f"{plant.las.code} malzemesinde {sles.lot_no} lotu bulunamadı.",
+        },
+    )
+    assert pick(f"(01){OLD_CASE_GTIN}(10){las.lot_no}", user=operator).status_code == 403
 
 
 # --- şarj ve tartım ----------------------------------------------------------------------------

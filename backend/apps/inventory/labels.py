@@ -8,6 +8,9 @@ Okutma içerikleri (`selectors.decode_scan` çözer):
   ürün GTIN'i basılır. Her ikisinde QR `LOT:<lot_no>`.
 - Palet etiketi: SSCC (00) + içerik barkodları (02) GTIN + (37) koli sayısı ve (17) SKT + (10) lot.
   (02) koli GTIN'idir; tanımlı değilse ürün GTIN'i basılır.
+- Koli GTIN'i lotun açıldığı anda yürürlükteki koli GTIN'idir (`masterdata.case_gtin_at`): koli
+  içi miktar değişmeden önce açılmış lotun etiketi yeniden basılınca da eski koli GTIN'ini taşır,
+  sonra açılan lot yenisini.
 - Okutulamayan GS1 barkodu basılmaz: GTIN'i geçersiz (kontrol hanesi yanlış eski veri) ya da lot
   numarası (10) alanına uymayan (20 karakterden uzun, boşluklu, Türkçe harfli; ZPL'de bozulan
   "(", ")", ">" karakterli) lotta ve (37) alanına sığmayan (8 haneden uzun) koli sayısında etiket
@@ -19,6 +22,7 @@ Okutma içerikleri (`selectors.decode_scan` çözer):
 """
 
 from collections.abc import Sequence
+from datetime import datetime
 
 from apps.core.labels import (
     GS1_CASE_COUNT_MAX,
@@ -123,11 +127,14 @@ def lot_label(lot: Lot, company_name: str = "") -> Label:
     return Label(LABEL_WIDTH, LABEL_HEIGHT, elements, title=f"Lot {lot.lot_no}")
 
 
-def case_gtin14(material: Material) -> str:
+def case_gtin14(material: Material, when: datetime | None = None) -> str:
     """Koli etiketinin (01) ve palet etiketinin (02) GTIN'i, 14 hane: malzemenin koli GTIN'i (KOLI
     dönüşümünde) varsa o, yoksa ürün GTIN'i (eski davranış); ikisi de yoksa ya da GTIN geçersizse
-    (kontrol hanesi yanlış eski veri: barkodu okutulamaz) ""."""
-    gtin = masterdata.case_gtin(material) or material.gtin
+    (kontrol hanesi yanlış eski veri: barkodu okutulamaz) "". Geçersiz koli GTIN'i ürün GTIN'ine
+    düşmez. `when` (lotun açıldığı an) verilirse o an yürürlükteki koli GTIN'i
+    (`masterdata.case_gtin_at`: koli içi miktar sonra değiştiyse eski koli GTIN'i); verilmezse
+    bugünkü."""
+    gtin = masterdata.case_gtin_at(material, when) or material.gtin
     return gtin14(gtin) if gtin and is_valid_gtin(gtin) else ""
 
 
@@ -147,20 +154,21 @@ def _case_elements(lot: Lot, gtin: str) -> Gs1Elements:
 
 
 def case_gs1(lot: Lot) -> Gs1Elements | None:
-    """Koli GS1-128 içeriği: (01) koli GTIN'i (tanımlı değilse ürün GTIN'i) + (17) SKT + (10) lot;
-    basılabilir GTIN yoksa ya da lot numarası (10) alanına uymuyorsa None (firma içi `LOT:`)."""
-    gtin = case_gtin14(lot.material)
+    """Koli GS1-128 içeriği: (01) lotun açıldığı andaki koli GTIN'i (tanımlı değilse ürün GTIN'i) +
+    (17) SKT + (10) lot; basılabilir GTIN yoksa ya da lot numarası (10) alanına uymuyorsa None
+    (firma içi `LOT:`)."""
+    gtin = case_gtin14(lot.material, lot.created_at)
     return _case_elements(lot, gtin) if gtin and gs1_lot_no(lot) else None
 
 
 def case_label(lot: Lot, company_name: str = "", units_per_case: int | None = None) -> Label:
     """Mamul koli etiketi (Karar D-6: GTIN varsa GS1-128, yoksa firma içi Code128). GTIN satırı ve
-    (01) alanı koli GTIN'idir; tanımlı değilse ürün GTIN'i. Geçersiz GTIN'de ya da lot numarası
-    (10) alanına uymuyorsa firma içi Code128 (`case_gs1`); Code128'e yazılamayan lot noda yalnız
-    QR."""
+    (01) alanı lotun açıldığı andaki koli GTIN'idir; tanımlı değilse ürün GTIN'i. Geçersiz GTIN'de
+    ya da lot numarası (10) alanına uymuyorsa firma içi Code128 (`case_gs1`); Code128'e
+    yazılamayan lot noda yalnız QR."""
     elements, y = _header(company_name, lot.material)
     y += 2
-    gtin = case_gtin14(lot.material)
+    gtin = case_gtin14(lot.material, lot.created_at)
     rows = [
         ("LOT", lot.lot_no),
         ("SKT", _date(lot.expiry_date)),
@@ -185,14 +193,14 @@ def case_label(lot: Lot, company_name: str = "", units_per_case: int | None = No
 
 
 def pallet_label(pallet: PalletLabel, company_name: str = "") -> Label:
-    """SSCC palet etiketi (GS1 lojistik etiketi düzeninde). İçerik (02) koli GTIN'i + (37) koli
-    sayısıdır; koli GTIN'i tanımlı değilse (02) ürün GTIN'i. İçerik barkodları basılabilir GTIN,
-    (10) alanına uyan lot numarası ve (37) alanına sığan koli sayısı ister; yoksa firma içi Code128
-    `LOT:` (Code128'e yazılamayan lot noda yerine SSCC'nin okutulmasını söyleyen yazı). SSCC her
-    zaman basılır."""
+    """SSCC palet etiketi (GS1 lojistik etiketi düzeninde). İçerik (02) lotun açıldığı andaki koli
+    GTIN'i + (37) koli sayısıdır; koli GTIN'i tanımlı değilse (02) ürün GTIN'i. İçerik barkodları
+    basılabilir GTIN, (10) alanına uyan lot numarası ve (37) alanına sığan koli sayısı ister; yoksa
+    firma içi Code128 `LOT:` (Code128'e yazılamayan lot noda yerine SSCC'nin okutulmasını söyleyen
+    yazı). SSCC her zaman basılır."""
     lot = pallet.lot
     material = lot.material
-    gtin = case_gtin14(material)
+    gtin = case_gtin14(material, lot.created_at)
     elements: list[Element] = [Box(MARGIN, MARGIN, INNER, LABEL_HEIGHT - 2 * MARGIN, thickness=0.5)]
     y = MARGIN + 3
     if company_name:

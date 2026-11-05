@@ -769,6 +769,56 @@ def test_reversed_shipment_movement_is_not_counted_as_shipped(
     assert list(selectors.customer_shipped_lots(order.customer)) == []
 
 
+def ship(seller: User, picker: User, product: Any, quantity: str) -> Shipment:
+    """Onaylı sipariş, rezerve lotların toplanması ve sevk."""
+    order = confirmed_order(seller, [(product, quantity, "ADET")])
+    shipment = plan(seller, order, **VEHICLE)
+    for reservation in services.active_reservations(order):
+        services.pick_lot(picker, shipment, reservation.lot)
+    services.mark_loaded(picker, shipment)
+    services.dispatch_shipment(seller, shipment)
+    return shipment
+
+
+def waybill_cases(shipment: Shipment) -> list[tuple[int | None, Decimal]]:
+    return [
+        (line["cases"], line["loose_units"]) for line in selectors.waybill_data(shipment)["lines"]
+    ]
+
+
+def test_waybill_counts_cases_with_the_case_quantity_of_the_lot(
+    seller: User, picker: User, dock: Location
+) -> None:
+    """İrsaliyede koli sayısı lotun açıldığı andaki koli içi miktarla hesaplanır (CUMHUR,
+    2026-11-05): koli düzeni değişmeden önce açılmış lotun kolileri eski adetle sayılır, sevk
+    edilmiş irsaliyenin yeniden basımı değişmez, yeni düzende açılan lot yeni adetle sayılır."""
+    from apps.masterdata.models import MaterialUnitConversion, RetiredGtin
+
+    product = finished_product()  # 1 KOLI = 12 ADET
+    finished_lot(product, "48")  # koli düzeni değişmeden önce
+    first = ship(seller, picker, product, "24")
+    assert waybill_cases(first) == [(2, D("0"))]
+
+    # Koli düzeni 12'den 24'e değişti: eski koli GTIN'i eski miktarıyla arşivde, katsayı 24 (servis
+    # kuralı masterdata/tests/test_pack_change.py'de).
+    case = MaterialUnitConversion.objects.get(material=product, unit__code="KOLI")
+    RetiredGtin.objects.create(
+        conversion=case,
+        gtin="18690000000019",
+        factor_to_base=D("12"),
+        replaced_by="28690000000016",
+    )
+    MaterialUnitConversion.objects.filter(pk=case.pk).update(factor_to_base=D("24"))
+
+    assert waybill_cases(first) == [(2, D("0"))]  # yeniden basım değişmez
+    second = ship(seller, picker, product, "24")  # eski lotun kolileri (12 adet) yeni düzende
+    assert waybill_cases(second) == [(2, D("0"))]
+    assert selectors.waybill_data(second)["total_cases"] == 2
+    finished_lot(product, "48")  # yeni düzende açılan lot
+    third = ship(seller, picker, product, "48")
+    assert waybill_cases(third) == [(2, D("0"))]
+
+
 def test_waybill_seller_comes_from_company_profile(
     seller: User, picker: User, dock: Location
 ) -> None:

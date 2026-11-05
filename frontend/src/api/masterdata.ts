@@ -35,6 +35,27 @@ export interface Category extends Audited, FormerCodes {
 
 export type MaterialType = "RAW" | "PACKAGING" | "BULK" | "FINISHED";
 
+/**
+ * Eski koli GTIN'i: lotu olan mamulde koli içi miktar değişince eski GTIN eski miktarıyla
+ * arşivlenir ve bir daha hiçbir ürüne ya da koliye verilmez (CUMHUR, 2026-11-05).
+ */
+export interface RetiredGtin {
+  /** 14 haneli eski koli GTIN'i. */
+  gtin: string;
+  /** Bu GTIN geçerliyken 1 koli kaç temel birimdi ("12.000000"). */
+  factor_to_base: string;
+  /** Yerine gelen koli GTIN'i (14 hane). */
+  replaced_by: string;
+  /** Arşivlendiği an: koli içi miktarın değiştiği kayıt. */
+  retired_at: string;
+  retired_by_name: string;
+}
+
+/**
+ * Birim dönüşümü. Kayıt hataları (400, `code`): `invalid_gtin`, `gtin_taken` (arşivdeki eski koli
+ * GTIN'i dahil), `gtin_locked`, `case_gtin_not_allowed`, `case_gtin_required` (lotu olan mamulde
+ * koli içi miktar yeni koli GTIN'i olmadan değişmez).
+ */
 export interface Conversion extends Audited {
   material: number;
   material_code: string;
@@ -44,8 +65,13 @@ export interface Conversion extends Audited {
   base_unit_code: string;
   /** Koli GTIN'i: yalnızca birimi KOLI olan dönüşümde (koli dışı birimde dolu GTIN reddedilir). */
   gtin: string;
-  /** Malzemenin lotu var ve koli GTIN'i dolu: GTIN değiştirilemez. */
+  /**
+   * Malzeme mamul, lotu var ve koli GTIN'i geçerli: koli GTIN'i tek başına değiştirilemez ya da
+   * silinemez; koli içi miktar (`factor_to_base`) değişirse yeni koli GTIN'iyle birlikte değişir.
+   */
   gtin_locked: boolean;
+  /** Eski koli GTIN'leri, en yeniden eskiye. */
+  retired_gtins: RetiredGtin[];
 }
 
 /** Koli birimi kodu: koli GTIN'i yalnızca bu birimin dönüşümünde tutulur. */
@@ -64,7 +90,10 @@ export interface Material extends Audited, FormerCodes {
   shelf_life_days: number | null;
   min_stock: string | null;
   gtin: string;
-  /** Malzemenin lotu var ve GTIN'i dolu: GTIN değiştirilemez ve silinemez. */
+  /**
+   * Malzeme mamul, lotu var ve GTIN'i geçerli: GTIN değiştirilemez ve silinemez. Hammadde, ambalaj
+   * ve yarı mamulde lot olsa da false (tedarikçi GTIN'i düzeltilebilir).
+   */
   gtin_locked: boolean;
   requires_incoming_qc: boolean;
   is_hazardous: boolean;

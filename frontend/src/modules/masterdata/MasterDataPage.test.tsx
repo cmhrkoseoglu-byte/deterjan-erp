@@ -648,10 +648,11 @@ describe("GS1: malzeme GTIN'i ve koli GTIN'i", () => {
     material_code: "MAM-1",
     unit: 7,
     unit_code: "KOLI",
-    factor_to_base: "12.0000",
+    factor_to_base: "12.000000",
     base_unit_code: "ADET",
     gtin: "18690000000019",
     gtin_locked: true,
+    retired_gtins: [],
     is_active: true,
     created_at: "2026-11-05T10:00:00+03:00",
     updated_at: "2026-11-05T10:00:00+03:00",
@@ -1025,7 +1026,7 @@ describe("GS1: malzeme GTIN'i ve koli GTIN'i", () => {
     expect(within(dialog).getByLabelText(/GTIN \(barkod no\)/)).toBeEnabled();
   });
 
-  it("lotu olan malzemenin GTIN'i kapalıdır, nedeni yazar ve gönderilmez", async () => {
+  it("lotu olan mamulün GTIN'i kapalıdır, nedeni yazar ve gönderilmez", async () => {
     const locked = { ...finished, gtin: "8690000000012", gtin_locked: true };
     records([locked]);
     vi.mocked(mdApi.saveRecord).mockResolvedValue(locked);
@@ -1036,9 +1037,8 @@ describe("GS1: malzeme GTIN'i ve koli GTIN'i", () => {
     const gtin = within(dialog).getByLabelText(/GTIN \(barkod no\)/);
     expect(gtin).toBeDisabled();
     expect(gtin).toHaveValue("8690000000012");
-    expect(
-      within(dialog).getByText("Lotu olan malzemenin GTIN'i değiştirilemez."),
-    ).toBeInTheDocument();
+    // Kilit yalnız mamulde (hammaddede lot olsa da sunucu `gtin_locked: false` gönderir).
+    expect(gtin).toHaveAccessibleDescription("Lotu olan mamulün GTIN'i değiştirilemez.");
     expect(within(dialog).queryByRole("button", { name: "GTIN öner" })).not.toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
     await waitFor(() => expect(mdApi.saveRecord).toHaveBeenCalled());
@@ -1462,7 +1462,40 @@ describe("GS1: malzeme GTIN'i ve koli GTIN'i", () => {
     );
   });
 
-  it("lotu olan malzemenin koli GTIN'i değiştirilemez ve gönderilmez", async () => {
+  /** Kilitli koli GTIN'inin açıklaması. */
+  const caseLockHelp =
+    "Lotu olan mamulün koli GTIN'i değiştirilemez. Koli içi miktar değişirse yeni miktarla birlikte yeni koli GTIN'i girilir.";
+  /** Koli içi miktar değişince koli GTIN'inin açıklaması (eski GTIN'le). */
+  const packHelp = (old: string) =>
+    `Koli içi miktar değişince yeni koli GTIN'i gerekir (GS1). Eski GTIN ${old} eski miktarıyla arşivlenir; depodaki eski koliler okutulmaya devam eder.`;
+
+  /** Koli dönüşümünü listeden açar (varsayılan: lotu olan mamulün kilitli koli GTIN'i). */
+  async function openCase(conversion: mdApi.Conversion = caseConversion) {
+    records([finished], [conversion]);
+    const { queryClient } = renderApp("/ana-veriler/birim-donusumleri");
+    await userEvent.click(await screen.findByText("MAM-1"));
+    const dialog = await screen.findByRole("dialog");
+    return {
+      dialog,
+      queryClient,
+      factor: within(dialog).getByLabelText(/Temel birim karşılığı/),
+      gtin: within(dialog).getByLabelText(/Koli GTIN'i/),
+    };
+  }
+
+  /** "Temel birim karşılığı"nı siler ve yeni değeri yazar. */
+  async function setFactor(factor: HTMLElement, value: string) {
+    await userEvent.clear(factor);
+    await userEvent.type(factor, value);
+  }
+
+  /** Alanın etiketinde zorunlu yıldızı var mı (Mantine `withAsterisk`)? */
+  function marksRequired(input: HTMLElement): boolean {
+    const label = input.ownerDocument.querySelector(`label[for="${input.id}"]`);
+    return label?.hasAttribute("data-required") ?? false;
+  }
+
+  it("lotu olan mamulün koli GTIN'i değiştirilemez ve gönderilmez", async () => {
     records([finished], [caseConversion]);
     vi.mocked(mdApi.saveRecord).mockResolvedValue(caseConversion);
     renderApp("/ana-veriler/birim-donusumleri");
@@ -1473,15 +1506,324 @@ describe("GS1: malzeme GTIN'i ve koli GTIN'i", () => {
     const gtin = within(dialog).getByLabelText(/Koli GTIN'i/);
     expect(gtin).toBeDisabled();
     expect(gtin).toHaveValue("18690000000019");
-    expect(
-      within(dialog).getByText("Lotu olan malzemenin koli GTIN'i değiştirilemez."),
-    ).toBeInTheDocument();
+    expect(gtin).toHaveAccessibleDescription(caseLockHelp);
     expect(
       within(dialog).queryByRole("button", { name: "Koli GTIN'i öner" }),
     ).not.toBeInTheDocument();
+    // Eski koli GTIN'i yoksa liste çıkmaz.
+    expect(within(dialog).queryByRole("list")).not.toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
     await waitFor(() =>
       expect(mdApi.saveRecord).toHaveBeenCalledWith("conversions", 21, { factor_to_base: "12" }),
     );
+  });
+
+  it("lotu olan mamulde koli içi miktar değişince koli GTIN'i açılır, boşalır ve yeni GTIN'le kaydedilir", async () => {
+    vi.mocked(mdApi.suggestCaseGtin).mockResolvedValue({ gtin: "28690000000016", reason: "" });
+    vi.mocked(mdApi.saveRecord).mockResolvedValue({
+      ...caseConversion,
+      factor_to_base: "24.000000",
+      gtin: "28690000000016",
+    });
+    const { dialog, factor, gtin } = await openCase();
+    expect(gtin).toBeDisabled();
+    expect(marksRequired(gtin)).toBe(false);
+
+    await setFactor(factor, "24");
+    expect(gtin).toBeEnabled();
+    expect(gtin).toHaveValue("");
+    expect(marksRequired(gtin)).toBe(true);
+    expect(gtin).toHaveAccessibleDescription(packHelp("18690000000019"));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Koli GTIN'i öner" }));
+    await waitFor(() => expect(gtin).toHaveValue("28690000000016"));
+    expect(mdApi.suggestCaseGtin).toHaveBeenCalledWith(6);
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // Yeni miktar yeni koli GTIN'iyle birlikte gönderilir (eskisini sunucu arşivler).
+    expect(mdApi.saveRecord).toHaveBeenCalledWith("conversions", 21, {
+      factor_to_base: "24",
+      gtin: "28690000000016",
+    });
+  });
+
+  it.each([
+    [
+      "elle yazılan",
+      async (_dialog: HTMLElement, gtin: HTMLElement) => {
+        await userEvent.type(gtin, "28690000000016");
+      },
+    ],
+    [
+      "önerilen",
+      async (dialog: HTMLElement, gtin: HTMLElement) => {
+        await userEvent.click(within(dialog).getByRole("button", { name: "Koli GTIN'i öner" }));
+        await waitFor(() => expect(gtin).toHaveValue("28690000000016"));
+      },
+    ],
+  ])(
+    "koli içi miktar silinip yeniden yazılınca %s yeni koli GTIN'i kalır ve gönderilir",
+    async (_name, enterGtin) => {
+      vi.mocked(mdApi.suggestCaseGtin).mockResolvedValue({ gtin: "28690000000016", reason: "" });
+      vi.mocked(mdApi.saveRecord).mockResolvedValue({
+        ...caseConversion,
+        factor_to_base: "36.000000",
+        gtin: "28690000000016",
+      });
+      const { dialog, factor, gtin } = await openCase();
+      await setFactor(factor, "24");
+      await enterGtin(dialog, gtin);
+
+      // Boş miktar kayıttaki miktar değildir: alan açık ve zorunlu kalır, yeni GTIN durur.
+      await userEvent.clear(factor);
+      expect(gtin).toBeEnabled();
+      expect(gtin).toHaveValue("28690000000016");
+      expect(marksRequired(gtin)).toBe(true);
+      await userEvent.type(factor, "36");
+      expect(gtin).toBeEnabled();
+      expect(gtin).toHaveValue("28690000000016");
+
+      await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(mdApi.saveRecord).toHaveBeenCalledWith("conversions", 21, {
+        factor_to_base: "36",
+        gtin: "28690000000016",
+      });
+    },
+  );
+
+  it("koli içi miktar kayıttakinden farklı kalarak düzeltilince (24 → 26) yeni koli GTIN'i kalır ve gönderilir", async () => {
+    vi.mocked(mdApi.saveRecord).mockResolvedValue({
+      ...caseConversion,
+      factor_to_base: "26.000000",
+      gtin: "28690000000016",
+    });
+    const { dialog, factor, gtin } = await openCase();
+    await setFactor(factor, "24");
+    await userEvent.type(gtin, "28690000000016");
+
+    // Alan yalnızca kilit açılıp kapanınca boşalır; açıkken miktarın her değişiminde değil.
+    await userEvent.type(factor, "{backspace}6");
+    expect(factor).toHaveValue("26");
+    expect(gtin).toBeEnabled();
+    expect(gtin).toHaveValue("28690000000016");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(mdApi.saveRecord).toHaveBeenCalledWith("conversions", 21, {
+        factor_to_base: "26",
+        gtin: "28690000000016",
+      }),
+    );
+  });
+
+  it.each([
+    ["12", "12"],
+    ["12,0", "12.0"],
+    ["12.000000", "12.000000"],
+    ["+12", "+12"],
+  ])(
+    "kayıttaki miktara (%s) dönülünce koli GTIN'i kayıttaki GTIN'le yeniden kilitlenir",
+    async (same, sent) => {
+      vi.mocked(mdApi.saveRecord).mockResolvedValue(caseConversion);
+      const { dialog, factor, gtin } = await openCase();
+      await setFactor(factor, "24");
+      await userEvent.type(gtin, "28690000000016");
+      expect(gtin).toHaveValue("28690000000016");
+
+      // Miktarlar sunucudaki gibi sayı olarak karşılaştırılır: "12", "12,0", "12.000000" ve "+12"
+      // kayıttaki 12'dir.
+      await setFactor(factor, same);
+      expect(gtin).toBeDisabled();
+      expect(gtin).toHaveValue("18690000000019");
+      expect(marksRequired(gtin)).toBe(false);
+      expect(gtin).toHaveAccessibleDescription(caseLockHelp);
+      expect(
+        within(dialog).queryByRole("button", { name: "Koli GTIN'i öner" }),
+      ).not.toBeInTheDocument();
+      await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+      await waitFor(() => expect(mdApi.saveRecord).toHaveBeenCalled());
+      // Kilitli koli GTIN'i gönderilmez.
+      expect(vi.mocked(mdApi.saveRecord).mock.calls[0]).toEqual([
+        "conversions",
+        21,
+        { factor_to_base: sent },
+      ]);
+    },
+  );
+
+  it.each([
+    [
+      "yeni koli GTIN'i girilmezse",
+      "",
+      {
+        code: "case_gtin_required",
+        detail:
+          "Koli içi miktar değişince GS1 yeni koli GTIN'i ister: yeni koli GTIN'ini de girin. Eski GTIN eski miktarıyla arşivlenir; depodaki eski koliler okutulmaya devam eder.",
+      },
+    ],
+    [
+      "arşivdeki eski koli GTIN'i girilirse",
+      "28690000000016",
+      {
+        code: "gtin_taken",
+        detail: "Bu GTIN MAM-1 malzemesinin eski koli GTIN'i (arşivde); bir daha kullanılamaz.",
+      },
+    ],
+  ])("koli içi miktar değişip %s sunucunun hatası formda görünür", async (_name, typed, body) => {
+    vi.mocked(mdApi.saveRecord).mockRejectedValue(httpError(400, body));
+    const { dialog, factor, gtin } = await openCase();
+    await setFactor(factor, "24");
+    if (typed) await userEvent.type(gtin, typed);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+
+    const error = await within(dialog).findByText(body.detail);
+    expect(alertStyle(error)).toContain("--mantine-color-red-light"); // kırmızı
+    expect(mdApi.saveRecord).toHaveBeenCalledWith("conversions", 21, {
+      factor_to_base: "24",
+      gtin: typed,
+    });
+    // Alan açık kalır: GTIN düzeltilip yeniden kaydedilebilir.
+    expect(gtin).toBeEnabled();
+    expect(gtin).toHaveValue(typed);
+  });
+
+  it("eksi miktar da kayıttakinden farklıdır (sunucudaki gibi): koli GTIN'i açılır, yeni GTIN'le gönderilir", async () => {
+    // Sunucu -12'yi değişmiş miktar sayar (yeni koli GTIN'i ister), sıfırdan büyük olma kuralını
+    // sonra denetler.
+    const detail = "Dönüşüm katsayısı sıfırdan büyük olmalıdır.";
+    vi.mocked(mdApi.saveRecord).mockRejectedValue(
+      httpError(400, {
+        code: "validation_error",
+        detail: "Gönderilen bilgiler geçersiz.",
+        errors: { non_field_errors: [detail] },
+      }),
+    );
+    const { dialog, factor, gtin } = await openCase();
+    await setFactor(factor, "-12");
+    expect(gtin).toBeEnabled();
+    expect(gtin).toHaveValue("");
+    expect(marksRequired(gtin)).toBe(true);
+    expect(gtin).toHaveAccessibleDescription(packHelp("18690000000019"));
+
+    await userEvent.type(gtin, "28690000000016");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    const error = await within(dialog).findByText(detail);
+    expect(alertStyle(error)).toContain("--mantine-color-red-light"); // kırmızı
+    expect(mdApi.saveRecord).toHaveBeenCalledWith("conversions", 21, {
+      factor_to_base: "-12",
+      gtin: "28690000000016",
+    });
+  });
+
+  it("eski koli GTIN'leri koli GTIN'inin altında en yeniden eskiye listelenir", async () => {
+    const changed: mdApi.Conversion = {
+      ...caseConversion,
+      base_unit_code: "LT",
+      factor_to_base: "9.000000",
+      gtin: "38690000000013",
+      retired_gtins: [
+        {
+          gtin: "28690000000016",
+          factor_to_base: "4.500000",
+          replaced_by: "38690000000013",
+          retired_at: "2027-03-11T22:30:00Z", // İstanbul'da 12.03.2027
+          retired_by_name: "Ayşe Planlama",
+        },
+        {
+          gtin: "18690000000019",
+          factor_to_base: "12.000000",
+          replaced_by: "28690000000016",
+          retired_at: "2026-11-05T10:00:00+03:00",
+          retired_by_name: "Ayşe Planlama",
+        },
+      ],
+    };
+    const { dialog, factor, gtin } = await openCase(changed);
+    const rows = () =>
+      within(within(dialog).getByRole("list", { name: "Eski koli GTIN'leri:" }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent);
+    const expected = [
+      "28690000000016 · 1 koli = 4,5 LT · 12.03.2027'de değişti",
+      "18690000000019 · 1 koli = 12 LT · 05.11.2026'da değişti",
+    ];
+    expect(rows()).toEqual(expected);
+    // Koli içi miktar yeniden değişirken de liste kalır; açıklama bugünkü GTIN'i anlatır.
+    await setFactor(factor, "18");
+    expect(gtin).toHaveAccessibleDescription(packHelp("38690000000013"));
+    expect(rows()).toEqual(expected);
+  });
+
+  it("kilitsiz koli dönüşümünde miktar değişince koli GTIN'i kalır; eski koli GTIN'leri yine görünür", async () => {
+    // Ör. mamulden hammaddeye çevrilmiş malzeme: kilit yok ama arşiv kalır.
+    const unlocked: mdApi.Conversion = {
+      ...caseConversion,
+      gtin_locked: false,
+      retired_gtins: [
+        {
+          gtin: "28690000000016",
+          factor_to_base: "6.000000",
+          replaced_by: "18690000000019",
+          retired_at: "2026-11-05T10:00:00+03:00",
+          retired_by_name: "Ayşe Planlama",
+        },
+      ],
+    };
+    vi.mocked(mdApi.saveRecord).mockResolvedValue({ ...unlocked, factor_to_base: "24.000000" });
+    const { dialog, factor, gtin } = await openCase(unlocked);
+    expect(gtin).toBeEnabled();
+    expect(
+      within(within(dialog).getByRole("list", { name: "Eski koli GTIN'leri:" })).getByRole(
+        "listitem",
+      ),
+    ).toHaveTextContent("28690000000016 · 1 koli = 6 ADET · 05.11.2026'da değişti");
+
+    await setFactor(factor, "24");
+    expect(gtin).toHaveValue("18690000000019");
+    expect(marksRequired(gtin)).toBe(false);
+    expect(within(dialog).queryByText(/Koli içi miktar değişince/)).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(mdApi.saveRecord).toHaveBeenCalledWith("conversions", 21, {
+        factor_to_base: "24",
+        gtin: "18690000000019",
+      }),
+    );
+  });
+
+  it("'Koli GTIN'i öner' yanıtı kayıttaki miktara dönüldükten sonra gelirse kilitli alana yazılmaz", async () => {
+    const reply = deferred<mdApi.CaseGtinSuggestion>();
+    vi.mocked(mdApi.suggestCaseGtin).mockReturnValueOnce(reply.promise);
+    const { dialog, queryClient, factor, gtin } = await openCase();
+    await setFactor(factor, "24");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Koli GTIN'i öner" }));
+    await waitFor(() => expect(mdApi.suggestCaseGtin).toHaveBeenCalledWith(6));
+    await setFactor(factor, "12");
+    reply.resolve({ gtin: "28690000000016", reason: "" });
+
+    // Yanıt işlendi; kayıttaki GTIN kilitli alanda kalır.
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+    expect(gtin).toBeDisabled();
+    expect(gtin).toHaveValue("18690000000019");
+    // Miktar yeniden değişince alan boş gelir; öneri yeniden istenebilir.
+    await setFactor(factor, "24");
+    expect(gtin).toHaveValue("");
+    expect(within(dialog).getByRole("button", { name: "Koli GTIN'i öner" })).toBeEnabled();
+  });
+
+  it("öneri nedeni kayıttaki miktara dönülünce kalkar, miktar yeniden değişince geri gelmez", async () => {
+    const reason = "Boş koli GTIN'i kalmadı (gösterge haneleri 1-8 kullanılmış).";
+    vi.mocked(mdApi.suggestCaseGtin).mockResolvedValue({ gtin: null, reason });
+    const { dialog, factor, gtin } = await openCase();
+    await setFactor(factor, "24");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Koli GTIN'i öner" }));
+    expect(await within(dialog).findByText(reason)).toBeInTheDocument();
+
+    await setFactor(factor, "12");
+    expect(within(dialog).queryByText(reason)).not.toBeInTheDocument();
+    await setFactor(factor, "24");
+    expect(gtin).toHaveValue("");
+    expect(within(dialog).queryByText(reason)).not.toBeInTheDocument();
   });
 });

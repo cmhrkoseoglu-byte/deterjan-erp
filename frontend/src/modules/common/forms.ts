@@ -32,11 +32,16 @@ export interface FieldDef {
   /** Düzenlemede değiştirilemez (ör. dönüşümün malzemesi). */
   lockedOnEdit?: boolean;
   /**
-   * Kaydın bu alanı true ise alan kilitlidir (ör. lotu olan malzemenin GTIN'i: `gtin_locked`):
+   * Kaydın bu alanı true ise alan kilitlidir (ör. lotu olan mamulün GTIN'i: `gtin_locked`):
    * düzenlemede kapalı gelir, açıklama yerine `lockedHelp` yazar ve gönderilmez.
    */
   lockedBy?: string;
   lockedHelp?: string;
+  /**
+   * Kilit formdaki değerlerle kalkar mı (ör. koli içi miktar değişince yeni koli GTIN'i girilir)?
+   * true iken alan açılır ve gönderilir; alan bileşeni bunu `unlocked` olarak alır.
+   */
+  unlockedWhen?: (values: FormValues, record: Record<string, unknown>) => boolean;
   /** Formda tam satır kaplar. */
   wide?: boolean;
   /** Alanın yerine çizilen bileşen (ör. öneri düğmeli GTIN alanı). */
@@ -53,6 +58,8 @@ export interface FieldComponentProps {
   /** Düzenlenen kayıt; yeni kayıtta null. */
   record: Record<string, unknown> | null;
   disabled: boolean;
+  /** Kaydın kilidi formdaki değerlerle kalktı (`FieldDef.unlockedWhen`): alan açık ve gönderilir. */
+  unlocked: boolean;
   /** Izgaradaki hücrenin stili (geniş alan); bileşen kök öğesine verir. */
   style?: CSSProperties;
   /** Son kayıt denemesinin hatası (yeni denemede sıfırlanır): alan alınmış önerisini yeniler. */
@@ -96,6 +103,21 @@ export function normalizeDecimal(value: string): string {
   const text = value.trim().replace(/\s/g, "");
   if (text.includes(",") && text.includes(".")) return text.replace(/\./g, "").replace(",", ".");
   return text.replace(",", ".");
+}
+
+/**
+ * Ondalığın karşılaştırma biçimi (sunucudaki `Decimal` gibi sayı olarak eşitlik için): "12",
+ * "12.000000", "12,0", "012" ve "+12" → "12"; "-12" → "-12"; "-0" → "0". Sayı değilse (boş, harf,
+ * üslü yazım) null. Girişi gönderilecek değerle aynı çevirir (`normalizeDecimal`); kayan nokta
+ * kullanmaz.
+ */
+export function decimalKey(value: string): string | null {
+  const match = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(normalizeDecimal(value));
+  if (!match || !(match[2] || match[3])) return null;
+  const whole = match[2].replace(/^0+/, "") || "0";
+  const fraction = (match[3] ?? "").replace(/0+$/, "");
+  const number = fraction ? `${whole}.${fraction}` : whole;
+  return match[1] === "-" && number !== "0" ? `-${number}` : number;
 }
 
 /** Form değerlerinden API gövdesi: boş isteğe bağlı alanlar null olur. */

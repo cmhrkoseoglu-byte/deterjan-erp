@@ -187,6 +187,34 @@ class MaterialUnitConversion(MasterDataModel):
         return f"{self.material.code}: 1 {self.unit.code} = {self.factor_to_base}"
 
 
+class RetiredGtin(BaseModel):
+    """Eski koli GTIN'i (CUMHUR, 2026-11-05). Lotu olan mamulde koli içi miktar değişince koliye
+    yeni GTIN verilir (GS1); eski GTIN eski miktarıyla burada kalır. Bir daha hiçbir ürüne ya da
+    koliye verilmez, okutulunca eski koli düzeniyle çözülür. Kayıtlar değişmez ve silinmez.
+    `created_at` / `created_by`: GTIN'in değiştiği an ve değiştiren."""
+
+    conversion = models.ForeignKey(
+        MaterialUnitConversion,
+        verbose_name="koli dönüşümü",
+        on_delete=models.PROTECT,
+        related_name="retired_gtins",
+    )
+    # 14 haneli normal biçim (`core.labels.gtin14`).
+    gtin = models.CharField("GTIN", max_length=14, unique=True)
+    factor_to_base = models.DecimalField(
+        "koli içi miktar (temel birim)", max_digits=18, decimal_places=6
+    )
+    replaced_by = models.CharField("yerine gelen GTIN", max_length=14)
+
+    class Meta:
+        verbose_name = "eski koli GTIN'i"
+        verbose_name_plural = "eski koli GTIN'leri"
+        ordering = ["created_at", "pk"]
+
+    def __str__(self) -> str:
+        return f"{self.gtin} ({self.conversion})"
+
+
 class Warehouse(MasterDataModel):
     code = CodeField("kod", unique=True)
     name = models.CharField("ad", max_length=128)

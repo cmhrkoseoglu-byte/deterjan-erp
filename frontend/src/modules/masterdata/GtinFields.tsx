@@ -1,8 +1,10 @@
 // Ana veri formlarındaki GS1 GTIN alanları: mamulde "GTIN öner", KOLI dönüşümünde koli GTIN'i.
-// Kilit (lotu olan malzemenin GTIN'i) formun `lockedBy` kuralıyla gelir: alan kapalıdır.
-import { Button, Text, TextInput } from "@mantine/core";
+// Kilit (lotu olan mamulün GTIN'i ve koli GTIN'i) formun `lockedBy` kuralıyla gelir: alan
+// kapalıdır. Koli içi miktar değişince koli GTIN'inin kilidi kalkar (`unlockedWhen`): yeni koli
+// GTIN'i girilir, eskisi eski miktarıyla arşivlenir.
+import { Button, List, Text, TextInput } from "@mantine/core";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { getErrorCode, getErrorMessage } from "../../api/client";
 import {
   CASE_UNIT,
@@ -10,8 +12,11 @@ import {
   listRecords,
   suggestCaseGtin,
   suggestGtin,
+  type RetiredGtin,
   type Unit,
 } from "../../api/masterdata";
+import { formatDate, formatNumber } from "../../i18n/format";
+import { tr } from "../../i18n/tr";
 import type { FieldComponentProps } from "../common/forms";
 
 const g = {
@@ -19,6 +24,11 @@ const g = {
   suggestCase: "Koli GTIN'i öner",
   refreshed: (taken: string, next: string) =>
     `${taken} başka bir malzemede ya da koli dönüşümünde kayıtlı. Yerine sıradaki önerilen GTIN ${next} yazıldı; kontrol edip yeniden kaydedin.`,
+  packChanged: (old: string) =>
+    `Koli içi miktar değişince yeni koli GTIN'i gerekir (GS1). Eski GTIN ${old} eski miktarıyla arşivlenir; depodaki eski koliler okutulmaya devam eder.`,
+  retired: "Eski koli GTIN'leri:",
+  retiredRow: (gtin: string, units: string, changedOn: string) =>
+    `${gtin} · ${units} · ${changedOn} değişti`,
 };
 
 /** Kayıt, GTIN başka bir malzemede ya da koli dönüşümünde kayıtlı olduğu için reddedildi. */
@@ -133,15 +143,60 @@ interface CaseChoice {
   unit: string;
 }
 
+// Bulunma eki yılın okunuşundaki son sözcüğe uyar: birler hanesi (bir, iki, üç … dokuz), o sıfırsa
+// onlar hanesi (on, yirmi … doksan); yüz ve bin "de" alır.
+const ONES_SUFFIX = ["", "de", "de", "te", "te", "te", "da", "de", "de", "da"];
+const TENS_SUFFIX = ["", "da", "de", "da", "ta", "de", "ta", "te", "de", "da"];
+
+/** Tarih, bulunma ekiyle (İstanbul saatiyle): "05.11.2026'da", "12.03.2027'de", "01.12.2025'te". */
+function onDate(value: string): string {
+  const date = formatDate(value);
+  if (!date) return "";
+  const year = Number(date.slice(-4));
+  const suffix = ONES_SUFFIX[year % 10] || TENS_SUFFIX[Math.floor(year / 10) % 10] || "de";
+  return `${date}'${suffix}`;
+}
+
+/**
+ * Eski koli GTIN'leri (en yeniden eskiye): GTIN, o GTIN'deki koli içi miktar ve değiştiği gün.
+ * Salt okunur; arşivdeki GTIN bir daha hiçbir ürüne ya da koliye verilmez.
+ */
+function RetiredGtinList({ rows, baseUnit }: { rows: RetiredGtin[]; baseUnit: string }) {
+  const titleId = useId();
+  return (
+    <div>
+      <Text id={titleId} size="xs" c="dimmed" mt={6}>
+        {g.retired}
+      </Text>
+      <List aria-labelledby={titleId} size="xs" c="dimmed" listStyleType="none" spacing={2}>
+        {rows.map((row) => (
+          <List.Item key={row.gtin}>
+            {g.retiredRow(
+              row.gtin,
+              tr.scan.caseUnits(formatNumber(row.factor_to_base), baseUnit),
+              onDate(row.retired_at),
+            )}
+          </List.Item>
+        ))}
+      </List>
+    </div>
+  );
+}
+
 /**
  * Koli GTIN'i: yalnızca birimi KOLI olan dönüşümde görünür (koli dışı birime geçilince yazılan
  * değer silinir). Malzeme seçiliyse ve alan boşsa "Koli GTIN'i öner" malzemenin GTIN'inden
  * türetilen ilk boş GTIN-14'ü yazar; türetilemezse nedeni gösterilir. Önerilen GTIN o malzemenin
  * GTIN'inden türetilir: malzeme ya da birim değişince alanda duruyorsa silinir (kullanıcının
  * yazdığı GTIN kalır).
+ *
+ * Lotu olan mamulde alan kilitlidir; koli içi miktar değişince (`unlocked`) alan açılır, boşalır ve
+ * zorunlu olur: yeni koli GTIN'i girilir ya da önerilir, eskisi eski miktarıyla arşivlenir.
+ * Kayıttaki miktara dönülünce alan kayıttaki GTIN'le yeniden kilitlenir. Düzenlemede eski koli
+ * GTIN'leri alanın altında listelenir.
  */
 export function CaseGtinField(props: FieldComponentProps) {
-  const { field, form, record, disabled, style } = props;
+  const { field, form, record, disabled, unlocked, style } = props;
   const unit = fieldText(props, "unit");
   const material = fieldText(props, "material");
   // Düzenlemede birim değişmez (kayıttaki kod); yeni kayıtta seçilen birimin kodu listeden okunur.
@@ -159,11 +214,26 @@ export function CaseGtinField(props: FieldComponentProps) {
   const [reason, setReason] = useState("");
   // "Koli GTIN'i öner"in alana yazdığı GTIN ve türetildiği seçim (malzeme, birim).
   const applied = useRef<(CaseChoice & { gtin: string }) | null>(null);
+  // Kilidin son durumu: alan yalnızca kilit açılıp kapanınca boşalır ya da kayıttaki GTIN'e döner.
+  const wasUnlocked = useRef(unlocked);
+  const savedGtin = String(record?.gtin ?? "");
 
   /** Alandaki güncel GTIN (`form.values` çizimdeki değerdir; güncel değer okunur). */
   function current(): string {
     return String(form.getValues()[field.name] ?? "").trim();
   }
+
+  useEffect(() => {
+    // Koli içi miktar değişti: kayıttaki GTIN alandan kalkar, yeni koli GTIN'i istenir. Kayıttaki
+    // miktara dönüldü: alan kayıttaki GTIN'le yeniden kilitlenir. Önceki öneri ve nedeni unutulur
+    // (bu arada gelen öneri yanıtı dolu alana yazılmaz).
+    if (wasUnlocked.current === unlocked) return;
+    wasUnlocked.current = unlocked;
+    applied.current = null;
+    setReason("");
+    form.setFieldValue(field.name, unlocked ? "" : savedGtin);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- yalnızca kilit açılıp kapanınca
+  }, [unlocked]);
 
   useEffect(() => {
     if (unitCode !== undefined && !isCase && fieldText(props, field.name)) {
@@ -212,9 +282,14 @@ export function CaseGtinField(props: FieldComponentProps) {
   if (!isCase) return null;
   const empty = !fieldText(props, field.name);
   const canSuggest = !disabled && Boolean(material) && empty;
+  // Koli içi miktar değişti: yeni koli GTIN'i zorunlu, açıklama eski GTIN'in ne olacağını söyler.
+  const input = unlocked
+    ? { ...field, required: true, description: g.packChanged(savedGtin) }
+    : field;
+  const retired = (record?.retired_gtins as RetiredGtin[] | undefined) ?? [];
   return (
     <div style={style}>
-      <GtinInput {...props} />
+      <GtinInput {...props} field={input} />
       {canSuggest && (
         <Button
           size="compact-sm"
@@ -230,6 +305,9 @@ export function CaseGtinField(props: FieldComponentProps) {
         <Text size="xs" c="var(--status-warning)" mt={4}>
           {reason}
         </Text>
+      )}
+      {retired.length > 0 && (
+        <RetiredGtinList rows={retired} baseUnit={String(record?.base_unit_code ?? "")} />
       )}
     </div>
   );

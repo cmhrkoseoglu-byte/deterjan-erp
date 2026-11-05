@@ -1,19 +1,20 @@
 import { Badge, Select } from "@mantine/core";
 import type { Printer } from "../../api/labels";
-import type {
-  Category,
-  Conversion,
-  Equipment,
-  Location,
-  Material,
-  Partner,
-  Unit,
-  Warehouse,
+import {
+  CASE_UNIT,
+  type Category,
+  type Conversion,
+  type Equipment,
+  type Location,
+  type Material,
+  type Partner,
+  type Unit,
+  type Warehouse,
 } from "../../api/masterdata";
 import type { Role } from "../../api/types";
 import { formatNumber } from "../../i18n/format";
 import type { EntityConfig } from "../common/CrudPage";
-import type { FieldDef } from "../common/forms";
+import { decimalKey, type FieldDef, type FormValues } from "../common/forms";
 import { MaterialHazardAction } from "../hse/MaterialHazardModal";
 import { CaseGtinField, MaterialGtinField } from "./GtinFields";
 import { CountryField } from "./CountryField";
@@ -133,8 +134,10 @@ export const materialConfig: EntityConfig<Material> = {
       label: "GTIN (barkod no)",
       type: "text",
       description: "Mamulde doluysa koli etiketi GS1-128 basılır (8, 12, 13 ya da 14 hane)",
+      // Kilit yalnız mamulde (CUMHUR, 2026-11-05): hammadde, ambalaj ve yarı mamulde lot olsa da
+      // tedarikçi GTIN'i düzeltilebilir; sunucu onlarda `gtin_locked: false` gönderir.
       lockedBy: "gtin_locked",
-      lockedHelp: "Lotu olan malzemenin GTIN'i değiştirilemez.",
+      lockedHelp: "Lotu olan mamulün GTIN'i değiştirilemez.",
       component: MaterialGtinField,
     },
     { name: "requires_incoming_qc", label: "Giriş kontrolü gerekli", type: "checkbox" },
@@ -146,6 +149,20 @@ export const materialConfig: EntityConfig<Material> = {
   rowActions: (row) => <MaterialHazardAction row={row} />,
   filters: selectFilter("Tür", "material_type", MATERIAL_TYPES),
 };
+
+/**
+ * Koli içi miktar değişti mi: düzenlenen KOLI dönüşümünde "Temel birim karşılığı" kayıttakiyle
+ * sunucudaki gibi sayı olarak aynı değil ("12", "12.000000", "12,0" ve "+12" aynıdır; -12
+ * farklıdır). Boş ya da sayı olmayan değer de kayıttaki miktar değildir: miktar silinip
+ * düzeltilirken girilen yeni koli GTIN'i kalır (alanı sunucu doğrular). Lotu olan mamulde koli
+ * GTIN'inin kilidi bununla kalkar (CUMHUR, 2026-11-05): GS1'e göre yeni miktar yeni koli GTIN'iyle
+ * birlikte kaydedilir, eskisi eski miktarıyla arşivlenir.
+ */
+function casePackChanged(values: FormValues, record: Record<string, unknown>): boolean {
+  if (record.unit_code !== CASE_UNIT) return false;
+  const entered = decimalKey(String(values.factor_to_base ?? ""));
+  return entered !== decimalKey(String(record.factor_to_base ?? ""));
+}
 
 export const conversionConfig: EntityConfig<Conversion & { code?: string; name?: string }> = {
   endpoint: "conversions",
@@ -189,14 +206,17 @@ export const conversionConfig: EntityConfig<Conversion & { code?: string; name?:
       description: "1 birim kaç temel birim eder (1 KOLI = 12 ADET → 12)",
     },
     {
-      // GS1: yalnızca KOLI biriminde görünür (CaseGtinField).
+      // GS1: yalnızca KOLI biriminde görünür (CaseGtinField). Lotu olan mamulde kilitlidir; koli
+      // içi miktar değişince kilit kalkar, yeni koli GTIN'i girilir ve eskisi arşivlenir.
       name: "gtin",
       label: "Koli GTIN'i",
       type: "text",
       description:
         "Koli ve palet etiketinin barkoduna basılır (genelde 14 hane). Boşsa etiketlere ürün GTIN'i basılır.",
       lockedBy: "gtin_locked",
-      lockedHelp: "Lotu olan malzemenin koli GTIN'i değiştirilemez.",
+      lockedHelp:
+        "Lotu olan mamulün koli GTIN'i değiştirilemez. Koli içi miktar değişirse yeni miktarla birlikte yeni koli GTIN'i girilir.",
+      unlockedWhen: casePackChanged,
       component: CaseGtinField,
     },
   ],

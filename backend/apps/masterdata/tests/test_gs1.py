@@ -1,7 +1,8 @@
 """GS1 (Kodlama sistematiği, Paket 2, Adım 7): GS1 ayarları, GTIN kuralları, GTIN önerileri.
 
 Lot ve palet etiketi gerektiren durumlar (GTIN kilidi, SSCC çakışması, koli ve palet etiketi)
-`inventory/tests/test_gs1_labels.py` içindedir.
+`inventory/tests/test_gs1_labels.py` içindedir; kilidin kapsamı (yalnız mamul), koli içi miktar
+değişikliği ve eski koli GTIN'leri (3. tur) `test_pack_change.py` içindedir.
 """
 
 import threading

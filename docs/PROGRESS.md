@@ -1379,3 +1379,23 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
     `hse/tests/test_standard_codes.py`, `hse/tests/test_services.py`; ön yüz
     `standardCodes.test.tsx`, `useStandardOptions.test.ts`, `hse.test.tsx`; tam backend ve ön yüz
     testleri yeşil.
+- **Adım 7 eki:** koli düzeni değişimi ve GTIN kilidinin kapsamı (kararlar DECISIONS "Paket 2,
+  GS1: sahibin kararları").
+  - Lotu olan mamulde koli içi miktar (KOLI dönüşümünün temel birim karşılığı) yalnız aynı
+    güncellemede yeni koli GTIN'iyle değişir (`case_gtin_required`). Eski koli GTIN'i eski
+    miktarıyla arşivlenir (`masterdata.RetiredGtin`, göç masterdata 0008; değiştiren ve zaman
+    denetim günlüğünde), hiçbir ürüne ya da koliye bir daha verilmez; GTIN önerileri onu atlar.
+  - Okutma: eski koli GTIN'i malzemeyi bulur, koli içi miktar arşivdeki miktardır, sarı uyarı çıkar
+    ("Eski koli GTIN'i okutuldu …"). Üretim, dolum ve sevkiyatta lot çözümü aynıdır.
+  - Etiketler lotun açıldığı andaki koli GTIN'iyle basılır. İrsaliyede koli sayısı lotun açıldığı
+    andaki koli içi miktarla hesaplanır; sevk edilmiş irsaliyenin yeniden basımı değişmez.
+  - GTIN kilidi yalnız mamulde: hammadde, ambalaj ve yarı mamulde tedarikçi GTIN'i lot olsa da
+    düzeltilir (denetim günlüğüne yazılır). Lotu olan malzemenin türü mamulden ya da mamule
+    değişmez (`material_type_locked`; ekran, Excel aktarımı ve yönetim paneli).
+  - Ön yüz: dönüşüm formunda miktar kayıttakinden farklı olunca koli GTIN'i açılır, boşalır ve
+    zorunlu olur ("Koli GTIN'i öner" çıkar); eski koli GTIN'leri listelenir; kilit metinleri
+    mamulü anar.
+  - Kanıt: `masterdata/tests/test_pack_change.py`, `inventory/tests/test_retired_gtin_scan.py`,
+    `inventory/tests/test_gs1_labels.py`, `sales/tests/test_shipments.py` (irsaliye koli sayısı),
+    üretim, dolum ve sevkiyat API testleri; ön yüz `MasterDataPage.test.tsx`; tam backend ve ön yüz
+    testleri yeşil.

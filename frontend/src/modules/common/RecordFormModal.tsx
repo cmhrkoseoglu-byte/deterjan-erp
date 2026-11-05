@@ -73,9 +73,23 @@ export function RecordFormModal<T extends object>({
   const typeValue = codeTypeField ? String(form.values[codeTypeField] ?? "") : "";
   const recordValues = record as Record<string, unknown> | null;
 
-  /** Kayıt alanı kilitliyor mu (ör. lotu olan malzemenin GTIN'i)? Yeni kayıtta kilit yoktur. */
-  function isLocked(field: FieldDef): boolean {
+  /** Kayıt alanı kilitliyor mu (ör. lotu olan mamulün GTIN'i)? Yeni kayıtta kilit yoktur. */
+  function lockedByRecord(field: FieldDef): boolean {
     return Boolean(recordValues && field.lockedBy && recordValues[field.lockedBy]);
+  }
+
+  /**
+   * Kaydın kilidi formdaki değerlerle kalktı mı (`unlockedWhen`, ör. koli içi miktar değişti)?
+   * Çizimde güncel değerlere, gönderimde gönderilen değerlere bakılır.
+   */
+  function isUnlocked(field: FieldDef, values: FormValues = form.values): boolean {
+    if (!recordValues || !field.unlockedWhen || !lockedByRecord(field)) return false;
+    return field.unlockedWhen(values, recordValues);
+  }
+
+  /** Alan kilitli mi: kayıt kilitliyor ve kilit formdaki değerlerle kalkmadı. */
+  function isLocked(field: FieldDef, values: FormValues = form.values): boolean {
+    return lockedByRecord(field) && !isUnlocked(field, values);
   }
 
   const suggestion = useQuery({
@@ -138,7 +152,7 @@ export function RecordFormModal<T extends object>({
       const payload = toPayload(fields, values);
       if (record) {
         for (const field of fields) {
-          if (field.lockedOnEdit || isLocked(field)) delete payload[field.name];
+          if (field.lockedOnEdit || isLocked(field, values)) delete payload[field.name];
         }
         if (codeLocked) delete payload[CODE];
       }
@@ -235,6 +249,7 @@ export function RecordFormModal<T extends object>({
                     form={form}
                     record={recordValues}
                     disabled={disabled}
+                    unlocked={isUnlocked(field)}
                     style={style}
                     saveError={mutation.error}
                     onSuggestionReplaced={suggestionReplaced}

@@ -26,8 +26,9 @@ from apps.inventory.models import (
     StockBalance,
     StockReservation,
 )
-from apps.masterdata.models import Location, Material, MaterialUnitConversion
-from apps.masterdata.selectors import gtin_owner
+from apps.inventory.services import format_quantity
+from apps.masterdata.models import Location, Material, MaterialUnitConversion, RetiredGtin
+from apps.masterdata.selectors import gtin_owner, retired_gtin
 
 ZERO = Value(Decimal(0), output_field=DecimalField(max_digits=18, decimal_places=4))
 # Ağaç görünümünde en fazla derinlik (döngü zaten atlanır; çok derin zincirde yanıtı sınırlar).
@@ -586,18 +587,49 @@ def _case_conversion(gtin: str) -> MaterialUnitConversion | None:
     )
 
 
-def _gtin_owner(ai: str, gtin: str) -> tuple[Material | None, MaterialUnitConversion | None]:
-    """(01): önce ürün, sonra koli GTIN'i; (02): önce koli GTIN'i, sonra ürün GTIN'i (eski palet
-    etiketlerinde (02) ürün GTIN'idir)."""
+def _gtin_owner(
+    ai: str, gtin: str
+) -> tuple[Material | None, MaterialUnitConversion | None, RetiredGtin | None]:
+    """GTIN'in sahibi: (01) ve çıplak GTIN'de önce ürün, sonra koli GTIN'i; (02)'de önce koli
+    GTIN'i, sonra ürün GTIN'i (eski palet etiketlerinde (02) ürün GTIN'idir). İkisi de değilse
+    eski koli GTIN'i (arşiv; koli içi miktar değişince yerine yenisi verildi): dönüşümün
+    malzemesi ve arşiv kaydı. Kayıtlı değilse (None, None, None)."""
     if ai == "02" and (conversion := _case_conversion(gtin)) is not None:
-        return conversion.material, conversion
-    return gtin_owner(gtin)
+        return conversion.material, conversion, None
+    material, conversion = gtin_owner(gtin)
+    if material is not None:
+        return material, conversion, None
+    retired = retired_gtin(gtin)
+    if retired is not None:
+        return retired.conversion.material, None, retired
+    return None, None, None
 
 
-def _with_case(result: ScanResult, conversion: MaterialUnitConversion | None) -> ScanResult:
+RETIRED_CASE_WARNING = (
+    "Eski koli GTIN'i okutuldu: koli düzeni değişti; bu kolide 1 koli = {quantity} {unit}."
+)
+
+
+def _with_case(
+    result: ScanResult,
+    conversion: MaterialUnitConversion | None,
+    retired: RetiredGtin | None = None,
+) -> ScanResult:
     """Koli GTIN'i okutulduysa sonuca koli birimini ve 1 kolideki temel birim miktarını yazar.
     Dönüşüm pasifse malzeme yine bulunur (basılmış etiketler okunur) ama koli içi miktar
-    önerilmez: birim boş kalır, uyarı eklenir."""
+    önerilmez: birim boş kalır, uyarı eklenir. Eski koli GTIN'inde (arşiv) miktar o GTIN'in
+    geçerli olduğu koli düzenindendir, dönüşüm artık pasif olsa da (geçmiş geçerlidir); uyarı
+    koli düzeninin değiştiğini söyler."""
+    if retired is not None:
+        result.unit = retired.conversion.unit.code
+        result.units_per_case = retired.factor_to_base
+        result.warnings.append(
+            RETIRED_CASE_WARNING.format(
+                quantity=format_quantity(retired.factor_to_base),
+                unit=retired.conversion.material.base_unit.code,
+            )
+        )
+        return result
     if conversion is None:
         return result
     if not conversion.is_active:
@@ -659,8 +691,9 @@ def _expiry_warnings(lots: list[Lot], dates: dict[str, str]) -> list[str]:
 
 
 def _decode_gs1(raw: str, gs1: dict[str, str], today: date) -> ScanResult:
-    """GS1 verisinin çözümü: (00) SSCC → palet ve lotu; (01)/(02) GTIN → malzeme (koli GTIN'inde
-    koli birimiyle), (10) varsa o malzemedeki lot; GTIN'siz (10) → o numaralı lotlar."""
+    """GS1 verisinin çözümü: (00) SSCC → palet ve lotu; (01)/(02) GTIN → malzeme (koli GTIN'inde,
+    eski koli GTIN'inde de, koli birimiyle), (10) varsa o malzemedeki lot; GTIN'siz (10) → o
+    numaralı lotlar."""
     gtin_ai = next((ai for ai in ("01", "02") if ai in gs1), "")
     if "00" in gs1:
         pallet = (
@@ -674,12 +707,12 @@ def _decode_gs1(raw: str, gs1: dict[str, str], today: date) -> ScanResult:
             "pallet", raw, lots=[pallet.lot], material=pallet.lot.material, pallet=pallet
         )
     elif gtin_ai:
-        material, conversion = _gtin_owner(gtin_ai, gs1[gtin_ai])
+        material, conversion, retired = _gtin_owner(gtin_ai, gs1[gtin_ai])
         if material is None:
             raise BusinessRuleError(
                 "scan_not_found", f"Bu GTIN ile kayıtlı malzeme yok: {gs1[gtin_ai]}."
             )
-        result = _with_case(ScanResult("material", raw, material=material), conversion)
+        result = _with_case(ScanResult("material", raw, material=material), conversion, retired)
         if "10" in gs1:
             result.kind = "lot"
             result.lots = _lots_by_no(gs1["10"], material)
@@ -720,8 +753,9 @@ def _scan_text(raw: str) -> tuple[str, bool]:
 
 def decode_scan(raw: str, *, today: date | None = None) -> ScanResult:
     """Okutulan barkodu çözer: `LOT:` / `LOC:` / `MAT:` önekleri, GS1 ((00) SSCC, (01)/(02) GTIN,
-    koli GTIN'i koli birimiyle; (10) lot) ve öneksiz değerler (Faz 1'de basılmış lot no,
-    lokasyon ya da malzeme kodu, eski kodlar, GTIN).
+    koli GTIN'i koli birimiyle, eski koli GTIN'i arşivdeki koli içi miktarıyla ve uyarıyla; (10)
+    lot) ve öneksiz değerler (Faz 1'de basılmış lot no, lokasyon ya da malzeme kodu, eski kodlar,
+    GTIN).
 
     GS1 olduğu belli veri (parantezli, GS1 AIM kimlikli ya da GS ayırıcılı) `parse_gs1`'in
     `gs1_*` hatalarını verir. Yalnızca SSCC/GTIN ile başladığı için GS1 sayılan ham veri
@@ -762,9 +796,10 @@ def decode_scan(raw: str, *, today: date | None = None) -> ScanResult:
     if gs1_error is not None:
         raise gs1_error
     if code.isascii() and is_valid_gtin(code):
-        material, conversion = gtin_owner(code)
+        # Çıplak GTIN (EAN-13 ürün, ITF-14 koli barkodu) (01) gibi: önce ürün, sonra koli, arşiv.
+        material, conversion, retired = _gtin_owner("01", code)
         if material is not None:
-            return _with_case(ScanResult("material", raw, material=material), conversion)
+            return _with_case(ScanResult("material", raw, material=material), conversion, retired)
     raise BusinessRuleError("scan_not_found", f"Okutulan kod tanınmadı: {code}.")
 
 
