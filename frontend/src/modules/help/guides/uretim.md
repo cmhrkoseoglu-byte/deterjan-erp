@@ -36,6 +36,7 @@ Depo **Malzeme hazır** deyince **Görevlerim**'e üretim görevi düşer.
 
 ## Lot okutulamıyorsa
 
+- Lot etiketinin barkodu ya da QR kodu, kolinin GS1 barkodu ve elle yazılan lot numarası kabul edilir; büyük/küçük harf fark etmez.
 - Lot numarasını **Lot barkodu** alanına elle yazıp Enter'a basın.
 - Ya da **Kullanılabilir lotlar** tablosunda lotun satırına dokunun. Tek lot varsa kendiliğinden seçilidir.
 - Yanlış malzemenin lotunu okutursanız kırmızı uyarı çıkar ve uyarı sesi duyulur. Kaydedilmez.

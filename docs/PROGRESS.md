@@ -1399,3 +1399,15 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
     `inventory/tests/test_gs1_labels.py`, `sales/tests/test_shipments.py` (irsaliye koli sayısı),
     üretim, dolum ve sevkiyat API testleri; ön yüz `MasterDataPage.test.tsx`; tam backend ve ön yüz
     testleri yeşil.
+- **Adım 9:** kılavuz (yardım sayfası).
+  - Sistem yöneticisi: yeni "Kodlama sistematiği" bölümü (ana veri kodları, belge ve lot
+    numaraları, kod göçü, çıktıların doküman kodu, GS1); Etiket ayarlarında GS1 yalnız görünür;
+    Türkçe harfli ya da > içeren kodlarda QR okutulur ve Zebra deneme baskısı; birimlerin UN/ECE
+    kodu.
+  - Planlama: kod önerisi, kod kilidi, Excel'de boş kod, cari ülkesi; yeni "GTIN ve koli GTIN'i"
+    bölümü (GTIN öner, lot kilidi yalnız mamulde, koli GTIN'i, koli içi adet değişimi, tür kilidi).
+  - Depo, dolum, üretim ve sevkiyat: koli GS1 barkoduyla okutma, eski etiket uyarısı, Türkçe harfli
+    lotta QR, SKT farkı uyarısı, toplamada bir koli, irsaliyede koli sayısı.
+  - Ekran görüntüleri: `admin-kodlama`, `admin-kodlama-gs1` (yeni), `admin-etiket-ayarlari`
+    (yenilendi). `scripts/kilavuz-ekran-goruntuleri.mjs` bunları üretir; demo verisinde GS1 öneki
+    yoksa örnek önek girer.

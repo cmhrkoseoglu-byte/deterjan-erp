@@ -48,6 +48,8 @@ Depo lotları okutup **Yükleme tamam** deyince size "sevk onayı" görevi gelir
 
 > Yükleme öncesi vazgeçilen sevkiyat **Sevkiyatı iptal et** ile iptal edilir; okutulan lotlar yerine döner.
 
+> İrsaliyedeki koli sayısı lotun üretildiği günkü koli içi adetle hesaplanır. Koli düzeni sonradan değişse de sevk edilmiş irsaliyenin yeniden basımı değişmez.
+
 ## Müşteriler
 
 **Müşteriler** sekmesinde müşteri kartı açılır: sipariş geçmişi ve müşteriye sevk edilen lotlar. Müşteri bilgileri, adres ve asgari kalan raf ömrü **Ana veriler** ekranından planlama ya da yönetim tarafından düzenlenir.

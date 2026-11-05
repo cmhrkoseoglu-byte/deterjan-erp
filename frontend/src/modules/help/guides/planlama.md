@@ -42,9 +42,19 @@ Emir sayfası emrin durumunu baştan sona gösterir.
 2. Değişiklik için onaylı sürümde **Kopyala (yeni taslak)**'a basın ve neyin değişeceğini yazın.
 3. Taslakta satırları düzenleyin. **Karşılaştır** ile eski sürümle farkı, **Ölçekle** ile hedef miktara göre ihtiyacı görün.
 4. **Onayla**'ya basın. Yeni sürüm geçerli olur, eski sürüm "Geçersiz" olur.
-5. Malzeme, tedarikçi, müşteri, lokasyon ve ekipman **Ana veriler** menüsündedir. Çok sayıda kaydı **Excel'den içe aktar** ile yükleyebilirsiniz.
+5. Malzeme, tedarikçi, müşteri, lokasyon ve ekipman **Ana veriler** menüsündedir. Çok sayıda kaydı **Excel'den içe aktar** ile yükleyebilirsiniz; kod sütununu boş bırakırsanız sistem sıradaki kodu verir.
+6. Yeni kayıtta kod önerilir (sistem yöneticisi o türün biçimini etkinleştirdiyse). Kodu değiştirebilirsiniz ama biçime uymalıdır. Kayıt açıldıktan sonra kodu yalnızca sistem yöneticisi değiştirir; eski kod aramada ve okutmada tanınır.
+7. Tedarikçi ve müşteri kartında **Ülke** listeden seçilir; yeni kayıtta Türkiye gelir.
 
 > Kullanılmış kayıt silinmez. Artık kullanılmayan malzemeyi pasife alın.
+
+## GTIN ve koli GTIN'i
+
+- **Mamul GTIN'i**: malzeme kartında **Tür** Mamul ise **GTIN öner** düğmesi sıradaki boş GTIN'i yazar (sistem yöneticisi GS1 ayarlarını girdiyse). GTIN'i elle de girebilirsiniz; kontrol hanesi denetlenir, aynı GTIN iki kayıtta olamaz.
+- Lotu olan mamulün GTIN'i değiştirilemez: basılmış koli ve palet etiketleri bu GTIN'i taşır. Hammadde, ambalaj ve yarı mamulde tedarikçinin GTIN'i lot olsa da düzeltilebilir.
+- **Koli GTIN'i**: **Birim dönüşümleri** sekmesinde mamulün KOLI dönüşümüne girilir; **Koli GTIN'i öner** ürün GTIN'inden türetir. Koli ve palet etiketine koli GTIN'i basılır, koli okutulunca bir koli miktarı gelir. Koli GTIN'i yoksa etikete ürün GTIN'i basılır.
+- **Koli içi adet değişirse** (ör. 12'li koli 24'lü olursa) KOLI dönüşümünde **Temel birim karşılığı**'na yeni adedi yazın: **Koli GTIN'i** alanı açılır, boşalır ve zorunlu olur. Yeni koli GTIN'ini yazın ya da **Koli GTIN'i öner**'e basın, sonra **Kaydet**'e basın. Eski GTIN eski adediyle arşivlenir ve bir daha verilmez; alanın altındaki **Eski koli GTIN'leri** listesinde görünür. Depodaki eski koliler okutulunca eski adet önerilir; eski lotların etiketi yeniden basılırsa o lotun yapıldığı günkü koli GTIN'i basılır, irsaliyede de koli sayısı o günkü adetle hesaplanır.
+- Lotu olan malzemenin türü Mamul'den başka türe ya da başka türden Mamul'e değiştirilemez. Yanlış türde açılmış kart için yeni kart açın.
 
 ## Size düşen görevler
 
