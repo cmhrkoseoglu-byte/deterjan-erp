@@ -28,6 +28,7 @@ from apps.core.coding import formats as coding_formats
 from apps.core.coding import registry as coding_registry
 from apps.core.coding import selectors as coding_selectors
 from apps.core.exceptions import BusinessRuleError
+from apps.core.labels import GS1_CASE_COUNT_MAX
 from apps.core.models import AuditLog, Currency, DocumentModel, User
 from apps.core.roles import LABORATUVAR
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
@@ -1484,12 +1485,21 @@ def post_opening_balance(
 # --- etiketler ---------------------------------------------------------------------------------
 
 
+def highest_pallet_sscc(start: str) -> str | None:
+    """`start` (uzantı hanesi + firma öneki) ile başlayan en büyük palet SSCC'si. GS1 SSCC sayacı
+    (`masterdata.next_sscc`, önek değişimi) basılmış SSCC'leri bununla atlar; kaynak olarak
+    `InventoryConfig.ready()`'de kaydedilir."""
+    top = PalletLabel.objects.filter(sscc__startswith=start).aggregate(top=Max("sscc"))["top"]
+    return str(top) if top else None
+
+
 @transaction.atomic
 def create_pallet_label(
     actor: User, lot: Lot, case_count: int, *, units_per_case: int | None = None
 ) -> PalletLabel:
     """Mamul lotu için yeni SSCC'li palet etiketi kaydı açar (Karar D-6). GS1 firma öneki
-    tanımlı değilse `sscc_disabled`; mamul olmayan ya da reddedilmiş lotta hata."""
+    tanımlı değilse `sscc_disabled`; mamul olmayan ya da reddedilmiş lotta hata. Koli sayısı
+    1-99.999.999: GS1 (37) alanı en çok 8 hanedir."""
     if lot.material.material_type != Material.Type.FINISHED:
         raise BusinessRuleError(
             "not_finished_goods", "Palet etiketi yalnızca mamul lotlarına basılır."
@@ -1498,6 +1508,8 @@ def create_pallet_label(
         raise BusinessRuleError("lot_rejected", f"{lot.lot_no} reddedildi; etiket basılmaz.")
     if case_count < 1:
         raise BusinessRuleError("invalid_case_count", "Koli sayısı en az 1 olmalıdır.")
+    if case_count > GS1_CASE_COUNT_MAX:
+        raise BusinessRuleError("invalid_case_count", "Koli sayısı en çok 99.999.999 olabilir.")
     if units_per_case is not None and units_per_case < 1:
         raise BusinessRuleError("invalid_units_per_case", "Koli içi adet en az 1 olmalıdır.")
     pallet = PalletLabel(

@@ -4,7 +4,7 @@ from django.db.models import QuerySet
 from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
@@ -142,7 +142,10 @@ class MaterialViewSet(MasterDataViewSet):
     ordering = ["code"]
 
     def get_queryset(self) -> QuerySet[Material]:
-        queryset = Material.objects.select_related("base_unit", "category")
+        # GTIN kilidi (`gtin_locked`) için lot var mı bilgisi tek sorguda.
+        queryset = Material.objects.select_related("base_unit", "category").annotate(
+            has_lots=services.lot_exists("pk")
+        )
         if self.action == "retrieve":
             queryset = queryset.prefetch_related("conversions__unit")
         return queryset
@@ -152,9 +155,18 @@ class MaterialViewSet(MasterDataViewSet):
             return s.MaterialDetailSerializer
         return s.MaterialSerializer
 
+    @extend_schema(request=None, responses=s.CaseGtinSuggestionSerializer)
+    @action(detail=True, methods=["get"], url_path="case-gtin-suggestion")
+    def case_gtin_suggestion(self, request: Request, pk: str | None = None) -> Response:
+        """Koli GTIN'i önerisi: ürün GTIN'inden gösterge hanesi 1-8 ile türetilen ilk boş GTIN-14
+        (malzeme yazma rolleri)."""
+        suggestion = services.case_gtin_suggestion(self.get_object())
+        return Response(s.CaseGtinSuggestionSerializer(suggestion).data)
+
 
 class MaterialUnitConversionViewSet(MasterDataViewSet):
-    """Malzemeye özel birim dönüşümleri (`?material=<id>`)."""
+    """Malzemeye özel birim dönüşümleri (`?material=<id>`). Koli (KOLI) dönüşümünde koli GTIN'i
+    tutulur."""
 
     queryset = MaterialUnitConversion.objects.select_related("material__base_unit", "unit")
     serializer_class = s.MaterialUnitConversionSerializer
@@ -162,6 +174,10 @@ class MaterialUnitConversionViewSet(MasterDataViewSet):
     search_fields = ["material__code", "material__name", "unit__code"]
     ordering_fields = ["material__code", "unit__code"]
     ordering = ["material__code", "unit__code"]
+
+    def get_queryset(self) -> QuerySet[MaterialUnitConversion]:
+        # Koli GTIN'i kilidi (`gtin_locked`) için malzemenin lotu var mı bilgisi tek sorguda.
+        return super().get_queryset().annotate(material_has_lots=services.lot_exists("material"))
 
 
 class WarehouseViewSet(MasterDataViewSet):
@@ -284,6 +300,52 @@ class LabelSettingsView(APIView):
             body.validated_data,
         )
         return Response(s.LabelSettingsSerializer(instance).data)
+
+
+class Gs1SettingsView(APIView):
+    """GS1 ayarları (Sistem > Kodlama sistematiği > GS1): firma öneki, SSCC uzantı hanesi,
+    sıradaki ürün referansı. Okuma ve değiştirme yalnızca admin; değişiklik notu zorunlu."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(responses=s.Gs1SettingsSerializer)
+    def get(self, request: Request) -> Response:
+        return Response(s.Gs1SettingsSerializer(services.get_gs1_settings()).data)
+
+    @extend_schema(request=s.Gs1SettingsUpdateSerializer, responses=s.Gs1SettingsSerializer)
+    def patch(self, request: Request) -> Response:
+        body = s.Gs1SettingsUpdateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data: dict[str, Any] = dict(body.validated_data)
+        services.update_gs1_settings(
+            request.user,  # type: ignore[arg-type]
+            **data,
+        )
+        return Response(s.Gs1SettingsSerializer(services.get_gs1_settings()).data)
+
+
+class GtinSuggestionView(APIView):
+    """Mamul için sıradaki boş GTIN-13 önerisi (malzeme yazma rolleri). Firma öneki ve sıradaki
+    ürün referansı girilmemişse `active=false`; `?material_type=` verilir ve mamul değilse de
+    kapalıdır."""
+
+    permission_classes = [HasRole(*MASTERDATA_WRITE_ROLES)]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "material_type",
+                str,
+                required=False,
+                description="Malzeme türü; FINISHED (mamul) dışında öneri kapalı",
+            )
+        ],
+        responses=s.GtinSuggestionSerializer,
+    )
+    def get(self, request: Request) -> Response:
+        material_type = request.query_params.get("material_type") or None
+        suggestion = services.gtin_suggestion(material_type)
+        return Response(s.GtinSuggestionSerializer(suggestion).data)
 
 
 class CompanyProfileView(APIView):

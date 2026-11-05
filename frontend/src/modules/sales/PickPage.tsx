@@ -24,6 +24,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getErrorCode, getErrorMessage } from "../../api/client";
+import { CASE_UNIT } from "../../api/masterdata";
 import {
   getShipment,
   loadShipment,
@@ -34,6 +35,7 @@ import {
   type ShipmentDetail,
   type ShipmentPick,
 } from "../../api/sales";
+import type { ScanResult } from "../../api/scan";
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
 import { ScanInput, type ScanInputHandle } from "../../components/scan/ScanInput";
@@ -277,17 +279,30 @@ function LineCard({
  * Okutulan lot için önerilen miktar: satırın kalanı, lotun öneri satırlarındaki miktarla sınırlı.
  * Rezerve lot tüm lokasyonlardaki rezervasyonlarından toplanır (toplam); rezervesiz lot ise tek
  * lokasyondan alınır (backend `_free_stock_location`), bu yüzden en çok stoklu lokasyon esas alınır.
+ * Koli okutulduysa (`perCase`: 1 kolideki temel birim) önerilen miktar bir kolidir; kalanı aşmaz.
  */
-function defaultQuantity(row: PickSuggestion, lotId: number): string {
+function defaultQuantity(
+  row: PickSuggestion,
+  lotId: number,
+  perCase: number | null = null,
+): string {
   const remaining = remainingOf(row);
   if (remaining <= 0) return "";
+  const wanted = perCase ? Math.min(remaining, perCase) : remaining;
   const own = row.suggestions.filter((item) => item.lot === lotId);
-  if (own.length === 0) return trimDecimal(String(remaining));
+  if (own.length === 0) return trimDecimal(String(wanted));
   const reserved = own.filter((item) => item.reserved);
   const available = reserved.length
     ? reserved.reduce((sum, item) => sum + Number(item.reserved_quantity), 0)
     : Math.max(...own.map((item) => Number(item.quantity)));
-  return trimDecimal(String(Math.min(remaining, available)));
+  return trimDecimal(String(Math.min(wanted, available)));
+}
+
+/** Koli GTIN'i okutulduysa 1 kolideki temel birim miktarı; değilse null. */
+function unitsPerCase(result: ScanResult): number | null {
+  if (result.unit !== CASE_UNIT || !result.units_per_case) return null;
+  const units = Number(result.units_per_case);
+  return Number.isFinite(units) && units > 0 ? units : null;
 }
 
 function PickForm({
@@ -352,9 +367,9 @@ function PickForm({
     pick.mutate(withReason);
   }
 
-  function choose(id: number, lotNo: string) {
+  function choose(id: number, lotNo: string, perCase: number | null = null) {
     setLot({ id, lot_no: lotNo });
-    setQuantity(defaultQuantity(row, id));
+    setQuantity(defaultQuantity(row, id, perCase));
     quantityRef.current?.focus();
     quantityRef.current?.select();
   }
@@ -380,7 +395,7 @@ function PickForm({
             placeholder={st.scanPlaceholder}
             autoFocus
             disabled={remainingOf(row) <= 0}
-            onLot={(scanned) => choose(scanned.id, scanned.lot_no)}
+            onLot={(scanned, result) => choose(scanned.id, scanned.lot_no, unitsPerCase(result))}
           />
           <TextInput
             ref={quantityRef}

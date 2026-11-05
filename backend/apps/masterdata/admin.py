@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from django.contrib import admin
 
 from apps.core.admin import AuditedAdminMixin
@@ -18,7 +20,12 @@ class MasterDataAdmin(AuditedAdminMixin, admin.ModelAdmin):
     """Yönetim paneli: kayıtlar denetim günlüğüne yazılır, silinemez (pasife alınır)."""
 
     search_fields = ("code", "name")
-    readonly_fields = ("created_at", "created_by", "updated_at", "updated_by")
+    readonly_fields: ClassVar[tuple[str, ...]] = (
+        "created_at",
+        "created_by",
+        "updated_at",
+        "updated_by",
+    )
 
 
 @admin.register(UnitOfMeasure)
@@ -37,7 +44,9 @@ class MaterialUnitConversionInline(admin.TabularInline):
     model = MaterialUnitConversion
     fk_name = "material"
     extra = 0
-    fields = ("unit", "factor_to_base", "is_active")
+    fields = ("unit", "factor_to_base", "gtin", "is_active")
+    # Koli GTIN'i yalnızca uygulamadan girilir (biçim, tekillik ve kilit kuralları serviste).
+    readonly_fields = ("gtin",)
     can_delete = False
 
     def has_change_permission(self, request, obj=None):  # type: ignore[no-untyped-def]
@@ -52,6 +61,9 @@ class MaterialAdmin(MasterDataAdmin):
     list_display = ("code", "name", "material_type", "base_unit", "category", "is_active")
     list_filter = ("material_type", "category", "is_hazardous", "is_active")
     list_select_related = ("base_unit", "category")
+    # GTIN yalnızca uygulamadan girilir: panel kaydı servis kurallarını (kontrol hanesi, ürün ve
+    # koli GTIN'lerinde tekillik, lotu olan malzemede kilit) atlar.
+    readonly_fields = (*MasterDataAdmin.readonly_fields, "gtin")
     inlines = [MaterialUnitConversionInline]
 
 

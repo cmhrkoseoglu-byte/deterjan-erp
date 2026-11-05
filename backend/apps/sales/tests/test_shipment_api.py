@@ -3,13 +3,15 @@ irsaliye (JSON ve PDF), toplama önerisi, müşteriye sevk edilen lotlar ve rol 
 
 from collections.abc import Callable
 from datetime import timedelta
+from typing import Any
 
 import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.core.labels import gs1_check_digit
 from apps.core.models import User
-from apps.masterdata.models import Location
+from apps.masterdata.models import Location, MaterialUnitConversion
 from apps.masterdata.tests.factories import CustomerFactory
 from apps.sales import services
 from apps.sales.models import SalesOrder, Shipment
@@ -133,6 +135,8 @@ def test_other_lot_reason_and_undo(client_for: Client, seller: User, dock: Locat
 
 
 def test_shelf_life_block_and_unknown_lot(client_for: Client, seller: User, dock: Location) -> None:
+    from apps.inventory.models import Lot
+
     depo = client_for("depo")
     product = finished_product()
     customer = CustomerFactory.create(min_remaining_shelf_life_days=180)
@@ -148,6 +152,13 @@ def test_shelf_life_block_and_unknown_lot(client_for: Client, seller: User, dock
     assert blocked.json()["code"] == "shelf_life_too_short"
     missing = depo.post(f"{URL}{shipment.pk}/pick/", {"lot_no": "YOK-1"}, format="json")
     assert missing.json()["code"] == "lot_not_found"
+    # Lot kimliğiyle okutmada mesaj kimliği gösterir (lot no da gönderilse aranan kimliktir).
+    missing_id = Lot.objects.latest("pk").pk + 1
+    for body in ({"lot": missing_id}, {"lot": missing_id, "lot_no": "YOK-1"}):
+        assert depo.post(f"{URL}{shipment.pk}/pick/", body, format="json").json() == {
+            "code": "lot_not_found",
+            "detail": f"{missing_id} lotu bulunamadı.",
+        }
     empty = depo.post(f"{URL}{shipment.pk}/pick/", {"lot_no": ""}, format="json")
     assert empty.status_code == 400
 
@@ -252,8 +263,143 @@ def test_lot_no_shared_by_two_products_must_be_picked_from_list(
     scanned = depo.post(f"{URL}{shipment.pk}/pick/", {"lot_no": "ORTAK-1"}, format="json")
     assert scanned.status_code == 400
     assert scanned.json()["code"] == "ambiguous_lot"
+    # Mesaj sevkiyat bağlamında; okutulan metin değil lotun numarası yazılır.
+    for code in ("ORTAK-1", "LOT:ortak-1"):
+        assert depo.post(f"{URL}{shipment.pk}/pick/", {"lot_no": code}, format="json").json() == {
+            "code": "ambiguous_lot",
+            "detail": "ORTAK-1 numarası sevkiyattaki birden çok üründe var; lotu listeden seçin "
+            "ya da koli barkodunu okutun.",
+        }
     picked = depo.post(f"{URL}{shipment.pk}/pick/", {"lot": lot_b.pk}, format="json")
     assert picked.status_code == 200, picked.json()
+
+
+def test_lot_no_also_used_by_another_material_picks_the_shipment_product(
+    client_for: Client, seller: User, dock: Location
+) -> None:
+    """Aynı lot no sevkiyat dışındaki bir malzemede de varsa okutma sevkiyatın ürünündeki lotu
+    toplar: `ambiguous_lot` yalnızca sevkiyatın ürünleri arasında sayılır."""
+    from apps.inventory.models import Lot
+    from apps.inventory.tests.factories import stocked_lot
+
+    depo = client_for("depo")
+    product = finished_product()
+    lot = finished_lot(product, "24")
+    unrelated = stocked_lot("10")
+    Lot.objects.filter(pk__in=[lot.pk, unrelated.pk]).update(lot_no="ORTAK-3")
+    order = confirmed_order(seller, [(product, "2", "KOLI")])
+    shipment = services.plan_shipment(seller, order, {"planned_date": timezone.localdate()})
+
+    for code in ("ORTAK-3", "LOT:ORTAK-3"):
+        response = depo.post(
+            f"{URL}{shipment.pk}/pick/", {"lot_no": code, "quantity": "12"}, format="json"
+        )
+        assert response.status_code == 200, (code, response.json())
+    body = response.json()
+    assert {pick["lot"] for pick in body["picks"]} == {lot.pk}
+    assert body["lines"][0]["picked_quantity"] == "24.0000"
+
+
+CASE_GTIN = "18690000000019"  # koli GTIN'i (GTIN-14)
+
+
+def test_pick_by_case_barcode_and_pallet_sscc(
+    client_for: Client, seller: User, dock: Location
+) -> None:
+    """Toplama ortak lot çözümünü kullanır (GS1 adım 7): koli barkodu ((01) koli GTIN'i + (10) lot)
+    ürünü GTIN'den bildiği için aynı lot no iki üründe olsa da lotu bulur; palet SSCC'si (00)
+    paletin lotunu bulur. Bilinmeyen lot `lot_not_found`, hatalı kontrol hanesi
+    `gs1_check_digit`."""
+    from apps.inventory.models import Lot, PalletLabel
+
+    depo = client_for("depo")
+    first, second = finished_product(), finished_product()
+    MaterialUnitConversion.objects.filter(material=first, unit__code="KOLI").update(gtin=CASE_GTIN)
+    lot_a = finished_lot(first, "24")
+    lot_b = finished_lot(second, "24")
+    Lot.objects.filter(pk__in=[lot_a.pk, lot_b.pk]).update(lot_no="ORTAK-2")
+    order = confirmed_order(seller, [(first, "1", "KOLI"), (second, "1", "KOLI")])
+    shipment = services.plan_shipment(seller, order, {"planned_date": timezone.localdate()})
+    pick = f"{URL}{shipment.pk}/pick/"
+
+    def scan(code: str) -> Any:
+        return depo.post(pick, {"lot_no": code}, format="json")
+
+    assert scan("ORTAK-2").json()["code"] == "ambiguous_lot"
+    assert scan(f"(01){CASE_GTIN}(10)YOK-1").json()["code"] == "lot_not_found"
+    # Mesajda okutulan ham veri (AIM, GS) değil, barkoddaki lot no.
+    assert scan(f"]C101{CASE_GTIN}10YOK-1\x1d17281015").json() == {
+        "code": "lot_not_found",
+        "detail": "YOK-1 lotu bulunamadı.",
+    }
+    assert scan(f"(01){CASE_GTIN[:-1]}0(10)ORTAK-2").json()["code"] == "gs1_check_digit"
+    by_case = scan(f"(01){CASE_GTIN}(17)281015(10)ORTAK-2")
+    assert by_case.status_code == 200, by_case.json()
+    assert [(p["lot"], p["quantity"]) for p in by_case.json()["picks"]] == [(lot_a.pk, "12.0000")]
+
+    body = "08691234000000001"
+    pallet = PalletLabel.objects.create(sscc=body + gs1_check_digit(body), lot=lot_b, case_count=2)
+    by_pallet = scan(f"]C100{pallet.sscc}")
+    assert by_pallet.status_code == 200, by_pallet.json()
+    picked = {p["lot"]: p["quantity"] for p in by_pallet.json()["picks"]}
+    assert picked == {lot_a.pk: "12.0000", lot_b.pk: "12.0000"}
+    assert client_for("sevkiyat").post(pick, {"lot_no": "ORTAK-2"}).status_code == 403
+
+
+def test_lot_of_a_product_outside_the_shipment_is_not_in_shipment(
+    client_for: Client, seller: User, dock: Location
+) -> None:
+    """Sevkiyatta olmayan ürünün lotu (lot no, lot etiketi ya da o ürünün koli barkodu) bulunur;
+    servis `lot_not_in_shipment` der, "lot bulunamadı" değil."""
+    from apps.inventory.models import Lot
+
+    depo = client_for("depo")
+    product, other = finished_product(), finished_product()
+    finished_lot(product, "10")
+    outside = finished_lot(other, "10")
+    Lot.objects.filter(pk=outside.pk).update(lot_no="BASKA-1")
+    MaterialUnitConversion.objects.filter(material=other, unit__code="KOLI").update(gtin=CASE_GTIN)
+    order = confirmed_order(seller, [(product, "5", "ADET")])
+    shipment = services.plan_shipment(seller, order, {"planned_date": timezone.localdate()})
+
+    for code in ("BASKA-1", "LOT:baska-1", f"(01){CASE_GTIN}(10)BASKA-1"):
+        response = depo.post(f"{URL}{shipment.pk}/pick/", {"lot_no": code}, format="json")
+        assert response.json() == {
+            "code": "lot_not_in_shipment",
+            "detail": f"Lot BASKA-1 ({other.code}) bu sevkiyatın ürünlerinden değil.",
+        }, code
+
+
+def test_gs_at_either_end_of_the_scanned_text_is_kept(
+    client_for: Client, seller: User, dock: Location
+) -> None:
+    """AIM göndermeyen okuyucu FNC1'i GS olarak gönderir: palet etiketinin (17)+(10) barkodunda
+    baştaki ya da sondaki GS, GS1 işaretidir; okutulan metin kırpılmadan lot çözümüne gider, kenar
+    boşluklarını (NBSP, RS …) o atar. Yalnız GS ve boşluk okutulmuş lot değildir."""
+    depo = client_for("depo")
+    product = finished_product()
+    lot = finished_lot(product, "10")
+    order = confirmed_order(seller, [(product, "5", "ADET")])
+    shipment = services.plan_shipment(seller, order, {"planned_date": timezone.localdate()})
+    pick = f"{URL}{shipment.pk}/pick/"
+
+    codes = (
+        "\x1d17281015" + f"10{lot.lot_no}",
+        "17281015" + f"10{lot.lot_no}\x1d",
+        "\xa0\x1d17281015" + f"10{lot.lot_no}\x1e",
+    )
+    for code in codes:
+        response = depo.post(pick, {"lot_no": code, "quantity": "1"}, format="json")
+        assert response.status_code == 200, (repr(code), response.json())
+    body = response.json()
+    assert {row["lot"] for row in body["picks"]} == {lot.pk}
+    assert body["lines"][0]["picked_quantity"] == "3.0000"
+    for blank in ("\x1d", " \x1d\r\n"):
+        response = depo.post(pick, {"lot_no": blank}, format="json")
+        assert (response.status_code, response.json()["errors"]) == (
+            400,
+            {"lot_no": ["Lot okutun ya da seçin."]},
+        ), repr(blank)
 
 
 def test_dock_stock_is_not_a_reservation_candidate(

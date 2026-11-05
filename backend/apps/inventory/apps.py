@@ -40,6 +40,14 @@ class InventoryConfig(AppConfig):
         register_lot_type("B", label="Üretim şarjı lotu", counter=last_lot_number)
         register_lot_type("D", label="Dolum lotu", counter=last_lot_number)
 
+        # GS1: SSCC sayacı (masterdata.next_sscc) basılmış palet SSCC'lerini atlar. masterdata
+        # inventory'yi import etmez; kaynak burada kaydedilir (başka modülün import sırasına
+        # bağlı kalmaz).
+        from apps.inventory.services import highest_pallet_sscc
+        from apps.masterdata.services import register_sscc_source
+
+        register_sscc_source(highest_pallet_sscc)
+
         # Çıktı doküman kodları: Sistem > Kodlama sistematiği > Çıktılar (ISO 9001 md. 7.5).
         from apps.core.coding.registry import register_output
 

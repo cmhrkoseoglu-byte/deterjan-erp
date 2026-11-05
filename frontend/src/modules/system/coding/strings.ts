@@ -7,6 +7,7 @@ export const cs = {
     master: "Ana veri kodları",
     documents: "Belge numaraları",
     lots: "Lot numaraları",
+    gs1: "GS1",
     outputs: "Çıktılar",
     migration: "Kod göçü",
     history: "Geçmiş",
@@ -169,4 +170,39 @@ export const cs = {
   addRevision: "Revizyonu ekle",
   revisionConfirm: "Revizyonlar sonradan değiştirilemez ve silinemez. Revizyon eklensin mi?",
   revisionAdded: (label: string) => `${label} eklendi.`,
+  // GS1 (firma öneki, SSCC, GTIN önerisi)
+  gs1Intro:
+    "GS1 firma öneki palet etiketlerindeki SSCC numarasında ve mamullerin GTIN önerisinde kullanılır. Öneki GS1 Türkiye verir. Değişiklik yalnızca bundan sonra basılacak etiketleri ve önerilecek GTIN'leri etkiler; basılmış etiketler ve kayıtlı GTIN'ler değişmez.",
+  gs1Prefix: "Firma öneki",
+  gs1PrefixHelp:
+    "GS1 Türkiye'nin verdiği 6-12 haneli önek. Boş bırakılırsa SSCC palet etiketi ve GTIN önerisi kapanır.",
+  gs1PrefixInvalid: "Firma öneki 6-12 rakam olmalıdır.",
+  gs1Extension: "SSCC uzantı hanesi",
+  gs1ExtensionHelp:
+    "SSCC'nin ilk hanesi (0-9). Genelde 0 kalır; aynı önekle ayrı bir SSCC serisi gerekirse değiştirilir.",
+  gs1NextSerial: "Sıradaki SSCC seri no",
+  gs1NextSerialHelp:
+    "Salt okunur. Önek ya da uzantı değişince o önek ve uzantıyla basılmış en büyük seri no + 1 olur; eski öneke dönülünce SSCC çakışmaz.",
+  gs1Reference: "Sıradaki ürün referansı",
+  gs1ReferenceHelp: (digits: number) =>
+    `GTIN önerisi önekten sonraki ${digits} haneyi bu numaradan başlatır (0-${10 ** digits - 1}); kullanılmış GTIN'ler atlanır. Boş bırakılırsa GTIN önerisi kapalı kalır.`,
+  gs1ReferenceNeedsPrefix: "Ürün referansı için önce firma önekini girin.",
+  gs1ReferenceReset:
+    "Önek değişince ürün referansı silinir; yeni önekteki ilk boş referansı girin.",
+  gs1ReferenceInvalid: (digits: number) =>
+    `Ürün referansı en çok ${digits} hanedir (0-${10 ** digits - 1}).`,
+  gs1Digits: (n: number) => `${n} hane`,
+  gs1None: "Tanımlı değil",
+  gs1State: {
+    ssccOn: "SSCC açık",
+    ssccOff: "SSCC kapalı",
+    gtinOn: "GTIN önerisi açık",
+    gtinOff: "GTIN önerisi kapalı",
+  },
+  gs1Title: "GS1 ayarları",
+  gs1PrefixConfirm:
+    "Firma öneki değişiyor. SSCC seri no yeni önekte devam eder; basılmış etiketler değişmez. Kaydedilsin mi?",
+  gs1PrefixClearConfirm:
+    "Firma öneki siliniyor. SSCC palet etiketi ve GTIN önerisi kapanır; basılmış etiketler değişmez. Kaydedilsin mi?",
+  gs1Saved: "GS1 ayarları kaydedildi.",
 } as const;

@@ -15,6 +15,7 @@ import { formatNumber } from "../../i18n/format";
 import type { EntityConfig } from "../common/CrudPage";
 import type { FieldDef } from "../common/forms";
 import { MaterialHazardAction } from "../hse/MaterialHazardModal";
+import { CaseGtinField, MaterialGtinField } from "./GtinFields";
 import { LocationLabelAction, PrinterTestAction } from "./LabelTools";
 
 // Ana verileri planlama yazar (admin her yere erişir); birimleri yalnızca admin.
@@ -131,6 +132,9 @@ export const materialConfig: EntityConfig<Material> = {
       label: "GTIN (barkod no)",
       type: "text",
       description: "Mamulde doluysa koli etiketi GS1-128 basılır (8, 12, 13 ya da 14 hane)",
+      lockedBy: "gtin_locked",
+      lockedHelp: "Lotu olan malzemenin GTIN'i değiştirilemez.",
+      component: MaterialGtinField,
     },
     { name: "requires_incoming_qc", label: "Giriş kontrolü gerekli", type: "checkbox" },
     { name: "is_hazardous", label: "Tehlikeli madde", type: "checkbox" },
@@ -156,6 +160,7 @@ export const conversionConfig: EntityConfig<Conversion & { code?: string; name?:
       render: (row) =>
         `1 ${row.unit_code} = ${formatNumber(row.factor_to_base, undefined)} ${row.base_unit_code}`,
     },
+    { key: "gtin", label: "Koli GTIN'i", render: (row) => row.gtin },
   ],
   fields: [
     {
@@ -181,6 +186,17 @@ export const conversionConfig: EntityConfig<Conversion & { code?: string; name?:
       type: "decimal",
       required: true,
       description: "1 birim kaç temel birim eder (1 KOLI = 12 ADET → 12)",
+    },
+    {
+      // GS1: yalnızca KOLI biriminde görünür (CaseGtinField).
+      name: "gtin",
+      label: "Koli GTIN'i",
+      type: "text",
+      description:
+        "Koli ve palet etiketinin barkoduna basılır (genelde 14 hane). Boşsa etiketlere ürün GTIN'i basılır.",
+      lockedBy: "gtin_locked",
+      lockedHelp: "Lotu olan malzemenin koli GTIN'i değiştirilemez.",
+      component: CaseGtinField,
     },
   ],
 };

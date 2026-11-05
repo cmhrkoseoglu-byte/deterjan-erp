@@ -10,7 +10,8 @@ from reportlab.pdfgen import canvas
 
 from apps.core.exceptions import BusinessRuleError
 from apps.core.labels import FONT_BOLD, Label, Text, gs1_check_digit, render_pdf
-from apps.core.roles import DEPO, DOLUM, LABORATUVAR
+from apps.core.roles import ADMIN, DEPO, DOLUM, LABORATUVAR
+from apps.core.tests.factories import UserFactory
 from apps.inventory import selectors, services
 from apps.inventory.labels import case_label, lot_label, pallet_label
 from apps.inventory.models import Lot, PalletLabel
@@ -44,7 +45,9 @@ def finished_lot(gtin: str = GTIN, lot_no: str = "D-261015-001") -> Lot:
 
 
 def enable_sscc() -> None:
-    masterdata.update_label_settings(None, {"gs1_company_prefix": "8691234"})  # type: ignore[arg-type]
+    """GS1 firma önekini girer (GS1 ayarlarını yalnız admin, notla değiştirir)."""
+    admin = UserFactory.create(roles=[ADMIN])
+    masterdata.update_gs1_settings(admin, note="Test", company_prefix="8691234")
 
 
 # --- lot etiketi ---------------------------------------------------------------------------------
@@ -318,15 +321,23 @@ def test_scan_gs1_case_and_pallet() -> None:
     found = selectors.decode_scan(f"(00){pallet.sscc}")
     assert found.kind == "pallet" and found.pallet == pallet and found.lots == [lot]
     assert selectors.decode_scan(f"]C100{pallet.sscc}").pallet == pallet
-    with pytest.raises(BusinessRuleError):
+    # Kayıtlı olmayan SSCC bulunamaz; kontrol hanesi hatalı SSCC okutulmaz (GS1 adım 7).
+    with pytest.raises(BusinessRuleError) as error:
+        selectors.decode_scan("(00)086912340000099995")
+    assert error.value.code == "scan_not_found"
+    with pytest.raises(BusinessRuleError) as error:
         selectors.decode_scan("(00)086912340000099999")
+    assert error.value.code == "gs1_check_digit"
     with pytest.raises(BusinessRuleError):
         selectors.decode_scan("(01)08690000000029(10)X")
 
 
 def test_parse_gs1_rejects_malformed() -> None:
-    assert selectors.parse_gs1("(01)123") == {}
-    assert selectors.parse_gs1("99ABC") == {}
+    # Bozuk veri boş sözlük değil, kodlu hatadır (gs1_*); (99) firma içi alanı tanınır.
+    with pytest.raises(BusinessRuleError) as error:
+        selectors.parse_gs1("(01)123")
+    assert error.value.code == "gs1_malformed"
+    assert selectors.parse_gs1("99ABC") == {"99": "ABC"}
     assert selectors.parse_gs1("(01)08690000000012(10)A1") == {"01": "08690000000012", "10": "A1"}
 
 

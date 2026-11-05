@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 
 from apps.inventory.models import Lot
 from apps.inventory.tests.factories import stocked_lot
+from apps.masterdata.models import Material, MaterialUnitConversion
 from apps.masterdata.tests.factories import unit
 from apps.production import services
 from apps.production.models import ProductionOrder
@@ -204,9 +205,118 @@ def test_unknown_lot_scan_is_rejected(plant, planner, depo):
 
     assert response.status_code == 400
     assert response.data["code"] == "lot_not_found"
+    # Lot kimliğiyle (olmayan ya da başka malzemenin lotu) mesaj kimliği gösterir; lot no da
+    # gönderilse aranan kimliktir.
+    missing_id = Lot.objects.latest("pk").pk + 1
+    for lot_id, lot_no in ((missing_id, ""), (missing_id, "YOK-1"), (plant.lots["sles"].pk, "")):
+        response = api.post(
+            url("order-picks", order.pk),
+            {"requirement": requirement.pk, "lot": lot_id, "lot_no": lot_no, "quantity": "10"},
+            format="json",
+        )
+        assert (response.status_code, response.data) == (
+            400,
+            {
+                "code": "lot_not_found",
+                "detail": f"{plant.las.code} malzemesinde {lot_id} lotu bulunamadı.",
+            },
+        ), (lot_id, lot_no)
+
+
+GTIN = "8690000000012"
+CASE_GTIN = "18690000000019"  # koli GTIN'i (GTIN-14)
+
+
+def with_case_gtin(plant):
+    """LAS'a ürün GTIN'i ve 1 KOLI = 25 kg koli dönüşümünde koli GTIN'i."""
+    Material.objects.filter(pk=plant.las.pk).update(gtin=GTIN)
+    MaterialUnitConversion.objects.create(
+        material=plant.las, unit=unit("KOLI"), factor_to_base=D("25"), gtin=CASE_GTIN
+    )
+
+
+def test_pick_by_gs1_barcode(plant, planner, depo, operator):
+    """Üretim ortak lot çözümünü kullanır (GS1 adım 7): koli barkodu ((01) koli GTIN'i + (10) lot),
+    ham GS1, ürün GTIN'i ve lot etiketi (`LOT:`) yalnızca ihtiyacın malzemesindeki lotu bulur."""
+    las = plant.lots["las"]
+    with_case_gtin(plant)
+    order = approved_order(plant, planner)
+    requirement = plant.requirement(order, plant.las)
+
+    def pick(code, user=depo):
+        body = {"requirement": requirement.pk, "lot_no": code, "quantity": "10"}
+        return client(user).post(url("order-picks", order.pk), body, format="json")
+
+    codes = [
+        f"(01){CASE_GTIN}(10){las.lot_no}",
+        f"]C101{CASE_GTIN}10{las.lot_no}",
+        f"(01)0{GTIN}(10){las.lot_no.lower()}",
+        f"LOT:{las.lot_no}",
+        # AIM'siz (17)+(10): baştaki ya da sondaki GS (FNC1) GS1 işaretidir, metin kırpılmaz.
+        "\x1d17281015" + f"10{las.lot_no}",
+        "17281015" + f"10{las.lot_no}\x1d",
+        # NBSP gibi boşluk atılır; arkasındaki parantezli AI yine GS1'dir.
+        f"\xa0(01){CASE_GTIN}(10){las.lot_no}",
+        # GS1 verisinin sonundaki boşluk da (NBSP, dikey sekme, NEL, RS) atılır.
+        f"(01){CASE_GTIN}(10){las.lot_no}\xa0",
+        f"(01){CASE_GTIN}(10){las.lot_no}\x0b",
+        f"]C101{CASE_GTIN}10{las.lot_no}\x85",
+        "\x1d17281015" + f"10{las.lot_no}\x1e",
+    ]
+    for code in codes:
+        response = pick(code)
+        assert response.status_code == 201, (repr(code), response.data)
+        assert response.data["lot_no"] == las.lot_no
+    # Boş ya da yalnız GS ve boşluk: lot okutulmamıştır.
+    for blank in ("", "\x1d", " \x1d\r\n"):
+        response = pick(blank)
+        assert (response.status_code, response.json()["errors"]) == (
+            400,
+            {"lot_no": ["Lot okutulmalı ya da seçilmelidir."]},
+        ), repr(blank)
+    # Başka malzemenin lotu bu ihtiyaçta bulunmaz; GS1 kontrol hanesi denetlenir.
+    other = pick(f"LOT:{plant.lots['sles'].lot_no}")
+    assert other.status_code == 400 and other.data["code"] == "lot_not_found"
+    # Mesajda okutulan ham veri (AIM, GS) değil, barkoddaki lot no.
+    for code in (f"]C101{CASE_GTIN}10YOK-1\x1d17281015", "\x0b]C0YOK-1"):
+        missing = pick(code)
+        assert (missing.status_code, missing.data) == (
+            400,
+            {
+                "code": "lot_not_found",
+                "detail": f"{plant.las.code} malzemesinde YOK-1 lotu bulunamadı.",
+            },
+        ), repr(code)
+    wrong = pick(f"(01){CASE_GTIN[:-1]}0(10){las.lot_no}")
+    assert wrong.status_code == 400 and wrong.data["code"] == "gs1_check_digit"
+    assert pick(f"(01){CASE_GTIN}(10){las.lot_no}", user=operator).status_code == 403
 
 
 # --- şarj ve tartım ----------------------------------------------------------------------------
+
+
+def test_weigh_by_gs1_barcode(plant, planner, depo, operator):
+    """Tartımda da ortak lot çözümü: koli barkodu lotu bulur, başka malzemenin lotu bulunmaz."""
+    las = plant.lots["las"]
+    with_case_gtin(plant)
+    api = client(operator)
+    order = ready_order(plant, planner, depo)
+    batch = api.post(url("batch-list"), {"order": order.pk}, format="json").data
+    lines = {line["material_code"]: line for line in batch["lines"]}
+    body = {"requirement": lines["LAS"]["requirement"], "quantity": "600"}
+
+    wrong = api.post(
+        url("batch-consume", batch["id"]),
+        {**body, "lot_no": f"LOT:{plant.lots['sles'].lot_no}"},
+        format="json",
+    )
+    assert wrong.status_code == 400 and wrong.data["code"] == "lot_not_found"
+    code = f"(01){CASE_GTIN}(17)281015(10){las.lot_no}"
+    response = api.post(url("batch-consume", batch["id"]), {**body, "lot_no": code}, format="json")
+    assert response.status_code == 200, response.data
+    states = {line["material_code"]: line["state"] for line in response.data["lines"]}
+    assert states["LAS"] == "ok"
+    assert client(depo).post(url("batch-consume", batch["id"]), body).status_code == 403
 
 
 def test_batch_start_weigh_finish(plant, planner, depo, operator):

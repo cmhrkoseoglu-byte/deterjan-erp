@@ -1278,3 +1278,85 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
     personel çıktısında bandın yeri, Excel alt bilgisi, API yetkileri), `sales/tests/
     test_shipments.py` (yeniden basılan irsaliyede sevk anındaki kodlar ve revizyon), ön yüz
     `coding.test.tsx` (çıktılar); tam backend ve ön yüz testleri yeşil.
+
+- **Adım 7:** GS1 (plan §6.2).
+  - GS1 ayarları tek yerde: Sistem > Kodlama sistematiği > GS1 (yalnız admin, not zorunlu,
+    denetim günlüğü). Bölümde firma öneki, SSCC uzantı hanesi, sıradaki SSCC seri no (salt
+    okunur) ve sıradaki ürün referansı; SSCC ile GTIN önerisinin açık olup olmadığı ve son
+    değişiklik görünür. Ana veriler > Etiket ayarlarında bu alanlar salt okunur.
+  - SSCC: önek ya da uzantı hanesi değişince sıradaki seri no, o uzantı ve önekle basılmış en
+    büyük seri no + 1 olur. Basılmış bir SSCC ikinci kez verilmez (eski öneke dönülse de). Palet
+    koli sayısı en çok 99.999.999'dur ((37) alanı 8 hane).
+  - GTIN kuralları:
+    - Yalnız ASCII rakam; 8, 12, 13 ya da 14 hane; kontrol hanesi doğru olmalı.
+    - Ürün ve koli GTIN'leri 14 haneli normal biçimde birlikte tektir (pasif kayıtlar dahil).
+      GTIN yazan işlemler işlem kilidini (730103) satır kilitlerinden önce alır: eşzamanlı
+      yazmalar sıraya girer, birbirini kilitlemez.
+    - Koli GTIN'i yalnız KOLI dönüşümünde girilir ve malzemenin kendi ürün GTIN'i olamaz.
+    - Lotu olan malzemenin dolu ve geçerli GTIN'i ile koli GTIN'i değişmez, silinmez. Boştan ilk
+      kez girmek ve geçersiz eski GTIN'i düzeltmek serbesttir. Yönetim panelinde GTIN salt okunur.
+  - GTIN önerisi yalnız mamulde, firma öneki ve sıradaki ürün referansı girilince açılır:
+    - "GTIN öner" sıradaki boş GTIN-13'ü yazar; kullanılmış ürün ve koli GTIN'leri atlanır.
+    - Önerilen GTIN ya da ondan en çok 10 ileri referans kaydedilince sayaç ilerler.
+    - Koli dönüşümünde "Koli GTIN'i öner": ürün GTIN'inden gösterge hanesi 1-8 ile ilk boş
+      GTIN-14.
+    - Ekran yalnız taze öneriyi sunar. Önerilen GTIN kaydederken başka kayda verilmişse sıradaki
+      öneri yazılır ve sarı not çıkar. Malzeme ya da birim değişince önerilen koli GTIN'i silinir;
+      geç gelen öneri elle yazılmış GTIN'in üstüne yazılmaz.
+  - Etiketler:
+    - Koli etiketinin (01) ve palet etiketinin (02) alanında koli GTIN'i basılır (palette
+      yanında (37) koli sayısı). Koli GTIN'i yoksa bugünkü gibi ürün GTIN'i basılır; etiket
+      penceresinde sarı uyarı çıkar.
+    - Yalnız okutulabilen GS1 barkodu basılır. GTIN geçersizse ya da lot numarası GS1'e uymuyorsa
+      (20 karakterden uzun, GS1 karakter kümesi dışında ya da parantez veya > içeren) koli ve
+      palet etiketi firma içi `LOT:` barkodunu taşır. Palet SSCC'si her zaman basılır. Etiket
+      penceresi bu durumda bunu söyler.
+    - Türkçe harfli ya da > içeren lot ve lokasyon kodu çizgi barkoda (Code128) yazılmaz: Code128
+      Türkçe harfi taşımaz, ZPL'de > kip önekidir. Lot, koli ve lokasyon etiketinde "Barkod yok:
+      QR kodu okutun.", palet etiketinde "Lot barkodu yok: SSCC barkodunu okutun." yazar.
+    - ZPL'de ^, ~ ve ters bölü taşıyan alan verisi onaltılık kaçışla (^FH) gönderilir: içe
+      aktarılmış A^B gibi lot numaraları Zebra yazıcıda da yazıda, barkodda ve QR'da aynen basılır.
+  - Okutma:
+    - AI tablosu GS1 General Specifications'a göre: AI uzunluğu ilk iki haneden, ön tanımlı
+      uzunluklu alanlar, FNC1/GS ayırıcı, GS1 karakter kümesi ve en çok uzunluklar.
+    - (00), (01), (02) ve (410)-(417) alanlarında kontrol hanesi denetlenir. Tanınmayan AI hata
+      verir.
+    - Tarihlerde yüzyıl GS1 kayan penceresiyle bulunur. (15), (16), (17) alanlarında gün 00 ayın
+      son günü, (11), (12), (13) alanlarında gün yok demektir. 31nn-36nn ölçülerinde ondalık hane
+      AI'nın son hanesinden gelir.
+    - GS1 verisini parantezli AI, GS1 AIM kimliği (]C1, ]e0, ]d2, ]Q3, ]J1) ya da verinin herhangi
+      bir yerindeki GS (başta ve sonda da) belirler. Okutulan her kodun kenarındaki boşluk
+      karakterleri atılır. Üretim, dolum ve sevkiyatın lot alanları API'de kırpılmaz; kırpmayı
+      lot çözümü yapar, böylece AIM göndermeyen okuyucunun GS'si bu ekranlarda da tanınır.
+    - Koli GTIN'i okutulunca koli birimi ve "1 koli = N birim" gelir; pasif koli dönüşümünde
+      miktar önerilmez, sarı uyarı çıkar. Barkoddaki SKT (17) lot kaydındakinden farklıysa uyarı
+      çıkar. Okutma yanıtında malzemenin temel birimi var.
+    - Eski etiketler okunmaya devam eder: (10) okumada en çok 64 basılabilir ASCII karakter
+      kabul edilir (açılış stokuyla gelen uzun ya da boşluklu lot numaraları).
+  - Ortak lot çözümü (`inventory.selectors.resolve_lot`): üretim, dolum ve sevkiyat lot
+    etiketini, GS1 barkodunu (koli, palet SSCC) ve lot numarasını aynı kurallarla çözer.
+    - Üretim artık `LOT:` önekini ve küçük harfi de kabul eder.
+    - "Lot bulunamadı" mesajı okunan lot numarasını yazar (barkodun AIM önekini ve ayırıcılarını
+      değil); lot listeden seçildiyse lotun kayıt numarasını.
+    - Sevkiyatta aynı numara sevkiyattaki birden çok üründe varsa okutma kabul edilmez: lot
+      listeden seçilir ya da koli barkodu okutulur. Sevkiyatta olmayan ürünün lotu okutulursa
+      "bu sevkiyatın ürünlerinden değil" hatası çıkar.
+  - Ön yüz: GS1 bölümü (önek değişince onay, not zorunlu, kayıttan sonra etiket ayarları
+    yenilenir), Etiket ayarlarında salt okunur GS1 alanları, malzeme formunda "GTIN öner" ve GTIN
+    kilidi, koli dönüşümünde koli GTIN'i ve "Koli GTIN'i öner", lot ve dolum etiket pencerelerinde
+    etiket notları, okutmada uyarılar ve koli içeriği, sevkiyat toplamada koli okutulunca bir koli
+    miktarı (kalan miktarı aşmaz).
+  - Lot listesi ve ayrıntısında `gs1_label`: lotun koli ve palet etiketi GS1 içerik barkodu
+    taşıyor mu (etiket kuralının aynısı). Etiket pencereleri ipucunu buna göre seçer.
+  - İnceleme: üç alan (veri ve etiket, okutma, ön yüz) bağımsız denetçilerle üç turda incelendi;
+    her düzeltme, düzeltme olmadan kırılan bir testle korunur.
+  - Açık iş: Zebra deneme baskısı (KURULUM §3, `scripts/zebra-deneme.zpl`). Türkçe harfli QR'ın
+    ve ^ ~ içeren Code128'in fabrikadaki yazıcı ve okuyucuyla okunduğu henüz sınanmadı.
+  - Kanıt: `masterdata/tests/test_gs1.py` (ayarlar, GTIN kuralları, eşzamanlılık ve kilit sırası,
+    öneriler, sayaç), `inventory/tests/test_gs1_labels.py` (koli ve palet etiketi, SSCC, eski
+    veri, yedek barkodlar), `core/tests/test_labels.py` (GTIN, GS1 karakter kümesi, ZPL kaçışı),
+    `inventory/tests/test_gs1_scan.py` (AI tablosu, kontrol hanesi, tarihler, AIM ve GS, koli
+    GTIN'i, eski etiketler), üretim, dolum ve sevkiyat API testleri (ortak lot çözümü); ön yüz
+    `coding.test.tsx` (GS1), `MasterDataPage.test.tsx` (GTIN alanları), `components.test.tsx`
+    (okutma), `inventory.test.tsx`, `filling.test.tsx`, `shipments.test.tsx`; tam backend ve ön
+    yüz testleri yeşil.

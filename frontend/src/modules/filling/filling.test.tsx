@@ -9,6 +9,7 @@ import type {
   FillingRequirementRow,
   FillingRunDetail,
 } from "../../api/filling";
+import * as inventoryApi from "../../api/inventory";
 import * as labelsApi from "../../api/labels";
 import * as mdApi from "../../api/masterdata";
 import * as scanApi from "../../api/scan";
@@ -39,6 +40,10 @@ vi.mock("../../api/filling", async (importOriginal) => ({
 vi.mock("../../api/masterdata", async (importOriginal) => ({
   ...(await importOriginal<typeof mdApi>()),
   listRecords: vi.fn(),
+}));
+vi.mock("../../api/inventory", async (importOriginal) => ({
+  ...(await importOriginal<typeof inventoryApi>()),
+  getLot: vi.fn(),
 }));
 vi.mock("../../api/workflow");
 vi.mock("../../api/scan");
@@ -253,7 +258,29 @@ beforeEach(() => {
     sscc_enabled: false,
     updated_at: "2026-10-15T09:00:00+03:00",
   });
+  vi.mocked(inventoryApi.getLot).mockResolvedValue(outputLot(""));
 });
+
+/** Mantine uyarısının rengi kök öğenin stilindeki değişkenlerde (--alert-bg, --alert-color). */
+function alertStyle(element: HTMLElement): string {
+  return element.closest(".mantine-Alert-root")?.getAttribute("style") ?? "";
+}
+
+/** Partinin çıktı lotu; etiket penceresi koli GTIN'ini ve `gs1_label`ı buradan okur. */
+function outputLot(
+  caseGtin: string,
+  gs1Label?: boolean,
+  gtin = "8690000000012",
+): inventoryApi.LotDetail {
+  return {
+    id: 95,
+    lot_no: "D-261015-001",
+    material_type: "FINISHED",
+    material_gtin: gtin,
+    material_case_gtin: caseGtin,
+    gs1_label: gs1Label,
+  } as inventoryApi.LotDetail;
+}
 
 describe("dolum sekmeleri", () => {
   it("depo ambalaj hazırlama sekmesine düşer", async () => {
@@ -441,6 +468,80 @@ describe("dolum hattı tableti", () => {
       "/inventory/lots/95/case-label/",
     );
   });
+
+  it.each([
+    ["koli GTIN'i basılacağını söyler", "18690000000019", "Koli etiketine koli GTIN'i basılır."],
+    [
+      "koli GTIN'i yoksa sarı uyarı verir",
+      "",
+      "Koli GTIN'i tanımlı değil; koli etiketine ürün GTIN'i basılır.",
+    ],
+  ])("partinin koli etiketi lotun koli GTIN'ine göre %s", async (_name, caseGtin, text) => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("dolum"));
+    vi.mocked(fillingApi.getRun).mockResolvedValue(run({ finished_product_gtin: "8690000000012" }));
+    vi.mocked(inventoryApi.getLot).mockResolvedValue(outputLot(caseGtin));
+    renderApp("/dolum/partiler/41");
+
+    await user.click(await screen.findByRole("button", { name: "Koli etiketi" }));
+    const dialog = await screen.findByRole("dialog");
+    // Parti kaydı koli GTIN'ini bilmez: pencere açılınca çıktı lotundan okunur.
+    expect(await within(dialog).findByText(text)).toBeInTheDocument();
+    expect(inventoryApi.getLot).toHaveBeenCalledWith(95);
+    if (caseGtin) {
+      expect(within(dialog).queryByTestId("label-warning")).not.toBeInTheDocument();
+    } else {
+      const warning = within(dialog).getByTestId("label-warning");
+      expect(warning).toHaveTextContent(text);
+      expect(alertStyle(warning)).toContain("--mantine-color-yellow-light"); // sarı
+    }
+  });
+
+  const noGs1 =
+    "Bu lotun koli etiketine GS1 barkodu basılmaz (lot numarası GS1'e uymuyor ya da GTIN geçersiz); firma içi barkod ya da QR kodu basılır.";
+
+  it.each([
+    [
+      "GS1 basılıyorsa koli GTIN'i ipucu kalır",
+      "8690000000012",
+      "18690000000019",
+      true,
+      "Koli etiketine koli GTIN'i basılır.",
+    ],
+    ["GS1 basılmıyorsa sarı uyarı verir", "8690000000012", "18690000000019", false, noGs1],
+    ["GS1 basılmıyorsa koli GTIN'i olmasa da sarı uyarı verir", "8690000000012", "", false, noGs1],
+    [
+      "GS1 basılmıyorsa ürün GTIN'i olmasa da (yalnız koli GTIN'i) sarı uyarı verir",
+      "",
+      "18690000000019",
+      false,
+      noGs1,
+    ],
+  ])(
+    "partinin koli etiketi çıktı lotunun gs1_label bilgisine göre: %s",
+    async (_name, gtin, caseGtin, gs1Label, text) => {
+      const user = userEvent.setup();
+      vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("dolum"));
+      vi.mocked(fillingApi.getRun).mockResolvedValue(run({ finished_product_gtin: gtin }));
+      vi.mocked(inventoryApi.getLot).mockResolvedValue(outputLot(caseGtin, gs1Label, gtin));
+      renderApp("/dolum/partiler/41");
+
+      await user.click(await screen.findByRole("button", { name: "Koli etiketi" }));
+      const dialog = await screen.findByRole("dialog");
+      // Parti kaydı gs1_label'ı bilmez: pencere açılınca çıktı lotundan okunur.
+      expect(await within(dialog).findByText(text)).toBeInTheDocument();
+      expect(inventoryApi.getLot).toHaveBeenCalledWith(95);
+      if (gs1Label) {
+        expect(within(dialog).queryByTestId("label-warning")).not.toBeInTheDocument();
+      } else {
+        const warning = within(dialog).getByTestId("label-warning");
+        expect(warning).toHaveTextContent(noGs1);
+        expect(alertStyle(warning)).toContain("--mantine-color-yellow-light"); // sarı
+        // GS1 / koli GTIN'i ipuçlarının hiçbiri çıkmaz (hepsi "GTIN'i" der, uyarı demez).
+        expect(within(dialog).queryByText(/GTIN'i/)).not.toBeInTheDocument();
+      }
+    },
+  );
 
   it("biten partide düzenleme alanları yok, rapor var", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("dolum"));

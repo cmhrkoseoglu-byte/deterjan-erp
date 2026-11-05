@@ -24,6 +24,7 @@ from apps.filling.models import (
     PackagingSpecLine,
     ScrapRecord,
 )
+from apps.inventory import selectors as inventory_selectors
 from apps.inventory.api.serializers import CancelSerializer, StockBalanceSerializer
 from apps.inventory.models import Lot
 
@@ -35,18 +36,17 @@ def _user(request: Request) -> Any:
 
 
 def resolve_lot(material_ids: Iterable[int], data: dict[str, Any], what: str) -> Lot:
-    """Okutulan lot numarasını (ya da lot kimliğini) verilen malzemelerdeki lota çevirir. Lot
-    başka bir malzemedense servis "yanlış malzeme" hatası versin diye o lot döner."""
+    """Okutulan lotu (lot kimliği, lot no, lot etiketi ya da GS1 barkodu; ortak çözüm
+    `inventory.selectors.resolve_lot`) önce verilen malzemelerde arar. Lot başka bir malzemedense
+    servis "yanlış malzeme" hatası versin diye o lot döner."""
     if data.get("lot"):
         lot = Lot.objects.select_related("material").filter(pk=data["lot"]).first()
     else:
-        lot_no = data["lot_no"].strip().upper()
-        if lot_no.startswith("LOT:"):  # lot etiketi içeriği (Adım 2.3)
-            lot_no = lot_no[4:]
-        lots = Lot.objects.select_related("material").filter(lot_no=lot_no)
-        lot = lots.filter(material_id__in=list(material_ids)).first() or lots.first()
+        lot = inventory_selectors.resolve_lot(
+            data["lot_no"], materials=material_ids, restrict=False
+        )
     if lot is None:
-        label = data.get("lot_no") or data.get("lot")
+        label = data.get("lot") or inventory_selectors.scan_label(data["lot_no"])
         raise BusinessRuleError("lot_not_found", f"{what} için {label} lotu bulunamadı.")
     return lot
 

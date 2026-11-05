@@ -438,7 +438,11 @@ class PickSerializer(serializers.Serializer):
     """Lot okutma: lot kimliği ya da okutulan metin (lot no veya `LOT:<lot_no>` etiketi)."""
 
     lot = serializers.IntegerField(required=False)
-    lot_no = serializers.CharField(required=False, allow_blank=True, default="")
+    # Kırpılmaz: DRF'in strip()'i kenardaki GS'yi (FNC1, GS1 işareti) de atar; kenar boşluklarını
+    # lot çözümü (`inventory.selectors.resolve_lot`) kendisi atar.
+    lot_no = serializers.CharField(
+        required=False, allow_blank=True, default="", trim_whitespace=False
+    )
     quantity = _quantity(required=False, allow_null=True, default=None)
     reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=200)
 

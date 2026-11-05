@@ -39,6 +39,17 @@ def test_scan_resolves_former_material_code(admin):
     assert selectors.decode_scan("ESKI-M").former_code == "ESKI-M"
 
 
+def test_former_code_that_looks_like_raw_gs1_still_resolves(admin):
+    """SSCC/GTIN gibi başlayan eski raf kodu GS1 olarak çözülemezse eski kod olarak bulunur."""
+    old = "0108690000000013"  # (01) sayılırsa kontrol hanesi tutmaz
+    location = storage_location(code=old)
+    masterdata.update_record(admin, location, {"code": "LOKASYON-0003"})
+    result = selectors.decode_scan(old)
+    assert (result.kind, result.location, result.former_code) == ("location", location, old)
+    # Ortak lot çözümü lokasyon kodunu lot saymaz.
+    assert selectors.resolve_lot(old) is None
+
+
 def test_scan_api_returns_former_code(admin, client_for):
     location = storage_location(code="DENEME-2")
     masterdata.update_record(admin, location, {"code": "LOKASYON-0002"})

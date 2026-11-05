@@ -1,5 +1,6 @@
 import type { UseFormReturnType } from "@mantine/form";
 import axios from "axios";
+import type { ComponentType, CSSProperties } from "react";
 import { getErrorMessage } from "../../api/client";
 import type { ApiError } from "../../api/types";
 
@@ -30,11 +31,37 @@ export interface FieldDef {
   relation?: RelationSource;
   /** Düzenlemede değiştirilemez (ör. dönüşümün malzemesi). */
   lockedOnEdit?: boolean;
+  /**
+   * Kaydın bu alanı true ise alan kilitlidir (ör. lotu olan malzemenin GTIN'i: `gtin_locked`):
+   * düzenlemede kapalı gelir, açıklama yerine `lockedHelp` yazar ve gönderilmez.
+   */
+  lockedBy?: string;
+  lockedHelp?: string;
   /** Formda tam satır kaplar. */
   wide?: boolean;
+  /** Alanın yerine çizilen bileşen (ör. öneri düğmeli GTIN alanı). */
+  component?: ComponentType<FieldComponentProps>;
 }
 
 export type FormValues = Record<string, string | boolean>;
+
+/** Özel alan bileşeninin aldıkları (bkz. `FieldDef.component`). */
+export interface FieldComponentProps {
+  /** Açıklaması (kilit notu dahil) işlenmiş alan tanımı. */
+  field: FieldDef;
+  form: UseFormReturnType<FormValues>;
+  /** Düzenlenen kayıt; yeni kayıtta null. */
+  record: Record<string, unknown> | null;
+  disabled: boolean;
+  /** Izgaradaki hücrenin stili (geniş alan); bileşen kök öğesine verir. */
+  style?: CSSProperties;
+  /** Son kayıt denemesinin hatası (yeni denemede sıfırlanır): alan alınmış önerisini yeniler. */
+  saveError: unknown;
+  /** Alan, kayıtta alınmış çıkan önerisini yenisiyle değiştirdi: formun hatası yerine not çıkar. */
+  onSuggestionReplaced: (notice: string) => void;
+  /** Alan, yazdığı öneriyi sildi (ör. tür mamulden çıktı): `onSuggestionReplaced` notu kalkar. */
+  onSuggestionCleared: () => void;
+}
 
 /** API kaydını form değerlerine çevirir (Mantine girişleri metin bekler). */
 export function toFormValues(

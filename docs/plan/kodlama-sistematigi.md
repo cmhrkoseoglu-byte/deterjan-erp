@@ -222,7 +222,7 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
 ### 6.2 GS1
 
 - GS1 ayarları tek yerdedir (Kodlama > GS1): firma öneki, SSCC uzantı hanesi, sıradaki SSCC seri
-  no (salt okunur). Değişiklik notu zorunludur.
+  no (salt okunur), sıradaki ürün referansı (GTIN önerisi için). Değişiklik notu zorunludur.
 - **Okutma:**
   - (00), (01), (02) alanlarında kontrol hanesi denetlenir,
   - AI tablosu genişletilir (310n, 400, 410, 414 vb.),
@@ -237,6 +237,9 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
     (37) koli sayısı basılır.
   - Okutmada koli GTIN'i koli birimiyle çözülür.
   - Tanımlı değilse bugünkü davranış sürer ve uyarı verilir.
+- **Etiket:** yalnız okutulabilen GS1 barkodu basılır (geçerli GTIN, GS1'e uyan lot no); değilse
+  firma içi `LOT:` barkodu. Türkçe harfli ya da > içeren lot numarasında çizgi barkod yerine QR
+  okutulur.
 
 ### 6.3 Standart kod alanları
 

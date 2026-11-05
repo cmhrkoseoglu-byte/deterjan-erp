@@ -3,13 +3,17 @@
 // Okuyucu (klavye gibi çalışır) kodu yazıp Enter gönderir; kod sunucuda çözülür
 // (LOT:/LOC:/MAT: önekleri, GS1-128, Faz 1'de basılmış düz lot numaraları) ve ilgili geri çağrı
 // çalışır. `expectedMaterial` verilirse başka malzemenin lotu okutulduğunda sesli ve kırmızı uyarı.
+// Sunucunun uyarıları (ör. barkoddaki SKT lot kaydından farklı) sarı gösterilir; koli GTIN'i
+// okutulunca "1 koli = N birim" yazar.
 //
 //   <ScanInput expect="lot" expectedMaterial={{ id, code }} onLot={(lot) => ...} />
-import { Alert, Group, Loader, Text, TextInput, type TextInputProps } from "@mantine/core";
-import { IconAlertTriangle, IconBarcode, IconCheck } from "@tabler/icons-react";
+import { Alert, Group, Loader, Stack, Text, TextInput, type TextInputProps } from "@mantine/core";
+import { IconAlertTriangle, IconBarcode, IconCheck, IconPackage } from "@tabler/icons-react";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { getErrorMessage } from "../../api/client";
+import { CASE_UNIT } from "../../api/masterdata";
 import { scanCode, type ScanLot, type ScanResult } from "../../api/scan";
+import { formatNumber } from "../../i18n/format";
 import { tr } from "../../i18n/tr";
 import { errorFeedback, successFeedback } from "./feedback";
 
@@ -49,6 +53,16 @@ function describe(result: ScanResult): string {
   return result.code;
 }
 
+/**
+ * Koli GTIN'i okutulduysa "1 koli = 12 ADET"; değilse boş. Birim lottan gelir; lotsuz okutmada
+ * (koli GTIN'i (10) olmadan, palet içerik barkodu) malzemenin temel biriminden.
+ */
+function caseText(result: ScanResult): string {
+  if (result.unit !== CASE_UNIT || !result.units_per_case) return "";
+  const unit = result.lots.length ? result.lots[0].unit : (result.material?.base_unit_code ?? "");
+  return t.caseUnits(formatNumber(result.units_per_case), unit);
+}
+
 export const ScanInput = forwardRef<ScanInputHandle, ScanInputProps>(function ScanInput(
   {
     expect = "any",
@@ -71,12 +85,20 @@ export const ScanInput = forwardRef<ScanInputHandle, ScanInputProps>(function Sc
   const [warning, setWarning] = useState(false);
   const [done, setDone] = useState("");
   const [former, setFormer] = useState("");
+  const [notices, setNotices] = useState<string[]>([]);
+  const [caseInfo, setCaseInfo] = useState("");
+
+  function reset() {
+    setDone("");
+    setFormer("");
+    setNotices([]);
+    setCaseInfo("");
+  }
 
   function fail(message: string, wrongMaterial = false) {
     setError(message);
     setWarning(wrongMaterial);
-    setDone("");
-    setFormer("");
+    reset();
     errorFeedback();
     inputRef.current?.select();
   }
@@ -90,8 +112,7 @@ export const ScanInput = forwardRef<ScanInputHandle, ScanInputProps>(function Sc
     clear: () => {
       setValue("");
       setError("");
-      setDone("");
-      setFormer("");
+      reset();
     },
   }));
 
@@ -102,6 +123,8 @@ export const ScanInput = forwardRef<ScanInputHandle, ScanInputProps>(function Sc
     // Kodu değişmiş kayıt eski koduyla okutulduysa etiketin yenilenmesi istenir.
     const current = result.location?.code ?? result.material?.code ?? "";
     setFormer(result.former_code && current ? t.formerCode(current) : "");
+    setNotices(result.warnings ?? []);
+    setCaseInfo(caseText(result));
     setValue("");
     successFeedback();
     onResult?.(result);
@@ -201,10 +224,35 @@ export const ScanInput = forwardRef<ScanInputHandle, ScanInputProps>(function Sc
           </Text>
         </Group>
       )}
+      {!error && caseInfo && (
+        <Group gap={4} mt={4} wrap="nowrap">
+          <IconPackage size={16} />
+          <Text size="sm" fw={600} data-testid="scan-case">
+            {caseInfo}
+          </Text>
+        </Group>
+      )}
       {!error && former && (
         <Text size="sm" c="var(--status-warning)" mt={4} data-testid="scan-former-code">
           {former}
         </Text>
+      )}
+      {!error && notices.length > 0 && (
+        <Alert
+          mt="xs"
+          color="yellow"
+          variant="light"
+          icon={<IconAlertTriangle size={20} />}
+          data-testid="scan-warning"
+        >
+          <Stack gap={2}>
+            {notices.map((notice) => (
+              <Text key={notice} size="sm">
+                {notice}
+              </Text>
+            ))}
+          </Stack>
+        </Alert>
       )}
     </div>
   );

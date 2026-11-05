@@ -441,7 +441,11 @@ class LotInputSerializer(serializers.Serializer):
 
     requirement = serializers.IntegerField()
     lot = serializers.IntegerField(required=False, allow_null=True)
-    lot_no = serializers.CharField(required=False, allow_blank=True, default="")
+    # Kırpılmaz: DRF'in strip()'i kenardaki GS'yi (FNC1, GS1 işareti) de atar; kenar boşluklarını
+    # lot çözümü (`inventory.selectors.resolve_lot`) kendisi atar.
+    lot_no = serializers.CharField(
+        required=False, allow_blank=True, default="", trim_whitespace=False
+    )
     quantity = _quantity()
     note = serializers.CharField(required=False, allow_blank=True, default="")
 

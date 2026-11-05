@@ -601,7 +601,11 @@ class LotRefSerializer(serializers.Serializer):
     """Lot kimlikle ya da okutulan lot numarasıyla verilir."""
 
     lot = serializers.IntegerField(required=False, allow_null=True)
-    lot_no = serializers.CharField(required=False, allow_blank=True, default="")
+    # Kırpılmaz: DRF'in strip()'i kenardaki GS'yi (FNC1, GS1 işareti) de atar; kenar boşluklarını
+    # lot çözümü (`inventory.selectors.resolve_lot`) kendisi atar.
+    lot_no = serializers.CharField(
+        required=False, allow_blank=True, default="", trim_whitespace=False
+    )
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         if not attrs.get("lot") and not attrs.get("lot_no", "").strip():
@@ -631,7 +635,10 @@ class ScrapCreateSerializer(serializers.Serializer):
     reason_code = serializers.ChoiceField(choices=ScrapRecord.Reason.choices)
     quantity = _quantity()
     lot = serializers.IntegerField(required=False, allow_null=True)
-    lot_no = serializers.CharField(required=False, allow_blank=True, default="")
+    # Kırpılmaz (`LotRefSerializer` gibi): kenardaki GS, GS1 işaretidir.
+    lot_no = serializers.CharField(
+        required=False, allow_blank=True, default="", trim_whitespace=False
+    )
     note = serializers.CharField(required=False, allow_blank=True, default="")
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:

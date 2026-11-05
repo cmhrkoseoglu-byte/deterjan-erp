@@ -1,9 +1,12 @@
+import { QueryObserver } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../../api/auth";
 import * as codingApi from "../../../api/coding";
 import type { CodeTypeRow, RevertPreview } from "../../../api/coding";
+import * as labelsApi from "../../../api/labels";
+import type { Gs1Settings } from "../../../api/labels";
 import * as opsApi from "../../../api/ops";
 import type { BackupRun, SystemStatus } from "../../../api/ops";
 import * as workflowApi from "../../../api/workflow";
@@ -13,6 +16,12 @@ import { renderApp } from "../../../test/render";
 
 vi.mock("../../../api/auth");
 vi.mock("../../../api/coding");
+vi.mock("../../../api/labels", async (importOriginal) => ({
+  ...(await importOriginal<typeof labelsApi>()),
+  getGs1Settings: vi.fn(),
+  updateGs1Settings: vi.fn(),
+  getLabelSettings: vi.fn(),
+}));
 vi.mock("../../../api/ops");
 vi.mock("../../../api/workflow");
 
@@ -1011,5 +1020,269 @@ describe("Sistem > Kodlama sistematiği > Çıktılar", () => {
         revision_no: 3,
       }),
     );
+  });
+});
+
+describe("Sistem > Kodlama sistematiği > GS1", () => {
+  const GS1: Gs1Settings = {
+    company_prefix: "8690000",
+    extension_digit: 0,
+    next_sscc_serial: 41,
+    next_item_reference: null,
+    sscc_enabled: true,
+    gtin_suggestion_enabled: false,
+    item_reference_digits: 5,
+    updated_at: "2026-11-05T10:00:00+03:00",
+    updated_by_name: "Sistem Yöneticisi",
+  };
+
+  async function openEditor() {
+    await userEvent.click(await screen.findByRole("button", { name: "Düzenle: GS1" }));
+    return screen.findByRole("dialog", { name: "GS1 ayarları" });
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(authApi.fetchCsrf).mockResolvedValue();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    vi.mocked(workflowApi.fetchTasks).mockResolvedValue(page([]));
+    vi.mocked(workflowApi.fetchNotifications).mockResolvedValue(page([]));
+    vi.mocked(workflowApi.fetchUnreadCount).mockResolvedValue(0);
+    vi.mocked(codingApi.listCodeTypes).mockResolvedValue([MATERIAL, UNIT]);
+    vi.mocked(labelsApi.getGs1Settings).mockResolvedValue(GS1);
+  });
+
+  it("ayarları, SSCC ve GTIN önerisi durumunu gösterir; öteki bölümler çalışır", async () => {
+    renderApp("/sistem/kodlama?bolum=gs1");
+
+    const table = await screen.findByTestId("gs1-settings");
+    expect(within(table).getByText("8690000")).toBeInTheDocument();
+    expect(within(table).getByText("41")).toBeInTheDocument();
+    expect(within(table).getByText("SSCC açık")).toBeInTheDocument();
+    expect(within(table).getByText("GTIN önerisi kapalı")).toBeInTheDocument();
+    expect(within(table).getByText("Tanımlı değil")).toBeInTheDocument(); // ürün referansı
+    expect(table).toHaveTextContent(`${formatDateTime(GS1.updated_at)} · Sistem Yöneticisi`);
+    expect(screen.getByRole("radio", { name: "GS1" })).toBeChecked();
+
+    await userEvent.click(screen.getByText("Ana veri kodları"));
+    expect(await screen.findByText("MLZ-0000025")).toBeInTheDocument();
+    expect(screen.queryByTestId("gs1-settings")).not.toBeInTheDocument();
+  });
+
+  it("uzantı hanesini ve ürün referansını notla kaydeder; önek aynıysa onay sorulmaz", async () => {
+    vi.mocked(labelsApi.updateGs1Settings).mockResolvedValue({
+      ...GS1,
+      extension_digit: 3,
+      next_item_reference: 12,
+      gtin_suggestion_enabled: true,
+    });
+    renderApp("/sistem/kodlama?bolum=gs1");
+
+    const dialog = await openEditor();
+    const save = within(dialog).getByRole("button", { name: "Kaydet" });
+    expect(save).toBeDisabled(); // değişiklik yok
+    expect(within(dialog).getByRole("textbox", { name: "Sıradaki SSCC seri no" })).toBeDisabled();
+    const extension = within(dialog).getByRole("textbox", { name: "SSCC uzantı hanesi" });
+    await userEvent.clear(extension);
+    await userEvent.type(extension, "3");
+    await userEvent.type(
+      within(dialog).getByRole("textbox", { name: "Sıradaki ürün referansı" }),
+      "12",
+    );
+    expect(save).toBeDisabled(); // not zorunlu
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Yeni seri");
+    await userEvent.click(save);
+
+    await waitFor(() =>
+      expect(labelsApi.updateGs1Settings).toHaveBeenCalledWith({
+        extension_digit: 3,
+        next_item_reference: 12,
+        note: "Yeni seri",
+      }),
+    );
+    expect(screen.queryByText(/yeni önekte devam eder/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    const table = screen.getByTestId("gs1-settings");
+    expect(within(table).getByText("GTIN önerisi açık")).toBeInTheDocument();
+    expect(table).toHaveTextContent("12 (5 hane)");
+  });
+
+  it("önek değişince onay ister; sunucunun reddi pencerede görünür", async () => {
+    vi.mocked(labelsApi.updateGs1Settings).mockRejectedValue(
+      httpError(400, {
+        code: "busy",
+        detail: "Başka bir işlem sürüyor; birkaç saniye sonra yeniden deneyin.",
+      }),
+    );
+    renderApp("/sistem/kodlama?bolum=gs1");
+
+    const dialog = await openEditor();
+    const prefix = within(dialog).getByRole("textbox", { name: "Firma öneki" });
+    await userEvent.clear(prefix);
+    await userEvent.type(prefix, "8691234");
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "GS1 Türkiye yeni önek");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    const confirm = await screen.findByRole("dialog", { name: "Emin misiniz?" });
+    expect(confirm).toHaveTextContent(
+      "Firma öneki değişiyor. SSCC seri no yeni önekte devam eder; basılmış etiketler değişmez. Kaydedilsin mi?",
+    );
+    expect(labelsApi.updateGs1Settings).not.toHaveBeenCalled();
+    await userEvent.click(within(confirm).getByRole("button", { name: "Kaydet" }));
+
+    await waitFor(() =>
+      expect(labelsApi.updateGs1Settings).toHaveBeenCalledWith({
+        company_prefix: "8691234",
+        note: "GS1 Türkiye yeni önek",
+      }),
+    );
+    expect(
+      await within(dialog).findByText(
+        "Başka bir işlem sürüyor; birkaç saniye sonra yeniden deneyin.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("önek değişince eski ürün referansı silinir; yeni önekte yazılan referans gönderilir", async () => {
+    vi.mocked(labelsApi.getGs1Settings).mockResolvedValue({
+      ...GS1,
+      next_item_reference: 12,
+      gtin_suggestion_enabled: true,
+    });
+    vi.mocked(labelsApi.updateGs1Settings).mockResolvedValue({
+      ...GS1,
+      company_prefix: "86912345",
+      next_item_reference: 7,
+      gtin_suggestion_enabled: true,
+      item_reference_digits: 4,
+    });
+    renderApp("/sistem/kodlama?bolum=gs1");
+
+    const dialog = await openEditor();
+    const reference = within(dialog).getByRole("textbox", { name: "Sıradaki ürün referansı" });
+    expect(reference).toHaveValue("12");
+    const prefix = within(dialog).getByRole("textbox", { name: "Firma öneki" });
+    await userEvent.clear(prefix);
+    await userEvent.type(prefix, "86912345");
+    // Referans önekin numaralamasıdır: yeni önekte ilk boş referans girilir (4 hane).
+    expect(reference).toHaveValue("");
+    expect(within(dialog).getByText(/Önek değişince ürün referansı silinir/)).toHaveTextContent(
+      "(0-9999)",
+    );
+    await userEvent.type(reference, "7");
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Yeni GS1 üyeliği");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    const confirm = await screen.findByRole("dialog", { name: "Emin misiniz?" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "Kaydet" }));
+
+    await waitFor(() =>
+      expect(labelsApi.updateGs1Settings).toHaveBeenCalledWith({
+        company_prefix: "86912345",
+        next_item_reference: 7,
+        note: "Yeni GS1 üyeliği",
+      }),
+    );
+  });
+
+  it("kayıttan sonra etiket ayarları yenilenir (etiket ayarları ve palet bölümü GS1'i gösterir)", async () => {
+    vi.mocked(labelsApi.updateGs1Settings).mockResolvedValue({ ...GS1, extension_digit: 3 });
+    vi.mocked(labelsApi.getLabelSettings).mockResolvedValue({
+      company_name: "Inncos",
+      gs1_company_prefix: "8690000",
+      sscc_extension_digit: 0,
+      next_sscc_serial: 41,
+      default_printer: null,
+      default_printer_code: null,
+      sscc_enabled: true,
+      updated_at: "2026-11-05T10:00:00+03:00",
+    });
+    const { queryClient } = renderApp("/sistem/kodlama?bolum=gs1");
+    // Etiket ayarlarını gösteren açık bir ekranın yerine aynı anahtarı izleyen sorgu.
+    const observer = new QueryObserver(queryClient, {
+      queryKey: labelsApi.labelQueryKeys.settings,
+      queryFn: labelsApi.getLabelSettings,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    await waitFor(() => expect(labelsApi.getLabelSettings).toHaveBeenCalledTimes(1));
+
+    const dialog = await openEditor();
+    const extension = within(dialog).getByRole("textbox", { name: "SSCC uzantı hanesi" });
+    await userEvent.clear(extension);
+    await userEvent.type(extension, "3");
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Yeni uzantı");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(labelsApi.getLabelSettings).toHaveBeenCalledTimes(2));
+    unsubscribe();
+  });
+
+  it("geçersiz önek ve hane sınırını aşan ürün referansı kaydı engeller", async () => {
+    renderApp("/sistem/kodlama?bolum=gs1");
+
+    const dialog = await openEditor();
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Deneme");
+    const save = within(dialog).getByRole("button", { name: "Kaydet" });
+    const prefix = within(dialog).getByRole("textbox", { name: "Firma öneki" });
+    const reference = within(dialog).getByRole("textbox", { name: "Sıradaki ürün referansı" });
+    await userEvent.clear(prefix);
+    await userEvent.type(prefix, "86900");
+    expect(within(dialog).getByText("Firma öneki 6-12 rakam olmalıdır.")).toBeInTheDocument();
+    expect(reference).toBeDisabled();
+    expect(save).toBeDisabled();
+
+    await userEvent.type(prefix, "00"); // 8690000: 7 haneli önek, ürün referansı 5 hane
+    expect(reference).toBeEnabled();
+    await userEvent.type(reference, "100000");
+    expect(
+      within(dialog).getByText("Ürün referansı en çok 5 hanedir (0-99999)."),
+    ).toBeInTheDocument();
+    expect(save).toBeDisabled();
+    await userEvent.clear(reference);
+    await userEvent.type(reference, "99999");
+    expect(save).toBeEnabled();
+    expect(labelsApi.updateGs1Settings).not.toHaveBeenCalled();
+  });
+
+  it("önek silinince ürün referansı da silinir; onay SSCC ve GTIN önerisinin kapanacağını söyler", async () => {
+    vi.mocked(labelsApi.getGs1Settings).mockResolvedValue({
+      ...GS1,
+      next_item_reference: 12,
+      gtin_suggestion_enabled: true,
+    });
+    vi.mocked(labelsApi.updateGs1Settings).mockResolvedValue({
+      ...GS1,
+      company_prefix: "",
+      next_item_reference: null,
+      sscc_enabled: false,
+      gtin_suggestion_enabled: false,
+      item_reference_digits: null,
+    });
+    renderApp("/sistem/kodlama?bolum=gs1");
+
+    const dialog = await openEditor();
+    const reference = within(dialog).getByRole("textbox", { name: "Sıradaki ürün referansı" });
+    expect(reference).toHaveValue("12");
+    await userEvent.clear(within(dialog).getByRole("textbox", { name: "Firma öneki" }));
+    expect(reference).toBeDisabled();
+    expect(reference).toHaveValue("");
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "GS1 kullanılmıyor");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    const confirm = await screen.findByRole("dialog", { name: "Emin misiniz?" });
+    expect(confirm).toHaveTextContent(
+      "Firma öneki siliniyor. SSCC palet etiketi ve GTIN önerisi kapanır; basılmış etiketler değişmez. Kaydedilsin mi?",
+    );
+    await userEvent.click(within(confirm).getByRole("button", { name: "Kaydet" }));
+
+    await waitFor(() =>
+      expect(labelsApi.updateGs1Settings).toHaveBeenCalledWith({
+        company_prefix: "",
+        next_item_reference: null,
+        note: "GS1 kullanılmıyor",
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    const table = screen.getByTestId("gs1-settings");
+    expect(within(table).getByText("SSCC kapalı")).toBeInTheDocument();
+    expect(within(table).getAllByText("Tanımlı değil")).toHaveLength(2); // önek ve ürün referansı
   });
 });

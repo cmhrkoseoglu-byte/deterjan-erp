@@ -2177,3 +2177,35 @@ değiştirme zorunlu, yalnızca admin):
   - Kodlar da belgenin tarihindeki haliyle basılır: irsaliyede ürün ve müşteri kodu sevk anındaki,
     analiz sertifikasında ürün kodu karar anındaki, siparişte malzeme ve tedarikçi kodu siparişin
     gönderildiği andaki.
+- **Paket 2, GS1: ayrıca sorulmayan kurallar** (değiştirilebilir; GS1 standardından ya da
+  okutulabilirlikten çıkan sonuçlar):
+  - GS1 ayarlarını yalnız admin değiştirir, not zorunludur. Firma öneki değişince sıradaki ürün
+    referansı silinir (aynı istekte verilmedikçe): referans önekle birlikte anlam taşır, yeni
+    önekte ilk boş referans yeniden girilir.
+  - SSCC seri no, önek ya da uzantı değişince o önekle basılmış en büyük seri no + 1'den sürer;
+    basılmış SSCC hiçbir zaman yeniden verilmez. Palet koli sayısı en çok 99.999.999'dur.
+  - GTIN tekilliği 14 haneli normal biçimde, ürün ve koli GTIN'lerinin tamamında, pasif kayıtlar
+    dahil denetlenir. Koli ayrı bir ticari üründür: malzemenin koli GTIN'i kendi ürün GTIN'i
+    olamaz; tanımlı ama geçersiz koli GTIN'inde etikete ürün GTIN'i basılmaz.
+  - Lot kilidi yalnız geçerli GTIN'de: geçersiz eski GTIN (okutulamayan) düzeltilebilir; aynı
+    GTIN'i başka uzunlukta yazmak (8690000000012 → 08690000000012) değişiklik sayılmaz.
+  - Önerilen GTIN ya da ondan en çok 10 ileri ürün referansı sayacı ilerletir (kodlardaki sayaç
+    penceresi gibi, önerilen referanstan ölçülür).
+  - Etikete yalnız okutulabilen GS1 barkodu basılır: GTIN geçerli; lot no en çok 20 karakter,
+    GS1 karakter kümesinde ve parantez ya da > içermiyor (ZPL'in GS1 kipi bunları ayırıcı sayar);
+    koli sayısı en çok 8 hane. Değilse firma içi `LOT:` barkodu basılır. Türkçe harf ve >
+    çizgi barkoda yazılmaz (Code128 Türkçe harfi taşımaz, ZPL'de > kip önekidir): o lotta ve
+    lokasyonda çizgi barkod yerine "QR kodu okutun" notu basılır. İçe aktarılan Türkçe harfli lot
+    numaraları reddedilmez. Türkçe harfli QR'ın Zebra'da okunduğu deneme baskısıyla sınanacak;
+    okunmazsa kod etiketten elle girilir.
+  - ZPL alan verisindeki ^, ~ ve ters bölü onaltılık kaçışla (`^FH\`) gönderilir; ^FB metin
+    bloğunda ters bölü ayrıca ikilenir.
+  - Okumada eski etiketler için tek gevşeklik (10) alanındadır: en çok 64 basılabilir ASCII
+    karakter. Öteki alanlar GS1'e tam uyar; tanınmayan AI kabul edilmez.
+  - GS (FNC1), okutulan verinin neresinde olursa olsun (başta, ortada, sonda) veriyi GS1 yapar.
+    Okutulan kodun kenarındaki boşluk karakterleri (NBSP, dikey sekme dahil) hiçbir kodda veri
+    sayılmaz ve atılır; kenardaki GS de atılır ama GS1 işareti sayılır. Bu yüzden üretim, dolum
+    ve sevkiyatın lot alanları API'de kırpılmaz; kırpmayı lot çözümü yapar.
+  - Tarihte gün 00: son kullanma ve son satış tarihlerinde (15, 16, 17) ayın son günü; üretim,
+    paketleme ve ödeme tarihlerinde (11, 12, 13) gün yok sayılır, tarih gösterilmez.
+  - Koli GTIN'i pasif dönüşümdeyse okutma malzemeyi ve lotu bulur, koli içi miktar önermez.

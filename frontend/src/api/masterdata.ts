@@ -38,7 +38,14 @@ export interface Conversion extends Audited {
   unit_code: string;
   factor_to_base: string;
   base_unit_code: string;
+  /** Koli GTIN'i: yalnızca birimi KOLI olan dönüşümde (koli dışı birimde dolu GTIN reddedilir). */
+  gtin: string;
+  /** Malzemenin lotu var ve koli GTIN'i dolu: GTIN değiştirilemez. */
+  gtin_locked: boolean;
 }
+
+/** Koli birimi kodu: koli GTIN'i yalnızca bu birimin dönüşümünde tutulur. */
+export const CASE_UNIT = "KOLI";
 
 export interface Material extends Audited, FormerCodes {
   code: string;
@@ -53,6 +60,8 @@ export interface Material extends Audited, FormerCodes {
   shelf_life_days: number | null;
   min_stock: string | null;
   gtin: string;
+  /** Malzemenin lotu var ve GTIN'i dolu: GTIN değiştirilemez ve silinemez. */
+  gtin_locked: boolean;
   requires_incoming_qc: boolean;
   is_hazardous: boolean;
   storage_notes: string;
@@ -162,6 +171,45 @@ export async function setRecordActive<T>(
 ): Promise<T> {
   const { data } = await api.post<T>(
     `${basePath(endpoint)}/${id}/${active ? "activate" : "deactivate"}/`,
+  );
+  return data;
+}
+
+// --- GTIN önerisi (GS1) -------------------------------------------------------------------
+
+/**
+ * Sıradaki boş GTIN-13 (ön yüz yalnızca mamulde kullanır). `active` yalnızca GS1 firma öneki ve
+ * sıradaki ürün referansı girilmişse true; `reason` Türkçe açıklamadır (kapalıysa nedeni).
+ */
+export interface GtinSuggestion {
+  active: boolean;
+  gtin: string | null;
+  reason: string;
+}
+
+/** Malzemenin GTIN'inden türetilen ilk boş koli GTIN'i (GTIN-14); türetilemezse `reason`. */
+export interface CaseGtinSuggestion {
+  gtin: string | null;
+  reason: string;
+}
+
+/** Malzeme yazma rolleri (planlama, admin). */
+export async function suggestGtin(): Promise<GtinSuggestion> {
+  const { data } = await api.get<GtinSuggestion>("/masterdata/gtin-suggestion/");
+  return data;
+}
+
+/**
+ * GTIN önerisinin sorgu anahtarı. Malzeme listesinin anahtarı altındadır: malzeme kaydedilince
+ * (yeni ya da düzenleme; ana veri ekranı `["masterdata", "materials"]`i yeniler) öneri de
+ * geçersizlenir, kaydedilen GTIN yeniden önerilmez.
+ */
+export const gtinSuggestionKey = ["masterdata", "materials", "gtin-suggestion"] as const;
+
+/** Malzeme yazma rolleri (planlama, admin). */
+export async function suggestCaseGtin(materialId: number): Promise<CaseGtinSuggestion> {
+  const { data } = await api.get<CaseGtinSuggestion>(
+    `/masterdata/materials/${materialId}/case-gtin-suggestion/`,
   );
   return data;
 }

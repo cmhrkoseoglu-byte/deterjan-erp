@@ -12,7 +12,7 @@ import {
   Text,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconPrinter } from "@tabler/icons-react";
+import { IconAlertTriangle, IconPrinter } from "@tabler/icons-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { getErrorMessage } from "../../api/client";
@@ -34,6 +34,8 @@ export interface LabelKindOption {
   label: string;
   /** Seçilince gösterilen açıklama (ör. GS1 / firma içi barkod). */
   hint?: string;
+  /** Seçilince sarı uyarı olarak gösterilir (ör. koli GTIN'i tanımlı değil). */
+  warning?: string;
   /** İndirme yolu, `/api/v1` olmadan (bkz. `labelPaths`). */
   downloadPath: string;
   /** Yazıcıya gönderme yolu (bkz. `printPaths`). */
@@ -133,6 +135,16 @@ export function LabelPrintModal({
           <Text size="sm" c="dimmed">
             {option.hint}
           </Text>
+        )}
+        {option.warning && (
+          <Alert
+            color="yellow"
+            variant="light"
+            icon={<IconAlertTriangle size={18} />}
+            data-testid="label-warning"
+          >
+            {option.warning}
+          </Alert>
         )}
         <Stack gap={4}>
           <Text size="sm" fw={500}>

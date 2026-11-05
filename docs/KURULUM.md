@@ -75,6 +75,12 @@ cd /srv/deterjan-erp && git checkout <sürüm etiketi>   # ör. v1.0.0
 - Backend, **etiket yazıcılarına TCP 9100** ile doğrudan bağlanır (ZPL). Sunucu ile yazıcılar arasında
   9100 açık olmalı; yazıcılara da sabit IP verin. İleride tartı (terazi) aracısı da sunucuya bağlanacak.
   Test: `nc -vz <yazıcı IP> 9100`.
+- **Etiket deneme baskısı (bir kez, fabrikadaki Zebra yazıcıda):** `nc <yazıcı IP> 9100 <
+  scripts/zebra-deneme.zpl`. Etiketteki her QR kodu ve alttaki çizgi barkodu üretimde kullanılan
+  okuyucuyla ERP'nin okutma alanına okutun. Beklenen: A, B13, B12 ve C QR'ları `LOT:ŞUBAT-01`,
+  L QR'ı `LOC:RAF-Ş1`, çizgi barkod `LOT:A^B~C\12`; en alt satırda `LOT:A\12` yazar. Hangilerinin
+  doğru okunduğunu geliştiriciye bildirin: Türkçe harfli lot ve lokasyon kodlarının QR'ı buna
+  göre ayarlanır (PROGRESS, Adım 7 açık iş).
 - Konteynerler Docker'ın varsayılan köprü ağındadır; fabrika ağına normal şekilde çıkabilirler. Fabrika
   ağı `172.16.0.0/12` aralığını kullanıyorsa Docker'ın ağ aralığıyla çakışabilir:
   `/etc/docker/daemon.json` → `"default-address-pools": [{"base": "10.200.0.0/16", "size": 24}]`.
