@@ -8,6 +8,7 @@ from django.forms import ModelForm
 from django.http import HttpRequest
 
 from apps.core.audit import log_change
+from apps.core.coding.registry import MASTER, master_type_for_model
 from apps.core.models import AuditLog, DocumentSequence, User
 from apps.core.roles import ROLE_LABELS
 from apps.core.services import save_with_audit
@@ -18,13 +19,34 @@ admin.site.unregister(Group)
 
 
 class AuditedAdminMixin:
-    """Yönetim panelinden yapılan kayıtları da denetim günlüğüne yazar; silmeyi kapatır."""
+    """Yönetim panelinden yapılan kayıtları da denetim günlüğüne yazar; silmeyi kapatır.
+
+    Kodlama sistematiğine kayıtlı ana veri türlerinde (`core.coding`) kod salt okunurdur ve yeni
+    kayıt açılamaz: kod önerisi, biçim, eski kod ve kod kilidi kuralları uygulamada denetlenir.
+    """
+
+    model: type[Model]
+
+    def _coded(self) -> bool:
+        item = master_type_for_model(self.model._meta.label_lower)
+        return item is not None and item.kind == MASTER
 
     def save_model(self, request: HttpRequest, obj: Model, form: ModelForm, change: bool) -> None:
         save_with_audit(obj, request.user, note="Yönetim paneli")  # type: ignore[arg-type]
 
     def has_delete_permission(self, request: HttpRequest, obj: Model | None = None) -> bool:
         return False
+
+    def has_add_permission(self, request: HttpRequest, *args: Any) -> bool:
+        if self._coded():
+            return False
+        return super().has_add_permission(request, *args)  # type: ignore[misc,no-any-return]
+
+    def get_readonly_fields(self, request: HttpRequest, obj: Model | None = None) -> Any:
+        fields = tuple(super().get_readonly_fields(request, obj))  # type: ignore[misc]
+        if self._coded() and "code" not in fields:
+            fields = (*fields, "code")
+        return fields
 
 
 @admin.register(User)

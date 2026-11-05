@@ -137,6 +137,22 @@ def register_fonts() -> None:
     pdfmetrics.registerFont(TTFont(FONT_BOLD, os.path.join(folder, "VeraBd.ttf")))
 
 
+def fit_size(
+    text: str, size: float, *, width: float, bold: bool = False, minimum: float = 8
+) -> float:
+    """Metnin `width` (mm) genişliğe sığdığı yazı boyutu: en fazla `size`, en az `minimum`.
+
+    Kod gibi kısaltılmaması gereken metinler için (`fit_text` sığmayanı "…" ile keser). PDF yazı
+    tipiyle ölçülür; Zebra'nın A0 yazı tipi daha dar olduğundan ZPL'de de sığar.
+    """
+    register_fonts()
+    natural = pdfmetrics.stringWidth(text, FONT_BOLD if bold else FONT, size)
+    limit = width * mm
+    if natural <= limit or natural == 0:
+        return size
+    return max(minimum, int(size * limit / natural * 10) / 10)
+
+
 def fit_text(text: str, font: str, size: float, width: float) -> str:
     """Metni genişliğe (pt) sığacak şekilde kısaltır."""
     if pdfmetrics.stringWidth(text, font, size) <= width:

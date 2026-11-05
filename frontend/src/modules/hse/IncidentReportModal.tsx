@@ -17,8 +17,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { getErrorMessage } from "../../api/client";
 import { reportIncident, type Incident, type IncidentType, type Severity } from "../../api/hse";
+import { optionLabel } from "../common/useOptions";
 import { idOrNull, useLocations } from "../inventory/options";
-import { equipmentLabel, useEquipmentOptions } from "../maintenance/options";
+import { useEquipmentOptions } from "../maintenance/options";
 import { INCIDENT_TYPES, SEVERITIES } from "./config";
 import { ErrorAlert } from "./shared";
 import { hs } from "./strings";
@@ -123,7 +124,7 @@ export function IncidentReportModal({
             searchable
             data={(equipment.data ?? []).map((row) => ({
               value: String(row.id),
-              label: equipmentLabel(row),
+              label: optionLabel(row),
             }))}
             value={draft.equipment}
             onChange={(value) => setDraft({ ...draft, equipment: value })}

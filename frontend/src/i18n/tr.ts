@@ -236,6 +236,7 @@ export const tr = {
     wrongMaterial: (expected: string, found: string) =>
       `Yanlış malzeme! Beklenen ${expected}, okutulan ${found}.`,
     multipleLots: "Bu lot numarası birden çok malzemede var; doğru malzemenin lotunu seçin.",
+    formerCode: (code: string) => `Eski etiket okutuldu; yeni kod: ${code}. Etiketi yenileyin.`,
     camera: "Kamerayla okut",
   },
   attachments: {

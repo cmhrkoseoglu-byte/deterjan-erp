@@ -5,8 +5,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { getErrorMessage } from "../../api/client";
 import { reportBreakdown, type WorkOrder } from "../../api/maintenance";
+import { optionLabel } from "../common/useOptions";
 import { idOrNull } from "../inventory/options";
-import { equipmentLabel, useEquipmentOptions } from "./options";
+import { useEquipmentOptions } from "./options";
 import { mt } from "./strings";
 
 /** Arıza bildirimi penceresi: onarım iş emri açar, istenirse ekipmanın duruşunu başlatır. */
@@ -53,7 +54,7 @@ export function BreakdownModal({
           size="md"
           data={(equipment.data ?? []).map((row) => ({
             value: String(row.id),
-            label: equipmentLabel(row),
+            label: optionLabel(row),
           }))}
           value={draft.equipment}
           onChange={(value) => setDraft({ ...draft, equipment: value })}

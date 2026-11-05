@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../api/auth";
+import * as codingApi from "../../api/coding";
 import * as labelsApi from "../../api/labels";
 import * as mdApi from "../../api/masterdata";
 import type { Material } from "../../api/masterdata";
@@ -9,6 +10,7 @@ import { httpError, page, userWith } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
 
 vi.mock("../../api/auth");
+vi.mock("../../api/coding");
 vi.mock("../../api/labels", async (importOriginal) => ({
   ...(await importOriginal<typeof labelsApi>()),
   listPrinters: vi.fn(),
@@ -65,6 +67,12 @@ describe("ana veriler ekranı", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(authApi.fetchCsrf).mockResolvedValue();
+    vi.mocked(codingApi.suggestCode).mockResolvedValue({
+      key: "masterdata.material",
+      active: false,
+      code: null,
+      format: "MLZ-0000000",
+    });
     vi.mocked(mdApi.listRecords).mockImplementation(async (endpoint) => {
       if (endpoint === "materials") return page([las]);
       if (endpoint === "units") return page([{ id: 1, code: "KG", name: "Kilogram" }]);
@@ -110,6 +118,243 @@ describe("ana veriler ekranı", () => {
       null,
       expect.objectContaining({ code: "hm-las", name: "LAS", requires_incoming_qc: true }),
     );
+  });
+
+  it("yeni malzemede önerilen kod gelir ve değiştirilebilir", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("planlama"));
+    vi.mocked(codingApi.suggestCode).mockResolvedValue({
+      key: "masterdata.material",
+      active: true,
+      code: "MLZ-0000025",
+      format: "MLZ-0000000",
+    });
+    vi.mocked(mdApi.saveRecord).mockResolvedValue({ ...las, id: 9, code: "MLZ-0000030" });
+    renderApp("/ana-veriler/malzemeler");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Yeni" }));
+    const dialog = await screen.findByRole("dialog");
+    const code = within(dialog).getByLabelText(/Kod/);
+    await waitFor(() => expect(code).toHaveValue("MLZ-0000025"));
+    expect(
+      within(dialog).getByText("Önerilen kod. Değiştirebilirsiniz; biçim: MLZ-0000000"),
+    ).toBeInTheDocument();
+    expect(codingApi.suggestCode).toHaveBeenCalledWith("masterdata.material", undefined);
+
+    await userEvent.clear(code);
+    await userEvent.type(code, "MLZ-0000030");
+    await userEvent.type(within(dialog).getByLabelText(/^Ad/), "SLES");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(mdApi.saveRecord).toHaveBeenCalledWith(
+        "materials",
+        null,
+        expect.objectContaining({ code: "MLZ-0000030", name: "SLES" }),
+      ),
+    );
+  });
+
+  it("Yeni yeniden açılınca önerilen kod yine gelir (vazgeçip ya da kayıt açıp kapattıktan sonra)", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("planlama"));
+    vi.mocked(codingApi.suggestCode).mockResolvedValue({
+      key: "masterdata.material",
+      active: true,
+      code: "MLZ-0000025",
+      format: "MLZ-0000000",
+    });
+    renderApp("/ana-veriler/malzemeler");
+    const openNew = async () => {
+      await userEvent.click(await screen.findByRole("button", { name: "Yeni" }));
+      return screen.findByRole("dialog");
+    };
+    const close = async (dialog: HTMLElement) => {
+      await userEvent.click(within(dialog).getByRole("button", { name: "Vazgeç" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    };
+
+    let dialog = await openNew();
+    await waitFor(() => expect(within(dialog).getByLabelText(/Kod/)).toHaveValue("MLZ-0000025"));
+    await close(dialog);
+    // Öneri değişmese de (aynı kod döner) alan dolu gelir.
+    dialog = await openNew();
+    await waitFor(() => expect(within(dialog).getByLabelText(/Kod/)).toHaveValue("MLZ-0000025"));
+    await close(dialog);
+
+    await userEvent.click(screen.getByText("HM-LAS"));
+    dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/Kod/)).toHaveValue("HM-LAS");
+    await close(dialog);
+    dialog = await openNew();
+    await waitFor(() => expect(within(dialog).getByLabelText(/Kod/)).toHaveValue("MLZ-0000025"));
+  });
+
+  it.each([
+    [
+      "benzersizlik hatası",
+      {
+        code: "validation_error",
+        detail: "Gönderilen bilgiler geçersiz.",
+        errors: { code: ["Bu Kod alanına sahip Malzeme zaten mevcut."] },
+      },
+      "Bu Kod alanına sahip Malzeme zaten mevcut.",
+    ],
+    [
+      "code_taken",
+      {
+        code: "code_taken",
+        detail: "MLZ-0000025 az önce başka bir kayda verildi. Yeni öneri: MLZ-0000026.",
+      },
+      "MLZ-0000025 az önce başka bir kayda verildi. Yeni öneri: MLZ-0000026.",
+    ],
+    [
+      "code_reserved",
+      {
+        code: "code_reserved",
+        detail: "MLZ-0000025 başka bir kaydın eski kodu; kullanılamaz.",
+      },
+      "MLZ-0000025 başka bir kaydın eski kodu; kullanılamaz.",
+    ],
+  ])(
+    "önerilen kod kaydederken alınmışsa (%s) sıradaki öneri alana yazılır",
+    async (_name, body, serverMessage) => {
+      vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("planlama"));
+      let next = "MLZ-0000025";
+      vi.mocked(codingApi.suggestCode).mockImplementation(async () => ({
+        key: "masterdata.material",
+        active: true,
+        code: next,
+        format: "MLZ-0000000",
+      }));
+      vi.mocked(mdApi.saveRecord)
+        .mockImplementationOnce(async () => {
+          next = "MLZ-0000026"; // başka bir kullanıcı 25'i az önce aldı
+          throw httpError(400, body);
+        })
+        .mockResolvedValue({ ...las, id: 9, code: "MLZ-0000026" });
+      renderApp("/ana-veriler/malzemeler");
+
+      await userEvent.click(await screen.findByRole("button", { name: "Yeni" }));
+      const dialog = await screen.findByRole("dialog");
+      const code = within(dialog).getByLabelText(/Kod/);
+      await waitFor(() => expect(code).toHaveValue("MLZ-0000025"));
+      await userEvent.type(within(dialog).getByLabelText(/^Ad/), "SLES");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+
+      expect(
+        await within(dialog).findByText(
+          "MLZ-0000025 başka bir kayda verilmiş. Yerine sıradaki önerilen kod MLZ-0000026 yazıldı; kontrol edip yeniden kaydedin.",
+        ),
+      ).toBeInTheDocument();
+      expect(code).toHaveValue("MLZ-0000026");
+      expect(within(dialog).queryByText(serverMessage)).not.toBeInTheDocument();
+
+      await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+      await waitFor(() =>
+        expect(mdApi.saveRecord).toHaveBeenLastCalledWith(
+          "materials",
+          null,
+          expect.objectContaining({ code: "MLZ-0000026", name: "SLES" }),
+        ),
+      );
+    },
+  );
+
+  it.each([
+    ["öneri değişmediyse", "same"],
+    ["öneri yenilenemediyse", "fail"],
+  ])("önerilen kod alınmış ama %s kod ve sunucu hatası olduğu gibi kalır", async (_name, mode) => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("planlama"));
+    const suggestion = {
+      key: "masterdata.material",
+      active: true,
+      code: "MLZ-0000025",
+      format: "MLZ-0000000",
+    };
+    vi.mocked(codingApi.suggestCode).mockResolvedValueOnce(suggestion);
+    if (mode === "same") vi.mocked(codingApi.suggestCode).mockResolvedValue(suggestion);
+    else vi.mocked(codingApi.suggestCode).mockRejectedValue(httpError(500, {}));
+    vi.mocked(mdApi.saveRecord).mockRejectedValue(
+      httpError(400, { code: "duplicate", detail: "Bu kayıt zaten var (kod tekrarı)." }),
+    );
+    renderApp("/ana-veriler/malzemeler");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Yeni" }));
+    const dialog = await screen.findByRole("dialog");
+    const code = within(dialog).getByLabelText(/Kod/);
+    await waitFor(() => expect(code).toHaveValue("MLZ-0000025"));
+    await userEvent.type(within(dialog).getByLabelText(/^Ad/), "SLES");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+
+    expect(
+      await within(dialog).findByText("Bu kayıt zaten var (kod tekrarı)."),
+    ).toBeInTheDocument();
+    expect(code).toHaveValue("MLZ-0000025");
+    expect(within(dialog).queryByText(/başka bir kayda verilmiş/)).not.toBeInTheDocument();
+  });
+
+  it("kullanıcının yazdığı kod alınmışsa kod değiştirilmez, hata gösterilir", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("planlama"));
+    vi.mocked(codingApi.suggestCode).mockResolvedValue({
+      key: "masterdata.material",
+      active: true,
+      code: "MLZ-0000025",
+      format: "MLZ-0000000",
+    });
+    vi.mocked(mdApi.saveRecord).mockRejectedValue(
+      httpError(400, {
+        code: "code_taken",
+        detail: "MLZ-0000030 az önce başka bir kayda verildi. Yeni öneri: MLZ-0000025.",
+      }),
+    );
+    renderApp("/ana-veriler/malzemeler");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Yeni" }));
+    const dialog = await screen.findByRole("dialog");
+    const code = within(dialog).getByLabelText(/Kod/);
+    await waitFor(() => expect(code).toHaveValue("MLZ-0000025"));
+    await userEvent.clear(code);
+    await userEvent.type(code, "MLZ-0000030");
+    await userEvent.type(within(dialog).getByLabelText(/^Ad/), "SLES");
+    const calls = vi.mocked(codingApi.suggestCode).mock.calls.length;
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+
+    expect(
+      await within(dialog).findByText(/MLZ-0000030 az önce başka bir kayda verildi/),
+    ).toBeInTheDocument();
+    expect(code).toHaveValue("MLZ-0000030");
+    expect(within(dialog).queryByText(/başka bir kayda verilmiş/)).not.toBeInTheDocument();
+    expect(codingApi.suggestCode).toHaveBeenCalledTimes(calls);
+  });
+
+  it("kodu kayıt açıldıktan sonra yalnızca admin değiştirir; eski kodlar görünür", async () => {
+    const renamed = { ...las, code: "MLZ-0000001", former_codes: ["HM-LAS"] };
+    vi.mocked(mdApi.listRecords).mockImplementation(async (endpoint) =>
+      endpoint === "materials" ? page([renamed]) : page([]),
+    );
+    vi.mocked(mdApi.saveRecord).mockResolvedValue(renamed);
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("planlama"));
+    renderApp("/ana-veriler/malzemeler");
+
+    await userEvent.click(await screen.findByText("MLZ-0000001"));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/Kod/)).toBeDisabled();
+    expect(
+      within(dialog).getByText(
+        "Kodu yalnızca sistem yöneticisi değiştirebilir. Eski kodlar: HM-LAS",
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() => expect(mdApi.saveRecord).toHaveBeenCalled());
+    expect(vi.mocked(mdApi.saveRecord).mock.calls[0][2]).not.toHaveProperty("code");
+    expect(codingApi.suggestCode).not.toHaveBeenCalled();
+  });
+
+  it("admin düzenlemede kodu değiştirebilir", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    renderApp("/ana-veriler/malzemeler");
+
+    await userEvent.click(await screen.findByText("HM-LAS"));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/Kod/)).toBeEnabled();
   });
 
   it("iş kuralı hatasını uyarı olarak gösterir", async () => {

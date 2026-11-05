@@ -9,7 +9,7 @@ from django.utils import timezone
 from apps.core import event_names as ev
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog
-from apps.inventory import services
+from apps.inventory import selectors, services
 from apps.inventory.models import (
     GoodsReceipt,
     Lot,
@@ -248,13 +248,29 @@ def test_reversal_cannot_make_stock_negative(depo):
 
 
 def test_lot_numbers_follow_decision_d2():
+    # Karar D-2; tarih 2026-11-04'ten beri ISO 8601 (YYYYMMDD).
     day = date(2026, 10, 15)
-    assert services.next_lot_number("H", day) == "H-261015-001"
-    assert services.next_lot_number("H", day) == "H-261015-002"
-    assert services.next_lot_number("B", day) == "B-261015-001"
-    assert services.next_lot_number("H", date(2026, 10, 16)) == "H-261016-001"
+    assert services.next_lot_number("H", day) == "H-20261015-001"
+    assert services.next_lot_number("H", day) == "H-20261015-002"
+    assert services.next_lot_number("B", day) == "B-20261015-001"
+    assert services.next_lot_number("H", date(2026, 10, 16)) == "H-20261016-001"
     with pytest.raises(ValueError):
         services.next_lot_number("X", day)
+
+
+def test_lot_numbers_follow_coding_settings(make_user):
+    """Admin'in kodlama ayarı: tarih biçimi ve sıra hanesi aynı sayaçla, yeni önek yeni sayaçla."""
+    from apps.core.coding import services as coding
+
+    admin = make_user("admin")
+    day = date(2026, 10, 15)
+    assert services.next_lot_number("D", day) == "D-20261015-001"
+    coding.update_scheme(admin, "lot.D", date_format="YYYYDDD", width=4, note="ISO sıra tarihi")
+    assert services.next_lot_number("D", day) == "D-2026288-0002"
+    coding.update_scheme(admin, "lot.D", prefix="DL", note="Yeni önek")
+    assert services.next_lot_number("D", day) == "DL-2026288-0001"
+    assert services.next_lot_number("H", day) == "H-20261015-001"
+    assert selectors.last_lot_number("DL", day) == 1
 
 
 def test_create_lot_defaults(depo):
@@ -358,7 +374,7 @@ def test_post_goods_receipt_creates_lots_and_movements(depo, receipt_setup, publ
     assert receipt.posted_by == depo
     qc_line, pack_line = receipt.lines.order_by("line_no")
     qc_lot, pack_lot = qc_line.created_lot, pack_line.created_lot
-    assert qc_lot.lot_no == "H-261015-001" and pack_lot.lot_no == "H-261015-002"
+    assert qc_lot.lot_no == "H-20261015-001" and pack_lot.lot_no == "H-20261015-002"
     assert qc_lot.status == Lot.Status.QUARANTINE and qc_lot.supplier_lot_no == "S-77"
     assert qc_lot.supplier == receipt_setup["supplier"]
     assert qc_lot.expiry_date == date(2026, 10, 15) + timedelta(days=730)

@@ -24,3 +24,18 @@ class HseConfig(AppConfig):
             roles=services.INCIDENT_REPORT_ROLES,
             visible=services.incidents_visible_to,
         )
+
+        # Belge numaraları: biçim Sistem > Kodlama sistematiği ayarından (core.coding).
+        from apps.core.coding.registry import register_document_type
+
+        register_document_type("AT", label="Atık kaydı", model="hse.wasterecord")
+        register_document_type("OL", label="Olay kaydı", model="hse.incident")
+
+        # H/P/EUH ifadeleri uluslararası standart kodlardır (GHS/CLP): kodlama ayarında değişmez.
+        from apps.core.coding.registry import register_standard_code
+
+        register_standard_code(
+            "hse.hazardstatement",
+            label="Tehlike ve önlem ifadesi (H/P/EUH)",
+            model="hse.hazardstatement",
+        )

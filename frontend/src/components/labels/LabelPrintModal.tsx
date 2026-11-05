@@ -25,6 +25,7 @@ import {
   type LabelOutput,
 } from "../../api/labels";
 import { tr } from "../../i18n/tr";
+import { optionLabel } from "../../modules/common/useOptions";
 
 const t = tr.labels;
 
@@ -159,7 +160,7 @@ export function LabelPrintModal({
             label={t.printer}
             data={(printers.data ?? []).map((p) => ({
               value: String(p.id),
-              label: `${p.code} - ${p.name}`,
+              label: optionLabel(p),
             }))}
             value={printer}
             onChange={setPrinter}

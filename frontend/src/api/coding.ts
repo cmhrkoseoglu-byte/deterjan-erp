@@ -1,0 +1,219 @@
+// Kodlama sistematiği: /api/v1/coding/ (biçim ayarları yalnız admin; öneri türün yazma rollerine).
+import { api } from "./client";
+import type { Paginated } from "./types";
+
+/** Yeni kayıt için sıradaki kod (biçim etkinse). `format` biçimin örneği: "MLZ-0000000". */
+export interface CodeSuggestion {
+  key: string;
+  active: boolean;
+  code: string | null;
+  format: string;
+}
+
+export async function suggestCode(key: string, type?: string): Promise<CodeSuggestion> {
+  const { data } = await api.get<CodeSuggestion>(`/coding/suggest/${key}/`, {
+    params: type ? { type } : {},
+  });
+  return data;
+}
+
+export type CodeKind = "master" | "document" | "lot" | "standard";
+export type YearFormat = "YYYY" | "YY";
+export type DateFormat = "YYYYMMDD" | "YYYYDDD" | "YYMMDD";
+
+/** Türe göre önekli kodda (ekipman) her türün satırı. */
+export interface CodeTypeOption {
+  value: string;
+  label: string;
+  prefix: string;
+  format: string;
+  next: string;
+  last_number: number;
+}
+
+/** Kodlama ekranındaki tür satırı. */
+export interface CodeTypeRow {
+  key: string;
+  kind: CodeKind;
+  label: string;
+  configurable: boolean;
+  locked: boolean;
+  free: boolean;
+  scanned: boolean;
+  prefix: string;
+  width: number;
+  type_field: string;
+  type_prefixes: Record<string, string>;
+  year_format: string;
+  date_format: string;
+  is_active: boolean;
+  revision: number;
+  updated_at: string | null;
+  updated_by: string;
+  /** Biçimin örneği: "MLZ-0000000", "UE-2026-00000". */
+  format: string;
+  next: string;
+  longest: string;
+  last_number: number;
+  types: CodeTypeOption[];
+  samples: string[];
+}
+
+/** Biçim değerleri (verilmeyen değişmez). */
+export interface CodeFormatValues {
+  prefix?: string;
+  width?: number;
+  type_prefixes?: Record<string, string>;
+  year_format?: YearFormat;
+  date_format?: DateFormat;
+}
+
+/** Önizleme isteği: biçim değerleri ve yazılan sıradaki numaralar ({"MLZ": 25}); örnekteki
+ * sıradaki kod ve son numara bunlara göre gelir. */
+export interface CodePreviewRequest extends CodeFormatValues {
+  counters?: Record<string, number>;
+}
+
+export interface CodeSchemeUpdate extends CodeFormatValues {
+  is_active?: boolean;
+  /** Ana veride sıradaki numara: {"MLZ": 25}. */
+  counters?: Record<string, number>;
+  note: string;
+}
+
+export interface CodePreview {
+  valid: boolean;
+  error: { code: string; detail: string } | null;
+  example: CodeTypeRow | null;
+}
+
+export interface CodeSchemeRevision {
+  id: number;
+  key: string;
+  label: string;
+  revision: number;
+  prefix: string;
+  type_prefixes: Record<string, string>;
+  width: number;
+  year_format: string;
+  date_format: string;
+  is_active: boolean;
+  counters: Record<string, number>;
+  note: string;
+  changed_at: string;
+  changed_by_name: string;
+}
+
+export async function listCodeTypes(kind?: CodeKind): Promise<CodeTypeRow[]> {
+  const { data } = await api.get<Paginated<CodeTypeRow>>("/coding/types/", {
+    params: { page_size: 200, ...(kind ? { kind } : {}) },
+  });
+  return data.results;
+}
+
+export async function updateCodeType(key: string, body: CodeSchemeUpdate): Promise<CodeTypeRow> {
+  const { data } = await api.put<CodeTypeRow>(`/coding/types/${key}/`, body);
+  return data;
+}
+
+export async function previewCodeType(
+  key: string,
+  values: CodePreviewRequest,
+): Promise<CodePreview> {
+  const { data } = await api.post<CodePreview>(`/coding/types/${key}/preview/`, values);
+  return data;
+}
+
+export async function listCodeRevisions(page = 1): Promise<Paginated<CodeSchemeRevision>> {
+  const { data } = await api.get<Paginated<CodeSchemeRevision>>("/coding/revisions/", {
+    params: { page },
+  });
+  return data;
+}
+
+// --- kod göçü ----------------------------------------------------------------------------------
+
+export interface RecodeRow {
+  id: number;
+  label: string;
+  old: string;
+  new: string;
+  action: "keep" | "change" | "problem";
+  is_active: boolean;
+  problem: string;
+}
+
+export interface RecodePreview {
+  key: string;
+  label: string;
+  active: boolean;
+  rows: RecodeRow[];
+  change_count: number;
+  keep_count: number;
+  problem_count: number;
+  checksum: string;
+}
+
+export interface CodeMigrationRun {
+  id: number;
+  key: string;
+  label: string;
+  kind: "apply" | "revert";
+  mapping: { id: number; label: string; old: string; new: string }[];
+  note: string;
+  reverts: number | null;
+  reverted: boolean;
+  count: number;
+  created_at: string;
+  created_by_name: string;
+}
+
+export interface RevertPreview {
+  run: number;
+  key: string;
+  label: string;
+  rows: {
+    id: number;
+    label: string;
+    old: string;
+    new: string;
+    current: string;
+    action: "revert" | "skip";
+  }[];
+  revert_count: number;
+  already_reverted: boolean;
+}
+
+export async function previewRecode(key: string): Promise<RecodePreview> {
+  const { data } = await api.get<RecodePreview>(`/coding/recode/${key}/`);
+  return data;
+}
+
+export async function applyRecode(
+  key: string,
+  checksum: string,
+  note: string,
+): Promise<CodeMigrationRun> {
+  const { data } = await api.post<CodeMigrationRun>(`/coding/recode/${key}/apply/`, {
+    checksum,
+    note,
+  });
+  return data;
+}
+
+export async function listRecodeRuns(page = 1): Promise<Paginated<CodeMigrationRun>> {
+  const { data } = await api.get<Paginated<CodeMigrationRun>>("/coding/runs/", {
+    params: { page },
+  });
+  return data;
+}
+
+export async function previewRevert(runId: number): Promise<RevertPreview> {
+  const { data } = await api.get<RevertPreview>(`/coding/runs/${runId}/revert-preview/`);
+  return data;
+}
+
+export async function revertRecode(runId: number, note: string): Promise<CodeMigrationRun> {
+  const { data } = await api.post<CodeMigrationRun>(`/coding/runs/${runId}/revert/`, { note });
+  return data;
+}

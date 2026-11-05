@@ -1,16 +1,22 @@
 """Lot, koli ve palet etiketleri; yazıcıya gönderim; barkod okutma çözümü (Adım 2.3)."""
 
 from datetime import date
+from typing import Any
 
 import pytest
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfgen import canvas
 
 from apps.core.exceptions import BusinessRuleError
-from apps.core.labels import gs1_check_digit
+from apps.core.labels import FONT_BOLD, Label, Text, gs1_check_digit, render_pdf
 from apps.core.roles import DEPO, DOLUM, LABORATUVAR
 from apps.inventory import selectors, services
+from apps.inventory.labels import case_label, lot_label, pallet_label
 from apps.inventory.models import Lot, PalletLabel
 from apps.inventory.tests.factories import stocked_lot
 from apps.masterdata import services as masterdata
+from apps.masterdata.labels import INNER
 from apps.masterdata.models import Material
 from apps.masterdata.tests.factories import LocationFactory, MaterialFactory, PrinterFactory, unit
 
@@ -65,6 +71,51 @@ def test_lot_label_prints_company_name(client_for) -> None:
     lot = stocked_lot()
     zpl = client_for(DEPO).get(f"{LOTS}{lot.pk}/label/", {"output": "zpl"}).content.decode()
     assert "^FDInncos Kimya^FS" in zpl
+
+
+def drawn_texts(monkeypatch: pytest.MonkeyPatch, labels: list[Label]) -> list[str]:
+    """Etiketlerin PDF'ine yazılan metinler (sığmayan metin "…" ile kesilerek yazılır)."""
+    drawn: list[str] = []
+    original = canvas.Canvas.drawString
+
+    def record(self: Any, x: float, y: float, text: str, *args: Any, **kwargs: Any) -> Any:
+        drawn.append(text)
+        return original(self, x, y, text, *args, **kwargs)
+
+    monkeypatch.setattr(canvas.Canvas, "drawString", record)
+    render_pdf(labels)
+    return drawn
+
+
+def lot_no_text(label: Label, lot_no: str) -> Text:
+    return next(e for e in label.elements if isinstance(e, Text) and e.text == lot_no)
+
+
+# Kodlama ekranının kabul ettiği uzun lot biçimleri (4 harf önek, 5 hane sıra; W en geniş harf).
+@pytest.mark.parametrize(
+    "lot_no", ["HAM-20261104-001", "ABCD-20261104-00001", "WWWW-20261104-00001"]
+)
+def test_long_lot_number_shrinks_instead_of_being_cut(make_user, monkeypatch, lot_no) -> None:
+    """Lot no lot, koli ve palet etiketinde kesilmez; sığmazsa yazı küçülür (okutulamazsa
+    etiketten elle girilir)."""
+    enable_sscc()
+    lot = finished_lot(lot_no=lot_no)
+    pallet = services.create_pallet_label(make_user(DEPO), lot, 20)
+    printed = [lot_label(lot), case_label(lot, units_per_case=12), pallet_label(pallet)]
+
+    drawn = drawn_texts(monkeypatch, printed)
+
+    assert drawn.count(lot_no) == 3  # her etikette lot no tam basılır
+    assert not [text for text in drawn if text.endswith("…")]
+    big = lot_no_text(printed[0], lot_no)
+    assert big.size < 24
+    assert pdfmetrics.stringWidth(lot_no, FONT_BOLD, big.size) <= INNER * mm
+
+
+def test_short_lot_number_keeps_full_size() -> None:
+    lot = finished_lot()
+    assert lot_no_text(lot_label(lot), lot.lot_no).size == 24
+    assert lot_no_text(case_label(lot), lot.lot_no).size == 14
 
 
 def test_goods_receipt_labels_zpl_and_print(

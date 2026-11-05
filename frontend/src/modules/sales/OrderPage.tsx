@@ -58,7 +58,7 @@ import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ct } from "../common/strings";
-import { useOptions } from "../common/useOptions";
+import { optionLabel, useOptions } from "../common/useOptions";
 import { CancelModal } from "../inventory/CancelModal";
 import { today } from "../inventory/config";
 import { idOrNull } from "../inventory/options";
@@ -256,7 +256,7 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
   const productById = new Map((products.data ?? []).map((row) => [String(row.id), row]));
   const productOptions = (products.data ?? []).map((row) => ({
     value: String(row.id),
-    label: `${row.code} - ${row.name}`,
+    label: optionLabel(row),
   }));
 
   const setHeader = (patch: Partial<HeaderDraft>) =>

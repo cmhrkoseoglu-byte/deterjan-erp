@@ -15,6 +15,9 @@ from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, models, transaction
 
 from apps.core.audit import log_change
+from apps.core.coding import registry as coding_registry
+from apps.core.coding import selectors as coding_selectors
+from apps.core.coding import services as coding
 from apps.core.exceptions import BusinessRuleError
 from apps.core.labels import gs1_check_digit, is_valid_gtin
 from apps.core.models import AuditLog, MasterDataModel, User
@@ -287,25 +290,58 @@ def _validate_activation(instance: MasterDataModel) -> None:
         _require_active(instance.location, "lokasyon")
 
 
+def code_type_of(
+    instance: models.Model | type[models.Model],
+) -> coding_registry.CodeType | None:
+    """Kaydın (ya da modelin) kodlama sistematiğindeki ana veri kod türü; standart kodlarda ve
+    kodsuz kayıtta None."""
+    item = coding_registry.master_type_for_model(instance._meta.label_lower)
+    return item if item is not None and item.kind == coding_registry.MASTER else None
+
+
+def _previous_code(instance: models.Model, item: coding_registry.CodeType) -> str | None:
+    """Veritabanındaki kod (yeni kayıtta None)."""
+    if instance._state.adding:
+        return None
+    value = _db_value(instance, item.field)
+    return None if value is None else str(value)
+
+
 def validate_record(instance: MasterDataModel) -> None:
     """Kaydı yazmadan doğrular: iş kuralları (`BusinessRuleError`), ardından alan, seçenek,
     benzersizlik ve CHECK kısıtları (Türkçe mesajlı Django `ValidationError`).
 
-    Kod alanı yerinde büyük harfe çevrilir. İçe aktarma önizlemesi de bunu kullanır.
+    Kod alanı yerinde büyük harfe çevrilir. Kodlama sistematiğinin kuralları (eski kod, biçim)
+    yeni kayıtta ve kod değişince uygulanır (`core.coding`). İçe aktarma önizlemesi de bunu
+    kullanır.
     """
     if hasattr(instance, "code") and isinstance(instance.code, str):
         instance.code = normalize_code(instance.code)
     validator = _VALIDATORS.get(type(instance))
     if validator is not None:
         validator(instance)
+    item = code_type_of(instance)
+    if item is not None:
+        coding.check_master_code(item, instance, previous_code=_previous_code(instance, item))
     instance.full_clean(exclude=["created_by", "updated_by"])
 
 
 def _save[M: MasterDataModel](instance: M, actor: User | None, note: str) -> M:
+    item = code_type_of(instance)
+    previous = _previous_code(instance, item) if item is not None else None
+    if item is not None and previous is None:
+        coding.assign_master_code(item, instance)  # kod boşsa etkin biçimde sıradaki kod
     validate_record(instance)
     try:
         with transaction.atomic():
-            return save_with_audit(instance, actor, note=note)
+            if item is not None:
+                coding.claim_master_code(item, instance, previous_code=previous)
+            saved = save_with_audit(instance, actor, note=note)
+            if item is not None and previous is not None:
+                current = str(getattr(saved, item.field))
+                if current != previous:
+                    coding.record_code_change(actor, item, saved, previous, note=note)
+            return saved
     except IntegrityError as exc:  # eşzamanlı aynı kod
         raise BusinessRuleError("duplicate", "Bu kayıt zaten var (kod tekrarı).") from exc
 
@@ -332,14 +368,58 @@ def update_record[M: MasterDataModel](
 ) -> M:
     """Ana veri kaydını günceller; değişen alanlar eski → yeni değerleriyle günlüğe yazılır.
 
-    `is_active` bu servisle değiştirilemez (`set_active` kullanılır).
+    `is_active` bu servisle değiştirilemez (`set_active` kullanılır). Kodlama sistematiğine kayıtlı
+    türde kodu yalnızca admin değiştirir (`PermissionDenied`); eski kod saklanır.
     """
     if "is_active" in data:
         raise ValueError("Aktiflik set_active ile değiştirilir.")
     locked = type(instance)._base_manager.select_for_update().get(pk=instance.pk)
+    item = code_type_of(locked)
+    if item is not None and item.field in data:
+        new_code = normalize_code(str(data[item.field] or ""))
+        if new_code != str(getattr(locked, item.field)):
+            # Kayıt açıldıktan sonra kodu yalnız admin değiştirir (CUMHUR, 2026-11-04).
+            coding.ensure_can_change_code(actor)
     for name, value in data.items():
         setattr(locked, name, value)
     return _save(locked, actor, note)
+
+
+@transaction.atomic
+def recode_record(
+    actor: User | None,
+    instance: MasterDataModel,
+    new_code: str,
+    note: str,
+    run_id: int | None = None,
+    reason: str = "migration",
+) -> MasterDataModel:
+    """Kod göçü (`core.coding.migration`): yalnızca kodu değiştirir.
+
+    Kaydın öteki alanları yeniden doğrulanmaz (göç, ilgisiz bir kural yüzünden yarıda kalmasın);
+    kod kuralları denetlenir: kod başka kaydın güncel kodu ya da eski koduysa `recode_conflict`.
+    Değişiklik denetim günlüğüne (`code: [eski, yeni]`) ve eski kod geçmişine yazılır.
+    """
+    item = code_type_of(instance)
+    if item is None:
+        raise ValueError("Kod göçü yalnızca kodlama sistematiğine kayıtlı türlerde yapılır.")
+    locked = type(instance)._base_manager.select_for_update().get(pk=instance.pk)
+    old = str(getattr(locked, item.field))
+    new_code = normalize_code(new_code)
+    if old == new_code:
+        return locked
+    if coding_selectors.code_in_use(item, new_code, exclude_pk=locked.pk) or (
+        coding_selectors.code_reserved(item, new_code, exclude_pk=locked.pk)
+    ):
+        raise BusinessRuleError(
+            "recode_conflict", f"{new_code} başka bir kayıtta kullanılıyor ya da kullanıldı."
+        )
+    setattr(locked, item.field, new_code)
+    locked.updated_by = actor if actor is not None and actor.is_authenticated else None
+    locked.save(update_fields=[item.field, "updated_by", "updated_at"])
+    log_change(actor, locked, AuditLog.Action.UPDATE, {item.field: [old, new_code]}, note)
+    coding.record_code_change(actor, item, locked, old, reason=reason, note=note, run_id=run_id)
+    return locked
 
 
 @transaction.atomic

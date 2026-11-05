@@ -50,6 +50,10 @@ export interface EntityConfig<T> {
   fields: FieldDef[];
   defaults?: FormValues;
   writeRoles: Role[];
+  /** Kodlama sistematiğindeki kod türü (ör. "masterdata.material"): kod önerisi ve kod kilidi. */
+  codeType?: string;
+  /** Kodun öneki kaydın bu alanından gelir (ekipman türü). */
+  codeTypeField?: string;
   importKind?: ImportKind;
   /** Satırdaki ek işlemler (ör. etiket yazdır); yazma yetkisinden bağımsız gösterilir. */
   rowActions?: (row: T) => ReactNode;
@@ -265,6 +269,8 @@ export function CrudPage<T extends Row>({ config }: { config: EntityConfig<T> })
         record={editing}
         defaults={config.defaults}
         readOnly={!canWrite}
+        codeType={config.codeType}
+        codeTypeField={config.codeTypeField}
         onClose={() => setFormOpen(false)}
         onSubmit={(payload) => saveRecord<T>(config.endpoint, editing?.id ?? null, payload)}
         onSaved={() => {

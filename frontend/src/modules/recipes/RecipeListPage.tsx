@@ -143,6 +143,7 @@ export function RecipeListPage() {
         opened={formOpen}
         title={rt.newRecipe}
         fields={recipeFields}
+        codeType="recipes.recipe"
         record={null}
         onClose={() => setFormOpen(false)}
         onSubmit={(payload) => saveRecipe(null, payload)}

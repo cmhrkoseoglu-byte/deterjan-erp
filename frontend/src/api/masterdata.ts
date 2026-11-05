@@ -9,6 +9,11 @@ export interface Audited {
   updated_at: string;
 }
 
+/** Kodlu ana veri: kodu değişmiş kayıtta eski kodlar, en yeniden eskiye (kodlama sistematiği). */
+export interface FormerCodes {
+  former_codes?: string[];
+}
+
 export type UnitKind = "MASS" | "VOLUME" | "COUNT";
 
 export interface Unit extends Audited {
@@ -19,7 +24,7 @@ export interface Unit extends Audited {
   factor_to_kind_base: string | null;
 }
 
-export interface Category extends Audited {
+export interface Category extends Audited, FormerCodes {
   code: string;
   name: string;
 }
@@ -35,7 +40,7 @@ export interface Conversion extends Audited {
   base_unit_code: string;
 }
 
-export interface Material extends Audited {
+export interface Material extends Audited, FormerCodes {
   code: string;
   name: string;
   material_type: MaterialType;
@@ -54,14 +59,14 @@ export interface Material extends Audited {
   conversions?: Conversion[];
 }
 
-export interface Warehouse extends Audited {
+export interface Warehouse extends Audited, FormerCodes {
   code: string;
   name: string;
 }
 
 export type LocationType = "STORAGE" | "QUARANTINE" | "PRODUCTION" | "SHIPPING" | "TANK";
 
-export interface Location extends Audited {
+export interface Location extends Audited, FormerCodes {
   warehouse: number;
   warehouse_code: string;
   code: string;
@@ -72,7 +77,7 @@ export interface Location extends Audited {
 
 export type EquipmentType = "MIXING_TANK" | "STORAGE_TANK" | "FILLING_LINE" | "SCALE" | "OTHER";
 
-export interface Equipment extends Audited {
+export interface Equipment extends Audited, FormerCodes {
   code: string;
   name: string;
   equipment_type: EquipmentType;
@@ -84,7 +89,7 @@ export interface Equipment extends Audited {
   location_code: string | null;
 }
 
-export interface Partner extends Audited {
+export interface Partner extends Audited, FormerCodes {
   code: string;
   name: string;
   tax_office: string;

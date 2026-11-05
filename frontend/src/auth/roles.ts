@@ -12,6 +12,11 @@ export function hasAnyRole(user: CurrentUser | null | undefined, roles?: readonl
   return roles.some((role) => user.roles.includes(role));
 }
 
+/** Sistem yöneticisi mi (`admin` rolü ya da süper kullanıcı)? Yalnızca arayüz içindir. */
+export function isAdmin(user: CurrentUser | null | undefined): boolean {
+  return Boolean(user && (user.is_superuser || user.roles.includes("admin")));
+}
+
 export function displayName(user: CurrentUser): string {
   return user.full_name.trim() || user.username;
 }

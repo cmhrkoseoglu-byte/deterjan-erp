@@ -8,7 +8,7 @@ Kurallar:
   lotu bağı yazar (`link_lots`).
 - Yalnızca serbest ve SKT'si geçmemiş bulk ve ambalaj lotu tüketilir (kural 4). Bulk depoda
   hazırlanmaz; tank lotu bulunduğu (karantina dışı) lokasyondan tüketilir.
-- Dolum lotu `D-YYMMDD-NNN` (D-2) karantinada açılır; parti bitince son kontrol (`FINAL`) numunesi
+- Dolum lotu `D-YYYYMMDD-NNN` (D-2) karantinada açılır; parti bitince son kontrol (`FINAL`) numunesi
   açılır ve lot yalnızca kalite kararıyla serbest kalır.
 - Ambalaj tüketimi bitişte hesaplanır: (sağlam + mamul firesi) × adet başına miktar; adet birimli
   malzemede yukarı yuvarlanır. Önce partiye okutulan lotlardan (okutma sırasıyla), sonra hat
@@ -695,7 +695,7 @@ def run_payload(run: FillingRun, **extra: Any) -> dict[str, Any]:
 
 @transaction.atomic
 def start_run(actor: User | None, order: FillingOrder) -> FillingRun:
-    """Dolum partisini başlatır (rol: dolum). Dolum lotu `D-YYMMDD-NNN` numarasıyla karantinada
+    """Dolum partisini başlatır (rol: dolum). Dolum lotu `D-YYYYMMDD-NNN` numarasıyla karantinada
     açılır; SKT = dolum tarihi + mamulün raf ömrü. Emirde açık parti varsa yenisi açılmaz. İlk
     partiyle emir "Dolumda" olur. Olay `filling_run.started` "Dolumu başlat" görevini kapatır."""
     _require_role(actor, FILLING_ROLES, "Dolum partisini yalnızca dolum başlatır.")

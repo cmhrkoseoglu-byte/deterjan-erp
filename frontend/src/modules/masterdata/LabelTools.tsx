@@ -34,6 +34,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
 import { LabelPrintModal } from "../../components/labels/LabelPrintModal";
 import { tr } from "../../i18n/tr";
+import { optionLabel } from "../common/useOptions";
 
 const t = tr.labels;
 
@@ -178,7 +179,7 @@ export function LabelSettingsPanel() {
           label={s.defaultPrinter}
           data={(printers.data ?? []).map((p) => ({
             value: String(p.id),
-            label: `${p.code} - ${p.name}`,
+            label: optionLabel(p),
           }))}
           value={printer}
           onChange={setPrinter}

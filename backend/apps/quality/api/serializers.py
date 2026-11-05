@@ -4,6 +4,7 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.core.api.coding import FormerCodesListSerializer, FormerCodesMixin
 from apps.core.models import User
 from apps.inventory.api.serializers import UserNameField
 from apps.inventory.models import Lot
@@ -23,14 +24,16 @@ from apps.quality.state import sample_states
 # --- test tanımı -----------------------------------------------------------------------------
 
 
-class TestDefinitionSerializer(serializers.ModelSerializer):
+class TestDefinitionSerializer(FormerCodesMixin, serializers.ModelSerializer):
     result_type_display = serializers.CharField(source="get_result_type_display", read_only=True)
 
     class Meta:
         model = TestDefinition
+        list_serializer_class = FormerCodesListSerializer
         fields = [
             "id",
             "code",
+            "former_codes",
             "name",
             "result_type",
             "result_type_display",

@@ -40,6 +40,7 @@ import { AttachmentPanel } from "../../components/attachments/AttachmentPanel";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { normalizeDecimal } from "../common/forms";
+import { optionLabel } from "../common/useOptions";
 import { CancelModal } from "../inventory/CancelModal";
 import { idOrNull } from "../inventory/options";
 import { Info, Qty } from "../inventory/shared";
@@ -281,7 +282,7 @@ function PartModal({
               searchable
               data={(materials.data ?? []).map((row) => ({
                 value: String(row.id),
-                label: `${row.code} - ${row.name}`,
+                label: optionLabel(row),
               }))}
               value={material}
               onChange={(value) => {

@@ -631,3 +631,4 @@ class ScanResultSerializer(serializers.Serializer):
     location = ScanLocationSerializer(allow_null=True)
     pallet = ScanPalletSerializer(allow_null=True)
     gs1 = serializers.DictField(child=serializers.CharField())
+    former_code = serializers.CharField(allow_blank=True)

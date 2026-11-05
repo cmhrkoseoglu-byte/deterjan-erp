@@ -52,6 +52,7 @@ function scanResult(lots: ScanLot[]): ScanResult {
     location: null,
     pallet: null,
     gs1: {},
+    former_code: "",
   };
 }
 
@@ -127,6 +128,23 @@ describe("ScanInput", () => {
     renderWithProviders(<ScanInput expect="lot" />);
     await userEvent.type(screen.getByTestId("scan-input"), "XYZ{Enter}");
     expect(await screen.findByTestId("scan-error")).toHaveTextContent("tanınmadı");
+  });
+
+  it("eski koduyla okutulan lokasyonda etiketin yenilenmesini ister", async () => {
+    vi.mocked(scanApi.scanCode).mockResolvedValue({
+      ...scanResult([]),
+      kind: "location",
+      code: "LOC:DENEME-1",
+      location: { id: 3, code: "LOKASYON-0001", name: "Üretim 1", warehouse_code: "DEPO-00001" },
+      former_code: "DENEME-1",
+    });
+    const onLocation = vi.fn();
+    renderWithProviders(<ScanInput expect="location" onLocation={onLocation} />);
+    await userEvent.type(screen.getByTestId("scan-input"), "LOC:DENEME-1{Enter}");
+    expect(await screen.findByTestId("scan-former-code")).toHaveTextContent(
+      "Eski etiket okutuldu; yeni kod: LOKASYON-0001. Etiketi yenileyin.",
+    );
+    expect(onLocation).toHaveBeenCalled();
   });
 
   it("lokasyon beklenirken lot okutulursa reddeder", async () => {

@@ -2,6 +2,7 @@ from typing import Any
 
 from rest_framework import serializers
 
+from apps.core.api.coding import FormerCodesListSerializer, FormerCodesMixin
 from apps.masterdata.models import (
     CompanyProfile,
     Customer,
@@ -40,10 +41,11 @@ class UnitOfMeasureSerializer(serializers.ModelSerializer):
         extra_kwargs = NO_UNIQUE_VALIDATOR
 
 
-class MaterialCategorySerializer(serializers.ModelSerializer):
+class MaterialCategorySerializer(FormerCodesMixin, serializers.ModelSerializer):
     class Meta:
         model = MaterialCategory
-        fields = ["id", "code", "name", *AUDIT_FIELDS]
+        list_serializer_class = FormerCodesListSerializer
+        fields = ["id", "code", "former_codes", "name", *AUDIT_FIELDS]
         read_only_fields = AUDIT_FIELDS
         extra_kwargs = NO_UNIQUE_VALIDATOR
 
@@ -69,7 +71,7 @@ class MaterialUnitConversionSerializer(serializers.ModelSerializer):
         validators: list = []
 
 
-class MaterialSerializer(serializers.ModelSerializer):
+class MaterialSerializer(FormerCodesMixin, serializers.ModelSerializer):
     material_type_display = serializers.CharField(
         source="get_material_type_display", read_only=True
     )
@@ -78,9 +80,11 @@ class MaterialSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Material
+        list_serializer_class = FormerCodesListSerializer
         fields = [
             "id",
             "code",
+            "former_codes",
             "name",
             "material_type",
             "material_type_display",
@@ -108,15 +112,16 @@ class MaterialDetailSerializer(MaterialSerializer):
         fields = [*MaterialSerializer.Meta.fields, "conversions"]
 
 
-class WarehouseSerializer(serializers.ModelSerializer):
+class WarehouseSerializer(FormerCodesMixin, serializers.ModelSerializer):
     class Meta:
         model = Warehouse
-        fields = ["id", "code", "name", *AUDIT_FIELDS]
+        list_serializer_class = FormerCodesListSerializer
+        fields = ["id", "code", "former_codes", "name", *AUDIT_FIELDS]
         read_only_fields = AUDIT_FIELDS
         extra_kwargs = NO_UNIQUE_VALIDATOR
 
 
-class LocationSerializer(serializers.ModelSerializer):
+class LocationSerializer(FormerCodesMixin, serializers.ModelSerializer):
     warehouse_code = serializers.CharField(source="warehouse.code", read_only=True)
     location_type_display = serializers.CharField(
         source="get_location_type_display", read_only=True
@@ -124,11 +129,13 @@ class LocationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Location
+        list_serializer_class = FormerCodesListSerializer
         fields = [
             "id",
             "warehouse",
             "warehouse_code",
             "code",
+            "former_codes",
             "name",
             "location_type",
             "location_type_display",
@@ -138,7 +145,7 @@ class LocationSerializer(serializers.ModelSerializer):
         extra_kwargs = NO_UNIQUE_VALIDATOR
 
 
-class EquipmentSerializer(serializers.ModelSerializer):
+class EquipmentSerializer(FormerCodesMixin, serializers.ModelSerializer):
     equipment_type_display = serializers.CharField(
         source="get_equipment_type_display", read_only=True
     )
@@ -149,9 +156,11 @@ class EquipmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Equipment
+        list_serializer_class = FormerCodesListSerializer
         fields = [
             "id",
             "code",
+            "former_codes",
             "name",
             "equipment_type",
             "equipment_type_display",
@@ -169,6 +178,7 @@ class EquipmentSerializer(serializers.ModelSerializer):
 PARTNER_FIELDS = [
     "id",
     "code",
+    "former_codes",
     "name",
     "tax_office",
     "tax_number",
@@ -180,17 +190,19 @@ PARTNER_FIELDS = [
 ]
 
 
-class SupplierSerializer(serializers.ModelSerializer):
+class SupplierSerializer(FormerCodesMixin, serializers.ModelSerializer):
     class Meta:
         model = Supplier
+        list_serializer_class = FormerCodesListSerializer
         fields = PARTNER_FIELDS
         read_only_fields = AUDIT_FIELDS
         extra_kwargs = NO_UNIQUE_VALIDATOR
 
 
-class CustomerSerializer(serializers.ModelSerializer):
+class CustomerSerializer(FormerCodesMixin, serializers.ModelSerializer):
     class Meta:
         model = Customer
+        list_serializer_class = FormerCodesListSerializer
         fields = [*PARTNER_FIELDS, "min_remaining_shelf_life_days"]
         read_only_fields = AUDIT_FIELDS
         extra_kwargs = NO_UNIQUE_VALIDATOR
@@ -230,15 +242,17 @@ class ImportReportSerializer(serializers.Serializer):
     imported = serializers.BooleanField()
 
 
-class PrinterSerializer(serializers.ModelSerializer):
+class PrinterSerializer(FormerCodesMixin, serializers.ModelSerializer):
     printer_type_display = serializers.CharField(source="get_printer_type_display", read_only=True)
     location_code = serializers.CharField(source="location.code", read_only=True, default=None)
 
     class Meta:
         model = Printer
+        list_serializer_class = FormerCodesListSerializer
         fields = [
             "id",
             "code",
+            "former_codes",
             "name",
             "printer_type",
             "printer_type_display",

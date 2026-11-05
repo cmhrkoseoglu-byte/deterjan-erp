@@ -277,6 +277,18 @@ scripts/prod-compose.sh ps            # 4. hepsi healthy mi?
 Değişiklik notlarında `.env.prod.example`'a yeni bir değişken eklendiyse `.env.prod`'a da ekleyin
 (`diff <(grep -o '^[A-Z_]*=' .env.prod.example) <(grep -o '^[A-Z_]*=' .env.prod)`).
 
+**Kodlama sistematiği (Paket 1) güncellemesinde bir kez:** güncellemeden hemen sonra, kodlar
+değiştirilmeden önce:
+
+```bash
+scripts/prod-compose.sh exec backend python manage.py backfill_code_history --dry-run   # kaç eski kod yüklenecek
+scripts/prod-compose.sh exec backend python manage.py backfill_code_history             # yükle
+```
+
+Komut, bu sürümden önce kodu değişmiş ana veri kayıtlarının eski kodlarını denetim günlüğünden eski
+kod geçmişine yükler: eski kod başka kayda verilmez ve kayıt eski koduyla da bulunur. Tekrar
+çalıştırmak bir şey yazmaz.
+
 **Geri dönüş:** yeni sürüm sorunluysa ve veritabanı değişikliği (migration) içeriyorsa önceki koda
 dönmek yetmez, veritabanı da güncelleme öncesine dönmelidir:
 
