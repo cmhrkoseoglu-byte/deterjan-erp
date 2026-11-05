@@ -121,6 +121,7 @@ export const hs = {
   revisionDate: "Revizyon tarihi",
   validUntil: "Geçerlilik tarihi",
   language: "Dil",
+  languageHint: "ISO 639-1 dil kodu (tr, en, de …)",
   files: "Dosya",
   current: "Geçerli",
   superseded: "Arşiv",
@@ -153,6 +154,8 @@ export const hs = {
   editStatement: "İfadeyi düzenle",
   statementSaved: "İfade kaydedildi.",
   code: "Kod",
+  statementCodeHint:
+    "Boşluksuz yazın. H kodunda ek harflerin büyük/küçük harfi korunur (H360Fd ile H360FD farklıdır); P ve EUH büyük harfe çevrilir.",
   kind: "Tür",
   text: "Metin",
   allKinds: "Tüm türler",

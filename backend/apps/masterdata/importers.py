@@ -21,6 +21,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils.exceptions import InvalidFileException
 
+from apps.core import standards
 from apps.core.coding import formats as coding_formats
 from apps.core.coding import registry as coding_registry
 from apps.core.coding import selectors as coding_selectors
@@ -71,6 +72,14 @@ def parse_text(value: Any) -> str:
 
 def parse_code(value: Any) -> str:
     return normalize_code(_text(value))
+
+
+def parse_country(value: Any) -> str:
+    """Ülke kodu (ISO 3166-1 alpha-2): TR, DE, IQ …"""
+    code = standards.normalize_country(_text(value))
+    if not standards.is_country_code(code):
+        raise CellError(f"ISO 3166-1 ülke kodu bekleniyor (ör. TR, DE): “{_text(value)}”.")
+    return code
 
 
 def parse_decimal(value: Any) -> Decimal:
@@ -199,6 +208,13 @@ _PARTNER_COLUMNS = (
     Column("Telefon", "phone", parse_text, example="0216 000 00 00"),
     Column("E-posta", "email", parse_text, example="satis@ornek.com"),
     Column("Yetkili kişi", "contact_person", parse_text, example="Ali Veli"),
+    Column(
+        "Ülke kodu",
+        "country_code",
+        parse_country,
+        example="TR",
+        help="ISO 3166-1 alpha-2 (TR, DE, IQ …); yeni kayıtta boşsa TR",
+    ),
 )
 
 SPECS: dict[str, ImportSpec] = {

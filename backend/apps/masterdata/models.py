@@ -26,6 +26,14 @@ class UnitOfMeasure(MasterDataModel):
     factor_to_kind_base = models.DecimalField(
         "tür temel birimine katsayı", null=True, blank=True, max_digits=18, decimal_places=6
     )
+    # Uluslararası birim kodu (UN/ECE Rec 20; GİB UBL-TR birim kodları buna dayanır) ve sembol.
+    unece_code = models.CharField(
+        "UN/ECE kodu",
+        max_length=3,
+        blank=True,
+        help_text="UN/ECE Rec 20 ortak kodu: KGM, GRM, LTR, MLT, C62; ambalaj XCT, XPX",
+    )
+    symbol = models.CharField("sembol", max_length=8, blank=True, help_text="kg, g, L, mL")
 
     class Meta:
         verbose_name = "birim"
@@ -289,6 +297,9 @@ class BusinessPartner(MasterDataModel):
     phone = models.CharField("telefon", max_length=32, blank=True)
     email = models.EmailField("e-posta", blank=True)
     contact_person = models.CharField("yetkili kişi", max_length=128, blank=True)
+    country_code = models.CharField(
+        "ülke", max_length=2, default="TR", help_text="ISO 3166-1 alpha-2 (TR, DE, IQ …)"
+    )
 
     class Meta:
         abstract = True

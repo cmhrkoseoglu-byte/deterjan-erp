@@ -36,6 +36,8 @@ class UnitOfMeasureSerializer(serializers.ModelSerializer):
             "kind",
             "kind_display",
             "factor_to_kind_base",
+            "unece_code",
+            "symbol",
             *AUDIT_FIELDS,
         ]
         read_only_fields = AUDIT_FIELDS
@@ -208,6 +210,7 @@ PARTNER_FIELDS = [
     "phone",
     "email",
     "contact_person",
+    "country_code",
     *AUDIT_FIELDS,
 ]
 

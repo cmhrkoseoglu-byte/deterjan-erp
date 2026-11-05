@@ -2209,3 +2209,11 @@ değiştirme zorunlu, yalnızca admin):
   - Tarihte gün 00: son kullanma ve son satış tarihlerinde (15, 16, 17) ayın son günü; üretim,
     paketleme ve ödeme tarihlerinde (11, 12, 13) gün yok sayılır, tarih gösterilmez.
   - Koli GTIN'i pasif dönüşümdeyse okutma malzemeyi ve lotu bulur, koli içi miktar önermez.
+- **Paket 2, standart kodlar: sahibin kararı (CUMHUR, 2026-11-05):** koli birimi `XCT`, palet
+  `XPX` (UN/ECE Rec 21 ambalaj kodunun başına X; GİB UBL-TR birim listesi v1.42'de ambalaj birimi
+  yok). e-Belge entegrasyonunda (Faz 5) mali müşavir ya da entegratörle doğrulanır.
+- **Paket 2, standart kodlar: ayrıca sorulmayan kurallar** (değiştirilebilir):
+  - UN/ECE kodu biçimle denetlenir (2-3 büyük harf ya da rakam); Rec 20 listesinin tamamı
+    denetlenmez. Ülke ve dil kodları ISO listesiyle denetlenir.
+  - Excel'de boş ülke kodu TR, GBF'de boş dil tr sayılır.
+  - GBF dilinin eski serbest metin değerleri göçte koda çevrilir; tanınmayan değer silinmez.

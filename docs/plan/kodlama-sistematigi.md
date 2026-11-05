@@ -243,8 +243,9 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
 
 ### 6.3 Standart kod alanları
 
-- **Birim:** UN/ECE Rec 20 ortak kodu (KGM, GRM, LTR, MLT, C62; ambalaj birimleri GİB listesinden)
-  ve sembol (kg, g, L, mL).
+- **Birim:** UN/ECE Rec 20 ortak kodu (KGM, GRM, LTR, MLT, C62) ve sembol (kg, g, L, mL). Ambalaj
+  birimleri Rec 21 kodunun başına X ile: koli `XCT`, palet `XPX` (CUMHUR, 2026-11-05; GİB UBL-TR
+  birim listesinde ambalaj birimi yok).
 - **Cari:** ülke kodu (ISO 3166-1 alpha-2, varsayılan TR).
 - **GBF dili:** ISO 639-1 listesinden seçilir.
 - **Tehlike ifadeleri:** kodda büyük/küçük harf korunur (`H360Fd` ile `H360FD` farklıdır).

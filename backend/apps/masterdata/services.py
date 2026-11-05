@@ -20,6 +20,7 @@ from django.db import IntegrityError, connection, models, transaction
 from django.db.models import Exists, OuterRef, Q, QuerySet, Value
 from django.db.models.functions import LPad
 
+from apps.core import standards
 from apps.core.audit import log_change
 from apps.core.coding import registry as coding_registry
 from apps.core.coding import selectors as coding_selectors
@@ -30,9 +31,10 @@ from apps.core.models import AuditLog, MasterDataModel, User
 from apps.core.permissions import user_has_role
 from apps.core.roles import ADMIN, YONETIM
 from apps.core.services import save_with_audit
-from apps.masterdata.fields import normalize_code
+from apps.masterdata.fields import CodeField, normalize_code
 from apps.masterdata.models import (
     CompanyProfile,
+    Customer,
     Equipment,
     LabelSettings,
     Location,
@@ -40,6 +42,7 @@ from apps.masterdata.models import (
     MaterialCategory,
     MaterialUnitConversion,
     Printer,
+    Supplier,
     UnitOfMeasure,
     Warehouse,
 )
@@ -161,7 +164,28 @@ def _db_value(instance: models.Model, field: str) -> Any:
     return type(instance)._base_manager.filter(pk=instance.pk).values_list(field, flat=True).first()
 
 
+def normalized_code(model: type[models.Model], value: str, field: str = "code") -> str:
+    """Kodu alanın kendi kuralıyla düzeltir: `CodeField` büyük harfe çevirir (`upper=False` ise
+    yalnız boşlukları atar, ör. H360Fd); başka alan türünde büyük harf."""
+    try:
+        model_field = model._meta.get_field(field)
+    except FieldDoesNotExist:
+        return normalize_code(value)
+    if isinstance(model_field, CodeField):
+        return model_field.normalize(value)
+    return normalize_code(value)
+
+
 def _validate_unit(unit: UnitOfMeasure) -> None:
+    # UN/ECE Rec 20 ortak kodu (ambalajda Rec 21 kodunun başına X): büyük harf, 2-3 karakter.
+    unit.unece_code = (unit.unece_code or "").strip().upper()
+    unit.symbol = (unit.symbol or "").strip()
+    if unit.unece_code and not standards.is_unece_code(unit.unece_code):
+        raise BusinessRuleError(
+            "invalid_unece_code",
+            "UN/ECE birim kodu 2-3 büyük harf ya da rakamdır (ör. KGM, LTR, C62; koli XCT, "
+            "palet XPX).",
+        )
     if unit._state.adding:
         return
     before = type(unit)._base_manager.get(pk=unit.pk)
@@ -368,6 +392,16 @@ def _validate_conversion(conversion: MaterialUnitConversion) -> None:
             _ensure_gtin_free(conversion.gtin, conversion=conversion)
 
 
+def _validate_partner(partner: Supplier | Customer) -> None:
+    """Ülke kodu ISO 3166-1 alpha-2 (TR, DE, IQ …); küçük harf büyütülür."""
+    partner.country_code = standards.normalize_country(partner.country_code or "")
+    if not standards.is_country_code(partner.country_code):
+        raise BusinessRuleError(
+            "invalid_country_code",
+            "Ülke kodu ISO 3166-1 alpha-2 olmalıdır (ör. TR, DE, IQ).",
+        )
+
+
 def _validate_location(location: Location) -> None:
     _require_active(location.warehouse, "depo")
     if location._state.adding:
@@ -413,6 +447,8 @@ _VALIDATORS: Mapping[type[models.Model], Callable[[Any], None]] = {
     Location: _validate_location,
     Equipment: _validate_equipment,
     Printer: _validate_printer,
+    Supplier: _validate_partner,
+    Customer: _validate_partner,
 }
 
 
@@ -470,12 +506,13 @@ def validate_record(instance: MasterDataModel) -> None:
     """Kaydı yazmadan doğrular: iş kuralları (`BusinessRuleError`), ardından alan, seçenek,
     benzersizlik ve CHECK kısıtları (Türkçe mesajlı Django `ValidationError`).
 
-    Kod alanı yerinde büyük harfe çevrilir. Kodlama sistematiğinin kuralları (eski kod, biçim)
-    yeni kayıtta ve kod değişince uygulanır (`core.coding`). İçe aktarma önizlemesi de bunu
+    Kod alanı yerinde alanın kuralıyla düzeltilir (`normalized_code`: büyük harf; büyük/küçük
+    harfi korunan kodda yalnız boşluklar atılır). Kodlama sistematiğinin kuralları (eski kod,
+    biçim) yeni kayıtta ve kod değişince uygulanır (`core.coding`). İçe aktarma önizlemesi de bunu
     kullanır.
     """
     if hasattr(instance, "code") and isinstance(instance.code, str):
-        instance.code = normalize_code(instance.code)
+        instance.code = normalized_code(type(instance), instance.code)
     validator = _VALIDATORS.get(type(instance))
     if validator is not None:
         validator(instance)
@@ -552,7 +589,7 @@ def update_record[M: MasterDataModel](
     locked = type(instance)._base_manager.select_for_update().get(pk=instance.pk)
     item = code_type_of(locked)
     if item is not None and item.field in data:
-        new_code = normalize_code(str(data[item.field] or ""))
+        new_code = normalized_code(type(locked), str(data[item.field] or ""), item.field)
         if new_code != str(getattr(locked, item.field)):
             # Kayıt açıldıktan sonra kodu yalnız admin değiştirir (CUMHUR, 2026-11-04).
             coding.ensure_can_change_code(actor)
@@ -581,7 +618,7 @@ def recode_record(
         raise ValueError("Kod göçü yalnızca kodlama sistematiğine kayıtlı türlerde yapılır.")
     locked = type(instance)._base_manager.select_for_update().get(pk=instance.pk)
     old = str(getattr(locked, item.field))
-    new_code = normalize_code(new_code)
+    new_code = normalized_code(type(locked), new_code, item.field)
     if old == new_code:
         return locked
     if coding_selectors.code_in_use(item, new_code, exclude_pk=locked.pk) or (

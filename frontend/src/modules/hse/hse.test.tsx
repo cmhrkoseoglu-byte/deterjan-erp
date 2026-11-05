@@ -7,6 +7,7 @@ import * as hseApi from "../../api/hse";
 import type { Incident, MaterialHazard, StorageUtilisation } from "../../api/hse";
 import * as mdApi from "../../api/masterdata";
 import type { Material } from "../../api/masterdata";
+import * as standardsApi from "../../api/standards";
 import type { Role } from "../../api/types";
 import * as workflowApi from "../../api/workflow";
 import { page, userWith } from "../../test/fixtures";
@@ -35,7 +36,10 @@ vi.mock("../../api/hse", async (importOriginal) => ({
   listContractors: vi.fn(),
   getHseSummary: vi.fn(),
   getHseSettings: vi.fn(),
+  createSds: vi.fn(),
+  createStatement: vi.fn(),
 }));
+vi.mock("../../api/standards");
 vi.mock("../../api/masterdata", async (importOriginal) => ({
   ...(await importOriginal<typeof mdApi>()),
   listRecords: vi.fn(),
@@ -152,6 +156,12 @@ beforeEach(() => {
   vi.mocked(hseApi.listStorageLimits).mockResolvedValue(page([]));
   vi.mocked(hseApi.listWasteRecords).mockResolvedValue(page([]));
   vi.mocked(hseApi.listContractors).mockResolvedValue(page([]));
+  vi.mocked(standardsApi.getStandards).mockResolvedValue({
+    countries: ["DE", "TR"],
+    languages: ["de", "en", "tr"],
+    default_country: "TR",
+    default_language: "tr",
+  });
 });
 
 describe("İSG sekmeleri", () => {
@@ -439,5 +449,48 @@ describe("malzeme tehlike bilgisi", () => {
     await userEvent.click(await within(table).findByText("HM-NAOH - Kostik"));
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByRole("button", { name: "Düzenle" })).toBeInTheDocument();
+  });
+});
+
+describe("İSG standart kodları", () => {
+  it("GBF dili ISO 639-1 listesinden seçilir ve kodu gönderilir", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    vi.mocked(hseApi.createSds).mockRejectedValue(new Error("kayıt denenmedi"));
+    renderApp("/isg/gbf");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Yeni GBF" }));
+    const dialog = await screen.findByRole("dialog");
+    const language = within(dialog).getByRole("textbox", { name: /^Dil/ });
+    await waitFor(() => expect(language).toHaveValue("Türkçe (tr)"));
+    expect(within(dialog).getByText("ISO 639-1 dil kodu (tr, en, de …)")).toBeInTheDocument();
+    await userEvent.click(language);
+    await userEvent.click(await screen.findByRole("option", { name: "Almanca (de)" }));
+    expect(language).toHaveValue("Almanca (de)");
+
+    await userEvent.click(within(dialog).getByRole("textbox", { name: /^Malzeme/ }));
+    await userEvent.click(await screen.findByRole("option", { name: /HM-NAOH/ }));
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Revizyon no/ }), "R1");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(hseApi.createSds).toHaveBeenCalledWith(expect.objectContaining({ language: "de" })),
+    );
+  });
+
+  it("ifade kodunda büyük/küçük harfin korunduğunu yazar ve kodu olduğu gibi gönderir", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    vi.mocked(hseApi.createStatement).mockRejectedValue(new Error("kayıt denenmedi"));
+    renderApp("/isg/ifadeler");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Yeni ifade" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/H360Fd ile H360FD farklıdır/)).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Kod/ }), "H360Fd");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Metin/ }), "Üreme.");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(hseApi.createStatement).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "H360Fd", kind: "H" }),
+      ),
+    );
   });
 });

@@ -1360,3 +1360,22 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
     `coding.test.tsx` (GS1), `MasterDataPage.test.tsx` (GTIN alanları), `components.test.tsx`
     (okutma), `inventory.test.tsx`, `filling.test.tsx`, `shipments.test.tsx`; tam backend ve ön
     yüz testleri yeşil.
+- **Adım 8:** standart kod alanları (plan §6.3).
+  - Birim: UN/ECE Rec 20 ortak kodu ve sembol (birim formunda ve listesinde; birimi yalnız admin
+    yazar). Kod 2-3 büyük harf ya da rakamdır. Göç standart birimlere kodu yazar: KG KGM/kg,
+    G GRM/g, LT LTR/L, ML MLT/mL, ADET C62, KOLI XCT, PALET XPX.
+  - Cari: ülke kodu (ISO 3166-1 alpha-2, varsayılan TR). Tedarikçi ve müşteri formunda Türkçe
+    adlı ülke listesi, listede "Ülke" sütunu; Excel şablonunda "Ülke kodu" sütunu (boşsa TR).
+  - GBF dili ISO 639-1 listesinden seçilir (Türkçe adlarla); sunucu kodu denetler, boşsa tr.
+    Eski kayıtlarda serbest metin olan dil göçte koda çevrilir (Türkçe → tr, eng → en …);
+    tanınmayan değer kalır, kayıt düzenlenirken listeden seçilir.
+  - Tehlike ifadeleri: H kodunda ek harflerin büyük/küçük harfi korunur (H360Fd ile H360FD ayrı
+    ifadelerdir); P ve EUH büyük harfe çevrilir. Kod alanı kendi kuralıyla düzeltilir
+    (`CodeField(upper=False)`); formda not var.
+  - Kod listeleri `core/standards.py`'de (249 ülke, 183 dil); ön yüz `/api/v1/standards/`
+    uç noktasından alır.
+  - Göçler: masterdata 0007, hse 0003.
+  - Kanıt: `core/tests/test_standards.py`, `masterdata/tests/test_standard_codes.py`,
+    `hse/tests/test_standard_codes.py`, `hse/tests/test_services.py`; ön yüz
+    `standardCodes.test.tsx`, `useStandardOptions.test.ts`, `hse.test.tsx`; tam backend ve ön yüz
+    testleri yeşil.

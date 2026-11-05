@@ -22,6 +22,10 @@ export interface Unit extends Audited {
   kind: UnitKind;
   kind_display: string;
   factor_to_kind_base: string | null;
+  /** UN/ECE Rec 20 ortak kodu (KGM, LTR, C62; koli XCT, palet XPX). */
+  unece_code: string;
+  /** kg, g, L, mL; adet birimlerinde boş. */
+  symbol: string;
 }
 
 export interface Category extends Audited, FormerCodes {
@@ -107,6 +111,8 @@ export interface Partner extends Audited, FormerCodes {
   phone: string;
   email: string;
   contact_person: string;
+  /** ISO 3166-1 alpha-2 (TR, DE, IQ …). */
+  country_code: string;
 }
 
 /**

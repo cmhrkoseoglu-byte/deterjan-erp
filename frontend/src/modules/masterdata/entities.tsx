@@ -16,6 +16,7 @@ import type { EntityConfig } from "../common/CrudPage";
 import type { FieldDef } from "../common/forms";
 import { MaterialHazardAction } from "../hse/MaterialHazardModal";
 import { CaseGtinField, MaterialGtinField } from "./GtinFields";
+import { CountryField } from "./CountryField";
 import { LocationLabelAction, PrinterTestAction } from "./LabelTools";
 
 // Ana verileri planlama yazar (admin her yere erişir); birimleri yalnızca admin.
@@ -225,6 +226,8 @@ export const unitConfig: EntityConfig<Unit> = {
       label: "Tür temel birimine katsayı",
       render: (row) => formatNumber(row.factor_to_kind_base, undefined) || "Malzemeye özel",
     },
+    { key: "unece_code", label: "UN/ECE kodu" },
+    { key: "symbol", label: "Sembol" },
   ],
   fields: [
     code,
@@ -235,6 +238,19 @@ export const unitConfig: EntityConfig<Unit> = {
       label: "Tür temel birimine katsayı",
       type: "decimal",
       description: "KG ve LT için 1, G ve ML için 0,001. Koli gibi birimlerde boş bırakın.",
+    },
+    {
+      name: "unece_code",
+      label: "UN/ECE kodu",
+      type: "text",
+      description:
+        "Uluslararası birim kodu (UN/ECE Rec 20): KGM, GRM, LTR, MLT, C62; koli XCT, palet XPX",
+    },
+    {
+      name: "symbol",
+      label: "Sembol",
+      type: "text",
+      description: "kg, g, L, mL; adet, koli gibi birimlerde boş",
     },
   ],
 };
@@ -344,8 +360,19 @@ const partnerFields: FieldDef[] = [
   { name: "phone", label: "Telefon", type: "text" },
   { name: "email", label: "E-posta", type: "email" },
   { name: "contact_person", label: "Yetkili kişi", type: "text" },
+  {
+    name: "country_code",
+    label: "Ülke",
+    type: "text",
+    required: true,
+    description: "ISO 3166-1 ülke kodu (TR, DE, IQ …)",
+    component: CountryField,
+  },
   { name: "address", label: "Adres", type: "textarea" },
 ];
+
+// Yeni caride ülke Türkiye gelir (sunucudaki varsayılanla aynı).
+const partnerDefaults = { country_code: "TR" };
 
 const partnerColumns = [
   codeColumn,
@@ -353,6 +380,7 @@ const partnerColumns = [
   { key: "tax_number", label: "Vergi no" },
   { key: "phone", label: "Telefon" },
   { key: "contact_person", label: "Yetkili" },
+  { key: "country_code", label: "Ülke" },
 ];
 
 export const supplierConfig: EntityConfig<Partner> = {
@@ -364,6 +392,7 @@ export const supplierConfig: EntityConfig<Partner> = {
   importKind: "suppliers",
   columns: partnerColumns,
   fields: partnerFields,
+  defaults: partnerDefaults,
 };
 
 export const customerConfig: EntityConfig<Partner> = {
@@ -374,6 +403,7 @@ export const customerConfig: EntityConfig<Partner> = {
   writeRoles: WRITE,
   importKind: "customers",
   columns: partnerColumns,
+  defaults: partnerDefaults,
   fields: [
     ...partnerFields,
     {

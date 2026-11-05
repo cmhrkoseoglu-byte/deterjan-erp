@@ -26,7 +26,7 @@ from django.db.models import QuerySet
 from django.utils import timezone
 
 from apps.core import event_names as ev
-from apps.core import events
+from apps.core import events, standards
 from apps.core.audit import log_change
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
@@ -180,13 +180,22 @@ def update_settings(actor: User, data: Mapping[str, Any]) -> HseSettings:
 # --- tehlike ifadeleri ve malzeme tehlike bilgisi ------------------------------------------------
 
 
+def statement_code(value: Any, kind: str) -> str:
+    """İfade kodu boşluksuz yazılır. P ve EUH kodları büyük harftir; H kodunda yalnızca baştaki H
+    büyütülür, ek harflerin büyük/küçük harfi korunur (CLP: H360Fd ile H360FD farklıdır)."""
+    code = _text(value).replace(" ", "")
+    if kind == HazardStatement.Kind.H:
+        return code[:1].upper() + code[1:]
+    return code.upper()
+
+
 @transaction.atomic
 def create_statement(actor: User, data: Mapping[str, Any]) -> HazardStatement:
     """Yeni H / P / EUH ifadesi tanımlar (rol: yönetim, laboratuvar). Kod türüyle başlamalıdır."""
     _require_role(actor, HAZARD_ROLES, STATEMENT_DENIED)
     values = _pick(data, STATEMENT_FIELDS)
-    code = _text(values.get("code")).upper().replace(" ", "")
     kind = values.get("kind", "")
+    code = statement_code(values.get("code"), kind)
     text = _text(values.get("text"))
     prefix_ok = code.startswith(kind) and (kind == HazardStatement.Kind.EUH or code[:3] != "EUH")
     if kind not in HazardStatement.Kind.values or not prefix_ok:
@@ -284,6 +293,16 @@ def set_material_hazard(actor: User, material: Material, data: Mapping[str, Any]
 # --- GBF ---------------------------------------------------------------------------------------
 
 
+def _language(value: Any) -> str:
+    """GBF dili: ISO 639-1 kodu (tr, en, de …); boşsa tr."""
+    code = standards.normalize_language(_text(value)) or standards.DEFAULT_LANGUAGE
+    if not standards.is_language_code(code):
+        raise BusinessRuleError(
+            "invalid_language", "GBF dili ISO 639-1 dil kodu olmalıdır (ör. tr, en, de)."
+        )
+    return code
+
+
 @transaction.atomic
 def create_sds(actor: User, data: Mapping[str, Any]) -> SafetyDataSheet:
     """Yeni GBF revizyonu girer (rol: yonetim). Malzemenin önceki geçerli GBF'si arşive geçer.
@@ -292,7 +311,7 @@ def create_sds(actor: User, data: Mapping[str, Any]) -> SafetyDataSheet:
     values = _pick(data, SDS_FIELDS_ALL)
     sheet = SafetyDataSheet(**values)
     sheet.revision_no = _text(sheet.revision_no)
-    sheet.language = _text(sheet.language).lower() or "tr"
+    sheet.language = _language(sheet.language)
     sheet.note = _text(sheet.note)
     material = sheet.material
     _require_active(material, "malzeme")
@@ -329,6 +348,8 @@ def update_sds(actor: User, sheet: SafetyDataSheet, data: Mapping[str, Any]) -> 
     for name, value in values.items():
         setattr(locked, name, value)
     locked.revision_no = _text(locked.revision_no)
+    if "language" in values:
+        locked.language = _language(locked.language)
     if "supplier" in values:
         _require_active(locked.supplier, "tedarikçi")
     if not locked.revision_no:

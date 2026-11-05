@@ -52,6 +52,21 @@ def test_seeded_statements_have_turkish_texts() -> None:
     assert statement("EUH208").kind == "EUH"
 
 
+def test_statement_code_keeps_the_case_of_h_suffixes(lab: User) -> None:
+    """CLP: H360Fd (F kesin, d şüpheli) ile H360FD farklı ifadelerdir; P ve EUH büyük harftir."""
+    fd = services.create_statement(lab, {"code": "h360Fd", "kind": "H", "text": "Fd."})
+    upper = services.create_statement(lab, {"code": "H360FD", "kind": "H", "text": "FD."})
+    assert (fd.code, upper.code) == ("H360Fd", "H360FD")
+    assert services.create_statement(lab, {"code": "p 284", "kind": "P", "text": "x"}).code == (
+        "P284"
+    )
+    assert services.create_statement(lab, {"code": "euh071", "kind": "EUH", "text": "x"}).code == (
+        "EUH071"
+    )
+    with pytest.raises(ValidationError):
+        services.create_statement(lab, {"code": "H360Fd", "kind": "H", "text": "tekrar"})
+
+
 def test_statement_create_update_deactivate(lab: User, operator: User) -> None:
     created = services.create_statement(lab, {"code": "h 373", "kind": "H", "text": "Organ."})
     assert created.code == "H373"
@@ -160,6 +175,32 @@ def test_update_sds(manager: User) -> None:
 def test_months_before_clamps_day() -> None:
     assert selectors.months_before(date(2026, 3, 31), 1) == date(2026, 2, 28)
     assert selectors.months_before(date(2026, 1, 15), 36) == date(2023, 1, 15)
+
+
+def test_sds_language_is_an_iso_639_1_code(manager: User) -> None:
+    """GBF dili ISO 639-1 kodudur: boşsa tr, büyük harf küçültülür, tanımsız kod reddedilir."""
+    material = MaterialFactory.create()
+    revision_date = TODAY() - timedelta(days=30)
+    sheet = services.create_sds(
+        manager,
+        {
+            "material": material,
+            "revision_no": "1",
+            "revision_date": revision_date,
+            "language": " EN ",
+        },
+    )
+    assert sheet.language == "en"
+    for bad in ("xx", "tur", "türkçe"):
+        with pytest.raises(BusinessRuleError) as exc:
+            services.update_sds(manager, sheet, {"language": bad})
+        assert exc.value.code == "invalid_language"
+    assert services.update_sds(manager, sheet, {"language": ""}).language == "tr"
+    other = services.create_sds(
+        manager,
+        {"material": MaterialFactory.create(), "revision_no": "1", "revision_date": revision_date},
+    )
+    assert other.language == "tr"
 
 
 def test_sds_statuses_and_gaps(manager: User) -> None:

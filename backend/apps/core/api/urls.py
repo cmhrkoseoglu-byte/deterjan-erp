@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
-from apps.core.api import coding, views
+from apps.core.api import coding, standards, views
 
 app_name = "core"
 
@@ -60,6 +60,7 @@ urlpatterns = [
     ),
     path("coding/suggest/<str:key>/", coding.CodeSuggestView.as_view(), name="coding-suggest"),
     path("coding/outputs/", coding.OutputDocumentListView.as_view(), name="coding-outputs"),
+    path("standards/", standards.StandardsView.as_view(), name="standards"),
     path(
         "coding/outputs/<str:key>/",
         coding.OutputDocumentDetailView.as_view(),
