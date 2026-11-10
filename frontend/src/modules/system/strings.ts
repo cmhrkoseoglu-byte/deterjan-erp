@@ -1,7 +1,12 @@
 // Sistem ekranı metinleri (Faz 5, yalnızca admin).
 export const sy = {
   title: "Sistem",
-  tabs: { status: "Sistem durumu", users: "Kullanıcılar", device: "Bu cihaz" },
+  tabs: {
+    status: "Sistem durumu",
+    users: "Kullanıcılar",
+    coding: "Kodlama sistematiği",
+    device: "Bu cihaz",
+  },
   refresh: "Yenile",
   asOf: (text: string) => `${text} itibarıyla`,
   // Sistem durumu

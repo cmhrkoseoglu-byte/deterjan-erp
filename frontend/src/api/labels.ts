@@ -1,11 +1,11 @@
 // Etiketler (PDF / A4 PDF / ZPL), yazıcılar, etiket ayarları ve palet (SSCC) etiketleri.
 import { api } from "./client";
-import type { Audited } from "./masterdata";
+import type { Audited, FormerCodes } from "./masterdata";
 import type { Paginated } from "./types";
 
 export type LabelOutput = "pdf" | "a4" | "zpl";
 
-export interface Printer extends Audited {
+export interface Printer extends Audited, FormerCodes {
   code: string;
   name: string;
   printer_type: "ZPL";

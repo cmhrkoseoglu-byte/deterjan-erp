@@ -62,7 +62,7 @@ COLUMNS: tuple[Column, ...] = (
         "material",
         code_lookup_parser(Material, "Malzeme"),
         required=True,
-        example="HM-LAS",
+        example="MLZ-0000001",
     ),
     Column("Lot no", "lot_no", parse_lot_no, required=True, example="L2026-114"),
     Column(
@@ -70,7 +70,7 @@ COLUMNS: tuple[Column, ...] = (
         "location",
         code_lookup_parser(Location, "Lokasyon"),
         required=True,
-        example="A-01",
+        example="LOKASYON-0001",
     ),
     Column("Miktar", "quantity", parse_decimal, required=True, example="1250,5"),
     Column(

@@ -43,7 +43,7 @@ import { hasAnyRole } from "../../auth/roles";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
-import { useOptions } from "../common/useOptions";
+import { optionLabel, useOptions } from "../common/useOptions";
 import { lotPath, today } from "../inventory/config";
 import { idOrNull, useLocations } from "../inventory/options";
 import { Info, Qty } from "../inventory/shared";
@@ -163,7 +163,7 @@ function OrderForm({
   const set = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }));
   const lineOptions = (lines.data ?? []).map((row) => ({
     value: String(row.id),
-    label: `${row.code} - ${row.name}`,
+    label: optionLabel(row),
   }));
   const storeOptions = (locations.data ?? []).filter((row) => row.type === "STORAGE");
 

@@ -549,6 +549,7 @@ const RESULT_TYPE_OPTIONS = (["NUMERIC", "PASS_FAIL", "TEXT"] as const).map((val
 
 const testConfig: EntityConfig<TestDefinition> = {
   endpoint: "quality/tests",
+  codeType: "quality.testdefinition",
   title: qt.tabs.tests,
   singular: qt.testSingular,
   writeRoles: LAB_ROLES,

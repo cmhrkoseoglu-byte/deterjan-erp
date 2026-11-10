@@ -1,11 +1,11 @@
 // /api/v1/recipes/* uç noktaları.
 import { api } from "./client";
-import type { ImportReport } from "./masterdata";
+import type { FormerCodes, ImportReport } from "./masterdata";
 import type { Paginated } from "./types";
 
 export type VersionStatus = "DRAFT" | "APPROVED" | "OBSOLETE";
 
-export interface Recipe {
+export interface Recipe extends FormerCodes {
   id: number;
   code: string;
   name: string;

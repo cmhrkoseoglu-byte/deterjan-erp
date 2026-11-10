@@ -3,13 +3,14 @@
 Akış: dosya önce `preview_import` ile denenir (satır bazlı hata listesi, hiçbir şey yazılmaz),
 sonra aynı dosya `run_import` ile onaylanır. Hatalı satır varsa hiçbir satır yazılmaz.
 Kodu sistemde olan satır günceller, olmayan yeni kayıt açar. Güncellemede boş bırakılan
-isteğe bağlı hücre mevcut değeri değiştirmez.
+isteğe bağlı hücre mevcut değeri değiştirmez. Biçim etkinse boş kodlu satır önizlemede
+gösterilen kodu alır.
 """
 
 import csv
 import io
 import zipfile
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import IO, Any
@@ -20,6 +21,9 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils.exceptions import InvalidFileException
 
+from apps.core.coding import formats as coding_formats
+from apps.core.coding import registry as coding_registry
+from apps.core.coding import selectors as coding_selectors
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import MasterDataModel, User
 from apps.masterdata import services
@@ -39,6 +43,9 @@ from apps.masterdata.models import (
 MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_ROWS = 5000
 FIRST_DATA_ROW = 2  # 1. satır başlık
+NOTE = "Excel içe aktarma"
+# Kodla ilgili kural ihlalleri (`code_*` dışındakiler): hata kod sütununda gösterilir.
+CODE_RULES = frozenset({"invalid_characters", "duplicate"})
 
 
 class CellError(Exception):
@@ -130,11 +137,16 @@ def choice_parser(
 
 
 def code_lookup_parser(model: type[MasterDataModel], label: str) -> Callable[[Any], Any]:
-    """Koda göre aktif kayıt bulan çözücü (ör. temel birim, kategori)."""
+    """Koda göre aktif kayıt bulan çözücü (ör. temel birim, kategori). Kodu değişmiş kayıt eski
+    koduyla da bulunur (`core.coding`)."""
 
     def parse(value: Any) -> Any:
         code = parse_code(value)
         obj = model._default_manager.filter(**{"code": code, "is_active": True}).first()
+        if obj is None:
+            former, _ = coding_selectors.find_by_code(model, code)
+            if former is not None and getattr(former, "is_active", False):
+                obj = former
         if obj is None:
             raise CellError(f"{label} bulunamadı ya da pasif: “{code}”.")
         return obj
@@ -170,7 +182,14 @@ class ImportSpec:
 
 
 _PARTNER_COLUMNS = (
-    Column("Kod", "code", parse_code, required=True, example="T001", help="Benzersiz kod"),
+    Column(
+        "Kod",
+        "code",
+        parse_code,
+        required=True,
+        example="TED-000001",
+        help="Benzersiz; biçim etkinse boş bırakılabilir (sistem sıradaki kodu verir)",
+    ),
     Column("Ünvan", "name", parse_text, required=True, example="Örnek Kimya A.Ş."),
     Column("Vergi dairesi", "tax_office", parse_text, example="Kozyatağı"),
     Column("Vergi no", "tax_number", parse_text, example="1234567890"),
@@ -186,7 +205,14 @@ SPECS: dict[str, ImportSpec] = {
         title="Malzemeler",
         model=Material,
         columns=(
-            Column("Kod", "code", parse_code, required=True, example="HM-LAS", help="Benzersiz"),
+            Column(
+                "Kod",
+                "code",
+                parse_code,
+                required=True,
+                example="MLZ-0000001",
+                help="Benzersiz; biçim etkinse boş bırakılabilir (sistem sıradaki kodu verir)",
+            ),
             Column("Ad", "name", parse_text, required=True, example="LAS (Lineer alkil benzen)"),
             Column(
                 "Tür",
@@ -218,7 +244,7 @@ SPECS: dict[str, ImportSpec] = {
                 "category",
                 code_lookup_parser(MaterialCategory, "Kategori"),
                 example="",
-                help="Sistemde tanımlı kategori kodu",
+                help="Sistemde tanımlı kategori kodu (ör. KAT-0001)",
             ),
             Column(
                 "Yoğunluk (g/ml)",
@@ -248,7 +274,7 @@ SPECS: dict[str, ImportSpec] = {
         title="Müşteriler",
         model=Customer,
         columns=tuple(
-            Column(c.header, c.field, c.parse, c.required, "M001", c.help)
+            Column(c.header, c.field, c.parse, c.required, "MUS-000001", c.help)
             if c.field == "code"
             else c
             for c in _PARTNER_COLUMNS
@@ -260,7 +286,14 @@ SPECS: dict[str, ImportSpec] = {
         title="Depolar",
         model=Warehouse,
         columns=(
-            Column("Kod", "code", parse_code, required=True, example="HMD", help="Benzersiz"),
+            Column(
+                "Kod",
+                "code",
+                parse_code,
+                required=True,
+                example="DEPO-00001",
+                help="Benzersiz; biçim etkinse boş bırakılabilir (sistem sıradaki kodu verir)",
+            ),
             Column("Ad", "name", parse_text, required=True, example="Hammadde deposu"),
         ),
     ),
@@ -274,8 +307,8 @@ SPECS: dict[str, ImportSpec] = {
                 "code",
                 parse_code,
                 required=True,
-                example="A-01",
-                help="Tüm depolarda benzersiz (barkodla okutulur)",
+                example="LOKASYON-0001",
+                help="Tüm depolarda benzersiz (barkodla okutulur); biçim etkinse boş bırakılabilir",
             ),
             Column("Ad", "name", parse_text, required=True, example="A blok 1. raf"),
             Column(
@@ -283,7 +316,7 @@ SPECS: dict[str, ImportSpec] = {
                 "warehouse",
                 code_lookup_parser(Warehouse, "Depo"),
                 required=True,
-                example="HMD",
+                example="DEPO-00001",
                 help="Önce depoları yükleyin",
             ),
             Column(
@@ -301,7 +334,14 @@ SPECS: dict[str, ImportSpec] = {
         title="Ekipmanlar",
         model=Equipment,
         columns=(
-            Column("Kod", "code", parse_code, required=True, example="T-01", help="Benzersiz"),
+            Column(
+                "Kod",
+                "code",
+                parse_code,
+                required=True,
+                example="TANK-00001",
+                help="Benzersiz; biçim etkinse boş bırakılabilir (sistem sıradaki kodu verir)",
+            ),
             Column("Ad", "name", parse_text, required=True, example="Karıştırma tankı 1"),
             Column(
                 "Tür",
@@ -326,7 +366,7 @@ SPECS: dict[str, ImportSpec] = {
                 "Lokasyon kodu",
                 "location",
                 code_lookup_parser(Location, "Lokasyon"),
-                example="TANK-01",
+                example="LOKASYON-0002",
                 help="Tanklar için zorunlu (önce lokasyonları yükleyin)",
             ),
         ),
@@ -342,7 +382,7 @@ SPECS: dict[str, ImportSpec] = {
                 "material",
                 code_lookup_parser(Material, "Malzeme"),
                 required=True,
-                example="MM-SIVI-1L",
+                example="MLZ-0000004",
             ),
             Column(
                 "Birim",
@@ -467,19 +507,70 @@ def _validation_messages(exc: ValidationError, spec: ImportSpec) -> list[dict[st
     return errors
 
 
+def is_code_error(exc: BusinessRuleError) -> bool:
+    """Kural ihlali kaydın koduyla mı ilgili (biçim, eski kod, kod tekrarı; `core.coding`)?"""
+    return exc.code.startswith("code_") or exc.code in CODE_RULES
+
+
+def _rule_error(exc: BusinessRuleError, spec: ImportSpec) -> dict[str, str]:
+    """Satır hatası: kodla ilgili kural ihlali kod sütununda, öteki satırın genelinde."""
+    column = spec.key_columns[0].header if is_code_error(exc) else ""
+    return {"column": column, "message": exc.message}
+
+
 def _key_label(value: Any) -> str:
     return str(getattr(value, "code", value))
 
 
+def _auto_code_type(spec: ImportSpec) -> coding_registry.CodeType | None:
+    """Kod sütunu boş bırakılabilir mi: tür kodlama sistematiğinde kayıtlı, biçimi etkin ve
+    sıralı. Boş kodlu satır önizlemede gösterilen sıradaki kodu alır (`_auto_code`)."""
+    if spec.key_fields != ("code",):
+        return None
+    item = services.code_type_of(spec.model)
+    if item is None or item.free or not coding_selectors.is_active(item):
+        return None
+    return item
+
+
+def _auto_code(
+    item: coding_registry.CodeType,
+    data: dict[str, Any],
+    assigned: dict[str, int],
+    typed: Collection[str] = (),
+) -> str | None:
+    """Boş kodlu satırın alacağı kod: aynı dosyadaki önceki boş satırlardan sonraki numara;
+    dosyada elle yazılmış kodlar (`typed`) atlanır. Kaydederken de bu kod verilir."""
+    fmt = coding_selectors.effective_format(item)
+    prefix = coding_selectors.type_prefix(item, fmt, data.get(item.type_field))
+    if prefix is None:
+        return None
+    after = max(coding_selectors.counter_value(item, prefix), assigned.get(prefix, 0))
+    code, number = coding_selectors.next_free(item, prefix, fmt.width, after)
+    while code in typed:
+        # Dosyadaki ardışık kodlar tek seferde atlanır (elle sıralanmış uzun listeler).
+        while coding_formats.master_code(prefix, fmt.width, number + 1) in typed:
+            number += 1
+        code, number = coding_selectors.next_free(item, prefix, fmt.width, number)
+    assigned[prefix] = number
+    return code
+
+
 def _check_row(
-    spec: ImportSpec, row_no: int, cells: dict[str, Any], seen: dict[tuple[Any, ...], int]
+    spec: ImportSpec,
+    row_no: int,
+    cells: dict[str, Any],
+    seen: dict[tuple[Any, ...], int],
+    assigned: dict[str, int] | None = None,
+    typed: Collection[str] = (),
 ) -> RowResult:
     result = RowResult(row=row_no, code="", action="create")
+    auto = _auto_code_type(spec)
 
     for column in spec.columns:
         raw = cells.get(column.field)
         if _text(raw) == "":
-            if column.required:
+            if column.required and not (auto is not None and column.field == "code"):
                 result.errors.append({"column": column.header, "message": "Zorunlu alan boş."})
             continue  # boş: yeni kayıtta varsayılan, güncellemede mevcut değer kalır
         try:
@@ -493,14 +584,33 @@ def _check_row(
         result.code = " / ".join(_key_label(value) for value in keys)
         lookup = dict(zip(spec.key_fields, keys, strict=True))
         existing = spec.model._default_manager.filter(**lookup).first()
+        if existing is None and spec.key_fields == ("code",):
+            # Eski kodla gelen satır kaydı günceller, yeni kayıt açmaz.
+            former, matched = coding_selectors.find_by_code(spec.model, str(keys[0]))
+            if former is not None and matched:
+                existing = former
+                result.code = f"{keys[0]} → {_key_label(former)}"
         result.action = "update" if existing else "create"
-        pks = tuple(getattr(value, "pk", value) for value in keys)
-        if pks in seen:
+        # Tekrar kayda göre denetlenir: aynı kaydın eski ve güncel kodu da tekrardır.
+        key: tuple[Any, ...] = (
+            ("pk", existing.pk)
+            if existing is not None
+            else tuple(getattr(value, "pk", value) for value in keys)
+        )
+        if key in seen:
             header = spec.key_columns[0].header
-            message = f"Kayıt dosyada tekrar ediyor (satır {seen[pks]})."
+            message = f"Kayıt dosyada tekrar ediyor (satır {seen[key]})."
             result.errors.append({"column": header, "message": message})
         else:
-            seen[pks] = row_no
+            seen[key] = row_no
+    elif auto is not None and not result.data.get("code"):
+        auto_code = _auto_code(auto, result.data, assigned if assigned is not None else {}, typed)
+        if auto_code is None:
+            message = "Kod boş ve bu satır için kod önerilemedi; kodu girin."
+            result.errors.append({"column": "Kod", "message": message})
+        else:
+            result.code = f"{auto_code} (otomatik)"
+            result.data["code"] = auto_code  # kaydederken de önizlemedeki kod verilir
     if result.errors:
         return result
 
@@ -515,7 +625,7 @@ def _check_row(
     try:
         services.validate_record(instance)
     except BusinessRuleError as exc:
-        result.errors.append({"column": "", "message": exc.message})
+        result.errors.append(_rule_error(exc, spec))
     except ValidationError as exc:
         result.errors.extend(_validation_messages(exc, spec))
     result.instance = existing
@@ -570,8 +680,11 @@ def _build_report(spec: ImportSpec, upload: IO[bytes], filename: str) -> ImportR
     rows, file_errors = read_table(upload, filename, spec.columns)
     report = ImportReport(kind=spec.kind, rows=[], file_errors=file_errors)
     seen: dict[tuple[Any, ...], int] = {}
+    assigned: dict[str, int] = {}
+    # Dosyada elle yazılmış kodlar; boş kodlu satıra önerilmez.
+    typed = {parse_code(cells.get("code")) for _, cells in rows} - {""}
     for row_no, cells in rows:
-        report.rows.append(_check_row(spec, row_no, cells, seen))
+        report.rows.append(_check_row(spec, row_no, cells, seen, assigned, typed))
     return report
 
 
@@ -588,7 +701,8 @@ def preview_import(kind: str, upload: IO[bytes], filename: str) -> ImportReport:
 def run_import(actor: User, kind: str, upload: IO[bytes], filename: str) -> ImportReport:
     """Dosyayı doğrular ve hatasızsa tüm satırları tek işlemde yazar (denetim günlüklü).
 
-    Hatalı satır varsa `BusinessRuleError("import_has_errors")`; hiçbir satır yazılmaz.
+    Hatalı satır varsa `BusinessRuleError("import_has_errors")`; hiçbir satır yazılmaz. Yazarken
+    çıkan kural ihlali de (ör. kodu bu arada başka kayıt aldı) o satırın hatası olur.
     """
     spec = get_spec(kind)
     with transaction.atomic():
@@ -596,12 +710,25 @@ def run_import(actor: User, kind: str, upload: IO[bytes], filename: str) -> Impo
         if report.has_errors:
             raise ImportHasErrors(report)
         for row in report.rows:
+            _write_row(actor, spec, row)
+        if report.has_errors:
+            raise ImportHasErrors(report)
+    return report
+
+
+def _write_row(actor: User, spec: ImportSpec, row: RowResult) -> None:
+    """Satırı servisle yazar; kural ihlali satırın hatasıdır (çağıran işlemi geri alır)."""
+    try:
+        with transaction.atomic():
             if row.instance is not None:
                 fresh = spec.model._default_manager.get(pk=row.instance.pk)
-                services.update_record(actor, fresh, row.data, note="Excel içe aktarma")
+                services.update_record(actor, fresh, row.data, note=NOTE)
             else:
-                services.create_record(actor, spec.model, row.data, note="Excel içe aktarma")
-    return report
+                services.create_record(actor, spec.model, row.data, note=NOTE)
+    except BusinessRuleError as exc:
+        row.errors.append(_rule_error(exc, spec))
+    except ValidationError as exc:
+        row.errors.extend(_validation_messages(exc, spec))
 
 
 class ImportHasErrors(BusinessRuleError):

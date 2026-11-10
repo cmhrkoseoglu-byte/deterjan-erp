@@ -23,6 +23,9 @@ from django.utils import timezone
 
 from apps.core import attachments, events, records, security
 from apps.core.audit import EXCLUDED_FIELDS, diff, log_change
+from apps.core.coding import formats as coding_formats
+from apps.core.coding import registry as coding_registry
+from apps.core.coding import selectors as coding_selectors
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import Attachment, AuditLog, DocumentModel, DocumentSequence, User
 from apps.core.roles import ADMIN, ALL_ROLES
@@ -41,6 +44,11 @@ def _real_actor(actor: User | None) -> User | None:
 def next_document_number(prefix: str, *, year: int | None = None) -> str:
     """Yıl bazında sıfırlanan, çakışmasız belge numarası üretir: `UE-2026-00001`.
 
+    `prefix` belge türünün varsayılan önekidir (çağrı yerleri bunu kullanır). Tür kayıtlıysa
+    (`core.coding.registry.register_document_type`) önek, yıl biçimi ve sıra hanesi Sistem >
+    Kodlama sistematiği ayarından gelir; admin öneki değiştirdiyse sayaç yeni önekte 1'den başlar.
+    Kayıtsız önekte (yalnızca testler) bugünkü biçim kullanılır.
+
     Yıl, Türkiye saatine (`TIME_ZONE`) göre bugünün yılıdır. Sayaç satırı `select_for_update`
     ile kilitlenir. Belgeyi oluşturan transaction'ın içinde çağrılmalıdır: işlem geri alınırsa
     numara da geri alınır (numara atlaması olmaz); kilit, transaction bitene kadar aynı önekteki
@@ -50,16 +58,21 @@ def next_document_number(prefix: str, *, year: int | None = None) -> str:
         raise ValueError(f"Geçersiz belge öneki: {prefix!r} (büyük harf/rakam, en fazla 10)")
     if year is None:
         year = timezone.localdate().year
+    document_type = coding_registry.document_type(prefix)
+    if document_type is not None:
+        fmt = coding_selectors.effective_format(document_type)
+    else:
+        fmt = coding_formats.Format(kind=coding_registry.DOCUMENT, prefix=prefix, width=5)
     with transaction.atomic():
         # Satır yoksa çakışmasız oluştur (eşzamanlı ilk çağrılarda IntegrityError olmaz).
         DocumentSequence.objects.bulk_create(
-            [DocumentSequence(prefix=prefix, year=year, last_number=0)], ignore_conflicts=True
+            [DocumentSequence(prefix=fmt.prefix, year=year, last_number=0)], ignore_conflicts=True
         )
-        sequence = DocumentSequence.objects.select_for_update().get(prefix=prefix, year=year)
+        sequence = DocumentSequence.objects.select_for_update().get(prefix=fmt.prefix, year=year)
         sequence.last_number = F("last_number") + 1
         sequence.save(update_fields=["last_number"])
         sequence.refresh_from_db(fields=["last_number"])
-    return f"{prefix}-{year}-{sequence.last_number:05d}"
+    return coding_formats.document_number(fmt, year, sequence.last_number)
 
 
 def _has_field(instance: models.Model, name: str) -> bool:

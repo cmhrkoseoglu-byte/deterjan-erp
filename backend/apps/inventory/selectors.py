@@ -13,8 +13,16 @@ from django.db.models import DecimalField, F, OuterRef, Q, QuerySet, Subquery, S
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
+from apps.core.coding.selectors import find_by_code
 from apps.core.exceptions import BusinessRuleError
-from apps.inventory.models import Lot, LotLink, PalletLabel, StockBalance, StockReservation
+from apps.inventory.models import (
+    Lot,
+    LotLink,
+    LotNumberSequence,
+    PalletLabel,
+    StockBalance,
+    StockReservation,
+)
 from apps.masterdata.models import Location, Material
 
 ZERO = Value(Decimal(0), output_field=DecimalField(max_digits=18, decimal_places=4))
@@ -22,6 +30,12 @@ ZERO = Value(Decimal(0), output_field=DecimalField(max_digits=18, decimal_places
 MAX_TRACE_DEPTH = 25
 # Minimum stok kontrolünde sayılmayan lotlar: kullanılamayacak stok.
 UNUSABLE_STATUSES = (Lot.Status.REJECTED, Lot.Status.BLOCKED)
+
+
+def last_lot_number(prefix: str, day: date) -> int:
+    """Bu önek ve gün için verilen son lot numarası (kodlama ekranı ve sıra hanesi denetimi)."""
+    row = LotNumberSequence.objects.filter(prefix=prefix, day=day).first()
+    return row.last_number if row is not None else 0
 
 
 def _reserved_subquery() -> Coalesce:
@@ -283,6 +297,8 @@ class ScanResult:
     location: Location | None = None
     pallet: PalletLabel | None = None
     gs1: dict[str, str] = field(default_factory=dict)
+    # Kayıt eski koduyla bulunduysa okutulan eski kod (etiket yenilenmeli; core.coding).
+    former_code: str = ""
 
 
 def parse_gs1(code: str) -> dict[str, str]:
@@ -336,6 +352,23 @@ def _lots_by_no(lot_no: str, material: Material | None = None) -> list[Lot]:
     return list(queryset.order_by("material__code"))
 
 
+def _location_by_code(code: str, raw: str) -> ScanResult | None:
+    """Lokasyon: önce güncel kod, sonra eski kod (yenilenmemiş raf etiketi)."""
+    location, former = find_by_code(Location, code)
+    if location is None:
+        return None
+    location = Location.objects.select_related("warehouse").get(pk=location.pk)
+    return ScanResult("location", raw, location=location, former_code=code if former else "")
+
+
+def _material_by_code(code: str, raw: str) -> ScanResult | None:
+    """Malzeme: önce güncel kod, sonra eski kod."""
+    material, former = find_by_code(Material, code)
+    if material is None:
+        return None
+    return ScanResult("material", raw, material=material, former_code=code if former else "")
+
+
 def decode_scan(raw: str) -> ScanResult:
     """Okutulan barkodu çözer: `LOT:` / `LOC:` / `MAT:` önekleri, GS1 (00 SSCC, 01/02 GTIN,
     10 lot) ve öneksiz değerler (Faz 1'de basılmış lot no, lokasyon ya da malzeme kodu, GTIN).
@@ -355,14 +388,10 @@ def decode_scan(raw: str) -> ScanResult:
         value = code[len(prefix) :].strip()
         if kind == "lot" and (lots := _lots_by_no(value)):
             return ScanResult("lot", raw, lots=lots, material=lots[0].material)
-        if kind == "location":
-            location = Location.objects.select_related("warehouse").filter(code=value.upper())
-            if found := location.first():
-                return ScanResult("location", raw, location=found)
-        if kind == "material":
-            material = Material.objects.filter(code=value.upper()).first()
-            if material is not None:
-                return ScanResult("material", raw, material=material)
+        if kind == "location" and (found := _location_by_code(value.upper(), raw)):
+            return found
+        if kind == "material" and (found := _material_by_code(value.upper(), raw)):
+            return found
         raise BusinessRuleError("scan_not_found", f"Okutulan kod bulunamadı: {value}.")
 
     gs1: dict[str, str] = {}
@@ -404,12 +433,10 @@ def decode_scan(raw: str) -> ScanResult:
 
     if lots := _lots_by_no(code):
         return ScanResult("lot", raw, lots=lots, material=lots[0].material)
-    location_match = Location.objects.select_related("warehouse").filter(code=upper).first()
-    if location_match is not None:
-        return ScanResult("location", raw, location=location_match)
-    material_match = Material.objects.filter(code=upper).first()
-    if material_match is None and code.isdigit():
-        material_match = _material_by_gtin(code.zfill(14))
-    if material_match is not None:
+    if found := _location_by_code(upper, raw):
+        return found
+    if found := _material_by_code(upper, raw):
+        return found
+    if code.isdigit() and (material_match := _material_by_gtin(code.zfill(14))):
         return ScanResult("material", raw, material=material_match)
     raise BusinessRuleError("scan_not_found", f"Okutulan kod tanınmadı: {code}.")

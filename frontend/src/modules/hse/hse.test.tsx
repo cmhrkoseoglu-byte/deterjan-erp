@@ -416,6 +416,22 @@ describe("malzeme tehlike bilgisi", () => {
     );
   });
 
+  it("malzeme seçimi eski kodla da aranır; pencere başlığında yalnız güncel kod yazar", async () => {
+    const renamed = { ...naoh, code: "Kostik", former_codes: ["HM-NAOH"] };
+    vi.mocked(mdApi.listRecords).mockImplementation(async (endpoint) =>
+      endpoint === "materials" ? page([renamed]) : page([]),
+    );
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("laboratuvar"));
+    renderApp("/isg/tehlike");
+
+    await userEvent.type(await screen.findByRole("textbox", { name: "Malzeme seç" }), "hm-naoh");
+    await userEvent.click(await screen.findByRole("option", { name: "Kostik (eski: HM-NAOH)" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Tehlike bilgisi: Kostik" }),
+    ).toBeInTheDocument();
+    expect(hseApi.getMaterialHazard).toHaveBeenCalledWith(5);
+  });
+
   it("laboratuvar İSG tehlike bilgileri sekmesinden düzenleyebilir", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("laboratuvar"));
     renderApp("/isg/tehlike");

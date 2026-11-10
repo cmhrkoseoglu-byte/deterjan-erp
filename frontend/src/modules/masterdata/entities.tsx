@@ -77,6 +77,7 @@ function selectFilter(
 
 export const materialConfig: EntityConfig<Material> = {
   endpoint: "materials",
+  codeType: "masterdata.material",
   title: "Malzemeler",
   singular: "Malzeme",
   writeRoles: WRITE,
@@ -186,6 +187,7 @@ export const conversionConfig: EntityConfig<Conversion & { code?: string; name?:
 
 export const categoryConfig: EntityConfig<Category> = {
   endpoint: "categories",
+  codeType: "masterdata.materialcategory",
   title: "Kategoriler",
   singular: "Kategori",
   writeRoles: WRITE,
@@ -223,6 +225,7 @@ export const unitConfig: EntityConfig<Unit> = {
 
 export const warehouseConfig: EntityConfig<Warehouse> = {
   endpoint: "warehouses",
+  codeType: "masterdata.warehouse",
   title: "Depolar",
   singular: "Depo",
   writeRoles: WRITE,
@@ -233,6 +236,7 @@ export const warehouseConfig: EntityConfig<Warehouse> = {
 
 export const locationConfig: EntityConfig<Location> = {
   endpoint: "locations",
+  codeType: "masterdata.location",
   title: "Lokasyonlar",
   singular: "Lokasyon",
   writeRoles: WRITE,
@@ -269,6 +273,8 @@ export const locationConfig: EntityConfig<Location> = {
 
 export const equipmentConfig: EntityConfig<Equipment> = {
   endpoint: "equipment",
+  codeType: "masterdata.equipment",
+  codeTypeField: "equipment_type",
   title: "Ekipmanlar",
   singular: "Ekipman",
   writeRoles: WRITE,
@@ -335,6 +341,7 @@ const partnerColumns = [
 
 export const supplierConfig: EntityConfig<Partner> = {
   endpoint: "suppliers",
+  codeType: "masterdata.supplier",
   title: "Tedarikçiler",
   singular: "Tedarikçi",
   writeRoles: WRITE,
@@ -345,6 +352,7 @@ export const supplierConfig: EntityConfig<Partner> = {
 
 export const customerConfig: EntityConfig<Partner> = {
   endpoint: "customers",
+  codeType: "masterdata.customer",
   title: "Müşteriler",
   singular: "Müşteri",
   writeRoles: WRITE,
@@ -364,6 +372,7 @@ export const customerConfig: EntityConfig<Partner> = {
 
 export const printerConfig: EntityConfig<Printer> = {
   endpoint: "printers",
+  codeType: "masterdata.printer",
   title: "Yazıcılar",
   singular: "Yazıcı",
   writeRoles: ADMIN_ONLY,

@@ -59,7 +59,7 @@ import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ct } from "../common/strings";
-import { useOptions } from "../common/useOptions";
+import { optionLabel, useOptions } from "../common/useOptions";
 import { CancelModal } from "../inventory/CancelModal";
 import { receiptPath, today } from "../inventory/config";
 import { idOrNull, useLocations } from "../inventory/options";
@@ -242,7 +242,7 @@ function OrderForm({ doc }: { doc: PurchaseOrderDetail | null }) {
   const materialById = new Map((materials.data ?? []).map((row) => [String(row.id), row]));
   const materialOptions = (materials.data ?? []).map((row) => ({
     value: String(row.id),
-    label: `${row.code} - ${row.name}`,
+    label: optionLabel(row),
   }));
   const setHeader = (patch: Partial<HeaderDraft>) =>
     setDraft((current) => ({ ...current, header: { ...current.header, ...patch } }));

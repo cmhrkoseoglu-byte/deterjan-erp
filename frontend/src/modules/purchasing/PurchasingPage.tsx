@@ -44,6 +44,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
 import { formatDate, formatDateTime, formatMoney, formatNumber } from "../../i18n/format";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
+import { optionLabel } from "../common/useOptions";
 import { RowsTable } from "../filling/FillingPage";
 import { CancelModal } from "../inventory/CancelModal";
 import { today } from "../inventory/config";
@@ -118,7 +119,7 @@ export function RequestModal({
           searchable
           data={(materials.data ?? []).map((row) => ({
             value: String(row.id),
-            label: `${row.code} - ${row.name}`,
+            label: optionLabel(row),
           }))}
           value={draft.material}
           onChange={(value) => setDraft({ ...draft, material: value })}

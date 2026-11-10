@@ -1,6 +1,6 @@
 // /api/v1/quality/* uç noktaları. Sınırlar ve sonuçlar metin olarak gelir ("7.5000").
 import { api } from "./client";
-import type { ListParams } from "./masterdata";
+import type { FormerCodes, ListParams } from "./masterdata";
 import type { Paginated } from "./types";
 
 export type SampleStage = "INCOMING" | "IN_PROCESS" | "FINAL" | "RETURN";
@@ -11,7 +11,7 @@ export type SpecStatus = "DRAFT" | "APPROVED" | "OBSOLETE";
 export type DecisionType = "RELEASE" | "REJECT" | "REWORK" | "CONDITIONAL_RELEASE";
 export type ApprovalStatus = "NOT_REQUIRED" | "PENDING" | "APPROVED" | "REFUSED";
 
-export interface TestDefinition {
+export interface TestDefinition extends FormerCodes {
   id: number;
   code: string;
   name: string;

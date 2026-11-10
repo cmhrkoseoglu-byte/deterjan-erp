@@ -29,7 +29,7 @@ import {
   type ReportInfo,
   type ReportParams,
 } from "../../api/reporting";
-import { useOptions, type Option } from "../common/useOptions";
+import { optionLabel, useOptions, type CodeNamed, type Option } from "../common/useOptions";
 import { Stat } from "./Dashboards";
 import { defaultParams, formatValue } from "./format";
 import { CHOICES, rt } from "./strings";
@@ -50,13 +50,13 @@ function useEquipmentOptions(enabled: boolean) {
     enabled,
     staleTime: 60_000,
     queryFn: async (): Promise<Option[]> => {
-      const data = await listRecords<{ id: number; code: string; name: string }>("equipment", {
+      const data = await listRecords<CodeNamed & { id: number }>("equipment", {
         is_active: true,
         page_size: 500,
       });
       return data.results.map((row) => ({
         value: String(row.id),
-        label: `${row.code} - ${row.name}`,
+        label: optionLabel(row),
       }));
     },
   });

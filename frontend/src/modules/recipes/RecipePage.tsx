@@ -175,6 +175,7 @@ export function RecipePage() {
         opened={editOpen}
         title={`${rt.recipe}: ${data.code}`}
         fields={recipeFields}
+        codeType="recipes.recipe"
         record={data}
         onClose={() => setEditOpen(false)}
         onSubmit={(payload) => saveRecipe(recipeId, payload)}

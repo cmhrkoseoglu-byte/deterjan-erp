@@ -290,8 +290,8 @@ class PackagingPick(PickRecord):
 
 
 class FillingRun(BaseModel):
-    """Dolum partisi (vardiya/parti). `output_lot` dolum lotudur (`D-YYMMDD-NNN`, Karar D-2); bir ya
-    da birden çok bulk (tank) lotundan beslenir."""
+    """Dolum partisi (vardiya/parti). `output_lot` dolum lotudur (`D-YYYYMMDD-NNN`, Karar D-2);
+    bir ya da birden çok bulk (tank) lotundan beslenir."""
 
     class Status(models.TextChoices):
         IN_PROGRESS = "IN_PROGRESS", "Devam ediyor"

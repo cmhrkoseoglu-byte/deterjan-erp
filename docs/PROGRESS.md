@@ -1175,3 +1175,84 @@ Geçiş ve eğitim adımında demo verisinden ekran görüntüsü alınırken bu
   testi kırılır. Yerelde tarayıcıda: giriş ve dönüş adresi, reddedilen dönüş adresi, bağlantı ve geri
   tuşu, kaydedip yeni belgeye geçme (mal kabul), sekme rotaları.
 - Tarayıcı paketi yaklaşık 10 KB (gzip) büyüdü.
+
+## 2026-11-04 — Kodlama sistematiği (Paket 1)
+
+Plan `docs/plan/kodlama-sistematigi.md`; kararlar DECISIONS "2026-11-04 — Kodlama sistematiği".
+
+- **Adım 0:** plan ve karar kaydı. D-2'ye lot tarihinin ISO 8601 olduğu ve iade lotu notu eklendi.
+- **Adım 1:** kodlama motoru `apps/core/coding/` (kayıt, biçimler, okuma ve yazma servisleri);
+  modeller `CodeScheme`, `CodeSchemeRevision`, `CodeSequence`, `CodeHistory` (göç core.0005).
+  Ayar uç noktaları `/api/v1/coding/types/` (yalnız admin; liste, oku, değiştir, önizle,
+  revizyonlar), öneri `/api/v1/coding/suggest/<tür>/` (türün yazma rolleri). Henüz hiçbir modül
+  tür kaydetmediği için davranış değişmedi. Kanıt: `core/tests/test_coding.py` (biçimler, karakter
+  kuralı, önek ayırma ve geçmiş önek, sıra hanesi, sayaç penceresi ve düzeltmesi, eşzamanlı kod
+  alma, eski kod ve tarihteki kod, API yetkileri).
+- **Adım 2:** belge ve lot numaraları kodlama ayarından. 17 belge türü (ST, SA, UE, DO, SS, SV, NM,
+  PU, BR, IA, BK, MK, SD, AT, OL, SK, SB) ve 3 lot türü (H, B, D) modüllerin `ready()`'sinde
+  kaydedildi; SV (irsaliye no) ekrandan değiştirilemez. Varsayılan belge biçimi değişmedi
+  (`UE-2026-00001`); lot numarası ISO 8601 tarihle `H-20261015-001` (Karar D-2 değişti). Önek
+  değişince sayaç yeni önekte başlar. Kanıt: `core/tests/test_coding.py` (ayardan belge numarası,
+  kaynaktaki her sabit önek kayıtlı), `inventory/tests/test_services.py` (ISO 8601 lot, ayardan
+  tarih biçimi ve önek); tam backend testleri yeşil.
+- **Adım 3:** ana veri kodları kodlama sistematiğinde. Türler ve varsayılanlar (canlı düzen):
+  malzeme MLZ-0000000, kategori KAT-0000, depo DEPO-00000, lokasyon LOKASYON-0000, ekipman türe
+  göre (TANK, STOK, DOLUM, TERAZI, EKIPMAN) + 5 hane, tedarikçi TED-000000, müşteri MUS-000000,
+  yazıcı YAZICI-000, reçete REC-0000000; test tanımı serbest; birim ve H/P/EUH standart.
+  - Biçim etkinse yeni kayıtta kod önerilir (formda gelir) ve biçime uymayan kod reddedilir.
+    Excel içe aktarmada kod boş bırakılırsa sistem sıradaki kodu verir (formda kod zorunludur).
+    Biçim kapalıyken kod bugünkü gibi serbest.
+  - Kod sonradan yalnız admin değiştirir (sunucuda 403); eski kod `CodeHistory`'ye yazılır ve aynı
+    türde başka kayda verilmez.
+  - Eski kod liste aramasında, seçim kutularında, barkod okutmada ("Eski etiket okutuldu" uyarısı)
+    ve Excel içe aktarmada (açılış stoku, stok karşılaştırması, reçete dahil) tanınır.
+  - Yönetim panelinde kodlu türlerde kod salt okunur, yeni kayıt uygulamadan açılır.
+  - Lokasyon, lot, koli ve palet etiketinde kod ve lot no kesilmez; sığmazsa yazı küçülür
+    (LOKASYON-0001 ve kodlama ekranının kabul ettiği uzun lot numaraları kesiliyordu).
+  - Kanıt: `masterdata/tests/test_coding.py`, `inventory/tests/test_coding_scan.py`, ön yüz
+    `MasterDataPage.test.tsx` (öneri, kod kilidi, eski kodlar), `components.test.tsx` (eski kod
+    uyarısı); tam backend (1608) ve ön yüz (464) testleri yeşil.
+- **Adım 4:** Sistem > Kodlama sistematiği ekranı (`/sistem/kodlama`, yalnız admin). Bölümler:
+  ana veri kodları (standart kodlar salt okunur), belge numaraları (SV değiştirilemez), lot
+  numaraları (ISO 8601 tarih seçenekleri), geçmiş. Düzenleme penceresinde önek, sıra hanesi,
+  ekipmanda türe göre önekler, yıl ya da tarih, "Biçimi etkinleştir", sıradaki numara düzeltmesi;
+  sunucudan canlı önizleme, kural ihlalinde kaydet kapalı, değişiklik notu zorunlu, onay penceresi.
+  Yeni uç nokta `/api/v1/coding/revisions/` (bütün türlerin revizyonları). Kanıt:
+  `modules/system/coding/coding.test.tsx`, `core/tests/test_coding.py`; ön yüz (470) yeşil.
+- **Adım 5:** kod göçü (Sistem > Kodlama sistematiği > Kod göçü). Önizleme salt okunur: biçime
+  uyan kod kalır, uymayanlar oluşturulma sırasıyla sıradaki boş kodu alır. Uygulama yalnız admin,
+  not zorunlu, onay penceresi; önizlemeden sonra kayıt değiştiyse reddedilir (`recode_stale`).
+  Kodu türün modülü değiştirir (`masterdata.services.recode_record`; kaydın öteki alanları yeniden
+  doğrulanmaz); her değişiklik denetim günlüğüne ve eski kod geçmişine yazılır, göç
+  `CodeMigrationRun` olarak saklanır (göç core.0006). Geri alma: kodu hâlâ göçteki yeni kod olan
+  kayıtlar eski koduna döner; bir göç bir kez geri alınır. Kanıt: `core/tests/test_coding.py`,
+  `inventory/tests/test_coding_recode.py` (stok değişmezleri, canlıdaki gibi reçete kodları), ön
+  yüz `coding.test.tsx` (önizle, uygula, geri al).
+- **İnceleme düzeltmeleri** (2026-11-05): bağımsız incelemenin 27 doğrulanmış bulgusu (tekrarlar
+  çıkınca 20) düzeltildi, düzeltmeler ayrıca denetlendi. Kararlar DECISIONS "İnceleme sonrası
+  netleşen kurallar".
+  - Kod motoru: sayaç penceresi önerilen koddan ölçülür; eski kod, kaydetme anında kilit altında
+    yeniden denetlenir; sayaç düzeltmesi en çok 15 hane; ekipman dışı türde türe göre önek yok
+    sayılır; standart türün önizlemesi hata vermez; önizleme sayaç düzeltmesini gösterir; kodlarda
+    yalnız ASCII rakam sıra no sayılır.
+  - Yeni komut `backfill_code_history [--dry-run]`: Paket 1'den önce kodu değişmiş kayıtların eski
+    kodlarını denetim günlüğünden eski kod geçmişine yükler (canlıya alma adımı, KURULUM §8). Eski
+    kod şu an başka kaydın koduysa yazılmaz, özette listelenir; tekrar çalıştırmak bir şey yazmaz.
+  - Kilit çakışması (bekleme süresi ya da kilitlenme) sunucu hatası değil: göçte `recode_busy`,
+    öteki isteklerde `busy` (400, "birkaç saniye sonra yeniden deneyin"). 403'te servisin Türkçe
+    mesajı döner (ör. kod kilidi).
+  - Excel içe aktarma: boş kodlu satır önizlemede gösterilen kodu alır, dosyada yazılmış kodlar boş
+    satırlara önerilmez; yazarken çıkan hata o satırın hatası olarak raporlanır; aynı kaydın eski
+    ve güncel kodlu iki satırı tekrar sayılır; reçetede kod hataları "Reçete kodu" sütununda.
+    Şablon örnekleri varsayılan biçimlerde (MLZ-0000001, TED-000001, REC-0000001 …).
+  - Ekran: yeni form yeniden açılınca önerilen kod yine gelir; kaydederken önerilen kod başka
+    kayda verilmişse sıradaki öneri yazılır ve uyarı çıkar; eski kodlar elle kurulan bütün seçim
+    kutularında da aranır. Biçim penceresinde sayaç düzenlenen önekin sayacını gösterir; sıra
+    hanesi silinince en küçük değere atlamaz. Kod göçünde son yedeğin zamanı ve durumu gösterilir
+    (son 24 saatte başarılı yedek yoksa uyarı); notlar tür ya da göç değişince taşınmaz; Geçmiş
+    uygulanan göçleri de listeler.
+  - Kanıt: `core/tests/test_coding.py`, `test_backfill_code_history.py`, `test_exceptions.py`,
+    `masterdata/tests/test_coding.py`, `test_importers.py`, `recipes/tests/test_coding_lock.py`,
+    `quality/tests/test_coding_lock.py`, `inventory/tests/test_labels.py`, `test_importers.py`;
+    ön yüz `coding.test.tsx`, `MasterDataPage.test.tsx`, `useOptions.test.ts`, `inventory.test.tsx`,
+    `hse.test.tsx`.

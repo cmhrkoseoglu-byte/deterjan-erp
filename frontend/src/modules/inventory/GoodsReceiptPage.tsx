@@ -50,7 +50,7 @@ import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ct } from "../common/strings";
-import { useOptions } from "../common/useOptions";
+import { optionLabel, useOptions } from "../common/useOptions";
 import { CancelModal } from "./CancelModal";
 import { ReceiptCostsPanel } from "./ReceiptCostsPanel";
 import { INVENTORY_BASE, lotPath, receiptPath, STOCK_WRITE_ROLES, today } from "./config";
@@ -235,7 +235,7 @@ function ReceiptForm({ doc }: { doc: GoodsReceiptDetail | null }) {
   const materialById = new Map((materials.data ?? []).map((row) => [String(row.id), row]));
   const materialOptions = (materials.data ?? []).map((row) => ({
     value: String(row.id),
-    label: `${row.code} - ${row.name}`,
+    label: optionLabel(row),
   }));
   const quarantineOptions = (locations.data ?? []).filter((row) => row.type === "QUARANTINE");
   const storageOptions = (locations.data ?? []).filter((row) => row.type !== "QUARANTINE");

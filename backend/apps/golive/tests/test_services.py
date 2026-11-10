@@ -9,6 +9,8 @@ from django.utils import timezone
 from openpyxl import Workbook, load_workbook
 
 from apps.core import event_names as ev
+from apps.core.coding import formats, registry
+from apps.core.coding import selectors as coding_selectors
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog
 from apps.golive import exports, selectors, services
@@ -166,6 +168,28 @@ def test_export_and_template(stock, make_user):
     assert rows[1][8] == "Excel'de yok"
     template = load_workbook(io.BytesIO(exports.comparison_template())).active
     assert [c.value for c in template[1]] == HEADERS
+
+
+def test_template_example_row_uses_default_code_formats(make_user):
+    """Şablonun örnek kodları kodlama sistematiğinin varsayılan biçiminde; örnek kayıtlar varken
+    şablon olduğu gibi karşılaştırılır."""
+    template = exports.comparison_template()
+    sheet = load_workbook(io.BytesIO(template)).active
+    example = dict(zip(HEADERS, [c.value for c in sheet[2]], strict=True))
+    for header, key in (
+        ("Malzeme kodu", "masterdata.material"),
+        ("Lokasyon kodu", "masterdata.location"),
+    ):
+        fmt = coding_selectors.default_format(registry.get_code_type(key))
+        assert formats.master_number(example[header], fmt.prefix, fmt.width) is not None, header
+    MaterialFactory(code=example["Malzeme kodu"])
+    storage_location(code=example["Lokasyon kodu"])
+
+    comparison = services.create_stock_comparison(
+        make_user("depo"), upload=io.BytesIO(template), filename="sablon.xlsx"
+    )
+
+    assert comparison.line_count == 1
 
 
 def test_system_stock_levels(stock):

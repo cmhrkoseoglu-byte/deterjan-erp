@@ -3,13 +3,14 @@ from typing import Any
 
 from rest_framework import serializers
 
+from apps.core.api.coding import FormerCodesListSerializer, FormerCodesMixin
 from apps.masterdata.fields import normalize_code
 from apps.masterdata.models import UnitOfMeasure
 from apps.recipes.models import Recipe, RecipeLine, RecipeStep, RecipeVersion
 from apps.recipes.services import can_approve
 
 
-class RecipeSerializer(serializers.ModelSerializer):
+class RecipeSerializer(FormerCodesMixin, serializers.ModelSerializer):
     product_code = serializers.CharField(source="product.code", read_only=True)
     product_name = serializers.CharField(source="product.name", read_only=True)
     approved_version = serializers.SerializerMethodField()
@@ -17,9 +18,11 @@ class RecipeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Recipe
+        list_serializer_class = FormerCodesListSerializer
         fields = [
             "id",
             "code",
+            "former_codes",
             "name",
             "product",
             "product_code",

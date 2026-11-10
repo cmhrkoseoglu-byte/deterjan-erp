@@ -50,6 +50,7 @@ import { formatDateTime } from "../../i18n/format";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ct } from "../common/strings";
+import { optionLabel } from "../common/useOptions";
 import { Info } from "../inventory/shared";
 import { LAB_ROLES, QUALITY_BASE, specPath } from "./config";
 import { limitText } from "./limits";
@@ -369,7 +370,7 @@ function LineModal({
           disabled={line !== null}
           data={(tests.data ?? []).map((row) => ({
             value: String(row.id),
-            label: `${row.code} - ${row.name}`,
+            label: optionLabel(row),
           }))}
           value={test}
           onChange={setTest}

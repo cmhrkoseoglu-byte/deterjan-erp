@@ -16,6 +16,7 @@ from typing import IO, Any
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from apps.core.coding.selectors import find_by_code
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import User
 from apps.masterdata.importers import (
@@ -27,6 +28,7 @@ from apps.masterdata.importers import (
     _text,
     build_template_for,
     code_lookup_parser,
+    is_code_error,
     parse_bool,
     parse_code,
     parse_decimal,
@@ -42,7 +44,7 @@ TITLE = "Reçeteler"
 NOTE = "Excel içe aktarma"
 
 COLUMNS: tuple[Column, ...] = (
-    Column("Reçete kodu", "recipe_code", parse_code, required=True, example="RC-BULASIK"),
+    Column("Reçete kodu", "recipe_code", parse_code, required=True, example="REC-0000001"),
     Column(
         "Reçete adı",
         "recipe_name",
@@ -54,7 +56,7 @@ COLUMNS: tuple[Column, ...] = (
         "Ürün kodu",
         "product",
         code_lookup_parser(Material, "Ürün"),
-        example="YM-BULASIK",
+        example="MLZ-0000003",
         help="Yarı mamul (dökme) malzeme kodu; yeni reçetede zorunlu",
     ),
     Column("Şarj miktarı", "batch_size", parse_decimal, required=True, example=1000),
@@ -70,7 +72,7 @@ COLUMNS: tuple[Column, ...] = (
         "material",
         code_lookup_parser(Material, "Malzeme"),
         required=True,
-        example="HM-LAS",
+        example="MLZ-0000001",
         help="Hammadde ya da yarı mamul",
     ),
     Column("Miktar", "quantity", parse_decimal, required=True, example="120,5"),
@@ -109,6 +111,22 @@ def _messages(exc: Exception) -> list[str]:
     return [str(exc)]  # pragma: no cover
 
 
+# Reçete alanı → sütun (`create_recipe` doğrulama hataları).
+_RECIPE_COLUMNS = {"code": "Reçete kodu", "name": "Reçete adı", "product": "Ürün kodu"}
+
+
+def _recipe_errors(exc: BusinessRuleError | ValidationError) -> list[tuple[str, str]]:
+    """`create_recipe` hatası → (sütun, mesaj): kod kuralları (biçim, eski kod, tekrar) reçete
+    kodunda, ürün kuralları ürün kodunda."""
+    if isinstance(exc, BusinessRuleError):
+        return [("Reçete kodu" if is_code_error(exc) else "Ürün kodu", exc.message)]
+    return [
+        (_RECIPE_COLUMNS.get(name, ""), str(message))
+        for name, messages in exc.message_dict.items()
+        for message in messages
+    ]
+
+
 def _parse(rows: list[tuple[int, dict[str, Any]]]) -> tuple[list[RowResult], dict[str, _Group]]:
     results: list[RowResult] = []
     groups: dict[str, _Group] = {}
@@ -144,14 +162,21 @@ def _parse(rows: list[tuple[int, dict[str, Any]]]) -> tuple[list[RowResult], dic
     return results, groups
 
 
-def _apply_group(actor: User | None, group: _Group) -> None:
-    """Grubu servislerle yazar; hataları satırlara ekler (çağıran geri alır)."""
+def _apply_group(actor: User | None, group: _Group, seen: dict[int, int]) -> None:
+    """Grubu servislerle yazar; hataları satırlara ekler (çağıran geri alır). `seen`: dosyada
+    önceki gruplarda bulunan reçeteler (reçete → ilk satır)."""
     first = group.rows[0]
-    recipe = Recipe.objects.filter(code=group.code).first()
+    recipe, _ = find_by_code(Recipe, group.code)  # eski kodla da bulunur (core.coding)
     action = "update" if recipe else "create"
     for row in group.rows:
         row.action = action
     if recipe is not None:
+        # Tekrar kayda göre denetlenir: aynı reçetenin eski ve güncel kodu da tekrardır.
+        if recipe.pk in seen:
+            message = f"Reçete dosyada tekrar ediyor (satır {seen[recipe.pk]})."
+            _error(first, message, "Reçete kodu")
+            return
+        seen[recipe.pk] = first.row
         if RecipeVersion.objects.filter(recipe=recipe, status=RecipeVersion.Status.DRAFT).exists():
             _error(
                 first,
@@ -180,8 +205,8 @@ def _apply_group(actor: User | None, group: _Group) -> None:
                 },
             )
         except (BusinessRuleError, ValidationError) as exc:
-            for message in _messages(exc):
-                _error(first, message, "Ürün kodu")
+            for column, message in _recipe_errors(exc):
+                _error(first, message, column)
             return
     try:
         version = services.create_version(
@@ -213,9 +238,10 @@ def _build(actor: User | None, upload: IO[bytes], filename: str) -> ImportReport
     report = ImportReport(kind=KIND, rows=results, file_errors=file_errors)
     if report.has_errors:
         return report
+    seen: dict[int, int] = {}
     for group in groups.values():
         with transaction.atomic():
-            _apply_group(actor, group)
+            _apply_group(actor, group, seen)
     return report
 
 
@@ -249,12 +275,12 @@ def build_template() -> bytes:
     )
     examples = (
         (
-            "RC-BULASIK",
+            "REC-0000001",
             "Bulaşık deterjanı",
-            "YM-BULASIK",
+            "MLZ-0000003",
             1000,
             "KG",
-            "HM-SU",
+            "MLZ-0000002",
             700,
             "KG",
             2,
@@ -262,12 +288,12 @@ def build_template() -> bytes:
             "",
         ),
         (
-            "RC-BULASIK",
+            "REC-0000001",
             "Bulaşık deterjanı",
-            "YM-BULASIK",
+            "MLZ-0000003",
             1000,
             "KG",
-            "HM-LAS",
+            "MLZ-0000001",
             "120,5",
             "KG",
             1,

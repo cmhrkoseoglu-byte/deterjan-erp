@@ -2,16 +2,19 @@ from typing import Any, ClassVar
 
 from django.db.models import QuerySet
 from django.http import HttpResponse
+from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.filters import OrderingFilter
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.api.coding import FormerCodeSearchFilter
 from apps.core.api.labels import (
     LABEL_PARAMETERS,
     PDF,
@@ -60,6 +63,8 @@ class MasterDataViewSet(
     """
 
     write_roles: ClassVar[tuple[str, ...]] = MASTERDATA_WRITE_ROLES
+    # Arama eski kodlarda da yapılır (kodu değişmiş kayıt eski koduyla bulunur).
+    filter_backends = [DjangoFilterBackend, FormerCodeSearchFilter, OrderingFilter]
     search_fields = ["code", "name"]
     ordering_fields = ["code", "name", "created_at", "updated_at"]
 

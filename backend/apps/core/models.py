@@ -247,6 +247,218 @@ class DocumentSequence(models.Model):
         return f"{self.prefix}-{self.year}: {self.last_number}"
 
 
+# --- kodlama sistematiği (docs/plan/kodlama-sistematigi.md) --------------------------------------
+
+
+class ImmutableModel(models.Model):
+    """Satır bir kez yazılır; değiştirilemez ve silinemez (denetim günlüğü gibi)."""
+
+    immutable_message: ClassVar[str] = "Bu kayıt değiştirilemez."
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if self.pk is not None:
+            raise ValueError(self.immutable_message)
+        super().save(*args, **kwargs)
+
+    def delete(self, *args: Any, **kwargs: Any) -> tuple[int, dict[str, int]]:
+        raise ValueError(self.immutable_message)
+
+
+class CodeScheme(BaseModel):
+    """Bir kod türünün (ana veri kodu, belge numarası, lot numarası) ayarlanmış biçimi.
+
+    Satır yoksa türün kayıttaki (`core.coding.registry`) varsayılanı geçerlidir. Yalnızca
+    `core.coding.services.update_scheme` yazar; her değişiklik `CodeSchemeRevision` olarak saklanır.
+    """
+
+    class Kind(models.TextChoices):
+        MASTER = "master", "Ana veri kodu"
+        DOCUMENT = "document", "Belge numarası"
+        LOT = "lot", "Lot numarası"
+
+    key = models.CharField("kod türü", max_length=64, unique=True)
+    kind = models.CharField("tür", max_length=16, choices=Kind.choices)
+    prefix = models.CharField("önek", max_length=16, blank=True)
+    # Ana veride kaydın türüne göre önek (ekipman: {"MIXING_TANK": "TANK", ...}).
+    type_prefixes = models.JSONField("türe göre önekler", default=dict, blank=True)
+    width = models.PositiveSmallIntegerField("sıra hanesi")
+    year_format = models.CharField("yıl biçimi", max_length=8, blank=True)
+    date_format = models.CharField("tarih biçimi", max_length=8, blank=True)
+    # Ana veri: etkinse yeni kayıtta kod önerilir ve biçim zorunludur.
+    is_active = models.BooleanField("etkin", default=False)
+    revision = models.PositiveIntegerField("revizyon", default=0)
+
+    class Meta:
+        verbose_name = "kod biçimi"
+        verbose_name_plural = "kod biçimleri"
+        ordering = ["key"]
+
+    def __str__(self) -> str:
+        return self.key
+
+
+class CodeSchemeRevision(ImmutableModel):
+    """Kod biçimi değişikliğinin değiştirilemez kopyası (değişiklik notu zorunlu)."""
+
+    immutable_message = "Kod biçimi revizyonları değiştirilemez."
+
+    scheme = models.ForeignKey(
+        CodeScheme, verbose_name="kod biçimi", on_delete=models.PROTECT, related_name="revisions"
+    )
+    revision = models.PositiveIntegerField("revizyon")
+    prefix = models.CharField("önek", max_length=16, blank=True)
+    type_prefixes = models.JSONField("türe göre önekler", default=dict, blank=True)
+    width = models.PositiveSmallIntegerField("sıra hanesi")
+    year_format = models.CharField("yıl biçimi", max_length=8, blank=True)
+    date_format = models.CharField("tarih biçimi", max_length=8, blank=True)
+    is_active = models.BooleanField("etkin", default=False)
+    # Ana veride admin'in düzelttiği sayaçlar: {"MLZ": 25} (sıradaki numara).
+    counters = models.JSONField("sayaç düzeltmesi", default=dict, blank=True)
+    note = models.TextField("değişiklik notu")
+    changed_at = models.DateTimeField("zaman", auto_now_add=True)
+    changed_by = models.ForeignKey(
+        User,
+        verbose_name="değiştiren",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "kod biçimi revizyonu"
+        verbose_name_plural = "kod biçimi revizyonları"
+        ordering = ["-changed_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scheme", "revision"], name="core_codeschemerev_scheme_rev_uniq"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.scheme.key} rev. {self.revision}"
+
+
+class CodeSequence(models.Model):
+    """Ana veri kodu sayacı: kod türü + önek başına verilen son sıra no (`MLZ-` → 24)."""
+
+    key = models.CharField("kod türü", max_length=64)
+    stem = models.CharField("önek", max_length=32)
+    last_number = models.PositiveBigIntegerField("son numara", default=0)
+
+    class Meta:
+        verbose_name = "kod sayacı"
+        verbose_name_plural = "kod sayaçları"
+        constraints = [
+            models.UniqueConstraint(fields=["key", "stem"], name="core_codesequence_key_stem_uniq")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.key} {self.stem}: {self.last_number}"
+
+
+class CodeHistory(ImmutableModel):
+    """Bir kaydın eski kodu ve o kodun geçerli olduğu aralık (`valid_from` ≤ t < `valid_to`).
+
+    Kullanılmış kod aynı türde başka bir kayda verilmez; eski kod aramada, okutmada ve içe
+    aktarmada tanınır. Satırlar değiştirilemez ve silinemez.
+    """
+
+    immutable_message = "Eski kod kayıtları değiştirilemez."
+
+    class Reason(models.TextChoices):
+        CHANGE = "change", "Kod değişikliği"
+        MIGRATION = "migration", "Kod göçü"
+        REVERT = "revert", "Geri alma"
+
+    content_type = models.ForeignKey(
+        ContentType, verbose_name="kayıt türü", on_delete=models.PROTECT, related_name="+"
+    )
+    object_id = models.BigIntegerField("kayıt no")
+    field = models.CharField("alan", max_length=32, default="code")
+    code = models.CharField("eski kod", max_length=64)
+    valid_from = models.DateTimeField("geçerlilik başlangıcı")
+    valid_to = models.DateTimeField("geçerlilik sonu")
+    reason = models.CharField("neden", max_length=16, choices=Reason.choices)
+    note = models.CharField("not", max_length=255, blank=True)
+    run = models.ForeignKey(
+        "CodeMigrationRun",
+        verbose_name="kod göçü",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="history",
+    )
+    created_at = models.DateTimeField("kayıt zamanı", auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        verbose_name="değiştiren",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "eski kod"
+        verbose_name_plural = "eski kodlar"
+        ordering = ["-valid_to", "-id"]
+        indexes = [
+            models.Index(fields=["content_type", "field", "code"]),
+            models.Index(fields=["content_type", "object_id"]),
+        ]
+
+    def __str__(self) -> str:
+        return self.code
+
+
+class CodeMigrationRun(ImmutableModel):
+    """Uygulanan bir kod göçü ya da geri alması: hangi kaydın kodu neyden neye değişti.
+
+    `mapping` satırları `{"id": 5, "label": "...", "old": "DENEME", "new": "REC-0000004"}`. Geri
+    alma kendi satırıyla tutulur (`reverts`). Satırlar değiştirilemez ve silinemez.
+    """
+
+    immutable_message = "Kod göçü kayıtları değiştirilemez."
+
+    class Kind(models.TextChoices):
+        APPLY = "apply", "Göç"
+        REVERT = "revert", "Geri alma"
+
+    key = models.CharField("kod türü", max_length=64)
+    kind = models.CharField("tür", max_length=16, choices=Kind.choices)
+    mapping = models.JSONField("eşleme", default=list)
+    note = models.TextField("not")
+    reverts = models.ForeignKey(
+        "self",
+        verbose_name="geri alınan göç",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="reverted_by",
+    )
+    created_at = models.DateTimeField("zaman", auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        verbose_name="uygulayan",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "kod göçü"
+        verbose_name_plural = "kod göçleri"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"Kod göçü #{self.pk}"
+
+
 def attachment_upload_to(instance: "Attachment", filename: str) -> str:
     """Dosya adı tahmin edilemez olsun diye rastgele; özgün ad `original_name`'de tutulur."""
     extension = os.path.splitext(filename)[1].lower()[:10]
