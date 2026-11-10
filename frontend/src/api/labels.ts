@@ -1,4 +1,5 @@
-// Etiketler (PDF / A4 PDF / ZPL), yazıcılar, etiket ayarları ve palet (SSCC) etiketleri.
+// Etiketler (PDF / A4 PDF / ZPL), yazıcılar, etiket ayarları, GS1 ayarları ve palet (SSCC)
+// etiketleri.
 import { api } from "./client";
 import type { Audited, FormerCodes } from "./masterdata";
 import type { Paginated } from "./types";
@@ -20,6 +21,7 @@ export interface Printer extends Audited, FormerCodes {
 
 export interface LabelSettings {
   company_name: string;
+  /** GS1 alanları burada salt okunurdur; Sistem > Kodlama sistematiği > GS1'de değiştirilir. */
   gs1_company_prefix: string;
   sscc_extension_digit: number;
   next_sscc_serial: number;
@@ -27,6 +29,38 @@ export interface LabelSettings {
   default_printer_code: string | null;
   sscc_enabled: boolean;
   updated_at: string;
+}
+
+/** Etiket ayarlarında değiştirilen alanlar (GS1 alanları gönderilmez; gönderilse de yok sayılır). */
+export type LabelSettingsInput = Pick<LabelSettings, "company_name" | "default_printer">;
+
+/** GS1 ayarları (yalnız admin): Sistem > Kodlama sistematiği > GS1. */
+export interface Gs1Settings {
+  /** GS1 firma öneki (6-12 rakam); boşsa SSCC ve GTIN önerisi kapalı. */
+  company_prefix: string;
+  /** SSCC uzantı hanesi (0-9). */
+  extension_digit: number;
+  /** Salt okunur: önek ya da uzantı değişince o önekle basılmış en büyük seri no + 1. */
+  next_sscc_serial: number;
+  /** GTIN önerisinde sıradaki ürün referansı; boşsa öneri kapalı. */
+  next_item_reference: number | null;
+  sscc_enabled: boolean;
+  gtin_suggestion_enabled: boolean;
+  /** Ürün referansının hane sayısı: 12 - önek uzunluğu (önek yoksa null). */
+  item_reference_digits: number | null;
+  updated_at: string | null;
+  updated_by_name: string;
+}
+
+/**
+ * GS1 ayarı değişikliği: verilmeyen alan değişmez, not zorunlu. Hata kodları: note_required,
+ * invalid_gs1_prefix, invalid_extension_digit, invalid_item_reference.
+ */
+export interface Gs1SettingsUpdate {
+  company_prefix?: string;
+  extension_digit?: number;
+  next_item_reference?: number | null;
+  note: string;
 }
 
 export interface PrintResult {
@@ -83,8 +117,18 @@ export async function getLabelSettings(): Promise<LabelSettings> {
   return data;
 }
 
-export async function saveLabelSettings(payload: Partial<LabelSettings>): Promise<LabelSettings> {
+export async function saveLabelSettings(payload: LabelSettingsInput): Promise<LabelSettings> {
   const { data } = await api.put<LabelSettings>("/masterdata/label-settings/", payload);
+  return data;
+}
+
+export async function getGs1Settings(): Promise<Gs1Settings> {
+  const { data } = await api.get<Gs1Settings>("/masterdata/gs1-settings/");
+  return data;
+}
+
+export async function updateGs1Settings(body: Gs1SettingsUpdate): Promise<Gs1Settings> {
+  const { data } = await api.patch<Gs1Settings>("/masterdata/gs1-settings/", body);
   return data;
 }
 
@@ -127,4 +171,5 @@ export async function createPallet(payload: {
 export const labelQueryKeys = {
   printers: ["labels", "printers"] as const,
   settings: ["labels", "settings"] as const,
+  gs1: ["labels", "gs1"] as const,
 };

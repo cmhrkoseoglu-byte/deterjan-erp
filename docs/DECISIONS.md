@@ -2163,3 +2163,155 @@ değiştirme zorunlu, yalnızca admin):
     metin.
   - Göç öncesi yedek uyarısı göçü engellemez; ekran son yedeği gösterir, son 24 saatte başarılı
     yedek yoksa uyarır.
+- **Paket 2, çıktı doküman kodları: ayrıca sorulmayan kurallar** (değiştirilebilir):
+  - Çıktılar kapalı gelir (bugünkü gibi basılır). Bant, doküman no, ilk yayın tarihi ve en az bir
+    revizyon girilince açılabilir. Doküman no çıktılar arasında tektir (A-Z, 0-9, -, . ve /; en çok
+    32 karakter). Öneri kodları (`FR-KAL-001`, `LS-RAP-001` gibi) yalnızca örnektir.
+  - İlk revizyonun numarası seçilebilir: kalite sisteminde Rev. 03'te olan form sisteme 03 ile
+    girilir (varsayılan 00). Sonraki revizyonlar birer artar; revizyonlar değiştirilemez ve
+    silinemez.
+  - Revizyon onaylandıktan sonra yürürlüğe girer: onay tarihi yürürlük tarihinden sonra olamaz.
+    Tarihler ileri olamaz; yürürlük tarihi önceki revizyondan ve ilk yayın tarihinden önce olamaz.
+  - Belge kendi tarihindeki bantla basılır, yeniden basımda da (aşağıda sahibin "İlk basımdaki
+    gibi" kararı). İlk revizyondan ve bandın açıldığı günden önceki tarihli belge bantsız basılır
+    (o gün de bantsızdı).
+  - Kodlar da belgenin tarihindeki haliyle basılır: irsaliyede ürün ve müşteri kodu sevk anındaki,
+    analiz sertifikasında ürün kodu karar anındaki, siparişte malzeme ve tedarikçi kodu siparişin
+    gönderildiği andaki.
+- **Paket 2, GS1: ayrıca sorulmayan kurallar** (değiştirilebilir; GS1 standardından ya da
+  okutulabilirlikten çıkan sonuçlar):
+  - GS1 ayarlarını yalnız admin değiştirir, not zorunludur. Firma öneki değişince sıradaki ürün
+    referansı silinir (aynı istekte verilmedikçe): referans önekle birlikte anlam taşır, yeni
+    önekte ilk boş referans yeniden girilir.
+  - SSCC seri no, önek ya da uzantı değişince o önekle basılmış en büyük seri no + 1'den sürer;
+    basılmış SSCC hiçbir zaman yeniden verilmez. Palet koli sayısı en çok 99.999.999'dur.
+  - GTIN tekilliği 14 haneli normal biçimde, ürün ve koli GTIN'lerinin tamamında, pasif kayıtlar
+    dahil denetlenir. Koli ayrı bir ticari üründür: malzemenin koli GTIN'i kendi ürün GTIN'i
+    olamaz; tanımlı ama geçersiz koli GTIN'inde etikete ürün GTIN'i basılmaz.
+  - Lot kilidi yalnız geçerli GTIN'de: geçersiz eski GTIN (okutulamayan) düzeltilebilir; aynı
+    GTIN'i başka uzunlukta yazmak (8690000000012 → 08690000000012) değişiklik sayılmaz.
+  - Önerilen GTIN ya da ondan en çok 10 ileri ürün referansı sayacı ilerletir (kodlardaki sayaç
+    penceresi gibi, önerilen referanstan ölçülür).
+  - Etikete yalnız okutulabilen GS1 barkodu basılır: GTIN geçerli; lot no en çok 20 karakter,
+    GS1 karakter kümesinde ve parantez ya da > içermiyor (ZPL'in GS1 kipi bunları ayırıcı sayar);
+    koli sayısı en çok 8 hane. Değilse firma içi `LOT:` barkodu basılır. Türkçe harf ve >
+    çizgi barkoda yazılmaz (Code128 Türkçe harfi taşımaz, ZPL'de > kip önekidir): o lotta ve
+    lokasyonda çizgi barkod yerine "QR kodu okutun" notu basılır. İçe aktarılan Türkçe harfli lot
+    numaraları reddedilmez. Türkçe harfli QR'ın Zebra'da okunduğu deneme baskısıyla sınanacak;
+    okunmazsa kod etiketten elle girilir.
+  - ZPL alan verisindeki ^, ~ ve ters bölü onaltılık kaçışla (`^FH\`) gönderilir; ^FB metin
+    bloğunda ters bölü ayrıca ikilenir.
+  - Okumada eski etiketler için tek gevşeklik (10) alanındadır: en çok 64 basılabilir ASCII
+    karakter. Öteki alanlar GS1'e tam uyar; tanınmayan AI kabul edilmez.
+  - GS (FNC1), okutulan verinin neresinde olursa olsun (başta, ortada, sonda) veriyi GS1 yapar.
+    Okutulan kodun kenarındaki boşluk karakterleri (NBSP, dikey sekme dahil) hiçbir kodda veri
+    sayılmaz ve atılır; kenardaki GS de atılır ama GS1 işareti sayılır. Bu yüzden üretim, dolum
+    ve sevkiyatın lot alanları API'de kırpılmaz; kırpmayı lot çözümü yapar.
+  - Tarihte gün 00: son kullanma ve son satış tarihlerinde (15, 16, 17) ayın son günü; üretim,
+    paketleme ve ödeme tarihlerinde (11, 12, 13) gün yok sayılır, tarih gösterilmez.
+  - Koli GTIN'i pasif dönüşümdeyse okutma malzemeyi ve lotu bulur, koli içi miktar önermez.
+- **Paket 2, standart kodlar: sahibin kararı (CUMHUR, 2026-11-05):** koli birimi `XCT`, palet
+  `XPX` (UN/ECE Rec 21 ambalaj kodunun başına X; GİB UBL-TR birim listesi v1.42'de ambalaj birimi
+  yok). e-Belge entegrasyonunda (Faz 5) mali müşavir ya da entegratörle doğrulanır.
+- **Paket 2, standart kodlar: ayrıca sorulmayan kurallar** (değiştirilebilir):
+  - UN/ECE kodu biçimle denetlenir (2-3 büyük harf ya da rakam); Rec 20 listesinin tamamı
+    denetlenmez. Ülke ve dil kodları ISO listesiyle denetlenir.
+  - Excel'de boş ülke kodu TR, GBF'de boş dil tr sayılır.
+  - GBF dilinin eski serbest metin değerleri göçte (hse 0003) koda çevrilir: baştaki ve sondaki
+    boşluk atılır, genel ve Türkçe kurala göre küçük harf yapılır (İ → i, I → ı); yaygın üç
+    harfli kodlar ve sütuna (8 karakter) sığan Türkçe ya da İngilizce adlar koda çevrilir (tur,
+    türkçe, ingiliz, almanca, fransız, ispanyol, italyan, arapça, rusça …); boş değer tr olur.
+    Yalnız geçerli bir ISO 639-1 koduna karşılık gelen değer yazılır; tanınmayan değer olduğu
+    gibi kalır (küçük harfe çevrilmez, silinmez). Göç hiçbir değerde hata vermez (inceleme
+    arka-1).
+  - Yönetim panelinde (Django admin) cari ülke kodu, birimin UN/ECE kodu ve sembolü salt
+    okunurdur: panel kaydı servisteki ISO ve biçim denetimini atlar (GTIN gibi); bu alanlar
+    uygulamadan girilir (ülke kodu Excel'den de). Kullanılan birimin türü ve katsayısı da
+    panelde salt okunurdur (servis kuralı `unit_in_use`; katsayı değişseydi o birimle
+    çevrilen her miktar sessizce değişirdi).
+- **Paket 2, GS1: sahibin kararları (CUMHUR, 2026-11-05, soruların yanıtları):**
+  - Koli içi adet: "Yeni koli GTIN'iyle". Lotu olan mamulde koli içi miktar ancak aynı kayıtta yeni
+    koli GTIN'i girilerek değişir. Eski koli GTIN'i eski miktarıyla arşivlenir, bir daha kimseye
+    verilmez; depodaki eski koliler okutulunca eski miktar önerilir. Gerekçe: GS1'de ticari birimin
+    içeriği değişince yeni GTIN gerekir.
+  - GTIN kilidi: "Yalnız mamulde". Hammadde, ambalaj ve yarı mamulde tedarikçi GTIN'i lot olsa da
+    düzeltilebilir; biçim ve tekillik kuralları her türde geçerlidir.
+  - Tür kilidi: "Lot varken değişmesin". Lotu olan malzemenin türü mamulden ya da mamule
+    değiştirilemez (ekran, Excel aktarımı ve yönetim paneli); yanlış türde açılmış kart için yeni
+    kart açılır. Gerekçe: GTIN kilidi, koli içi miktar kuralı ve eski koli GTIN'leri mamule
+    bağlıdır.
+  - İrsaliyede koli sayısı: "Lotun koli düzeniyle". Koli sayısı lotun açıldığı gün geçerli koli içi
+    miktarla hesaplanır; sevk edilmiş irsaliyenin yeniden basımı değişmez.
+- **Bu kararlardan çıkan, ayrıca sorulmayan kurallar** (değiştirilebilir):
+  - Lotun koli düzeni (koli içi miktar ve koli GTIN'i) lot açılırken lota yazılır; lotun koli ve
+    palet etiketleri ve irsaliyedeki koli sayısı bununla basılır: eski lotun yeniden basılan
+    etiketi eski GTIN'i taşır (uygulaması aşağıda, "Lotun koli düzeniyle").
+  - Arşivdeki GTIN aynı malzemeye de yeniden verilmez.
+  - Okutmada önce ürün GTIN'i, sonra güncel koli GTIN'i ((02)'de önce koli GTIN'i), en son arşiv
+    aranır; arşivdeki miktar dönüşüm pasif olsa da kullanılır.
+  - Sıfır ya da eksi koli içi miktarı alan doğrulaması reddeder; koli GTIN'i kuralları bu değerde
+    ayrıca hata vermez.
+- **Paket 2, çıktılar: sahibin kararı (CUMHUR, 2026-11-05, "Yeniden basım" sorusuna "İlk
+  basımdaki gibi"):** yeniden basılan belge kendi tarihinde basıldığı bandı taşır. Doküman no ve
+  yayın tarihi revizyonla birlikte saklanır; numara değişikliği yeni revizyonla yapılır. Bant
+  açılmadan önceki tarihli belge bantsız basılır; bant sonradan kapatılsa da açıkken tarihli
+  belgenin yeniden basımı bantlı kalır. "Belge kendi tarihindeki kodlarla basılır" kuralının
+  devamıdır.
+- **Bu karardan çıkan, ayrıca sorulmayan kurallar** (değiştirilebilir):
+  - İlk revizyon doküman no ve ilk yayın tarihiyle girilir (ikisi zorunlu). Ondan sonra ikisi
+    ekrandan değiştirilmez (`output_doc_locked`): yeni revizyonla değişir ve o revizyonla basılır.
+    Yanlış numaralandırma da böyle düzeltilir; çıktı kendi eski numarasına yeni revizyonla
+    dönebilir.
+  - Revizyon, yürürlük tarihinden ve girildiği günden (hangisi sonraysa) itibaren basılır.
+    Geriye tarihli girilen revizyon girildiği günden önceki tarihli belgelere basılmaz: o
+    belgelerin yeniden basımı ilk basımdaki gibi kalır. Kalite sisteminin geçmiş revizyonları yine
+    girilebilir.
+  - Bandın açılıp kapanması gün olarak saklanır, o günden itibaren geçerlidir. Gün düzeyindedir:
+    aynı gün birden çok değişiklikte sonuncusu geçer, aynı gün girilen revizyon o günkü belgelere
+    basılır.
+  - Bir çıktının revizyonlarına yazılmış doküman no (bant kapalıyken girilmiş, hiç basılmamış
+    olsa da) başka bir çıktıya verilmez.
+  - Çıktı tarihleri (ilk yayın, yürürlük, onay) 01.01.2000'den önce olamaz: iki haneli yıl yazım
+    hatası (ör. 0026) revizyon silinemediği için düzeltilemezdi. Bantta yıl dört hanedir.
+  - Göç (core 0008): var olan revizyonlara çıktının o anki doküman no ve ilk yayın tarihi
+    yazılır; bugün bandı açık çıktı, ilk revizyonunun yürürlük tarihinden (revizyon yoksa kaydın
+    açıldığı günden) beri açık sayılır.
+  - Ekranda kilitli çıktının üstteki doküman no ve ilk yayın tarihi kapalıdır; revizyon formunda
+    kayıttakilerle gelir, boş bırakılamaz, yalnız değişeni gönderilir. Kayıt sürerken pencere
+    kapatılır ya da başka çıktı açılırsa sonuç açık pencereye yazılmaz: liste güncellenir, sonuç
+    bildirimle söylenir.
+- **"Lotun koli düzeniyle" kararının uygulaması** (inceleme sonrası; ayrıca sorulmayan,
+  değiştirilebilir):
+  - Lotun koli düzeni (koli içi miktar ve koli GTIN'i) lot açılırken lota yazılır ve değişmez.
+    İrsaliyedeki koli sayısı ve lotun koli ve palet etiketleri bunu kullanır. Koli GTIN'i olsun
+    olmasın her mamulde geçerlidir: koli içi miktar değişse, koli GTIN'i sonradan ilk kez girilse,
+    kilitli koli GTIN'i yeni GTIN'le değişse, koli dönüşümü pasife alınsa ya da Excel'den
+    güncellense de önceden açılmış lotun etiketi ve sevk edilmiş irsaliyenin yeniden basımı
+    değişmez.
+  - O gün koli GTIN'i olmayan lotun etiketine ürün GTIN'i basılır; malzemeye sonradan girilen
+    koli GTIN'i yalnız sonra açılan lotlara basılır. KOLI dönüşümü pasifken açılan lotta koli içi
+    miktar yoktur (irsaliyede koli sayısı boş); pasif dönüşümün koli GTIN'i etikete basılır
+    (okutmadaki gibi). Kontrol hanesi yanlış koli GTIN'iyle açılmış lot GS1'siz basılır;
+    düzeltilen GTIN sonra açılan lotlara basılır.
+  - Lot açılırken mamulün KOLI dönüşümü işlem sonuna kadar kilitlenir: lot açan işlem (dolum
+    başlangıcı, mal kabul, açılış stoku içe aktarması) sürerken KOLI dönüşümünde kaydedilen
+    değişiklik işlemin bitmesini bekler ve açılan lotu görür; süren değişikliği de lot bekler ve
+    yeni düzeni alır. Koli GTIN'i kilitli satırdan, koli içi miktardan önce okunur: lot
+    açılırken KOLI dönüşümü yoksa o sırada kaydedilen dönüşümün koli GTIN'i lota yazılmaz; lot
+    en çok o dönüşümün koli içi miktarını alır, etiketine ürün GTIN'i basılır.
+  - Var olan mamul lotları göçte (inventory 0008) açıldıkları andaki düzenle doldurulur (lotun
+    açıldığı andan sonraki ilk arşiv satırı, yoksa bugünkü KOLI dönüşümü; temel birimi koli olan
+    mamulde 1).
+  - "Yeni koli GTIN'iyle" kuralı koli GTIN'i tanımlı mamulde geçerlidir. Koli GTIN'i olmayan
+    mamulde koli içi miktar doğrudan değişir; arşivlenecek GTIN yoktur, eski lotlar etkilenmez.
+  - Etiket penceresinde "Koli içi adet" lotun koli içi miktarıyla gelir (temel birimi adet olan
+    mamulde). Lot koli GTIN'i taşıyorsa farklı adet yazılınca sarı uyarı çıkar, engellenmez
+    (eksik son koli gibi durumlar).
+- **İnceleme sonrası ayrıca** (2026-11-05; ayrıca sorulmayan, değiştirilebilir):
+  - "Koli GTIN'i öner" yalnız mamulde: hammadde, ambalaj ve yarı mamulün GTIN'i tedarikçinindir
+    (GS1'de koli GTIN'ini marka sahibi verir); tedarikçinin koli GTIN'i koli etiketinden girilir.
+  - GS1 ve çıktı ayarlarındaki değişikliklerin notu denetim günlüğüne yazılır; Kodlama
+    sistematiği > Geçmiş yalnız biçim değişikliklerini ve kod göçlerini listeler.
+  - Kılavuz: tedarikçinin koli barkodu (GS1) lotu bulmaz, çünkü barkoddaki lot numarası
+    tedarikçinindir. Lot etiketiyle okutulur. Tedarikçi lot numarasıyla eşleştirme ayrı bir
+    özelliktir, istenirse sahibe sorulur.

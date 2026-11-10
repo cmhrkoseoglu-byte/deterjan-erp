@@ -64,11 +64,33 @@ export function RecordFormModal<T extends object>({
   const form = useForm<FormValues>({ initialValues: toFormValues(fields, null, defaults) });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Özel alanın (ör. GTIN) koyduğu not: alan önerisini silince yalnızca bu not kalkar.
+  const fieldNotice = useRef("");
   const suggested = useRef("");
   const hasCode = Boolean(codeType) && fields.some((field) => field.name === CODE);
   // Kayıt açıldıktan sonra kodu yalnızca admin değiştirir (sunucu da denetler).
   const codeLocked = hasCode && Boolean(record) && !isAdmin(user);
   const typeValue = codeTypeField ? String(form.values[codeTypeField] ?? "") : "";
+  const recordValues = record as Record<string, unknown> | null;
+
+  /** Kayıt alanı kilitliyor mu (ör. lotu olan mamulün GTIN'i)? Yeni kayıtta kilit yoktur. */
+  function lockedByRecord(field: FieldDef): boolean {
+    return Boolean(recordValues && field.lockedBy && recordValues[field.lockedBy]);
+  }
+
+  /**
+   * Kaydın kilidi formdaki değerlerle kalktı mı (`unlockedWhen`, ör. koli içi miktar değişti)?
+   * Çizimde güncel değerlere, gönderimde gönderilen değerlere bakılır.
+   */
+  function isUnlocked(field: FieldDef, values: FormValues = form.values): boolean {
+    if (!recordValues || !field.unlockedWhen || !lockedByRecord(field)) return false;
+    return field.unlockedWhen(values, recordValues);
+  }
+
+  /** Alan kilitli mi: kayıt kilitliyor ve kilit formdaki değerlerle kalkmadı. */
+  function isLocked(field: FieldDef, values: FormValues = form.values): boolean {
+    return lockedByRecord(field) && !isUnlocked(field, values);
+  }
 
   const suggestion = useQuery({
     queryKey: ["coding", "suggest", codeType, typeValue],
@@ -129,7 +151,9 @@ export function RecordFormModal<T extends object>({
     mutationFn: (values: FormValues) => {
       const payload = toPayload(fields, values);
       if (record) {
-        for (const field of fields) if (field.lockedOnEdit) delete payload[field.name];
+        for (const field of fields) {
+          if (field.lockedOnEdit || isLocked(field, values)) delete payload[field.name];
+        }
         if (codeLocked) delete payload[CODE];
       }
       return onSubmit(payload);
@@ -148,6 +172,26 @@ export function RecordFormModal<T extends object>({
       setError(message);
     },
   });
+
+  /** Özel alan (ör. GTIN) alınmış önerisini yeniledi: sunucunun hatası yerine sarı not çıkar. */
+  function suggestionReplaced(text: string) {
+    setError("");
+    fieldNotice.current = text;
+    setNotice(text);
+  }
+
+  /** Özel alan yazdığı öneriyi sildi: o alanın notu kalkar, başka not ya da hata kalır. */
+  function suggestionCleared() {
+    const own = fieldNotice.current;
+    fieldNotice.current = "";
+    if (own) setNotice((current) => (current === own ? "" : current));
+  }
+
+  /** Alan açıklaması: kilitli alanda kilidin nedeni, kod alanında öneri, kilit ve eski kodlar. */
+  function describe(field: FieldDef): FieldDef {
+    if (!isLocked(field) || !field.lockedHelp || readOnly) return describeCode(field);
+    return describeCode({ ...field, description: field.lockedHelp });
+  }
 
   function describeCode(field: FieldDef): FieldDef {
     if (!hasCode || field.name !== CODE) return field;
@@ -187,22 +231,38 @@ export function RecordFormModal<T extends object>({
             </Alert>
           )}
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
-            {fields.map((field) => (
-              <div
-                key={field.name}
-                style={field.wide || field.type === "textarea" ? { gridColumn: "1 / -1" } : {}}
-              >
-                <FieldInput
-                  field={describeCode(field)}
-                  form={form}
-                  disabled={
-                    readOnly ||
-                    (Boolean(record) && field.lockedOnEdit) ||
-                    (field.name === CODE && codeLocked)
-                  }
-                />
-              </div>
-            ))}
+            {fields.map((field) => {
+              const style = field.wide || field.type === "textarea" ? { gridColumn: "1 / -1" } : {};
+              const disabled = Boolean(
+                readOnly ||
+                (record && field.lockedOnEdit) ||
+                (field.name === CODE && codeLocked) ||
+                isLocked(field),
+              );
+              if (field.component) {
+                // Özel alan görünmüyorsa (null) ızgarada boş hücre kalmasın diye sarmalanmaz.
+                const Custom = field.component;
+                return (
+                  <Custom
+                    key={field.name}
+                    field={describe(field)}
+                    form={form}
+                    record={recordValues}
+                    disabled={disabled}
+                    unlocked={isUnlocked(field)}
+                    style={style}
+                    saveError={mutation.error}
+                    onSuggestionReplaced={suggestionReplaced}
+                    onSuggestionCleared={suggestionCleared}
+                  />
+                );
+              }
+              return (
+                <div key={field.name} style={style}>
+                  <FieldInput field={describe(field)} form={form} disabled={disabled} />
+                </div>
+              );
+            })}
           </SimpleGrid>
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>

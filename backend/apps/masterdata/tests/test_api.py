@@ -1,12 +1,21 @@
 import io
+from datetime import datetime
+from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from openpyxl import Workbook
 from rest_framework.test import APIClient
 
+from apps.core.labels import gs1_check_digit
 from apps.core.models import AuditLog
-from apps.masterdata.models import Material, Supplier
+from apps.inventory import services as inventory
+from apps.inventory.models import Lot
+from apps.inventory.testing import assert_stock_invariants
+from apps.masterdata.models import Material, MaterialUnitConversion, RetiredGtin, Supplier
 from apps.masterdata.tests.factories import (
     CustomerFactory,
     EquipmentFactory,
@@ -206,6 +215,148 @@ def test_create_conversion(client_for):
 
     assert response.status_code == 201, response.json()
     assert response.json()["base_unit_code"] == "ADET"
+    assert response.json()["retired_gtins"] == []
+
+
+# --- eski koli GTIN'leri (koli içi miktar değişikliği; kurallar test_pack_change.py) -----------
+
+ISTANBUL = ZoneInfo("Europe/Istanbul")
+
+
+def case_gtin(n: int) -> str:
+    body = f"1869{n:09d}"
+    return body + gs1_check_digit(body)
+
+
+def product_gtin(n: int) -> str:
+    body = f"869{n:09d}"
+    return body + gs1_check_digit(body)
+
+
+def locked_conversion(gtin: str, product: str) -> MaterialUnitConversion:
+    """Lotu olan mamulün geçerli koli GTIN'li KOLI dönüşümü: malzemenin ve dönüşümün
+    `gtin_locked`'ı true; kilit lot sorgusu ister (sorgu ekleri `has_lots`, `material_has_lots`)."""
+    material = MaterialFactory.create(
+        material_type=Material.Type.FINISHED, base_unit=unit("ADET"), gtin=product
+    )
+    inventory.create_lot(
+        None, material=material, source=Lot.Source.FILLING, lot_no=f"D-{material.code}"
+    )
+    return MaterialUnitConversionFactory.create(material=material, gtin=gtin)
+
+
+def retire(conversion, gtin, factor, replaced_by, user=None, at=None):
+    """Eski koli GTIN'i satırı (doğrudan); `at` verilirse değiştiği an."""
+    row = RetiredGtin.objects.create(
+        conversion=conversion,
+        gtin=gtin,
+        factor_to_base=Decimal(factor),
+        replaced_by=replaced_by,
+        created_by=user,
+    )
+    if at is not None:
+        RetiredGtin.objects.filter(pk=row.pk).update(created_at=at)
+    return row
+
+
+def test_conversion_shows_retired_case_gtins_newest_first(client_for, make_user):
+    conversion = MaterialUnitConversionFactory(gtin=case_gtin(3))
+    planner = make_user("planlama", full_name="Ayşe Planlama")
+    # Önce yazılan satır daha yeni: sıralama değiştiği ana göredir, kayıt sırasına göre değil.
+    retire(
+        conversion,
+        case_gtin(2),
+        "24",
+        case_gtin(3),
+        planner,
+        datetime(2026, 11, 5, 10, 0, tzinfo=ISTANBUL),
+    )
+    retire(
+        conversion,
+        case_gtin(1),
+        "12",
+        case_gtin(2),
+        None,
+        datetime(2026, 10, 1, 9, 30, tzinfo=ISTANBUL),
+    )
+    expected = [
+        {
+            "gtin": case_gtin(2),
+            "factor_to_base": "24.000000",
+            "replaced_by": case_gtin(3),
+            "retired_at": "2026-11-05T10:00:00+03:00",
+            "retired_by_name": "Ayşe Planlama",
+        },
+        {
+            "gtin": case_gtin(1),
+            "factor_to_base": "12.000000",
+            "replaced_by": case_gtin(2),
+            "retired_at": "2026-10-01T09:30:00+03:00",
+            "retired_by_name": "",  # sistem işlemi
+        },
+    ]
+    client = client_for("depo")
+    listed = client.get(reverse("masterdata:conversion-list")).json()["results"]
+    assert listed[0]["retired_gtins"] == expected
+    detail = client.get(reverse("masterdata:conversion-detail", args=[conversion.pk])).json()
+    assert detail["retired_gtins"] == expected
+    material = client.get(material_url(conversion.material.pk)).json()
+    assert material["conversions"][0]["retired_gtins"] == expected
+
+
+def test_retired_case_gtins_and_gtin_locks_add_no_per_row_queries(
+    client_for, make_user, django_assert_num_queries
+):
+    """Eski koli GTIN'leri ve GTIN kilidi satır başına sorgu yapmaz. Ölçü: az satırlı listeler ve
+    kilidi hiç sorgulanmayan ambalaj malzemesinin detayı; lotu olan mamuller (kilitli GTIN'ler) ve
+    eski koli GTIN'leri eklenince sorgu sayısı değişmez. Sorgu eki düşerse her kilitli satır lot
+    sorgusu yapar."""
+    users = [make_user(full_name=f"Kullanıcı {n}") for n in range(3)]
+    plain = MaterialUnitConversionFactory(gtin=case_gtin(300))  # ambalaj: kilit sorgulanmaz
+    retire(plain, case_gtin(301), "6", case_gtin(300), users[0])
+    first = locked_conversion(case_gtin(100), product_gtin(1))
+    retire(first, case_gtin(101), "6", case_gtin(100), users[0])
+    client = client_for("depo")
+    conversions = reverse("masterdata:conversion-list")
+
+    def count(url: str) -> int:
+        with CaptureQueriesContext(connection) as queries:
+            assert client.get(url).status_code == 200
+        return len(queries)
+
+    for url in (conversions, MATERIALS, material_url(plain.material.pk)):
+        client.get(url)  # ısınma
+    list_count, materials_count = count(conversions), count(MATERIALS)
+    detail_count = count(material_url(plain.material.pk))
+
+    pallet = MaterialUnitConversionFactory(material=first.material, unit=unit("PALET"))
+    retire(pallet, case_gtin(102), "480", case_gtin(103), users[1])
+    for n in range(2):
+        other = locked_conversion(case_gtin(200 + n * 10), product_gtin(2 + n))
+        for index, user in enumerate(users):
+            retire(other, case_gtin(201 + n * 10 + index), "12", case_gtin(200 + n * 10), user)
+    with django_assert_num_queries(list_count):
+        rows = client.get(conversions).json()["results"]
+    assert sorted((len(row["retired_gtins"]), row["gtin_locked"]) for row in rows) == [
+        (1, False),
+        (1, False),
+        (1, True),
+        (3, True),
+        (3, True),
+    ]
+    with django_assert_num_queries(materials_count):
+        listed = client.get(MATERIALS).json()["results"]
+    assert sorted(row["gtin_locked"] for row in listed) == [False, True, True, True]
+    # Lotu olan mamulün detayı (kilitli ürün ve koli GTIN'i, iki dönüşüm) ambalaj malzemesininki
+    # kadar sorgu yapar.
+    with django_assert_num_queries(detail_count):
+        body = client.get(material_url(first.material.pk)).json()
+    assert body["gtin_locked"] is True
+    assert [(len(row["retired_gtins"]), row["gtin_locked"]) for row in body["conversions"]] == [
+        (1, True),
+        (1, False),
+    ]
+    assert_stock_invariants()
 
 
 # --- depo, lokasyon, ekipman, tedarikçi, müşteri ---------------------------------------------

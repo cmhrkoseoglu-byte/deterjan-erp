@@ -1,20 +1,23 @@
 import { Badge, Select } from "@mantine/core";
 import type { Printer } from "../../api/labels";
-import type {
-  Category,
-  Conversion,
-  Equipment,
-  Location,
-  Material,
-  Partner,
-  Unit,
-  Warehouse,
+import {
+  CASE_UNIT,
+  type Category,
+  type Conversion,
+  type Equipment,
+  type Location,
+  type Material,
+  type Partner,
+  type Unit,
+  type Warehouse,
 } from "../../api/masterdata";
 import type { Role } from "../../api/types";
 import { formatNumber } from "../../i18n/format";
 import type { EntityConfig } from "../common/CrudPage";
-import type { FieldDef } from "../common/forms";
+import { decimalKey, type FieldDef, type FormValues } from "../common/forms";
 import { MaterialHazardAction } from "../hse/MaterialHazardModal";
+import { CaseGtinField, MaterialGtinField } from "./GtinFields";
+import { CountryField } from "./CountryField";
 import { LocationLabelAction, PrinterTestAction } from "./LabelTools";
 
 // Ana verileri planlama yazar (admin her yere erişir); birimleri yalnızca admin.
@@ -131,6 +134,11 @@ export const materialConfig: EntityConfig<Material> = {
       label: "GTIN (barkod no)",
       type: "text",
       description: "Mamulde doluysa koli etiketi GS1-128 basılır (8, 12, 13 ya da 14 hane)",
+      // Kilit yalnız mamulde (CUMHUR, 2026-11-05): hammadde, ambalaj ve yarı mamulde lot olsa da
+      // tedarikçi GTIN'i düzeltilebilir; sunucu onlarda `gtin_locked: false` gönderir.
+      lockedBy: "gtin_locked",
+      lockedHelp: "Lotu olan mamulün GTIN'i değiştirilemez.",
+      component: MaterialGtinField,
     },
     { name: "requires_incoming_qc", label: "Giriş kontrolü gerekli", type: "checkbox" },
     { name: "is_hazardous", label: "Tehlikeli madde", type: "checkbox" },
@@ -141,6 +149,20 @@ export const materialConfig: EntityConfig<Material> = {
   rowActions: (row) => <MaterialHazardAction row={row} />,
   filters: selectFilter("Tür", "material_type", MATERIAL_TYPES),
 };
+
+/**
+ * Koli içi miktar değişti mi: düzenlenen KOLI dönüşümünde "Temel birim karşılığı" kayıttakiyle
+ * sunucudaki gibi sayı olarak aynı değil ("12", "12.000000", "12,0" ve "+12" aynıdır; -12
+ * farklıdır). Boş ya da sayı olmayan değer de kayıttaki miktar değildir: miktar silinip
+ * düzeltilirken girilen yeni koli GTIN'i kalır (alanı sunucu doğrular). Lotu olan mamulde koli
+ * GTIN'inin kilidi bununla kalkar (CUMHUR, 2026-11-05): GS1'e göre yeni miktar yeni koli GTIN'iyle
+ * birlikte kaydedilir, eskisi eski miktarıyla arşivlenir.
+ */
+function casePackChanged(values: FormValues, record: Record<string, unknown>): boolean {
+  if (record.unit_code !== CASE_UNIT) return false;
+  const entered = decimalKey(String(values.factor_to_base ?? ""));
+  return entered !== decimalKey(String(record.factor_to_base ?? ""));
+}
 
 export const conversionConfig: EntityConfig<Conversion & { code?: string; name?: string }> = {
   endpoint: "conversions",
@@ -156,6 +178,7 @@ export const conversionConfig: EntityConfig<Conversion & { code?: string; name?:
       render: (row) =>
         `1 ${row.unit_code} = ${formatNumber(row.factor_to_base, undefined)} ${row.base_unit_code}`,
     },
+    { key: "gtin", label: "Koli GTIN'i", render: (row) => row.gtin },
   ],
   fields: [
     {
@@ -181,6 +204,20 @@ export const conversionConfig: EntityConfig<Conversion & { code?: string; name?:
       type: "decimal",
       required: true,
       description: "1 birim kaç temel birim eder (1 KOLI = 12 ADET → 12)",
+    },
+    {
+      // GS1: yalnızca KOLI biriminde görünür (CaseGtinField). Lotu olan mamulde kilitlidir; koli
+      // içi miktar değişince kilit kalkar, yeni koli GTIN'i girilir ve eskisi arşivlenir.
+      name: "gtin",
+      label: "Koli GTIN'i",
+      type: "text",
+      description:
+        "Koli ve palet etiketinin barkoduna basılır (genelde 14 hane). Boşsa etiketlere ürün GTIN'i basılır.",
+      lockedBy: "gtin_locked",
+      lockedHelp:
+        "Lotu olan mamulün koli GTIN'i değiştirilemez. Koli içi miktar değişirse yeni miktarla birlikte yeni koli GTIN'i girilir.",
+      unlockedWhen: casePackChanged,
+      component: CaseGtinField,
     },
   ],
 };
@@ -209,6 +246,8 @@ export const unitConfig: EntityConfig<Unit> = {
       label: "Tür temel birimine katsayı",
       render: (row) => formatNumber(row.factor_to_kind_base, undefined) || "Malzemeye özel",
     },
+    { key: "unece_code", label: "UN/ECE kodu" },
+    { key: "symbol", label: "Sembol" },
   ],
   fields: [
     code,
@@ -219,6 +258,19 @@ export const unitConfig: EntityConfig<Unit> = {
       label: "Tür temel birimine katsayı",
       type: "decimal",
       description: "KG ve LT için 1, G ve ML için 0,001. Koli gibi birimlerde boş bırakın.",
+    },
+    {
+      name: "unece_code",
+      label: "UN/ECE kodu",
+      type: "text",
+      description:
+        "Uluslararası birim kodu (UN/ECE Rec 20): KGM, GRM, LTR, MLT, C62; koli XCT, palet XPX",
+    },
+    {
+      name: "symbol",
+      label: "Sembol",
+      type: "text",
+      description: "kg, g, L, mL; adet, koli gibi birimlerde boş",
     },
   ],
 };
@@ -328,8 +380,19 @@ const partnerFields: FieldDef[] = [
   { name: "phone", label: "Telefon", type: "text" },
   { name: "email", label: "E-posta", type: "email" },
   { name: "contact_person", label: "Yetkili kişi", type: "text" },
+  {
+    name: "country_code",
+    label: "Ülke",
+    type: "text",
+    required: true,
+    description: "ISO 3166-1 ülke kodu (TR, DE, IQ …)",
+    component: CountryField,
+  },
   { name: "address", label: "Adres", type: "textarea" },
 ];
+
+// Yeni caride ülke Türkiye gelir (sunucudaki varsayılanla aynı).
+const partnerDefaults = { country_code: "TR" };
 
 const partnerColumns = [
   codeColumn,
@@ -337,6 +400,7 @@ const partnerColumns = [
   { key: "tax_number", label: "Vergi no" },
   { key: "phone", label: "Telefon" },
   { key: "contact_person", label: "Yetkili" },
+  { key: "country_code", label: "Ülke" },
 ];
 
 export const supplierConfig: EntityConfig<Partner> = {
@@ -348,6 +412,7 @@ export const supplierConfig: EntityConfig<Partner> = {
   importKind: "suppliers",
   columns: partnerColumns,
   fields: partnerFields,
+  defaults: partnerDefaults,
 };
 
 export const customerConfig: EntityConfig<Partner> = {
@@ -358,6 +423,7 @@ export const customerConfig: EntityConfig<Partner> = {
   writeRoles: WRITE,
   importKind: "customers",
   columns: partnerColumns,
+  defaults: partnerDefaults,
   fields: [
     ...partnerFields,
     {

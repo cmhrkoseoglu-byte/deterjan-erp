@@ -155,6 +155,105 @@ describe("ScanInput", () => {
     expect(await screen.findByTestId("scan-error")).toHaveTextContent("lokasyon değil");
     expect(onLocation).not.toHaveBeenCalled();
   });
+
+  it("koli GTIN'i okutulunca koli içeriğini yazar, sunucunun uyarısını sarı gösterir", async () => {
+    const lot = scanLot({ material_type: "FINISHED", unit: "ADET" });
+    vi.mocked(scanApi.scanCode).mockResolvedValue({
+      ...scanResult([lot]),
+      unit: "KOLI",
+      units_per_case: "12.0000",
+      warnings: ["Barkoddaki SKT (31.10.2028) lot kaydındakinden (30.10.2028) farklı."],
+      gs1_dates: { "17": "2028-10-31" },
+    });
+    const onLot = vi.fn();
+    renderWithProviders(<ScanInput expect="lot" onLot={onLot} />);
+    await userEvent.type(
+      screen.getByTestId("scan-input"),
+      "(01)18690000000019(17)281031(10)H-261015-001{Enter}",
+    );
+    await waitFor(() => expect(onLot).toHaveBeenCalledWith(lot, expect.anything()));
+    expect(screen.getByTestId("scan-case")).toHaveTextContent("1 koli = 12 ADET");
+    const warning = screen.getByTestId("scan-warning");
+    expect(warning).toHaveTextContent("Barkoddaki SKT (31.10.2028) lot kaydındakinden");
+    expect(warning).toHaveAttribute("data-variant", "light");
+    expect(alertStyle(warning)).toContain("--mantine-color-yellow-light");
+  });
+
+  it("lotsuz koli okutmasında koli içeriğini malzemenin temel birimiyle yazar", async () => {
+    vi.mocked(scanApi.scanCode).mockResolvedValue({
+      ...scanResult([]),
+      kind: "material",
+      code: "(01)18690000000019",
+      material: {
+        id: 90,
+        code: "BULASIK-750",
+        name: "Bulaşık deterjanı 750 ml",
+        material_type: "FINISHED",
+        base_unit_code: "ADET",
+      },
+      unit: "KOLI",
+      units_per_case: "12.0000",
+      warnings: [],
+    });
+    const onResult = vi.fn();
+    renderWithProviders(<ScanInput onResult={onResult} />);
+    await userEvent.type(screen.getByTestId("scan-input"), "(01)18690000000019{Enter}");
+    // Koli GTIN'i (10) olmadan okutuldu: lot yok, birim malzemeden gelir.
+    expect(await screen.findByTestId("scan-case")).toHaveTextContent("1 koli = 12 ADET");
+    expect(screen.getByTestId("scan-ok")).toHaveTextContent(
+      "BULASIK-750 - Bulaşık deterjanı 750 ml",
+    );
+    expect(onResult).toHaveBeenCalled();
+  });
+
+  it("hatadan sonra alana yazılınca önceki okutmanın koli bilgisi ve uyarısı geri gelmez", async () => {
+    vi.mocked(scanApi.scanCode)
+      .mockResolvedValueOnce({
+        ...scanResult([scanLot({ unit: "ADET" })]),
+        unit: "KOLI",
+        units_per_case: "6",
+        warnings: ["Uyarı"],
+      })
+      .mockRejectedValueOnce(
+        httpError(400, { code: "gs1_check_digit", detail: "(01) GTIN'in kontrol hanesi hatalı." }),
+      );
+    renderWithProviders(<ScanInput expect="lot" />);
+    const input = screen.getByTestId("scan-input");
+    await userEvent.type(input, "KOLI-1{Enter}");
+    expect(await screen.findByTestId("scan-case")).toHaveTextContent("1 koli = 6 ADET");
+    expect(screen.getByTestId("scan-warning")).toHaveTextContent("Uyarı");
+    await userEvent.type(input, "(01)18690000000018{Enter}");
+    expect(await screen.findByTestId("scan-error")).toHaveTextContent("kontrol hanesi hatalı");
+    // Yazmaya başlayınca hata kalkar; hatalı okutma önceki sonucun bilgisini de silmiştir.
+    await userEvent.type(input, "K");
+    expect(screen.queryByTestId("scan-error")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("scan-case")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("scan-warning")).not.toBeInTheDocument();
+  });
+
+  it("sonraki okutmada koli bilgisi ve uyarı kalkar; hatada gösterilmez", async () => {
+    vi.mocked(scanApi.scanCode)
+      .mockResolvedValueOnce({
+        ...scanResult([scanLot({ unit: "ADET" })]),
+        unit: "KOLI",
+        units_per_case: "6",
+        warnings: ["Uyarı"],
+      })
+      .mockResolvedValueOnce({ ...scanResult([scanLot()]), unit: "", warnings: [] })
+      .mockRejectedValueOnce(
+        httpError(400, { code: "gs1_check_digit", detail: "(01) GTIN'in kontrol hanesi hatalı." }),
+      );
+    renderWithProviders(<ScanInput expect="lot" />);
+    const input = screen.getByTestId("scan-input");
+    await userEvent.type(input, "KOLI-1{Enter}");
+    expect(await screen.findByTestId("scan-case")).toHaveTextContent("1 koli = 6 ADET");
+    await userEvent.type(input, "LOT:H-261015-001{Enter}");
+    await waitFor(() => expect(screen.queryByTestId("scan-case")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("scan-warning")).not.toBeInTheDocument();
+    await userEvent.type(input, "(01)18690000000018{Enter}");
+    expect(await screen.findByTestId("scan-error")).toHaveTextContent("kontrol hanesi hatalı");
+    expect(screen.queryByTestId("scan-case")).not.toBeInTheDocument();
+  });
 });
 
 describe("AttachmentPanel", () => {
@@ -235,7 +334,24 @@ describe("LabelPrintModal", () => {
     expect(link.getAttribute("href")).toContain("/inventory/lots/7/label/");
     expect(link.getAttribute("href")).toContain("output=pdf");
   });
+
+  it("seçilen etiketin uyarısını sarı gösterir", async () => {
+    vi.mocked(labelsApi.listPrinters).mockResolvedValue([]);
+    const warning = "Bu lotun koli GTIN'i yok; koli etiketine ürün GTIN'i basılır.";
+    renderWithProviders(
+      <LabelPrintModal opened onClose={vi.fn()} options={[{ ...options[0], warning }]} />,
+    );
+    const alert = await screen.findByTestId("label-warning");
+    expect(alert).toHaveTextContent(warning);
+    expect(alert).toHaveAttribute("data-variant", "light");
+    expect(alertStyle(alert)).toContain("--mantine-color-yellow-light");
+  });
 });
+
+/** Mantine uyarısının rengi kök öğenin stilindeki değişkenlerde (--alert-bg, --alert-color). */
+function alertStyle(element: HTMLElement): string {
+  return element.closest(".mantine-Alert-root")?.getAttribute("style") ?? "";
+}
 
 function printer(overrides: Partial<labelsApi.Printer> = {}): labelsApi.Printer {
   return {

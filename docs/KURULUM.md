@@ -75,6 +75,12 @@ cd /srv/deterjan-erp && git checkout <sürüm etiketi>   # ör. v1.0.0
 - Backend, **etiket yazıcılarına TCP 9100** ile doğrudan bağlanır (ZPL). Sunucu ile yazıcılar arasında
   9100 açık olmalı; yazıcılara da sabit IP verin. İleride tartı (terazi) aracısı da sunucuya bağlanacak.
   Test: `nc -vz <yazıcı IP> 9100`.
+- **Etiket deneme baskısı (bir kez, fabrikadaki Zebra yazıcıda):** `nc <yazıcı IP> 9100 <
+  scripts/zebra-deneme.zpl`. Etiketteki her QR kodu ve alttaki çizgi barkodu üretimde kullanılan
+  okuyucuyla ERP'nin okutma alanına okutun. Beklenen: A, B13, B12 ve C QR'ları `LOT:ŞUBAT-01`,
+  L QR'ı `LOC:RAF-Ş1`, çizgi barkod `LOT:A^B~C\12`; en alt satırda `LOT:A\12` yazar. Hangilerinin
+  doğru okunduğunu geliştiriciye bildirin: Türkçe harfli lot ve lokasyon kodlarının QR'ı buna
+  göre ayarlanır (PROGRESS, Adım 7 açık iş).
 - Konteynerler Docker'ın varsayılan köprü ağındadır; fabrika ağına normal şekilde çıkabilirler. Fabrika
   ağı `172.16.0.0/12` aralığını kullanıyorsa Docker'ın ağ aralığıyla çakışabilir:
   `/etc/docker/daemon.json` → `"default-address-pools": [{"base": "10.200.0.0/16", "size": 24}]`.
@@ -288,6 +294,16 @@ scripts/prod-compose.sh exec backend python manage.py backfill_code_history     
 Komut, bu sürümden önce kodu değişmiş ana veri kayıtlarının eski kodlarını denetim günlüğünden eski
 kod geçmişine yükler: eski kod başka kayda verilmez ve kayıt eski koduyla da bulunur. Tekrar
 çalıştırmak bir şey yazmaz.
+
+**Kodlama sistematiği (Paket 2) güncellemesinden sonra bir kez:** göç, güvenlik bilgi
+formlarının (GBF) serbest metin dilini ISO 639-1 koduna çevirir, tanımadığı değeri olduğu gibi
+bırakır. Geçerli GBF'lerde kalanları listeleyin (malzeme kodu, revizyon no, dil); **İSG ve
+çevre > GBF arşivi**'nde malzeme koduyla arayıp GBF'yi açın ve dil listesinden düzeltin.
+Arşivdeki eski revizyonlar değiştirilemez, dilleri olduğu gibi kalır. Liste boşsa (`[]`) iş yok:
+
+```bash
+scripts/prod-compose.sh exec backend python manage.py shell -c "from apps.core.standards import is_language_code; from apps.hse.models import SafetyDataSheet as S; print([(s.material.code, s.revision_no, s.language) for s in S.objects.filter(superseded_at__isnull=True).select_related('material') if not is_language_code(s.language)])"
+```
 
 **Geri dönüş:** yeni sürüm sorunluysa ve veritabanı değişikliği (migration) içeriyorsa önceki koda
 dönmek yetmez, veritabanı da güncelleme öncesine dönmelidir:

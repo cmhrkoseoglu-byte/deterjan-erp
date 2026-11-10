@@ -22,6 +22,8 @@ vi.mock("../../api/labels", async (importOriginal) => ({
   ...(await importOriginal<typeof labelsApi>()),
   listPrinters: vi.fn(),
   getLabelSettings: vi.fn(),
+  listPallets: vi.fn(),
+  createPallet: vi.fn(),
 }));
 vi.mock("../../api/inventory", async (importOriginal) => ({
   ...(await importOriginal<typeof inventoryApi>()),
@@ -55,6 +57,7 @@ function lot(overrides: Partial<LotDetail> = {}): LotDetail {
     material_name: "Lineer alkil benzen sülfonik asit",
     material_type: "RAW",
     material_gtin: "",
+    material_case_gtin: "",
     unit: "KG",
     status: "QUARANTINE",
     status_display: "Karantina",
@@ -273,6 +276,259 @@ describe("lot detay", () => {
     expect(screen.queryByRole("button", { name: "Serbest bırak" })).not.toBeInTheDocument();
   });
 });
+
+describe("lot etiketleri (GS1)", () => {
+  const settings: labelsApi.LabelSettings = {
+    company_name: "",
+    gs1_company_prefix: "8690000",
+    sscc_extension_digit: 0,
+    next_sscc_serial: 42,
+    default_printer: null,
+    default_printer_code: null,
+    sscc_enabled: true,
+    updated_at: "2026-10-15T09:00:00+03:00",
+  };
+  const finished = (caseGtin: string, gs1Label?: boolean, gtin = "8690000000012") =>
+    lot({
+      material_type: "FINISHED",
+      material_gtin: gtin,
+      material_case_gtin: caseGtin,
+      status: "RELEASED",
+      gs1_label: gs1Label,
+    });
+  const pallet: labelsApi.PalletLabel = {
+    id: 3,
+    sscc: "086900000000000417",
+    lot: 7,
+    lot_no: "D-261015-001",
+    material_code: "BULASIK-750",
+    material_name: "Bulaşık deterjanı 750 ml",
+    case_count: 40,
+    units_per_case: 12,
+    created_by_name: "Depo",
+    created_at: "2026-10-15T12:00:00+03:00",
+  };
+  /** GS1 barkodu basılamayan lotun sarı uyarısı (palet etiketinde SSCC her zaman basılır). */
+  const noGs1 = {
+    koli: "Bu lotun koli etiketine GS1 barkodu basılmaz (lot numarası GS1'e uymuyor ya da GTIN geçersiz); firma içi barkod ya da QR kodu basılır.",
+    palet:
+      "Bu lotun palet etiketine GTIN ve lot için GS1 barkodu basılmaz (lot numarası GS1'e uymuyor ya da GTIN geçersiz); yerine firma içi lot barkodu basılır (Türkçe harfli ya da > içeren lot numarasında basılmaz). Paletin SSCC barkodu her zaman basılır.",
+  };
+
+  /** Lotun sayfasını açar ve koli etiketinin ya da paletin etiket penceresini açar (palette SSCC
+   * açık, lotun bir paleti var). */
+  async function openLabel(detail: LotDetail, kind: "koli" | "palet") {
+    if (kind === "palet") {
+      vi.mocked(labelsApi.getLabelSettings).mockResolvedValue(settings);
+      vi.mocked(labelsApi.listPallets).mockResolvedValue([pallet]);
+    }
+    vi.mocked(inventoryApi.getLot).mockResolvedValue(detail);
+    renderApp("/depo/lotlar/7");
+    if (kind === "palet") {
+      const row = (await screen.findByText(pallet.sscc)).closest("tr")!;
+      await userEvent.click(within(row).getByRole("button", { name: "Etiket yazdır" }));
+      return screen.findByRole("dialog", { name: `Palet etiketi (SSCC): ${pallet.sscc}` });
+    }
+    await userEvent.click(await screen.findByRole("button", { name: "Etiket yazdır" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("textbox", { name: "Etiket" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Koli etiketi" }));
+    return dialog;
+  }
+
+  beforeEach(() => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));
+    vi.mocked(labelsApi.listPrinters).mockResolvedValue([]);
+    vi.mocked(labelsApi.getLabelSettings).mockResolvedValue({ ...settings, sscc_enabled: false });
+    vi.mocked(labelsApi.listPallets).mockResolvedValue([]);
+    vi.mocked(attachmentsApi.listAttachments).mockResolvedValue([]);
+  });
+
+  it.each([
+    [
+      "koli GTIN'i varsa koli GTIN'i basılır",
+      "18690000000019",
+      "Koli etiketine koli GTIN'i basılır.",
+    ],
+    [
+      "koli GTIN'i yoksa ürün GTIN'i için sarı uyarı verir",
+      "",
+      "Bu lotun koli GTIN'i yok; koli etiketine ürün GTIN'i basılır.",
+    ],
+  ])("mamul lotunun koli etiketinde %s", async (_name, caseGtin, text) => {
+    vi.mocked(inventoryApi.getLot).mockResolvedValue(finished(caseGtin));
+    renderApp("/depo/lotlar/7");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Etiket yazdır" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("textbox", { name: "Etiket" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Koli etiketi" }));
+    expect(within(dialog).getByText(text)).toBeInTheDocument();
+    if (caseGtin) {
+      expect(within(dialog).queryByTestId("label-warning")).not.toBeInTheDocument();
+    } else {
+      const warning = within(dialog).getByTestId("label-warning");
+      expect(warning).toHaveTextContent(text);
+      expect(alertStyle(warning)).toContain("--mantine-color-yellow-light"); // sarı
+    }
+    // Koli GTIN'i lot kaydından gelir; etiket penceresi lotu yeniden istemez.
+    expect(inventoryApi.getLot).toHaveBeenCalledTimes(1);
+  });
+
+  it("palet etiketi koli GTIN'i yoksa ürün GTIN'i basılacağını söyler", async () => {
+    vi.mocked(labelsApi.getLabelSettings).mockResolvedValue(settings);
+    vi.mocked(labelsApi.listPallets).mockResolvedValue([pallet]);
+    vi.mocked(inventoryApi.getLot).mockResolvedValue(finished(""));
+    renderApp("/depo/lotlar/7");
+
+    const row = (await screen.findByText("086900000000000417")).closest("tr")!;
+    await userEvent.click(within(row).getByRole("button", { name: "Etiket yazdır" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Palet etiketi (SSCC): 086900000000000417",
+    });
+    const warning = within(dialog).getByTestId("label-warning");
+    expect(warning).toHaveTextContent(
+      "Bu lotun koli GTIN'i yok; palet etiketine ürün GTIN'i basılır.",
+    );
+    expect(alertStyle(warning)).toContain("--mantine-color-yellow-light"); // sarı
+  });
+
+  /** Koli GTIN'iyle çelişen koli içi adedin sarı uyarısı (12'lik koli). */
+  const unitsWarning =
+    "Bu lotun koli GTIN'i 12 adetlik koli içindir; farklı adet etikette barkodla çelişir.";
+
+  it("koli etiketinde koli içi adet lotun koli içi miktarıyla gelir; koli GTIN'iyle çelişen adet sarı uyarı verir", async () => {
+    const dialog = await openLabel(
+      { ...finished("18690000000019"), case_units: "12.000000" },
+      "koli",
+    );
+    const units = within(dialog).getByRole("textbox", { name: "Koli içi adet" });
+    const link = () => within(dialog).getByRole("link", { name: "Aç" }).getAttribute("href");
+    expect(units).toHaveValue("12");
+    expect(link()).toContain("units_per_case=12");
+    expect(within(dialog).queryByTestId("units-warning")).not.toBeInTheDocument();
+
+    await userEvent.clear(units);
+    await userEvent.type(units, "24");
+    const warning = within(dialog).getByTestId("units-warning");
+    expect(warning).toHaveTextContent(unitsWarning);
+    expect(alertStyle(warning)).toContain("--mantine-color-yellow-light"); // sarı
+    // Uyarı basmayı engellemez (eksik son koli): yazılan adet basılır.
+    expect(link()).toContain("units_per_case=24");
+    // Lotun miktarına dönülünce uyarı kalkar.
+    await userEvent.clear(units);
+    await userEvent.type(units, "12");
+    expect(within(dialog).queryByTestId("units-warning")).not.toBeInTheDocument();
+
+    // Pencere yeniden açılınca yazılan adet unutulur, lotun miktarı gelir.
+    await userEvent.clear(units);
+    await userEvent.type(units, "24");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Vazgeç" }));
+    await userEvent.click(screen.getByRole("button", { name: "Etiket yazdır" }));
+    const again = await screen.findByRole("dialog");
+    await userEvent.click(within(again).getByRole("textbox", { name: "Etiket" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Koli etiketi" }));
+    expect(within(again).getByRole("textbox", { name: "Koli içi adet" })).toHaveValue("12");
+  });
+
+  it("lotun koli GTIN'i yoksa koli içi adet yine lotun miktarıyla gelir; farklı adet uyarı vermez", async () => {
+    const dialog = await openLabel({ ...finished(""), case_units: "12.000000" }, "koli");
+    const units = within(dialog).getByRole("textbox", { name: "Koli içi adet" });
+    expect(units).toHaveValue("12");
+    await userEvent.clear(units);
+    await userEvent.type(units, "24");
+    expect(within(dialog).queryByTestId("units-warning")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["adet birimli olmayan lotta (null)", null],
+    ["tam sayı olmayan miktarda", "12.500000"],
+  ])("koli içi adet %s boş gelir", async (_name, caseUnits) => {
+    const dialog = await openLabel(
+      { ...finished("18690000000019"), case_units: caseUnits },
+      "koli",
+    );
+    expect(within(dialog).getByRole("textbox", { name: "Koli içi adet" })).toHaveValue("");
+    expect(within(dialog).queryByTestId("units-warning")).not.toBeInTheDocument();
+  });
+
+  it("palet formunda koli içi adet lotun koli içi miktarıyla gelir ve gönderilir; çelişen adet sarı uyarı verir", async () => {
+    vi.mocked(labelsApi.getLabelSettings).mockResolvedValue(settings);
+    vi.mocked(labelsApi.createPallet).mockResolvedValue(pallet);
+    vi.mocked(inventoryApi.getLot).mockResolvedValue({
+      ...finished("18690000000019"),
+      case_units: "12.000000",
+    });
+    renderApp("/depo/lotlar/7");
+
+    const units = await screen.findByRole("textbox", { name: "Koli içi adet" });
+    expect(units).toHaveValue("12");
+    expect(screen.queryByTestId("units-warning")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "Koli sayısı" }), "40");
+    await userEvent.click(screen.getByRole("button", { name: "SSCC al" }));
+    await waitFor(() =>
+      expect(labelsApi.createPallet).toHaveBeenCalledWith({
+        lot: 7,
+        case_count: 40,
+        units_per_case: 12,
+      }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Vazgeç" })); // palet etiketi penceresi
+
+    await userEvent.clear(units);
+    await userEvent.type(units, "24");
+    const warning = screen.getByTestId("units-warning");
+    expect(warning).toHaveTextContent(unitsWarning);
+    expect(alertStyle(warning)).toContain("--mantine-color-yellow-light"); // sarı
+  });
+
+  it.each([
+    ["koli", "8690000000012", "18690000000019"],
+    ["koli", "8690000000012", ""],
+    ["koli", "", "18690000000019"], // yalnız koli GTIN'i
+    ["palet", "8690000000012", "18690000000019"],
+    ["palet", "8690000000012", ""],
+    ["palet", "", "18690000000019"],
+  ] as const)(
+    "GS1 barkodu basılamayan lotta (gs1_label false) %s etiketi GS1 ipucu yerine sarı uyarı verir (ürün GTIN'i %j, koli GTIN'i %j)",
+    async (kind, gtin, caseGtin) => {
+      const dialog = await openLabel(finished(caseGtin, false, gtin), kind);
+      const warning = within(dialog).getByTestId("label-warning");
+      expect(warning).toHaveTextContent(noGs1[kind]);
+      expect(alertStyle(warning)).toContain("--mantine-color-yellow-light"); // sarı
+      // GS1 / koli GTIN'i ipuçlarının hiçbiri çıkmaz (hepsi "GTIN'i" der, uyarı demez).
+      expect(within(dialog).queryByText(/GTIN'i/)).not.toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    ["koli", "Koli etiketine koli GTIN'i basılır."],
+    ["palet", "Palet etiketine koli GTIN'i ve koli sayısı basılır."],
+  ] as const)(
+    "GS1 barkodu basılan lotta (gs1_label true) %s etiketinin ipucu değişmez",
+    async (kind, text) => {
+      const dialog = await openLabel(finished("18690000000019", true), kind);
+      expect(within(dialog).getByText(text)).toBeInTheDocument();
+      expect(within(dialog).queryByTestId("label-warning")).not.toBeInTheDocument();
+    },
+  );
+
+  it("GTIN'i olmayan mamul lotunda gs1_label false olsa da firma içi barkod ipucu kalır", async () => {
+    const dialog = await openLabel(
+      lot({ material_type: "FINISHED", status: "RELEASED", gs1_label: false }),
+      "koli",
+    );
+    expect(
+      within(dialog).getByText("Malzemenin GTIN'i yok: firma içi barkod basılır."),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByTestId("label-warning")).not.toBeInTheDocument();
+  });
+});
+
+/** Mantine uyarısının rengi kök öğenin stilindeki değişkenlerde (--alert-bg, --alert-color). */
+function alertStyle(element: HTMLElement): string {
+  return element.closest(".mantine-Alert-root")?.getAttribute("style") ?? "";
+}
 
 describe("mal kabul", () => {
   it("kaydedilmiş mal kabul salt okunur; oluşan lotlara bağlantı verir", async () => {

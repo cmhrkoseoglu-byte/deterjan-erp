@@ -6,7 +6,12 @@ ZPL 203 dpi (8 nokta/mm) için üretilir (Karar D-8); başka çözünürlük `dp
 
 GS1-128 barkodları uygulama tanımlayıcısı (AI) + değer çiftleriyle verilir. PDF'te başa ve
 değişken uzunluklu alanların arkasına FNC1 konur; ZPL'de `^BC` UCC/EAN kipi (D) kullanılır ve
-veri "(01)…(10)…" biçiminde gönderilir, FNC1'i yazıcı ekler.
+veri "(01)…(10)…" biçiminde gönderilir, FNC1'i yazıcı ekler. Bu kipte değer parantez ve ">"
+taşıyamaz (`is_gs1_printable`). Code128 yalnızca yazdırılabilir ASCII taşır, ">" hariç: ZPL'de
+`^BC` kip öneki (`is_code128_text`).
+
+ZPL'de "^" ve "~" komut önekidir: bunları ya da ters bölü taşıyan alan verisi onaltılık kaçışla
+(`^FH\\`) gönderilir, yazıcı veriyi aynen basar ve kodlar (`_zpl_field`).
 """
 
 import io
@@ -29,6 +34,19 @@ DEFAULT_DPI = 203
 FNC1 = "\xf1"
 # Sabit uzunluklu GS1 uygulama tanımlayıcıları (değer uzunluğu); listede olmayanlar değişkendir.
 GS1_FIXED_LENGTH = {"00": 18, "01": 14, "02": 14, "11": 6, "13": 6, "15": 6, "17": 6}
+# GS1 (37) koli sayısı alanı en çok 8 hanedir (GS1 General Specifications).
+GS1_CASE_COUNT_MAX = 99_999_999
+# GS1'in 82 karakterlik kümesi (GS1 General Specifications): (10) lot gibi alfanümerik alanlar
+# yalnızca bunlardan oluşur; boşluk ve Türkçe harfler kümede yoktur.
+GS1_CHARSET_82 = frozenset(
+    "!\"%&'()*+,-./0123456789:;<=>?ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
+)
+# ZPL `^BC` UCC/EAN kipi (D) veriyi "(AI)değer" biçiminde alır: parantezleri AI sınırı sayıp veriden
+# çıkarır, ">" kip (invocation) karakteridir. Bu karakterli değer GS1-128 barkoduna yazılmaz.
+ZPL_GS1_RESERVED = frozenset("()>")
+# Code128'e yazılamayan veride (Türkçe harf, ">") barkodun yerine basılan yazı; QR veriyi aynen
+# taşır.
+NO_BARCODE_QR = "Barkod yok: QR kodu okutun."
 
 Gs1Elements = tuple[tuple[str, str], ...]
 
@@ -45,7 +63,9 @@ class Text:
 
 @dataclass(frozen=True)
 class Barcode:
-    """Code128 barkod. `gs1` verilirse GS1-128 olarak kodlanır, `data` yok sayılır."""
+    """Code128 barkod. `gs1` verilirse GS1-128 olarak kodlanır, `data` yok sayılır. `data`
+    Code128'e aynen yazılabilmelidir (`is_code128_text`); değişken veri `code128_or_note` ile
+    basılır."""
 
     x: float
     y: float
@@ -55,6 +75,11 @@ class Barcode:
     module: float = 0.375  # dar çubuk genişliği (mm); 203 dpi'de 3 nokta
     human_readable: bool = True
     center_width: float | None = None  # verilirse barkod bu genişlik içinde ortalanır (PDF)
+
+    def __post_init__(self) -> None:
+        # Yazılamayan veri barkodda sessizce başka bir değer olurdu (Türkçe harf, ZPL'de ">").
+        if self.gs1 is None and not is_code128_text(self.data):
+            raise ValueError(f"Code128'e aynen yazılamayan barkod verisi: {self.data!r}")
 
 
 @dataclass(frozen=True)
@@ -96,10 +121,16 @@ def gs1_check_digit(digits: str) -> str:
     return str((10 - total % 10) % 10)
 
 
+def is_ascii_digits(value: str) -> bool:
+    """Yalnızca ASCII rakam (0-9) mı? `str.isdigit` Arapça-Hint ve üst simge rakamları da kabul
+    eder; barkoda yalnızca ASCII rakam girer."""
+    return value.isascii() and value.isdigit()
+
+
 def is_valid_gtin(value: str) -> bool:
-    """GTIN-8/12/13/14 biçimi ve kontrol hanesi doğru mu."""
+    """GTIN-8/12/13/14 biçimi (yalnızca ASCII rakam) ve kontrol hanesi doğru mu."""
     return (
-        value.isdigit()
+        is_ascii_digits(value)
         and len(value) in (8, 12, 13, 14)
         and gs1_check_digit(value[:-1]) == value[-1]
     )
@@ -108,6 +139,40 @@ def is_valid_gtin(value: str) -> bool:
 def gtin14(value: str) -> str:
     """GTIN'i (01) alanı için 14 haneye tamamlar."""
     return value.zfill(14)
+
+
+def is_gs1_text(value: str, max_length: int) -> bool:
+    """Değer GS1 alfanümerik alanına (ör. (10) lot, en çok 20 karakter) yazılabilir mi: 1 ile
+    `max_length` arası karakter, hepsi GS1'in 82 karakterlik kümesinden."""
+    return 1 <= len(value) <= max_length and set(value) <= GS1_CHARSET_82
+
+
+def is_gs1_printable(value: str, max_length: int) -> bool:
+    """Değer bu modülün GS1-128 barkoduna (PDF ve ZPL) aynen yazılabilir mi: GS1 alanına uyar
+    (`is_gs1_text`) ve ZPL'nin UCC/EAN kipinde (D) yorumlanan "(", ")", ">" karakterlerini taşımaz
+    (ör. LOT(2) yazıcıda LOT2 olarak kodlanır)."""
+    return is_gs1_text(value, max_length) and not set(value) & ZPL_GS1_RESERVED
+
+
+def is_code128_text(value: str) -> bool:
+    """Değer Code128 barkoduna aynen yazılabilir mi: yalnızca yazdırılabilir ASCII (boşluk dahil),
+    ">" hariç. Code128 Türkçe harfi taşımaz; reportlab onu sessizce atar (LOT:ŞUBAT-01 →
+    LOT:UBAT-01) ve barkod başka bir değer okutur. ZPL `^BC`'de ">" otomatik kipte de kip
+    (invocation) önekidir: Zebra tablosunda "><" = "^", ">0" = ">" (alt küme A ve B; C'de "30").
+    Doğru kaçış yazıcının seçtiği alt kümeye bağlı olduğundan ">" taşıyan veri barkoda yazılmaz."""
+    return bool(value) and value.isascii() and value.isprintable() and ">" not in value
+
+
+def code128_or_note(
+    data: str, x: float, y: float, height: float, width: float, note: str, *, module: float
+) -> Element:
+    """Code128 barkod (`data`, `width` içinde ortalı). Code128'e yazılamayan veride (Türkçe harf:
+    reportlab sessizce atar; ">": ZPL'de kip öneki; barkod başka değer okuturdu) barkod basılmaz;
+    yerine hangi kodun okutulacağını söyleyen kalın yazı (`note`) basılır."""
+    if is_code128_text(data):
+        return Barcode(x, y, height, data=data, module=module, center_width=width)
+    size = fit_size(note, 11, width=width, bold=True)
+    return Text(x, y + height / 2 - 2, note, size=size, bold=True, max_width=width)
 
 
 def gs1_text(elements: Gs1Elements) -> str:
@@ -269,9 +334,23 @@ def render_pdf(labels: Sequence[Label], *, a4: bool = False) -> bytes:
 # --- ZPL ---------------------------------------------------------------------------------------
 
 
-def _zpl_safe(text: str) -> str:
-    """ZPL komut karakterlerini (^ ~) veriden çıkarır."""
-    return text.replace("^", " ").replace("~", " ")
+# Onaltılık kaçış (`^FH\`, kaçış işareti ters bölü): yazıcı \5C, \5E, \7E'yi \, ^, ~ olarak okur.
+_ZPL_HEX_ESCAPES = {"\\": "\\5C", "^": "\\5E", "~": "\\7E"}
+
+
+def _zpl_field(data: str, *, block: bool = False) -> str:
+    """ZPL alan verisi (`^FD…^FS`). "^" ve "~" komut önekidir: bunları ya da ters bölü taşıyan
+    veri onaltılık kaçışla gönderilir (`^FH\\`), yazıcı veriyi aynen basar ve kodlar. Öteki veri
+    değişmeden gider.
+
+    `block`: alan bir ^FB metin bloğudur. Orada ters bölü de kaçış karakteridir ("\\&" yeni
+    satır); ters bölünün kendisi "\\\\" yazılır (ZPL ^FB). Yazıcı önce onaltılık kaçışı çözer."""
+    if _ZPL_HEX_ESCAPES.keys().isdisjoint(data):
+        return f"^FD{data}^FS"
+    if block:
+        data = data.replace("\\", "\\\\")
+    escaped = "".join(_ZPL_HEX_ESCAPES.get(char, char) for char in data)
+    return f"^FH\\^FD{escaped}^FS"
 
 
 def _barcode_modules(element: Barcode) -> float:
@@ -297,9 +376,8 @@ def render_zpl(labels: Iterable[Label], *, dpi: int = DEFAULT_DPI) -> str:
                 block = ""
                 if element.max_width is not None:
                     block = f"^FB{d(element.max_width)},1,0,L,0"
-                lines.append(
-                    f"^FO{d(element.x)},{d(element.y)}{font}{block}^FD{_zpl_safe(element.text)}^FS"
-                )
+                field = _zpl_field(element.text, block=bool(block))
+                lines.append(f"^FO{d(element.x)},{d(element.y)}{font}{block}{field}")
             elif isinstance(element, Barcode):
                 module = max(1, d(element.module))
                 if element.center_width is not None:
@@ -311,18 +389,18 @@ def render_zpl(labels: Iterable[Label], *, dpi: int = DEFAULT_DPI) -> str:
                     data = gs1_text(element.gs1)
                     mode = "D"
                 else:
-                    data = _zpl_safe(element.data).replace(">", "><")
+                    data = element.data  # ">" (kip öneki) taşımaz: `is_code128_text`
                     mode = "A"
                 lines.append(
                     f"^FO{d(element.x)},{d(element.y)}^BY{module},3,{d(element.height)}"
-                    f"^BCN,{d(element.height)},{readable},N,N,{mode}^FD{data}^FS"
+                    f"^BCN,{d(element.height)},{readable},N,N,{mode}{_zpl_field(data)}"
                 )
             elif isinstance(element, QRCode):
                 # Kısa içerik ~25 modül (sürüm 2) + sessiz bölge; büyütme kutuya göre.
                 magnification = min(10, max(1, d(element.size) // 29))
                 lines.append(
                     f"^FO{d(element.x)},{d(element.y)}^BQN,2,{magnification}"
-                    f"^FDQA,{_zpl_safe(element.data)}^FS"
+                    + _zpl_field(f"QA,{element.data}")
                 )
             elif isinstance(element, Box):
                 lines.append(

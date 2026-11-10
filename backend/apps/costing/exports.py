@@ -11,6 +11,8 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from apps.core.coding.outputs import document_control
+from apps.core.xlsx import apply_document_control
 from apps.costing.selectors import PersonnelCostReport
 
 TYPE_LABELS = {"RAW": "Hammadde", "PACKAGING": "Ambalaj", "BULK": "Dökme", "FINISHED": "Mamul"}
@@ -120,12 +122,17 @@ def _sheet(ws: Worksheet, title: str, columns: Sequence[Column], rows: list[dict
     ws.freeze_panes = "A2"
 
 
-def to_xlsx(sheets: Sequence[tuple[str, Sequence[Column], list[dict]]]) -> bytes:
+def to_xlsx(
+    sheets: Sequence[tuple[str, Sequence[Column], list[dict]]], *, output: str | None = None
+) -> bytes:
+    """Sayfalı Excel. `output` çıktı anahtarıdır (doküman kontrol bilgisi alt bilgiye)."""
     workbook = Workbook()
     for index, (title, columns, rows) in enumerate(sheets):
         ws = workbook.active if index == 0 else workbook.create_sheet()
         assert ws is not None
         _sheet(ws, title, columns, rows)
+    if output is not None:
+        apply_document_control(workbook, document_control(output))
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
@@ -244,5 +251,6 @@ def personnel_cost_xlsx(report: PersonnelCostReport) -> bytes:
             ("Personel maliyeti", PERSONNEL_COST, rows),
             ("Aşamalar", PERSONNEL_STAGES, stages),
             ("Özet", SUMMARY, summary),
-        ]
+        ],
+        output="costing.personnel-cost",
     )

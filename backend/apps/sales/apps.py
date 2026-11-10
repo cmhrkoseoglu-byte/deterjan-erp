@@ -22,3 +22,16 @@ class SalesConfig(AppConfig):
         register_document_type(
             "SV", label="Sevkiyat (irsaliye no)", model="sales.shipment", locked=True
         )
+
+        # Çıktı doküman kodları: Sistem > Kodlama sistematiği > Çıktılar (ISO 9001 md. 7.5).
+        from apps.core.coding.registry import register_output
+
+        # İrsaliye yasal belgedir: bandı açmadan önce mali müşavire danışılır (ekran uyarır).
+        register_output(
+            "sales.waybill",
+            label="İrsaliye",
+            group="Sevkiyat",
+            formats=("PDF",),
+            legal=True,
+            suggested_code="FR-SVK-001",
+        )

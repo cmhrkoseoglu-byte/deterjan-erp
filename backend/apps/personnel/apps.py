@@ -12,3 +12,17 @@ class PersonnelConfig(AppConfig):
 
         register_document_type("PU", label="Puantaj", model="personnel.attendancemonth")
         register_document_type("BR", label="Bordro", model="personnel.payrollrun")
+
+        # Çıktı doküman kodları: Sistem > Kodlama sistematiği > Çıktılar (ISO 9001 md. 7.5).
+        from apps.core.coding.registry import register_output
+        from apps.personnel import pdf
+
+        for key, label, formats, code in (
+            (pdf.ATTENDANCE_OUTPUT, "Puantaj çizelgesi", ("Excel",), "FR-IK-001"),
+            (pdf.PAYROLL_OUTPUT, "Ön bordro (bordro listesi)", ("PDF", "Excel"), "FR-IK-002"),
+            (pdf.EMPLOYER_COST_OUTPUT, "İşveren maliyeti tablosu", ("PDF",), "FR-IK-003"),
+            (pdf.PAYSLIP_OUTPUT, "Ücret hesap pusulası", ("PDF",), "FR-IK-004"),
+        ):
+            register_output(
+                key, label=label, group="Personel", formats=formats, suggested_code=code
+            )

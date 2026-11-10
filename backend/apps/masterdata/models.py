@@ -4,7 +4,8 @@ Bu dosyada iş mantığı yoktur; yazma işlemleri `services.py` üzerinden yap�
 """
 
 from django.db import models
-from django.db.models import Q
+from django.db.models import Q, Value
+from django.db.models.functions import LPad
 
 from apps.core.models import BaseModel, MasterDataModel
 from apps.masterdata.fields import CodeField
@@ -25,6 +26,14 @@ class UnitOfMeasure(MasterDataModel):
     factor_to_kind_base = models.DecimalField(
         "tür temel birimine katsayı", null=True, blank=True, max_digits=18, decimal_places=6
     )
+    # Uluslararası birim kodu (UN/ECE Rec 20; GİB UBL-TR birim kodları buna dayanır) ve sembol.
+    unece_code = models.CharField(
+        "UN/ECE kodu",
+        max_length=3,
+        blank=True,
+        help_text="UN/ECE Rec 20 ortak kodu: KGM, GRM, LTR, MLT, C62; ambalaj XCT, XPX",
+    )
+    symbol = models.CharField("sembol", max_length=8, blank=True, help_text="kg, g, L, mL")
 
     class Meta:
         verbose_name = "birim"
@@ -119,10 +128,12 @@ class Material(MasterDataModel):
                 name="masterdata_material_min_stock_non_negative",
                 violation_error_message="Minimum stok negatif olamaz.",
             ),
+            # GTIN 14 haneli normal biçimde tektir: 8690000000012 ile 08690000000012 aynı GTIN'dir.
+            # Ürün ve koli GTIN'leri arasındaki tekillik servisle denetlenir.
             models.UniqueConstraint(
-                fields=["gtin"],
+                LPad("gtin", 14, Value("0")),
                 condition=~Q(gtin=""),
-                name="masterdata_material_gtin_uniq",
+                name="masterdata_material_gtin14_uniq",
                 violation_error_message="Bu GTIN başka bir malzemede kayıtlı.",
             ),
         ]
@@ -141,6 +152,13 @@ class MaterialUnitConversion(MasterDataModel):
         UnitOfMeasure, verbose_name="birim", on_delete=models.PROTECT, related_name="+"
     )
     factor_to_base = models.DecimalField("temel birim karşılığı", max_digits=18, decimal_places=6)
+    # Koli GTIN'i (yalnızca KOLI dönüşümünde): koli etiketinin (01), palet etiketinin (02) alanı.
+    gtin = models.CharField(
+        "koli GTIN'i",
+        max_length=14,
+        blank=True,
+        help_text="Koli (KOLI) dönüşümünde; GTIN-8/12/13/14, kontrol hanesi doğrulanır",
+    )
 
     class Meta:
         verbose_name = "malzeme birim dönüşümü"
@@ -157,10 +175,44 @@ class MaterialUnitConversion(MasterDataModel):
                 name="masterdata_conversion_factor_positive",
                 violation_error_message="Dönüşüm katsayısı sıfırdan büyük olmalıdır.",
             ),
+            models.UniqueConstraint(
+                LPad("gtin", 14, Value("0")),
+                condition=~Q(gtin=""),
+                name="masterdata_conversion_gtin14_uniq",
+                violation_error_message="Bu GTIN başka bir koli dönüşümünde kayıtlı.",
+            ),
         ]
 
     def __str__(self) -> str:
         return f"{self.material.code}: 1 {self.unit.code} = {self.factor_to_base}"
+
+
+class RetiredGtin(BaseModel):
+    """Eski koli GTIN'i (CUMHUR, 2026-11-05). Lotu olan mamulde koli içi miktar değişince koliye
+    yeni GTIN verilir (GS1); eski GTIN eski miktarıyla burada kalır. Bir daha hiçbir ürüne ya da
+    koliye verilmez, okutulunca eski koli düzeniyle çözülür. Kayıtlar değişmez ve silinmez.
+    `created_at` / `created_by`: GTIN'in değiştiği an ve değiştiren."""
+
+    conversion = models.ForeignKey(
+        MaterialUnitConversion,
+        verbose_name="koli dönüşümü",
+        on_delete=models.PROTECT,
+        related_name="retired_gtins",
+    )
+    # 14 haneli normal biçim (`core.labels.gtin14`).
+    gtin = models.CharField("GTIN", max_length=14, unique=True)
+    factor_to_base = models.DecimalField(
+        "koli içi miktar (temel birim)", max_digits=18, decimal_places=6
+    )
+    replaced_by = models.CharField("yerine gelen GTIN", max_length=14)
+
+    class Meta:
+        verbose_name = "eski koli GTIN'i"
+        verbose_name_plural = "eski koli GTIN'leri"
+        ordering = ["created_at", "pk"]
+
+    def __str__(self) -> str:
+        return f"{self.gtin} ({self.conversion})"
 
 
 class Warehouse(MasterDataModel):
@@ -273,6 +325,9 @@ class BusinessPartner(MasterDataModel):
     phone = models.CharField("telefon", max_length=32, blank=True)
     email = models.EmailField("e-posta", blank=True)
     contact_person = models.CharField("yetkili kişi", max_length=128, blank=True)
+    country_code = models.CharField(
+        "ülke", max_length=2, default="TR", help_text="ISO 3166-1 alpha-2 (TR, DE, IQ …)"
+    )
 
     class Meta:
         abstract = True
@@ -346,8 +401,10 @@ class Printer(MasterDataModel):
 
 
 class LabelSettings(BaseModel):
-    """Etiket ayarları (tek kayıt). GS1 firma öneki girilince SSCC palet etiketi açılır
-    (Karar D-6). Yalnızca `masterdata.services.update_label_settings` ve `next_sscc` yazar."""
+    """Etiket ve GS1 ayarları (tek kayıt). GS1 firma öneki girilince SSCC palet etiketi açılır
+    (Karar D-6). GS1 alanlarını (önek, uzantı, ürün referansı) yalnızca
+    `masterdata.services.update_gs1_settings` (Sistem > Kodlama sistematiği > GS1), öteki alanları
+    `update_label_settings`, SSCC sayacını `next_sscc` yazar."""
 
     company_name = models.CharField("etikette firma adı", max_length=128, blank=True)
     gs1_company_prefix = models.CharField(
@@ -359,6 +416,15 @@ class LabelSettings(BaseModel):
     sscc_extension_digit = models.PositiveSmallIntegerField("SSCC uzantı hanesi", default=0)
     next_sscc_serial = models.PositiveBigIntegerField(
         "sıradaki SSCC seri no", default=1, editable=False
+    )
+    # GTIN önerisi (yalnızca mamul): GS1 üyeliğindeki sıradaki boş ürün referansı. GTIN-13 =
+    # firma öneki + ürün referansı (12 - önek uzunluğu hane) + kontrol hanesi.
+    next_item_reference = models.PositiveBigIntegerField(
+        "sıradaki ürün referansı",
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="GTIN önerisi için; boşsa öneri kapalıdır",
     )
     default_printer = models.ForeignKey(
         Printer,

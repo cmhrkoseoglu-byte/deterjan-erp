@@ -21,3 +21,14 @@ class RecipesConfig(AppConfig):
             write_roles=RECIPE_WRITE_ROLES,
             recode=recode_record,
         )
+
+        # Çıktı doküman kodları: Sistem > Kodlama sistematiği > Çıktılar (ISO 9001 md. 7.5).
+        from apps.core.coding.registry import register_output
+
+        register_output(
+            "recipes.template",
+            label="Reçeteler",
+            group="İçe aktarma şablonları",
+            formats=("Excel",),
+            suggested_code="FR-SIS-008",
+        )

@@ -290,9 +290,11 @@ def test_record_history_lists_audit_entries_for_that_record(make_user):
 def test_mentionable_users_search(make_user):
     make_user(username="mehmet", full_name="Mehmet Kaya")
     make_user(username="ayse", full_name="Ayşe Kaya")
-    make_user(username="pasif", is_active=False)
+    # Pasif kullanıcı aramaya uysa da listelenmez. Adlar sabit: fabrikanın rastgele Türkçe adı
+    # ("… Kaya") aramaya uyunca test ara sıra kırılıyordu.
+    make_user(username="pasif", full_name="Pasif Kaya", is_active=False)
 
-    response = client_as(make_user(username="ben")).get(
+    response = client_as(make_user(username="ben", full_name="Ben Demir")).get(
         f"{BASE}/mentionable-users/", {"search": "kaya"}
     )
 

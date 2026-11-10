@@ -21,7 +21,10 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from apps.core.coding.outputs import document_control
+from apps.core.coding.selectors import code_as_of
 from apps.core.exceptions import BusinessRuleError
+from apps.core.pdf import controlled_canvas
 from apps.inventory.models import Lot
 from apps.quality import services
 from apps.quality.models import (
@@ -117,12 +120,18 @@ def _when(value: Any) -> str:
     return f"{timezone.localtime(value):%d.%m.%Y %H:%M}" if value else ""
 
 
+def _decided_at(sample: Sample) -> Any:
+    """Sertifikanın tarihi: lotu serbest bırakan kararın zamanı (yeniden basımda da)."""
+    decision = services.effective_decision(sample)
+    return decision.decided_at if decision is not None else timezone.now()
+
+
 def info_rows(sample: Sample) -> list[list[str]]:
     """Üst bilgi tablosu: ürün, lot, tarihler, numune ve spesifikasyon."""
     lot = sample.lot
     material = lot.material
     return [
-        ["Ürün", f"{material.code} — {material.name}"],
+        ["Ürün", f"{code_as_of(material, _decided_at(sample))} — {material.name}"],
         ["Lot no", lot.lot_no],
         ["Üretim tarihi", _date(lot.manufactured_at)],
         ["Son kullanma tarihi", _date(lot.expiry_date)],
@@ -153,6 +162,9 @@ def decision_rows(decision: QualityDecision) -> list[tuple[str, str]]:
         )
     rows.append(("Onaylayan", f"{_user_name(decision.decided_by)}, {_when(decision.decided_at)}"))
     return rows
+
+
+COA_OUTPUT = "quality.coa"
 
 
 def coa_pdf(sample: Sample) -> bytes:
@@ -221,5 +233,9 @@ def coa_pdf(sample: Sample) -> bytes:
             small,
         )
     )
-    doc.build(story)  # type: ignore[arg-type]
+    control = document_control(COA_OUTPUT, on=timezone.localtime(decision.decided_at).date())
+    doc.build(
+        story,  # type: ignore[arg-type]
+        canvasmaker=controlled_canvas(control, left=18 * mm, baseline=8 * mm),
+    )
     return buffer.getvalue()

@@ -681,6 +681,62 @@ describe("toplama tableti", () => {
     await waitFor(() => expect(qty).toHaveValue("350"));
   });
 
+  it.each([
+    ["bir kolidir", "720.0000", "12"],
+    ["kalanı aşmaz", "5.0000", "5"],
+  ])("koli okutulunca önerilen miktar %s", async (_name, remaining, expected) => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));
+    vi.mocked(salesApi.shipmentSuggestions).mockResolvedValue(
+      suggestions({ remaining_quantity: remaining }),
+    );
+    vi.mocked(scanApi.scanCode).mockResolvedValue({
+      ...scanned(61, "D-261016-002"),
+      unit: "KOLI",
+      units_per_case: "12.0000",
+      warnings: [],
+    });
+    vi.mocked(salesApi.pickLot).mockResolvedValue(shipment({ status: "PICKING" }));
+    renderApp("/sevkiyat/sevkiyatlar/70/toplama");
+
+    await user.type(
+      await screen.findByRole("textbox", { name: "Lot okut" }),
+      "(01)18690000000019(10)D-261016-002{Enter}",
+    );
+    const qty = screen.getByRole("textbox", { name: "Miktar (ADET)" });
+    await waitFor(() => expect(qty).toHaveValue(expected));
+    expect(screen.getByTestId("scan-case")).toHaveTextContent("1 koli = 12 ADET");
+    await user.type(qty, "{Enter}");
+    await waitFor(() =>
+      expect(salesApi.pickLot).toHaveBeenCalledWith(70, { lot: 61, quantity: expected }),
+    );
+  });
+
+  it("koli dönüşümü pasifse koli miktarı önerilmez; sunucunun uyarısı sarı görünür", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));
+    const warning = "Bu koli GTIN'inin dönüşümü pasif; koli içi miktar önerilmez.";
+    vi.mocked(scanApi.scanCode).mockResolvedValue({
+      ...scanned(61, "D-261016-002"),
+      unit: "",
+      units_per_case: null,
+      warnings: [warning],
+    });
+    renderApp("/sevkiyat/sevkiyatlar/70/toplama");
+
+    await user.type(
+      await screen.findByRole("textbox", { name: "Lot okut" }),
+      "(01)18690000000019(10)D-261016-002{Enter}",
+    );
+    // Koli içi miktar bilinmiyor: öneri lot okutmasındaki gibi kalan, lotun stoğuyla sınırlı.
+    const qty = screen.getByRole("textbox", { name: "Miktar (ADET)" });
+    await waitFor(() => expect(qty).toHaveValue("400"));
+    expect(screen.queryByTestId("scan-case")).not.toBeInTheDocument();
+    const alert = screen.getByTestId("scan-warning");
+    expect(alert).toHaveTextContent(warning);
+    expect(alert.getAttribute("style") ?? "").toContain("--mantine-color-yellow-light"); // sarı
+  });
+
   it("sevkiyat rolü toplama yapamaz", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("sevkiyat"));
     renderApp("/sevkiyat/sevkiyatlar/70/toplama");

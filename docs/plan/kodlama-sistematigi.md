@@ -214,7 +214,9 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
 - Bant, admin açtığı çıktıya basılır:
   - **PDF:** "Doküman no · Yayın tarihi · Rev. no · Rev. tarihi · Sayfa x/y"
   - **Excel:** yazdırma alt bilgisi ve dosya özellikleri
-- **Yeniden basım:** belgenin tarihinde yürürlükte olan revizyon ve o tarihteki kodlar basılır.
+- **Yeniden basım** (CUMHUR, 2026-11-05, "İlk basımdaki gibi"): belgenin tarihinde yürürlükte olan
+  ve o güne kadar girilmiş revizyon, o revizyonla saklanan doküman no ve yayın tarihi, o günkü bant
+  durumu ve o tarihteki kodlar basılır. Doküman no ilk revizyondan sonra yeni revizyonla değişir.
 - **Şablon sürümü:** her üreticinin şablon sürümü vardır. Şablon değişip yeni revizyon girilmezse
   ekran uyarır.
 - **İrsaliye:** bandı açmadan önce mali müşavire danışılır. Etiketlere bant basılmaz.
@@ -222,14 +224,15 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
 ### 6.2 GS1
 
 - GS1 ayarları tek yerdedir (Kodlama > GS1): firma öneki, SSCC uzantı hanesi, sıradaki SSCC seri
-  no (salt okunur). Değişiklik notu zorunludur.
+  no (salt okunur), sıradaki ürün referansı (GTIN önerisi için). Değişiklik notu zorunludur.
 - **Okutma:**
   - (00), (01), (02) alanlarında kontrol hanesi denetlenir,
   - AI tablosu genişletilir (310n, 400, 410, 414 vb.),
   - (15) ve (17) alanlarında gün 00 ayın son günü sayılır,
   - üretim, dolum ve sevkiyatta lot çözümü ortaktır.
 - **GTIN tekilliği:** 14 haneli normal biçimde denetlenir; ürün ve koli GTIN'lerinin tamamında tek
-  olur. Lotu olan malzemenin GTIN'i değişmez.
+  olur. Lotu olan mamulün GTIN'i değişmez (kilit yalnız mamulde; lotu olan malzemenin türü
+  mamulden ya da mamule değişmez).
 - **GTIN önerisi:** yalnızca mamulde, firma öneki ve ilk boş ürün referansı girildikten sonra
   açılır.
 - **Koli GTIN'i:** KOLI dönüşümünde tutulur.
@@ -237,11 +240,19 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
     (37) koli sayısı basılır.
   - Okutmada koli GTIN'i koli birimiyle çözülür.
   - Tanımlı değilse bugünkü davranış sürer ve uyarı verilir.
+- **Koli düzeni değişimi** (CUMHUR, 2026-11-05): koli GTIN'i tanımlı ve lotu olan mamulde koli içi
+  miktar değişince koliye yeni GTIN verilir; eski GTIN eski miktarıyla arşivlenir ve bir daha
+  verilmez. Okutmada eski miktar önerilir. Lotun koli düzeni (koli içi miktar, koli GTIN'i) lot
+  açılırken lota yazılır; etikette ve irsaliyede o düzen geçerlidir.
+- **Etiket:** yalnız okutulabilen GS1 barkodu basılır (geçerli GTIN, GS1'e uyan lot no); değilse
+  firma içi `LOT:` barkodu. Türkçe harfli ya da > içeren lot numarasında çizgi barkod yerine QR
+  okutulur.
 
 ### 6.3 Standart kod alanları
 
-- **Birim:** UN/ECE Rec 20 ortak kodu (KGM, GRM, LTR, MLT, C62; ambalaj birimleri GİB listesinden)
-  ve sembol (kg, g, L, mL).
+- **Birim:** UN/ECE Rec 20 ortak kodu (KGM, GRM, LTR, MLT, C62) ve sembol (kg, g, L, mL). Ambalaj
+  birimleri Rec 21 kodunun başına X ile: koli `XCT`, palet `XPX` (CUMHUR, 2026-11-05; GİB UBL-TR
+  birim listesinde ambalaj birimi yok).
 - **Cari:** ülke kodu (ISO 3166-1 alpha-2, varsayılan TR).
 - **GBF dili:** ISO 639-1 listesinden seçilir.
 - **Tehlike ifadeleri:** kodda büyük/küçük harf korunur (`H360Fd` ile `H360FD` farklıdır).
@@ -282,6 +293,8 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
 3. Canlıdaki biçime uymayan kodlar için göç önizlemesi çalıştırılır ve sahibe gösterilir. Yedek
    alındıktan sonra göç uygulanır.
 4. Paket 2 yayına alınır; çıktı kodları firmanın doküman listesinden girilip etkinleştirilir.
+   Yayından sonra bir kez, göçün tanımayıp olduğu gibi bıraktığı GBF dilleri listelenir ve GBF
+   formundaki dil listesinden düzeltilir (KURULUM §8; liste boşsa iş yok).
 
 ## 10. Adımlar
 

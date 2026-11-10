@@ -218,13 +218,26 @@ export const tr = {
     sent: (count: number, printer: string) => `${count} etiket ${printer} yazıcısına gönderildi.`,
     gs1Hint: "Malzemenin GTIN'i var: GS1-128 barkod basılır.",
     internalHint: "Malzemenin GTIN'i yok: firma içi barkod basılır.",
+    caseGtinHint: "Koli etiketine koli GTIN'i basılır.",
+    noCaseGtin: "Bu lotun koli GTIN'i yok; koli etiketine ürün GTIN'i basılır.",
+    palletCaseGtinHint: "Palet etiketine koli GTIN'i ve koli sayısı basılır.",
+    noCaseGtinPallet: "Bu lotun koli GTIN'i yok; palet etiketine ürün GTIN'i basılır.",
+    // Koli GTIN'i koli içeriğini belirler (GS1): etikete yazılan adet onunla aynı olmalı.
+    caseUnitsMismatch: (units: string) =>
+      `Bu lotun koli GTIN'i ${units} adetlik koli içindir; farklı adet etikette barkodla çelişir.`,
+    noGs1Label:
+      "Bu lotun koli etiketine GS1 barkodu basılmaz (lot numarası GS1'e uymuyor ya da GTIN geçersiz); firma içi barkod ya da QR kodu basılır.",
+    // Palet etiketinde SSCC (GS1-128) her zaman basılır; QR kodu yoktur.
+    noGs1Pallet:
+      "Bu lotun palet etiketine GTIN ve lot için GS1 barkodu basılmaz (lot numarası GS1'e uymuyor ya da GTIN geçersiz); yerine firma içi lot barkodu basılır (Türkçe harfli ya da > içeren lot numarasında basılmaz). Paletin SSCC barkodu her zaman basılır.",
     pallets: "Paletler",
     newPallet: "Yeni palet",
     caseCount: "Koli sayısı",
     createPallet: "SSCC al",
     palletCreated: (sscc: string) => `Palet etiketi açıldı: ${sscc}`,
     noPallets: "Bu lot için palet etiketi yok.",
-    ssccDisabled: "Palet etiketi için etiket ayarlarına GS1 firma öneki girilmelidir.",
+    ssccDisabled:
+      "Palet etiketi için Sistem > Kodlama sistematiği > GS1'de firma öneki girilmelidir.",
     testLabel: "Deneme etiketi",
     testSent: (printer: string) => `${printer} yazıcısına deneme etiketi gönderildi.`,
   },
@@ -237,6 +250,7 @@ export const tr = {
       `Yanlış malzeme! Beklenen ${expected}, okutulan ${found}.`,
     multipleLots: "Bu lot numarası birden çok malzemede var; doğru malzemenin lotunu seçin.",
     formerCode: (code: string) => `Eski etiket okutuldu; yeni kod: ${code}. Etiketi yenileyin.`,
+    caseUnits: (quantity: string, unit: string) => `1 koli = ${quantity}${unit ? ` ${unit}` : ""}`,
     camera: "Kamerayla okut",
   },
   attachments: {

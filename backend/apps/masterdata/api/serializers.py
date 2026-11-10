@@ -1,8 +1,10 @@
 from typing import Any
 
+from django.db.models.manager import BaseManager
 from rest_framework import serializers
 
 from apps.core.api.coding import FormerCodesListSerializer, FormerCodesMixin
+from apps.masterdata import services
 from apps.masterdata.models import (
     CompanyProfile,
     Customer,
@@ -13,6 +15,7 @@ from apps.masterdata.models import (
     MaterialCategory,
     MaterialUnitConversion,
     Printer,
+    RetiredGtin,
     Supplier,
     UnitOfMeasure,
     Warehouse,
@@ -35,6 +38,8 @@ class UnitOfMeasureSerializer(serializers.ModelSerializer):
             "kind",
             "kind_display",
             "factor_to_kind_base",
+            "unece_code",
+            "symbol",
             *AUDIT_FIELDS,
         ]
         read_only_fields = AUDIT_FIELDS
@@ -50,10 +55,59 @@ class MaterialCategorySerializer(FormerCodesMixin, serializers.ModelSerializer):
         extra_kwargs = NO_UNIQUE_VALIDATOR
 
 
+# GTIN biçimi, tekilliği ve kilidi serviste denetlenir (Türkçe mesaj, hata kodu): uzun değer de
+# `invalid_gtin` alsın diye alan uzunluğu burada sınırlanmaz.
+GTIN_INPUT: dict[str, Any] = {"max_length": 32}
+
+
+class RetiredGtinListSerializer(serializers.ListSerializer):
+    """Eski koli GTIN'leri en yeniden eskiye. Liste ve detay sorgusu satırları önceden getirir
+    (`prefetch_related`); sıralama burada yapılır, satır başına sorgu olmaz."""
+
+    def to_representation(self, data: Any) -> list[Any]:
+        rows = data.all() if isinstance(data, BaseManager) else data
+        newest_first = sorted(rows, key=lambda row: (row.created_at, row.pk), reverse=True)
+        return super().to_representation(newest_first)
+
+
+class RetiredGtinSerializer(serializers.ModelSerializer):
+    """Eski koli GTIN'i (salt okunur): koli içi miktar değişince eski miktarıyla arşivlenir; bir
+    daha verilmez, okutulunca eski koli düzeniyle çözülür."""
+
+    retired_at = serializers.DateTimeField(
+        source="created_at", read_only=True, help_text="GTIN'in değiştiği an"
+    )
+    retired_by_name = serializers.SerializerMethodField(help_text="Değiştiren kullanıcı")
+
+    class Meta:
+        model = RetiredGtin
+        list_serializer_class = RetiredGtinListSerializer
+        fields = ["gtin", "factor_to_base", "replaced_by", "retired_at", "retired_by_name"]
+        read_only_fields = fields
+
+    def get_retired_by_name(self, instance: RetiredGtin) -> str:
+        user = instance.created_by
+        return (user.full_name or user.username) if user is not None else ""
+
+
 class MaterialUnitConversionSerializer(serializers.ModelSerializer):
     unit_code = serializers.CharField(source="unit.code", read_only=True)
     material_code = serializers.CharField(source="material.code", read_only=True)
+    material_type = serializers.CharField(
+        source="material.material_type",
+        read_only=True,
+        help_text="Malzemenin türü; koli GTIN'i önerisi yalnız mamulde (FINISHED).",
+    )
     base_unit_code = serializers.CharField(source="material.base_unit.code", read_only=True)
+    gtin_locked = serializers.SerializerMethodField(
+        help_text="Lotu olan mamulde koli GTIN'i dolu: değiştirilemez; koli içi miktar yalnız "
+        "yeni koli GTIN'iyle değişir (eski GTIN arşivlenir)."
+    )
+    retired_gtins = RetiredGtinSerializer(
+        many=True,
+        read_only=True,
+        help_text="Eski koli GTIN'leri (koli içi miktar değişince arşivlenir), en yeniden eskiye",
+    )
 
     class Meta:
         model = MaterialUnitConversion
@@ -61,14 +115,22 @@ class MaterialUnitConversionSerializer(serializers.ModelSerializer):
             "id",
             "material",
             "material_code",
+            "material_type",
             "unit",
             "unit_code",
             "factor_to_base",
             "base_unit_code",
+            "gtin",
+            "gtin_locked",
+            "retired_gtins",
             *AUDIT_FIELDS,
         ]
         read_only_fields = AUDIT_FIELDS
         validators: list = []
+        extra_kwargs = {"gtin": GTIN_INPUT}
+
+    def get_gtin_locked(self, instance: MaterialUnitConversion) -> bool:
+        return services.case_gtin_locked(instance)
 
 
 class MaterialSerializer(FormerCodesMixin, serializers.ModelSerializer):
@@ -77,6 +139,9 @@ class MaterialSerializer(FormerCodesMixin, serializers.ModelSerializer):
     )
     base_unit_code = serializers.CharField(source="base_unit.code", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True, default=None)
+    gtin_locked = serializers.SerializerMethodField(
+        help_text="Mamul, GTIN dolu ve lotu var: değiştirilemez (kilit yalnız mamulde)."
+    )
 
     class Meta:
         model = Material
@@ -96,13 +161,17 @@ class MaterialSerializer(FormerCodesMixin, serializers.ModelSerializer):
             "shelf_life_days",
             "min_stock",
             "gtin",
+            "gtin_locked",
             "requires_incoming_qc",
             "is_hazardous",
             "storage_notes",
             *AUDIT_FIELDS,
         ]
         read_only_fields = AUDIT_FIELDS
-        extra_kwargs = NO_UNIQUE_VALIDATOR
+        extra_kwargs = {**NO_UNIQUE_VALIDATOR, "gtin": GTIN_INPUT}
+
+    def get_gtin_locked(self, instance: Material) -> bool:
+        return services.gtin_locked(instance)
 
 
 class MaterialDetailSerializer(MaterialSerializer):
@@ -186,6 +255,7 @@ PARTNER_FIELDS = [
     "phone",
     "email",
     "contact_person",
+    "country_code",
     *AUDIT_FIELDS,
 ]
 
@@ -269,6 +339,9 @@ class PrinterSerializer(FormerCodesMixin, serializers.ModelSerializer):
 
 
 class LabelSettingsSerializer(serializers.ModelSerializer):
+    """Etiket ayarları. GS1 alanları burada salt okunurdur (gönderilirse yok sayılır); Sistem >
+    Kodlama sistematiği > GS1'de değiştirilir (`Gs1SettingsSerializer`)."""
+
     sscc_enabled = serializers.SerializerMethodField()
     default_printer_code = serializers.CharField(
         source="default_printer.code", read_only=True, default=None
@@ -286,10 +359,67 @@ class LabelSettingsSerializer(serializers.ModelSerializer):
             "sscc_enabled",
             "updated_at",
         ]
-        read_only_fields = ["next_sscc_serial", "updated_at"]
+        read_only_fields = [
+            "gs1_company_prefix",
+            "sscc_extension_digit",
+            "next_sscc_serial",
+            "updated_at",
+        ]
 
     def get_sscc_enabled(self, instance: LabelSettings) -> bool:
         return bool(instance.gs1_company_prefix)
+
+
+class Gs1SettingsSerializer(serializers.Serializer):
+    """GS1 ayarları (Sistem > Kodlama sistematiği > GS1; `services.Gs1Settings`)."""
+
+    company_prefix = serializers.CharField(help_text="GS1 firma öneki (6-12 rakam); boşsa kapalı")
+    extension_digit = serializers.IntegerField(help_text="SSCC uzantı hanesi (0-9)")
+    next_sscc_serial = serializers.IntegerField(
+        help_text="Sıradaki SSCC seri no (salt okunur; önek ya da uzantı değişince o önekle "
+        "basılmış en büyük seri no + 1)"
+    )
+    next_item_reference = serializers.IntegerField(
+        allow_null=True, help_text="GTIN önerisinde sıradaki ürün referansı; boşsa öneri kapalı"
+    )
+    sscc_enabled = serializers.BooleanField()
+    gtin_suggestion_enabled = serializers.BooleanField()
+    item_reference_digits = serializers.IntegerField(
+        allow_null=True, help_text="Ürün referansının hane sayısı: 12 - önek uzunluğu"
+    )
+    updated_at = serializers.DateTimeField(
+        allow_null=True, help_text="Son GS1 değişikliği (denetim günlüğünden)"
+    )
+    updated_by_name = serializers.CharField(allow_blank=True)
+
+
+class Gs1SettingsUpdateSerializer(serializers.Serializer):
+    """GS1 ayarı değişikliği: verilmeyen alan değişmez. Doğrulama serviste yapılır (hata kodları
+    `note_required`, `invalid_gs1_prefix`, `invalid_extension_digit`, `invalid_item_reference`)."""
+
+    company_prefix = serializers.CharField(required=False, allow_blank=True, max_length=32)
+    extension_digit = serializers.IntegerField(required=False)
+    next_item_reference = serializers.IntegerField(required=False, allow_null=True)
+    note = serializers.CharField(required=False, allow_blank=True, default="", max_length=1000)
+
+
+class GtinSuggestionSerializer(serializers.Serializer):
+    active = serializers.BooleanField(
+        help_text="GS1 firma öneki ve sıradaki ürün referansı girildiyse açık (yalnızca mamul)"
+    )
+    gtin = serializers.CharField(allow_null=True, help_text="Sıradaki boş GTIN-13")
+    reason = serializers.CharField()
+
+
+class CaseGtinSuggestionSerializer(serializers.Serializer):
+    gtin = serializers.CharField(
+        allow_null=True,
+        help_text=(
+            "Ürün GTIN'inden gösterge hanesi 1-8 ile türetilen boş GTIN-14; mamul değilse ya da "
+            "türetilemezse boş (nedeni reason'da)"
+        ),
+    )
+    reason = serializers.CharField()
 
 
 class CompanyProfileSerializer(serializers.ModelSerializer):

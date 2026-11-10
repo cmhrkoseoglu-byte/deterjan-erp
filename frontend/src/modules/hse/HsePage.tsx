@@ -67,6 +67,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
 import { AttachmentPanel } from "../../components/attachments/AttachmentPanel";
 import { WithHazard } from "../../components/hazard/HazardIcon";
+import { useStandardOptions, withValue } from "../../components/standards/useStandardOptions";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ct } from "../common/strings";
@@ -387,6 +388,7 @@ function SdsModal({ sheet, onClose }: { sheet: SafetyDataSheet | null; onClose: 
   const writer = hasAnyRole(user, HSE_ROLES);
   const materials = useMaterialSelect();
   const suppliers = useSupplierSelect();
+  const { languages } = useStandardOptions();
   const [saved, setSaved] = useState<SafetyDataSheet | null>(sheet);
   const [draft, setDraft] = useState({
     material: sheet ? String(sheet.material) : (null as string | null),
@@ -394,7 +396,8 @@ function SdsModal({ sheet, onClose }: { sheet: SafetyDataSheet | null; onClose: 
     revision_no: sheet?.revision_no ?? "",
     revision_date: sheet?.revision_date ?? today(),
     valid_until: sheet?.valid_until ?? "",
-    language: sheet?.language ?? "tr",
+    // ISO 639-1 kodu küçük harftir; eski kayıtta büyük harfle yazılmış olabilir.
+    language: (sheet?.language ?? "tr").trim().toLowerCase(),
     note: sheet?.note ?? "",
   });
   const { mutation, error } = useSave(
@@ -484,11 +487,16 @@ function SdsModal({ sheet, onClose }: { sheet: SafetyDataSheet | null; onClose: 
             value={draft.valid_until}
             onChange={(event) => setDraft({ ...draft, valid_until: event.currentTarget.value })}
           />
-          <TextInput
+          <Select
             label={hs.language}
+            description={hs.languageHint}
+            searchable
+            allowDeselect={false}
             disabled={!editable}
+            data={withValue(languages, draft.language)}
             value={draft.language}
-            onChange={(event) => setDraft({ ...draft, language: event.currentTarget.value })}
+            onChange={(value) => setDraft({ ...draft, language: value ?? "tr" })}
+            nothingFoundMessage={hs.notFound}
           />
         </SimpleGrid>
         <Textarea
@@ -849,6 +857,7 @@ function StatementModal({
       <SimpleGrid cols={2}>
         <TextInput
           label={hs.code}
+          description={hs.statementCodeHint}
           withAsterisk
           disabled={statement !== null}
           value={draft.code}

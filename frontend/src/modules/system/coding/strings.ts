@@ -1,12 +1,14 @@
 // Sistem > Kodlama sistematiği metinleri (yalnız admin; docs/plan/kodlama-sistematigi.md).
 export const cs = {
   intro:
-    "Ana veri kodlarının, belge ve lot numaralarının kuralları. Değişiklikleri yalnızca sistem yöneticisi yapar; her değişiklik notuyla geçmişe yazılır. Bir değişiklik yalnızca bundan sonra verilecek kod ve numaraları etkiler; verilmiş kod ve numaralar değişmez.",
+    "Ana veri kodlarının, belge ve lot numaralarının biçimi, çıktıların doküman kodu ve GS1 ayarları. Değişiklikleri yalnızca sistem yöneticisi yapar; biçim değişiklikleri ve kod göçleri notuyla Geçmiş bölümüne, GS1 ve çıktı ayarlarındaki değişikliklerin notu denetim günlüğüne yazılır. Bir değişiklik yalnızca bundan sonra verilecek kod ve numaraları etkiler; verilmiş kod ve numaralar değişmez.",
   iso: "ISO 9001 belirli bir kod biçimi istemez; kayıtların benzersiz ve kalıcı tanımlanmasını ve değişikliklerin izini ister. Tarihler ISO 8601 düzenindedir (4 haneli yıl).",
   sections: {
     master: "Ana veri kodları",
     documents: "Belge numaraları",
     lots: "Lot numaraları",
+    gs1: "GS1",
+    outputs: "Çıktılar",
     migration: "Kod göçü",
     history: "Geçmiş",
   },
@@ -105,7 +107,10 @@ export const cs = {
   counterHelp:
     "Düzenlenen önekin sayacı. Düzeltmek için değiştirin; dolu ya da başka kaydın eski kodu olan numara atlanır.",
   note: "Değişiklik notu",
+  // Biçim değişiklikleri Geçmiş bölümünde görünür; GS1 ve çıktı değişiklikleri yalnız denetim
+  // günlüğüne yazılır.
   notePlaceholder: "Neden değiştirildi? (geçmişte görünür)",
+  auditNotePlaceholder: "Neden değiştirildi? (denetim günlüğüne yazılır)",
   preview: "Önizleme",
   next: "Sıradaki",
   longest: "En uzun hali",
@@ -125,4 +130,93 @@ export const cs = {
   revisionSummary: (format: string, active: boolean | null) =>
     active === null ? format : `${format} · ${active ? "Etkin" : "Kapalı"}`,
   counterSet: (prefix: string, n: number) => `${prefix} sayacı: sıradaki ${n}`,
+  // Çıktı doküman kodları (ISO 9001 md. 7.5)
+  outputsIntro:
+    "Basılı çıktılara (PDF ve Excel) doküman no, yayın tarihi ve revizyon basılır. Doküman numaralarını kalite yönetim sisteminizin doküman listesinden girin; öneriler yalnızca örnektir.",
+  outputsHow:
+    "Bant, doküman no, ilk yayın tarihi ve en az bir revizyon girilip açılan çıktıya basılır. Belge yeniden basımda da kendi tarihindeki bantla basılır: o gün yürürlükte olan revizyon ve onunla girilen doküman no. Bant o gün kapalıysa belge bantsız basılır. Etiketlere bant basılmaz.",
+  colOutput: "Çıktı",
+  colDocCode: "Doküman no",
+  colRevision: "Revizyon",
+  suggested: (code: string) => `Öneri: ${code}`,
+  outputState: { on: "Basılıyor", off: "Basılmıyor" },
+  templateChanged: "Şablon değişti",
+  legal: "Yasal belge",
+  revNo: (n: number) => `Rev. ${String(n).padStart(2, "0")}`,
+  outputTitle: (label: string) => `Çıktı: ${label}`,
+  legalHelp:
+    "İrsaliye yasal belgedir: bandı açmadan önce mali müşavirinize danışın. İrsaliye numarası bu bantla değişmez.",
+  templateChangedHelp:
+    "Bu çıktının şablonu son revizyondan sonra değişti. Kalite sisteminizde değişikliği onaylayıp yeni revizyon girin.",
+  docCode: "Doküman no",
+  docCodeHelp: "Harf ya da rakamla başlar; A-Z, 0-9, -, . ve / (en fazla 32 karakter).",
+  docLockedHelp: "Doküman no ve ilk yayın tarihi yeni revizyonla değişir.",
+  firstIssue: "İlk yayın tarihi",
+  // Tarihlerin alt sınırı (backend `invalid_date`): elle yazılan iki haneli yıl (0026) kalmasın.
+  dateFloor: "Tarih 01.01.2000'den önce olamaz.",
+  printBand: "Çıktıya basılsın",
+  printBandHelp: "Doküman no, ilk yayın tarihi ve en az bir revizyon girilince açılabilir.",
+  outputSaved: (label: string) => `${label} kaydedildi.`,
+  // Pencere kapandıktan ya da başka çıktıya geçildikten sonra gelen hata bildirimle söylenir.
+  outputSaveFailed: (label: string, detail: string) => `${label} kaydedilemedi: ${detail}`,
+  revisions: "Revizyonlar",
+  revisionsEmpty: "Henüz revizyon girilmedi.",
+  colEffective: "Yürürlük",
+  colChange: "Değişiklik",
+  colApprover: "Onaylayan",
+  colEntered: "Giren",
+  newRevision: (label: string) => `Yeni revizyon: ${label}`,
+  firstRevision: "İlk revizyon",
+  firstRevisionNeedsDoc: "İlk revizyon için önce yukarıda doküman no ve ilk yayın tarihini girin.",
+  firstRevisionWithDoc: "Doküman no ve ilk yayın tarihi ilk revizyonla birlikte kaydedilir.",
+  // Revizyonu olan çıktıda revizyon formundaki doküman no ve ilk yayın tarihi.
+  revisionDocRequired: "Doküman no boş bırakılamaz.",
+  revisionIssueRequired: "İlk yayın tarihi boş bırakılamaz.",
+  firstRevisionNo: "Revizyon no",
+  firstRevisionNoHelp:
+    "Kalite sisteminizdeki güncel revizyon (ör. 3 = Rev. 03). Sonraki revizyonlar birer artar.",
+  effectiveDate: "Yürürlük tarihi",
+  changeNote: "Değişiklik açıklaması",
+  approver: "Onaylayan",
+  approvedOn: "Onay tarihi",
+  approvalHelp: "Revizyon onaylandıktan sonra yürürlüğe girer.",
+  addRevision: "Revizyonu ekle",
+  revisionConfirm: "Revizyonlar sonradan değiştirilemez ve silinemez. Revizyon eklensin mi?",
+  revisionAdded: (label: string, revision: string) => `${label}: ${revision} eklendi.`,
+  revisionAddFailed: (label: string, detail: string) => `${label} revizyonu eklenemedi: ${detail}`,
+  // GS1 (firma öneki, SSCC, GTIN önerisi)
+  gs1Intro:
+    "GS1 firma öneki palet etiketlerindeki SSCC numarasında ve mamullerin GTIN önerisinde kullanılır. Öneki GS1 Türkiye verir. Değişiklik yalnızca bundan sonra basılacak etiketleri ve önerilecek GTIN'leri etkiler; basılmış etiketler ve kayıtlı GTIN'ler değişmez.",
+  gs1Prefix: "Firma öneki",
+  gs1PrefixHelp:
+    "GS1 Türkiye'nin verdiği 6-12 haneli önek. Boş bırakılırsa SSCC palet etiketi ve GTIN önerisi kapanır.",
+  gs1PrefixInvalid: "Firma öneki 6-12 rakam olmalıdır.",
+  gs1Extension: "SSCC uzantı hanesi",
+  gs1ExtensionHelp:
+    "SSCC'nin ilk hanesi (0-9). Genelde 0 kalır; aynı önekle ayrı bir SSCC serisi gerekirse değiştirilir.",
+  gs1NextSerial: "Sıradaki SSCC seri no",
+  gs1NextSerialHelp:
+    "Salt okunur. Önek ya da uzantı değişince o önek ve uzantıyla basılmış en büyük seri no + 1 olur; eski öneke dönülünce SSCC çakışmaz.",
+  gs1Reference: "Sıradaki ürün referansı",
+  gs1ReferenceHelp: (digits: number) =>
+    `GTIN önerisi önekten sonraki ${digits} haneyi bu numaradan başlatır (0-${10 ** digits - 1}); kullanılmış GTIN'ler atlanır. Boş bırakılırsa GTIN önerisi kapalı kalır.`,
+  gs1ReferenceNeedsPrefix: "Ürün referansı için önce firma önekini girin.",
+  gs1ReferenceReset:
+    "Önek değişince ürün referansı silinir; yeni önekteki ilk boş referansı girin.",
+  gs1ReferenceInvalid: (digits: number) =>
+    `Ürün referansı en çok ${digits} hanedir (0-${10 ** digits - 1}).`,
+  gs1Digits: (n: number) => `${n} hane`,
+  gs1None: "Tanımlı değil",
+  gs1State: {
+    ssccOn: "SSCC açık",
+    ssccOff: "SSCC kapalı",
+    gtinOn: "GTIN önerisi açık",
+    gtinOff: "GTIN önerisi kapalı",
+  },
+  gs1Title: "GS1 ayarları",
+  gs1PrefixConfirm:
+    "Firma öneki değişiyor. SSCC seri no yeni önekte devam eder; basılmış etiketler değişmez. Kaydedilsin mi?",
+  gs1PrefixClearConfirm:
+    "Firma öneki siliniyor. SSCC palet etiketi ve GTIN önerisi kapanır; basılmış etiketler değişmez. Kaydedilsin mi?",
+  gs1Saved: "GS1 ayarları kaydedildi.",
 } as const;

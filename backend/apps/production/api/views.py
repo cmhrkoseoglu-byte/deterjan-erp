@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from apps.core.exceptions import BusinessRuleError
 from apps.core.permissions import HasRole
 from apps.core.roles import DEPO, PLANLAMA, URETIM
+from apps.inventory import selectors as inventory_selectors
 from apps.inventory.api.serializers import CancelSerializer, StockBalanceSerializer
 from apps.inventory.models import Lot
 from apps.production import selectors, services
@@ -27,14 +28,14 @@ def _user(request: Request) -> Any:
 
 
 def resolve_lot(requirement: ProductionRequirement, data: dict[str, Any]) -> Lot:
-    """Okutulan lot numarasını (ya da lot kimliğini) ihtiyacın malzemesindeki lota çevirir."""
-    lots = Lot.objects.filter(material_id=requirement.material_id)
+    """Okutulan lotu (lot kimliği, lot no, lot etiketi ya da GS1 barkodu; ortak çözüm
+    `inventory.selectors.resolve_lot`) yalnızca ihtiyacın malzemesindeki lotlarda arar."""
     if data.get("lot"):
-        lot = lots.filter(pk=data["lot"]).first()
+        lot = Lot.objects.filter(material_id=requirement.material_id, pk=data["lot"]).first()
     else:
-        lot = lots.filter(lot_no=data["lot_no"].strip().upper()).first()
+        lot = inventory_selectors.resolve_lot(data["lot_no"], materials=[requirement.material_id])
     if lot is None:
-        label = data.get("lot_no") or data.get("lot")
+        label = data.get("lot") or inventory_selectors.scan_label(data["lot_no"])
         raise BusinessRuleError(
             "lot_not_found",
             f"{requirement.material.code} malzemesinde {label} lotu bulunamadı.",

@@ -21,11 +21,14 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils.exceptions import InvalidFileException
 
+from apps.core import standards
 from apps.core.coding import formats as coding_formats
 from apps.core.coding import registry as coding_registry
 from apps.core.coding import selectors as coding_selectors
+from apps.core.coding.outputs import document_control
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import MasterDataModel, User
+from apps.core.xlsx import apply_document_control
 from apps.masterdata import services
 from apps.masterdata.fields import normalize_code
 from apps.masterdata.models import (
@@ -69,6 +72,14 @@ def parse_text(value: Any) -> str:
 
 def parse_code(value: Any) -> str:
     return normalize_code(_text(value))
+
+
+def parse_country(value: Any) -> str:
+    """Ülke kodu (ISO 3166-1 alpha-2): TR, DE, IQ …"""
+    code = standards.normalize_country(_text(value))
+    if not standards.is_country_code(code):
+        raise CellError(f"ISO 3166-1 ülke kodu bekleniyor (ör. TR, DE): “{_text(value)}”.")
+    return code
 
 
 def parse_decimal(value: Any) -> Decimal:
@@ -197,6 +208,13 @@ _PARTNER_COLUMNS = (
     Column("Telefon", "phone", parse_text, example="0216 000 00 00"),
     Column("E-posta", "email", parse_text, example="satis@ornek.com"),
     Column("Yetkili kişi", "contact_person", parse_text, example="Ali Veli"),
+    Column(
+        "Ülke kodu",
+        "country_code",
+        parse_country,
+        example="TR",
+        help="ISO 3166-1 alpha-2 (TR, DE, IQ …); yeni kayıtta boşsa TR",
+    ),
 )
 
 SPECS: dict[str, ImportSpec] = {
@@ -752,7 +770,12 @@ def build_template(kind: str) -> bytes:
         "Güncellemede boş bırakılan isteğe bağlı hücre mevcut değeri değiştirmez.",
         "Örnek satırı silip kendi verinizi girin. Hatalı satır varsa hiçbiri aktarılmaz.",
     )
-    return build_template_for(spec.title, spec.columns, notes)
+    return build_template_for(spec.title, spec.columns, notes, output=template_output(kind))
+
+
+def template_output(kind: str) -> str:
+    """Şablonun çıktı anahtarı (Kodlama > Çıktı doküman kodları)."""
+    return f"masterdata.template.{kind}"
 
 
 def build_template_for(
@@ -760,9 +783,13 @@ def build_template_for(
     columns: Iterable[Column],
     notes: Iterable[str],
     examples: Iterable[Iterable[Any]] | None = None,
+    *,
+    output: str | None = None,
 ) -> bytes:
     """Şablon kitabı: ilk sayfada başlık (zorunlular sarı) + örnek satır(lar), ikinci sayfada
-    sütun açıklamaları ve notlar. `examples` verilmezse sütunların `example` değeri kullanılır."""
+    sütun açıklamaları ve notlar. `examples` verilmezse sütunların `example` değeri kullanılır.
+    `output` çıktı anahtarıdır: doküman kontrol bilgisi yazdırma alt bilgisine yazılır (hücreler
+    değişmez, dosya yine içe aktarılır)."""
     columns = tuple(columns)
     workbook = Workbook()
     sheet = workbook.active
@@ -795,6 +822,8 @@ def build_template_for(
     sheet_notes.column_dimensions["C"].width = 60
     for cell in sheet_notes[1]:
         cell.font = header_font
+    if output is not None:
+        apply_document_control(workbook, document_control(output))
 
     buffer = io.BytesIO()
     workbook.save(buffer)

@@ -15,8 +15,10 @@ from django.db import transaction
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
+from apps.core.coding.outputs import document_control
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import User
+from apps.core.xlsx import apply_document_control
 from apps.inventory import services
 from apps.inventory.models import Lot
 from apps.masterdata.importers import (
@@ -300,6 +302,7 @@ def build_template() -> bytes:
     notes.column_dimensions["C"].width = 60
     for cell in notes[1]:
         cell.font = bold
+    apply_document_control(workbook, document_control("inventory.opening-template"))
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()

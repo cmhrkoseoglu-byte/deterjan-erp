@@ -27,3 +27,14 @@ class PurchasingConfig(AppConfig):
 
         register_document_type("ST", label="Satın alma talebi", model="purchasing.purchaserequest")
         register_document_type("SA", label="Satın alma siparişi", model="purchasing.purchaseorder")
+
+        # Çıktı doküman kodları: Sistem > Kodlama sistematiği > Çıktılar (ISO 9001 md. 7.5).
+        from apps.core.coding.registry import register_output
+
+        register_output(
+            "purchasing.order",
+            label="Satın alma siparişi",
+            group="Satın alma",
+            formats=("PDF",),
+            suggested_code="FR-SAT-001",
+        )

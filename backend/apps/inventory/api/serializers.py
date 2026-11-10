@@ -5,9 +5,11 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.core.api.labels import LabelOutputSerializer, PrintRequestSerializer
+from apps.core.labels import is_valid_gtin
 from apps.core.models import Currency, User
 from apps.core.permissions import user_has_role
 from apps.core.roles import SATIN_ALMA, YONETIM
+from apps.inventory import labels
 from apps.inventory.models import (
     GoodsReceipt,
     GoodsReceiptExtraCost,
@@ -26,6 +28,8 @@ from apps.masterdata.models import Location, Material, Supplier, UnitOfMeasure
 # Mal kabuldeki alış fiyatı, kur ve ek masrafı görür ve girer (admin her yerde). Depo miktarı
 # görür, tutarı görmez (Faz 4, Adım 4.1).
 RECEIPT_PRICE_ROLES = (SATIN_ALMA, YONETIM)
+# Lotun koli içi adedi (`LotSerializer.case_units`) koli dönüşümünün basamaklarıyla yazılır.
+CASE_UNITS = serializers.DecimalField(max_digits=18, decimal_places=6)
 
 
 def can_see_receipt_prices(request: Any) -> bool:
@@ -58,6 +62,15 @@ class LotSerializer(serializers.ModelSerializer):
     material_name = serializers.CharField(source="material.name", read_only=True)
     material_type = serializers.CharField(source="material.material_type", read_only=True)
     material_gtin = serializers.CharField(source="material.gtin", read_only=True)
+    # GS1: lotun koli ve palet etiketinin bastığı koli GTIN'i, lotun açıldığı günkü (`case_gtin`;
+    # koli düzeni sonra değişse de); yoksa ya da geçersizse (basılmaz) "" (koli etiketi ipucu).
+    material_case_gtin = serializers.SerializerMethodField()
+    # GS1: koli ve palet etiketi GS1 içerik barkodu taşır mı; değilse firma içi `LOT:` (ipucu).
+    gs1_label = serializers.SerializerMethodField()
+    # Koli içi adet, lotun açıldığı günkü (`case_factor`): koli ve palet etiketinde "Koli içi adet"
+    # varsayılanı. Yalnız temel birimi adet olan malzemede; öteki temel birimlerde (koli, palet,
+    # kg, litre) null.
+    case_units = serializers.SerializerMethodField()
     # Faz 4 (İSG): tehlikeli madde lotunda arayüz uyarı simgesi gösterir.
     is_hazardous = serializers.BooleanField(source="material.is_hazardous", read_only=True)
     unit = serializers.CharField(source="material.base_unit.code", read_only=True)
@@ -81,6 +94,9 @@ class LotSerializer(serializers.ModelSerializer):
             "material_name",
             "material_type",
             "material_gtin",
+            "material_case_gtin",
+            "gs1_label",
+            "case_units",
             "is_hazardous",
             "unit",
             "status",
@@ -104,6 +120,33 @@ class LotSerializer(serializers.ModelSerializer):
 
     def get_is_expired(self, lot: Lot) -> bool:
         return lot.expiry_date is not None and lot.expiry_date < timezone.localdate()
+
+    def get_material_case_gtin(self, lot: Lot) -> str:
+        # Kontrol hanesi yanlış koli GTIN'iyle açılmış lot (eski veri) koli GTIN'i basmaz ve ürün
+        # GTIN'ine de düşmez (`labels.case_gtin14`): ipucu "koli GTIN'i basılır" demesin.
+        gtin = lot.case_gtin
+        return gtin if gtin and is_valid_gtin(gtin) else ""
+
+    def get_gs1_label(self, lot: Lot) -> bool:
+        # Etiketlerin kuralı (`labels.case_gs1`, `labels.pallet_label`): mamul, (10) alanına uyan
+        # lot no ve basılabilir GTIN (`labels.case_gtin14`: lotun açıldığı günkü koli GTIN'i,
+        # tanımlı değilse ürün GTIN'i; geçersiz koli GTIN'i ürün GTIN'ine düşmez). Sorgusuz.
+        if lot.material.material_type != Material.Type.FINISHED or not labels.gs1_lot_no(lot):
+            return False
+        return bool(labels.case_gtin14(lot))
+
+    @extend_schema_field(
+        serializers.DecimalField(max_digits=18, decimal_places=6, allow_null=True, read_only=True)
+    )
+    def get_case_units(self, lot: Lot) -> str | None:
+        # Etiket koli içi miktarı "adet" diye yazar: temel birim adet türünde ve 1 birimi 1 adet
+        # olmalı (ADET). Temel birimi koli olan malzemede koli içi miktar 1 kolidir, palet olanda
+        # paletin kesri: ikisi de adet değildir.
+        factor = lot.case_factor
+        base = lot.material.base_unit
+        if factor is None or base.kind != UnitOfMeasure.Kind.COUNT or base.factor_to_kind_base != 1:
+            return None
+        return CASE_UNITS.to_representation(factor)
 
     def get_allowed_transitions(self, lot: Lot) -> list[str]:
         return lot_states.allowed_transitions(lot.status)
@@ -608,6 +651,8 @@ class ScanMaterialSerializer(serializers.Serializer):
     code = serializers.CharField()
     name = serializers.CharField()
     material_type = serializers.CharField()
+    # Temel birim: lotsuz koli okutmasında "1 koli = 12 ADET" bilgisi için.
+    base_unit_code = serializers.CharField(source="base_unit.code")
 
 
 class ScanLocationSerializer(serializers.Serializer):
@@ -632,3 +677,9 @@ class ScanResultSerializer(serializers.Serializer):
     pallet = ScanPalletSerializer(allow_null=True)
     gs1 = serializers.DictField(child=serializers.CharField())
     former_code = serializers.CharField(allow_blank=True)
+    # Koli GTIN'i okutulduysa "KOLI" ve 1 kolideki temel birim miktarı; diğer kodlarda "" ve null.
+    unit = serializers.CharField(allow_blank=True)
+    units_per_case = serializers.DecimalField(max_digits=18, decimal_places=4, allow_null=True)
+    warnings = serializers.ListField(child=serializers.CharField())
+    # Çözülen GS1 tarihleri: AI → ISO "YYYY-MM-DD".
+    gs1_dates = serializers.DictField(child=serializers.CharField())

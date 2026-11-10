@@ -13,6 +13,8 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from apps.core.coding.outputs import document_control
+from apps.core.pdf import controlled_canvas
 from apps.inventory.services import format_quantity
 from apps.quality.coa import FONT, FONT_BOLD, _register_fonts
 from apps.sales import selectors
@@ -48,6 +50,9 @@ def line_rows(data: dict[str, Any]) -> list[list[str]]:
         ]
         for index, line in enumerate(data["lines"], start=1)
     ]
+
+
+WAYBILL_OUTPUT = "sales.waybill"
 
 
 def waybill_pdf(shipment: Shipment) -> bytes:
@@ -170,5 +175,6 @@ def waybill_pdf(shipment: Shipment) -> bytes:
             small,
         ),
     ]
-    doc.build(story)  # type: ignore[arg-type]
+    control = document_control(WAYBILL_OUTPUT, on=data["date"])
+    doc.build(story, canvasmaker=controlled_canvas(control))  # type: ignore[arg-type]
     return buffer.getvalue()

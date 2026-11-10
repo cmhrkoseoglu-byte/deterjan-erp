@@ -1,13 +1,15 @@
 // Ana verilerde etiketle ilgili ekranlar: lokasyon etiketi yazdırma, yazıcı deneme etiketi ve
-// etiket ayarları (GS1 firma öneki, SSCC, varsayılan yazıcı; yalnızca admin değiştirir).
+// etiket ayarları (firma adı ve varsayılan yazıcı; yalnızca admin değiştirir). GS1 alanları
+// burada salt okunurdur; Sistem > Kodlama sistematiği > GS1'de değiştirilir.
 import {
   ActionIcon,
   Alert,
+  Anchor,
   Button,
   Group,
-  NumberInput,
   Paper,
   Select,
+  SimpleGrid,
   Stack,
   Text,
   TextInput,
@@ -18,6 +20,7 @@ import { notifications } from "@mantine/notifications";
 import { IconPrinter, IconTestPipe } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import {
   getLabelSettings,
@@ -35,6 +38,7 @@ import { hasAnyRole } from "../../auth/roles";
 import { LabelPrintModal } from "../../components/labels/LabelPrintModal";
 import { tr } from "../../i18n/tr";
 import { optionLabel } from "../common/useOptions";
+import { SYSTEM_BASE, TABS } from "../system/config";
 
 const t = tr.labels;
 
@@ -96,9 +100,11 @@ const s = {
   title: "Etiket ayarları",
   companyName: "Etikette firma adı",
   prefix: "GS1 firma öneki",
-  prefixHelp: "6-12 hane. Girilince palet etiketi (SSCC) açılır (Karar D-6).",
   extension: "SSCC uzantı hanesi",
   nextSerial: "Sıradaki SSCC seri no",
+  gs1Before: "GS1 ayarları ",
+  gs1Place: "Sistem > Kodlama sistematiği > GS1",
+  gs1After: "'de değiştirilir.",
   defaultPrinter: "Varsayılan yazıcı",
   save: "Kaydet",
   saved: "Etiket ayarları kaydedildi.",
@@ -107,6 +113,9 @@ const s = {
   ssccOff: "SSCC palet etiketi kapalı (GS1 firma öneki yok).",
 };
 
+/** GS1 ayarlarının tek yeri: Sistem > Kodlama sistematiği > GS1 (yalnız admin). */
+const GS1_PATH = `${SYSTEM_BASE}/${TABS.coding}?bolum=gs1`;
+
 export function LabelSettingsPanel() {
   const { user } = useAuth();
   const canEdit = hasAnyRole(user, ["admin"]);
@@ -114,24 +123,19 @@ export function LabelSettingsPanel() {
   const settings = useQuery({ queryKey: labelQueryKeys.settings, queryFn: getLabelSettings });
   const printers = useQuery({ queryKey: labelQueryKeys.printers, queryFn: listPrinters });
   const [company, setCompany] = useState("");
-  const [prefix, setPrefix] = useState("");
-  const [extension, setExtension] = useState<number>(0);
   const [printer, setPrinter] = useState<string | null>(null);
 
   useEffect(() => {
     if (!settings.data) return;
     setCompany(settings.data.company_name);
-    setPrefix(settings.data.gs1_company_prefix);
-    setExtension(settings.data.sscc_extension_digit);
     setPrinter(settings.data.default_printer ? String(settings.data.default_printer) : null);
   }, [settings.data]);
 
+  // GS1 alanları burada gönderilmez; Kodlama > GS1'de notla değiştirilir.
   const save = useMutation({
     mutationFn: () =>
       saveLabelSettings({
         company_name: company,
-        gs1_company_prefix: prefix.trim(),
-        sscc_extension_digit: extension,
         default_printer: printer ? Number(printer) : null,
       }),
     onSuccess: (data) => {
@@ -156,25 +160,35 @@ export function LabelSettingsPanel() {
           disabled={!canEdit}
           onChange={(event) => setCompany(event.currentTarget.value)}
         />
-        <TextInput
-          label={s.prefix}
-          description={s.prefixHelp}
-          value={prefix}
-          inputMode="numeric"
-          disabled={!canEdit}
-          onChange={(event) => setPrefix(event.currentTarget.value)}
-        />
-        <Group grow>
-          <NumberInput
-            label={s.extension}
-            min={0}
-            max={9}
-            value={extension}
-            disabled={!canEdit}
-            onChange={(value) => setExtension(Number(value) || 0)}
-          />
-          <TextInput label={s.nextSerial} value={String(settings.data.next_sscc_serial)} disabled />
-        </Group>
+        <Stack gap={4}>
+          <SimpleGrid cols={{ base: 1, xs: 3 }}>
+            <TextInput label={s.prefix} value={settings.data.gs1_company_prefix} disabled />
+            <TextInput
+              label={s.extension}
+              value={String(settings.data.sscc_extension_digit)}
+              disabled
+            />
+            <TextInput
+              label={s.nextSerial}
+              value={String(settings.data.next_sscc_serial)}
+              disabled
+            />
+          </SimpleGrid>
+          <Text size="sm" c={settings.data.sscc_enabled ? "green.8" : "dimmed"}>
+            {settings.data.sscc_enabled ? s.ssccOn : s.ssccOff}
+          </Text>
+          <Text size="xs" c="dimmed" data-testid="gs1-managed">
+            {s.gs1Before}
+            {canEdit ? (
+              <Anchor component={Link} to={GS1_PATH} size="xs">
+                {s.gs1Place}
+              </Anchor>
+            ) : (
+              s.gs1Place
+            )}
+            {s.gs1After}
+          </Text>
+        </Stack>
         <Select
           label={s.defaultPrinter}
           data={(printers.data ?? []).map((p) => ({
@@ -186,9 +200,6 @@ export function LabelSettingsPanel() {
           clearable
           disabled={!canEdit}
         />
-        <Text size="sm" c={settings.data.sscc_enabled ? "green.8" : "dimmed"}>
-          {settings.data.sscc_enabled ? s.ssccOn : s.ssccOff}
-        </Text>
         {save.isError && (
           <Alert color="red" variant="light">
             {getErrorMessage(save.error)}

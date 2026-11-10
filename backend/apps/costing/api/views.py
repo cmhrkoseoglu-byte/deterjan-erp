@@ -212,7 +212,10 @@ class CostTrendExcelView(ReportView):
     def get(self, request: Request) -> HttpResponse:
         rows = selectors.cost_trend(**_dated(self.query(request)))
         return _xlsx(
-            exports.to_xlsx([("Maliyet trendi", exports.COST_TREND, rows)]), "maliyet-trendi"
+            exports.to_xlsx(
+                [("Maliyet trendi", exports.COST_TREND, rows)], output="costing.cost-trend"
+            ),
+            "maliyet-trendi",
         )
 
 
@@ -233,7 +236,11 @@ class BatchVarianceExcelView(ReportView):
     def get(self, request: Request) -> HttpResponse:
         rows = selectors.batch_variance(**_dated(self.query(request), "product"))
         return _xlsx(
-            exports.to_xlsx([("Teorik ve fiili", exports.BATCH_VARIANCE, rows)]), "sarj-maliyeti"
+            exports.to_xlsx(
+                [("Teorik ve fiili", exports.BATCH_VARIANCE, rows)],
+                output="costing.batch-variance",
+            ),
+            "sarj-maliyeti",
         )
 
 
@@ -254,7 +261,10 @@ class ScrapCostExcelView(ReportView):
     def get(self, request: Request) -> HttpResponse:
         rows = selectors.scrap_cost(**_dated(self.query(request), "product"))
         return _xlsx(
-            exports.to_xlsx([("Fire maliyeti", exports.SCRAP_COST, rows)]), "fire-maliyeti"
+            exports.to_xlsx(
+                [("Fire maliyeti", exports.SCRAP_COST, rows)], output="costing.scrap-cost"
+            ),
+            "fire-maliyeti",
         )
 
 
@@ -285,7 +295,11 @@ class TopMaterialsExcelView(TopMaterialsView):
     def get(self, request: Request) -> HttpResponse:  # type: ignore[override]
         rows = _top(self.query(request))
         return _xlsx(
-            exports.to_xlsx([("En pahalı kalemler", exports.TOP_MATERIALS, rows)]), "en-pahali"
+            exports.to_xlsx(
+                [("En pahalı kalemler", exports.TOP_MATERIALS, rows)],
+                output="costing.top-materials",
+            ),
+            "en-pahali",
         )
 
 
@@ -320,7 +334,8 @@ class StockValueExcelView(StockValueView):
             [
                 ("Malzeme bazında", exports.STOCK_VALUE, summary["rows"]),
                 ("Lot bazında", exports.STOCK_VALUE_LOTS, lots),
-            ]
+            ],
+            output="costing.stock-value",
         )
         return _xlsx(content, "stok-degeri")
 

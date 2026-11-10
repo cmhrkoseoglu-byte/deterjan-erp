@@ -1,9 +1,20 @@
-"""Ana veri etiketleri: lokasyon etiketi (raf/tank, okutma içeriği `LOC:<kod>`) ve yazıcı deneme
-etiketi. Ölçü 100 × 150 mm (Karar D-8)."""
+"""Ana veri etiketleri: lokasyon etiketi (raf/tank, okutma içeriği `LOC:<kod>`, QR ve Code128;
+Code128'e yazılamayan kodda (Türkçe harf, ">") yalnız QR) ve yazıcı deneme etiketi. Ölçü
+100 × 150 mm (Karar D-8)."""
 
 from django.utils import timezone
 
-from apps.core.labels import Barcode, Box, Element, Label, QRCode, Text, fit_size
+from apps.core.labels import (
+    NO_BARCODE_QR,
+    Barcode,
+    Box,
+    Element,
+    Label,
+    QRCode,
+    Text,
+    code128_or_note,
+    fit_size,
+)
 from apps.masterdata.models import Location, Printer
 
 LABEL_WIDTH, LABEL_HEIGHT = 100.0, 150.0
@@ -43,7 +54,8 @@ def location_label(location: Location, company_name: str = "") -> Label:
         ),
         Text(MARGIN, 48, location.get_location_type_display(), size=10, max_width=INNER),
         QRCode(27.5, 60, 45, data),
-        Barcode(MARGIN, 115, 20, data=data, module=barcode_module(data), center_width=INNER),
+        # Code128 Türkçe harfi, ZPL'de ">"yi taşımaz (başka kod okuturdu): böyle kodda yazı.
+        code128_or_note(data, MARGIN, 115, 20, INNER, NO_BARCODE_QR, module=barcode_module(data)),
     ]
     return Label(LABEL_WIDTH, LABEL_HEIGHT, elements, title=f"Lokasyon {location.code}")
 

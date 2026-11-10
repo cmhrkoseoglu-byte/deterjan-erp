@@ -19,8 +19,16 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.coding import formats, migration, selectors, services
-from apps.core.coding.registry import KINDS, MASTER, CodeType, code_type, master_type_for_model
+from apps.core.coding import formats, migration, outputs, selectors, services
+from apps.core.coding.registry import (
+    KINDS,
+    MASTER,
+    CodeType,
+    OutputType,
+    code_type,
+    master_type_for_model,
+    output_type,
+)
 from apps.core.models import CodeHistory, CodeMigrationRun, CodeSchemeRevision, User
 from apps.core.pagination import StandardPagination
 from apps.core.permissions import HasRole, user_has_role
@@ -206,24 +214,25 @@ def _actor(request: Request) -> User:
     return request.user  # type: ignore[return-value]
 
 
-class CodeTypeListView(APIView):
+class CodeTypeListView(generics.ListAPIView):
     """Kayıtlı bütün kod türleri: biçim, örnek, sıradaki ve verilen son numara (yalnız admin).
-    `?kind=master|document|lot|standard` ile süzülür."""
+    `?kind=master|document|lot|standard` ile süzülür; sayfalıdır."""
 
     permission_classes = [HasRole(ADMIN)]
+    serializer_class = CodeTypeSerializer
+    pagination_class = StandardPagination
+    filter_backends: list[Any] = []
 
-    @extend_schema(
-        parameters=[OpenApiParameter("kind", str, enum=list(KINDS), required=False)],
-        responses=CodeTypeSerializer(many=True),
-    )
-    def get(self, request: Request) -> Response:
-        kind = request.query_params.get("kind") or None
+    @extend_schema(parameters=[OpenApiParameter("kind", str, enum=list(KINDS), required=False)])
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        return super().get(request, *args, **kwargs)
+
+    def get_queryset(self) -> Any:
+        """Kod türleri kayıttadır (veritabanında değil): satır listesi döner."""
+        kind = self.request.query_params.get("kind") or None
         if kind is not None and kind not in KINDS:
             kind = "__none__"
-        items = selectors.overview(kind)
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(items, request, view=self)  # type: ignore[arg-type]
-        return paginator.get_paginated_response(CodeTypeSerializer(page, many=True).data)
+        return selectors.overview(kind)
 
 
 class CodeTypeDetailView(APIView):
@@ -457,3 +466,136 @@ class RevertView(APIView):
         body.is_valid(raise_exception=True)
         run = migration.revert_recode(_actor(request), run_id, note=body.validated_data["note"])
         return Response(CodeMigrationRunSerializer(run).data, status=201)
+
+
+# --- çıktı doküman kodları (ISO 9001 md. 7.5) ---------------------------------------------------
+
+
+class OutputRevisionSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    revision_no = serializers.IntegerField()
+    revision_date = serializers.DateField()
+    # Revizyonla basılan doküman no ve ilk yayın tarihi (revizyon girildiği andaki).
+    doc_code = serializers.CharField(allow_blank=True)
+    first_issue_date = serializers.DateField(allow_null=True)
+    change_note = serializers.CharField()
+    approved_by_name = serializers.CharField()
+    approved_on = serializers.DateField()
+    template_version = serializers.IntegerField()
+    created_at = serializers.DateTimeField()
+    created_by_name = serializers.CharField(allow_blank=True)
+
+
+class OutputDocumentSerializer(serializers.Serializer):
+    """Kodlama ekranındaki çıktı satırı: doküman no, yayın tarihi, revizyonlar, bant durumu."""
+
+    key = serializers.CharField()
+    label = serializers.CharField()  # type: ignore[assignment]
+    group = serializers.CharField()
+    formats = serializers.ListField(child=serializers.CharField())
+    legal = serializers.BooleanField()
+    suggested_code = serializers.CharField(allow_blank=True)
+    doc_code = serializers.CharField(allow_blank=True)
+    first_issue_date = serializers.DateField(allow_null=True)
+    # İlk revizyondan sonra doküman no ve ilk yayın tarihi yalnız yeni revizyonla değişir.
+    doc_locked = serializers.BooleanField()
+    is_active = serializers.BooleanField()
+    revision_no = serializers.IntegerField(allow_null=True)
+    revision_date = serializers.DateField(allow_null=True)
+    template_version = serializers.IntegerField()
+    template_changed = serializers.BooleanField()
+    revisions = OutputRevisionSerializer(many=True)
+
+
+class OutputDocumentUpdateSerializer(serializers.Serializer):
+    """Verilmeyen alan değişmez; not zorunludur (servis Türkçe hatayla reddeder)."""
+
+    note = serializers.CharField(allow_blank=True, default="")
+    doc_code = serializers.CharField(required=False, allow_blank=True, max_length=40)
+    first_issue_date = serializers.DateField(required=False)
+    is_active = serializers.BooleanField(required=False)
+
+
+class OutputRevisionCreateSerializer(serializers.Serializer):
+    revision_date = serializers.DateField()
+    change_note = serializers.CharField(allow_blank=True, default="")
+    approved_by_name = serializers.CharField(allow_blank=True, default="", max_length=150)
+    approved_on = serializers.DateField()
+    # Yalnızca ilk revizyonda: kalite sistemindeki güncel revizyon no (verilmezse 00).
+    revision_no = serializers.IntegerField(required=False, min_value=0)
+    # Yeni doküman no ve ilk yayın tarihi (verilmeyen değişmez; ilk revizyonda kayıtlı değilse
+    # ikisi de verilir).
+    doc_code = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=40,
+        help_text="Yeni doküman no (verilmezse kayıttaki); ilk revizyonda kayıtlı değilse zorunlu.",
+    )
+    first_issue_date = serializers.DateField(
+        required=False,
+        help_text="Yeni ilk yayın tarihi (verilmezse kayıttaki); ilk revizyonda kayıtlı değilse "
+        "zorunlu.",
+    )
+
+
+def _output_or_404(key: str) -> OutputType:
+    found = output_type(key)
+    if found is None:
+        raise NotFound("Tanımsız çıktı.")
+    return found
+
+
+class OutputDocumentListView(generics.ListAPIView):
+    """Basılı çıktılar (PDF, Excel) ve doküman kontrol bilgileri (yalnız admin; sayfalı)."""
+
+    permission_classes = [HasRole(ADMIN)]
+    serializer_class = OutputDocumentSerializer
+    pagination_class = StandardPagination
+    filter_backends: list[Any] = []
+
+    def get_queryset(self) -> Any:
+        """Çıktılar kayıttadır (veritabanında değil): satır listesi döner."""
+        return outputs.overview()
+
+
+class OutputDocumentDetailView(APIView):
+    """Tek çıktı: oku ya da doküman no, ilk yayın tarihi ve bandı değiştir (yalnız admin; not
+    zorunlu). İlk revizyondan sonra doküman no ve ilk yayın tarihi yalnız yeni revizyonla
+    değişir (`output_doc_locked`; aynı değeri göndermek değişiklik sayılmaz). Bandı açmak için
+    doküman no, ilk yayın tarihi ve en az bir revizyon gerekir; açmak ya da kapatmak bugünden
+    geçerlidir."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(responses=OutputDocumentSerializer)
+    def get(self, request: Request, key: str) -> Response:
+        return Response(OutputDocumentSerializer(outputs.describe_output(_output_or_404(key))).data)
+
+    @extend_schema(request=OutputDocumentUpdateSerializer, responses=OutputDocumentSerializer)
+    def patch(self, request: Request, key: str) -> Response:
+        item = _output_or_404(key)
+        body = OutputDocumentUpdateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data: dict[str, Any] = dict(body.validated_data)
+        outputs.update_output(_actor(request), item.key, **data)
+        return Response(OutputDocumentSerializer(outputs.describe_output(item)).data)
+
+
+class OutputRevisionCreateView(APIView):
+    """Çıktıya yeni revizyon ekler (yalnız admin; revizyonlar değiştirilemez). Revizyon çıktının
+    o anki doküman no ve ilk yayın tarihini saklar; `doc_code` ve `first_issue_date` verilirse
+    çıktıda da değişir, verilmeyen değişmez. İlk revizyonda ikisi de kayıtlı olmalı ya da bu
+    istekte verilmelidir (`revision_needs_doc`). Tarihler 01.01.2000'den önce olamaz."""
+
+    permission_classes = [HasRole(ADMIN)]
+
+    @extend_schema(
+        request=OutputRevisionCreateSerializer, responses={201: OutputDocumentSerializer}
+    )
+    def post(self, request: Request, key: str) -> Response:
+        item = _output_or_404(key)
+        body = OutputRevisionCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data: dict[str, Any] = dict(body.validated_data)
+        outputs.add_revision(_actor(request), item.key, **data)
+        return Response(OutputDocumentSerializer(outputs.describe_output(item)).data, status=201)

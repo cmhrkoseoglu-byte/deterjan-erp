@@ -223,29 +223,30 @@ class SalesOrderViewSet(
 
 # --- sevkiyat (Adım 3.2) ---------------------------------------------------------------------
 
+AMBIGUOUS_LOT = (
+    "{lot_no} numarası sevkiyattaki birden çok üründe var; lotu listeden seçin ya da koli "
+    "barkodunu okutun."
+)
+
 
 def resolve_lot(shipment: Shipment, data: dict[str, Any]) -> Lot:
-    """Okutulan lotu bulur: lot kimliği ya da lot no / lot etiketi (`LOT:<lot_no>`). Aynı numara
-    birden çok malzemede varsa sevkiyatın ürünlerindeki lot seçilir; sevkiyatın birden çok
-    ürününde aynı numara varsa okutma lot kimliğiyle yapılmalıdır (`ambiguous_lot`)."""
+    """Okutulan lotu bulur: lot kimliği ya da lot no, lot etiketi (`LOT:<lot_no>`), GS1 barkodu
+    (ortak çözüm `inventory.selectors.resolve_lot`). Aynı numara birden çok malzemede varsa
+    sevkiyatın ürünlerindeki lot seçilir; sevkiyatın birden çok ürününde aynı numara varsa lot
+    kimliğiyle ya da GTIN'li GS1 barkoduyla okutulmalıdır (`ambiguous_lot`)."""
     if data.get("lot"):
         lot = Lot.objects.filter(pk=data["lot"]).first()
-        label = str(data["lot"])
     else:
-        label = data["lot_no"].strip()
-        lot_no = label.upper()
-        if lot_no.startswith("LOT:"):
-            lot_no = lot_no[4:]
-        lots = Lot.objects.filter(lot_no=lot_no)
         products = shipment.lines.values_list("order_line__product_id", flat=True)
-        matches = list(lots.filter(material_id__in=list(products))[:2])
-        if len(matches) > 1:
-            raise BusinessRuleError(
-                "ambiguous_lot",
-                f"{label} numarası sevkiyattaki birden çok üründe var; lotu listeden seçin.",
-            )
-        lot = matches[0] if matches else lots.first()
+        lot = inventory_selectors.resolve_lot(
+            data["lot_no"],
+            materials=products,
+            restrict=False,
+            unique=True,
+            ambiguous_message=AMBIGUOUS_LOT,
+        )
     if lot is None:
+        label = data.get("lot") or inventory_selectors.scan_label(data["lot_no"])
         raise BusinessRuleError("lot_not_found", f"{label} lotu bulunamadı.")
     return lot
 

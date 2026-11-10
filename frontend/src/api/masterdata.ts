@@ -22,6 +22,10 @@ export interface Unit extends Audited {
   kind: UnitKind;
   kind_display: string;
   factor_to_kind_base: string | null;
+  /** UN/ECE Rec 20 ortak kodu (KGM, LTR, C62; koli XCT, palet XPX). */
+  unece_code: string;
+  /** kg, g, L, mL; adet birimlerinde boş. */
+  symbol: string;
 }
 
 export interface Category extends Audited, FormerCodes {
@@ -31,14 +35,49 @@ export interface Category extends Audited, FormerCodes {
 
 export type MaterialType = "RAW" | "PACKAGING" | "BULK" | "FINISHED";
 
+/**
+ * Eski koli GTIN'i: lotu olan mamulde koli içi miktar değişince eski GTIN eski miktarıyla
+ * arşivlenir ve bir daha hiçbir ürüne ya da koliye verilmez (CUMHUR, 2026-11-05).
+ */
+export interface RetiredGtin {
+  /** 14 haneli eski koli GTIN'i. */
+  gtin: string;
+  /** Bu GTIN geçerliyken 1 koli kaç temel birimdi ("12.000000"). */
+  factor_to_base: string;
+  /** Yerine gelen koli GTIN'i (14 hane). */
+  replaced_by: string;
+  /** Arşivlendiği an: koli içi miktarın değiştiği kayıt. */
+  retired_at: string;
+  retired_by_name: string;
+}
+
+/**
+ * Birim dönüşümü. Kayıt hataları (400, `code`): `invalid_gtin`, `gtin_taken` (arşivdeki eski koli
+ * GTIN'i dahil), `gtin_locked`, `case_gtin_not_allowed`, `case_gtin_required` (lotu olan mamulde
+ * koli içi miktar yeni koli GTIN'i olmadan değişmez).
+ */
 export interface Conversion extends Audited {
   material: number;
   material_code: string;
+  /** Malzemenin türü (salt okunur): koli GTIN'i önerisi yalnız mamulde. */
+  material_type: MaterialType;
   unit: number;
   unit_code: string;
   factor_to_base: string;
   base_unit_code: string;
+  /** Koli GTIN'i: yalnızca birimi KOLI olan dönüşümde (koli dışı birimde dolu GTIN reddedilir). */
+  gtin: string;
+  /**
+   * Malzeme mamul, lotu var ve koli GTIN'i geçerli: koli GTIN'i tek başına değiştirilemez ya da
+   * silinemez; koli içi miktar (`factor_to_base`) değişirse yeni koli GTIN'iyle birlikte değişir.
+   */
+  gtin_locked: boolean;
+  /** Eski koli GTIN'leri, en yeniden eskiye. */
+  retired_gtins: RetiredGtin[];
 }
+
+/** Koli birimi kodu: koli GTIN'i yalnızca bu birimin dönüşümünde tutulur. */
+export const CASE_UNIT = "KOLI";
 
 export interface Material extends Audited, FormerCodes {
   code: string;
@@ -53,6 +92,11 @@ export interface Material extends Audited, FormerCodes {
   shelf_life_days: number | null;
   min_stock: string | null;
   gtin: string;
+  /**
+   * Malzeme mamul, lotu var ve GTIN'i geçerli: GTIN değiştirilemez ve silinemez. Hammadde, ambalaj
+   * ve yarı mamulde lot olsa da false (tedarikçi GTIN'i düzeltilebilir).
+   */
+  gtin_locked: boolean;
   requires_incoming_qc: boolean;
   is_hazardous: boolean;
   storage_notes: string;
@@ -98,6 +142,8 @@ export interface Partner extends Audited, FormerCodes {
   phone: string;
   email: string;
   contact_person: string;
+  /** ISO 3166-1 alpha-2 (TR, DE, IQ …). */
+  country_code: string;
 }
 
 /**
@@ -162,6 +208,48 @@ export async function setRecordActive<T>(
 ): Promise<T> {
   const { data } = await api.post<T>(
     `${basePath(endpoint)}/${id}/${active ? "activate" : "deactivate"}/`,
+  );
+  return data;
+}
+
+// --- GTIN önerisi (GS1) -------------------------------------------------------------------
+
+/**
+ * Sıradaki boş GTIN-13 (ön yüz yalnızca mamulde kullanır). `active` yalnızca GS1 firma öneki ve
+ * sıradaki ürün referansı girilmişse true; `reason` Türkçe açıklamadır (kapalıysa nedeni).
+ */
+export interface GtinSuggestion {
+  active: boolean;
+  gtin: string | null;
+  reason: string;
+}
+
+/**
+ * Mamulün GTIN'inden türetilen ilk boş koli GTIN'i (GTIN-14); türetilemezse `reason`. Mamul dışı
+ * malzemede öneri yoktur (koli GTIN'i tedarikçinindir; ön yüz düğmeyi yalnız mamulde gösterir).
+ */
+export interface CaseGtinSuggestion {
+  gtin: string | null;
+  reason: string;
+}
+
+/** Malzeme yazma rolleri (planlama, admin). */
+export async function suggestGtin(): Promise<GtinSuggestion> {
+  const { data } = await api.get<GtinSuggestion>("/masterdata/gtin-suggestion/");
+  return data;
+}
+
+/**
+ * GTIN önerisinin sorgu anahtarı. Malzeme listesinin anahtarı altındadır: malzeme kaydedilince
+ * (yeni ya da düzenleme; ana veri ekranı `["masterdata", "materials"]`i yeniler) öneri de
+ * geçersizlenir, kaydedilen GTIN yeniden önerilmez.
+ */
+export const gtinSuggestionKey = ["masterdata", "materials", "gtin-suggestion"] as const;
+
+/** Malzeme yazma rolleri (planlama, admin). */
+export async function suggestCaseGtin(materialId: number): Promise<CaseGtinSuggestion> {
+  const { data } = await api.get<CaseGtinSuggestion>(
+    `/masterdata/materials/${materialId}/case-gtin-suggestion/`,
   );
   return data;
 }

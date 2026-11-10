@@ -73,6 +73,21 @@ class Lot(BaseModel):
         "birim maliyet", null=True, blank=True, editable=False, max_digits=18, decimal_places=4
     )
     cost_is_estimated = models.BooleanField("tahmini maliyet", default=False, editable=False)
+    # Lotun koli düzeni (CUMHUR, 2026-11-05, "lotun koli düzeniyle"): mamul lotu açılırken KOLI
+    # dönüşümünden yazılır (`inventory.services.create_lot`), sonra değişmez. İrsaliyede koli sayısı
+    # ve koli / palet etiketindeki koli GTIN'i bundandır; koli düzeni sonra değişse de yeniden
+    # basım aynı kalır. Mamul olmayan lotta ve koli dönüşümü yoksa boş.
+    case_factor = models.DecimalField(
+        "koli içi miktar (lotun açıldığı gün)",
+        null=True,
+        blank=True,
+        editable=False,
+        max_digits=18,
+        decimal_places=6,
+    )
+    case_gtin = models.CharField(
+        "koli GTIN'i (lotun açıldığı gün)", max_length=14, blank=True, editable=False
+    )
 
     class Meta:
         verbose_name = "lot"

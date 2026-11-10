@@ -8,6 +8,8 @@ from apps.filling import services
 from apps.filling.models import FillingOrder, FillingRun
 from apps.filling.tests.factories import Line, approved_order, order_data, ready_order, started_run
 from apps.inventory.models import Lot
+from apps.inventory.tests.factories import stocked_lot
+from apps.masterdata.models import Material, MaterialUnitConversion, RetiredGtin
 from apps.masterdata.tests.factories import unit
 
 pytestmark = pytest.mark.usefixtures("invariants")
@@ -193,6 +195,128 @@ def test_filling_tablet_flow(line: Line, planner, depo, filler):
     response = api.get(url("order-report", order.pk))
     assert response.status_code == 200
     assert response.data["good_units"] == 1000
+
+
+CAP_GTIN = "8690000000043"
+BULK_GTIN = "8690000000050"
+
+
+def test_run_uses_gs1_barcodes_for_lots(line: Line, planner, depo, filler):
+    """Dolum ortak lot çözümünü kullanır (GS1 adım 7): bulk, ambalaj ve fire lotu GS1 barkoduyla
+    ((01) GTIN + (10) lot) okutulur. Başka malzemenin barkodu o lotu bulur, servis
+    `lot_material_mismatch` der; bilinmeyen lot `lot_not_found`, hatalı kontrol hanesi
+    `gs1_check_digit`."""
+    Material.objects.filter(pk=line.cap.pk).update(gtin=CAP_GTIN)
+    Material.objects.filter(pk=line.bulk.pk).update(gtin=BULK_GTIN)
+    run = started_run(line, planner, depo, filler)
+    api = client(filler)
+    cap, bulk = line.lots["cap"].lot_no, line.lots["bulk"].lot_no
+
+    consumed = api.post(
+        url("run-consume-bulk", run.pk), {"lot_no": f"(01)0{BULK_GTIN}(10){bulk}", "quantity": "10"}
+    )
+    assert consumed.status_code == 200, consumed.data
+    scanned = api.post(url("run-scan", run.pk), {"lot_no": f"]C1010{CAP_GTIN}10{cap}"})
+    assert scanned.status_code == 200, scanned.data
+    wrong = api.post(url("run-scan", run.pk), {"lot_no": f"(01)0{BULK_GTIN}(10){bulk}"})
+    assert wrong.status_code == 400 and wrong.data["code"] == "lot_material_mismatch"
+    missing = api.post(url("run-scan", run.pk), {"lot_no": f"(01)0{CAP_GTIN}(10)YOK-1"})
+    assert missing.status_code == 400 and missing.data["code"] == "lot_not_found"
+    # Mesajda okutulan ham veri (AIM, GS) değil, barkoddaki lot no.
+    raw_missing = api.post(
+        url("run-scan", run.pk), {"lot_no": f"]C1010{CAP_GTIN}10YOK-1\x1d17281015"}, format="json"
+    )
+    assert raw_missing.data == {
+        "code": "lot_not_found",
+        "detail": "Ambalaj için YOK-1 lotu bulunamadı.",
+    }
+    # Lot kimliğiyle okutmada mesaj kimliği gösterir (lot no da gönderilse aranan kimliktir).
+    missing_id = Lot.objects.latest("pk").pk + 1
+    for body in ({"lot": missing_id}, {"lot": missing_id, "lot_no": "YOK-1"}):
+        assert api.post(url("run-scan", run.pk), body, format="json").data == {
+            "code": "lot_not_found",
+            "detail": f"Ambalaj için {missing_id} lotu bulunamadı.",
+        }
+    bad = api.post(url("run-scan", run.pk), {"lot_no": f"(01)0{CAP_GTIN[:-1]}0(10){cap}"})
+    assert bad.status_code == 400 and bad.data["code"] == "gs1_check_digit"
+    scrap = {
+        "kind": "PACKAGING",
+        "reason_code": "DAMAGED_PACKAGING",
+        "quantity": "2",
+        "lot_no": f"(01)0{CAP_GTIN}(10){cap.lower()}",
+    }
+    response = api.post(url("run-scrap", run.pk), scrap)
+    assert response.status_code == 200, response.data
+    assert len(response.data["scraps"]) == 1
+    # AIM'siz (17)+(10): baştaki ya da sondaki GS (FNC1) GS1 işaretidir, metin kırpılmaz; kenardaki
+    # diğer boşlukları (NBSP, RS) lot çözümü atar.
+    for start, end in (("\x1d", ""), ("", "\x1d"), ("\xa0\x1d", "\x1e")):
+        consumed = api.post(
+            url("run-consume-bulk", run.pk),
+            {"lot_no": f"{start}17281015" + f"10{bulk}{end}", "quantity": "10"},
+            format="json",
+        )
+        assert consumed.status_code == 200, (start, end, consumed.data)
+        code = f"{start}17281015" + f"10{cap}{end}"
+        scanned = api.post(url("run-scan", run.pk), {"lot_no": code}, format="json")
+        assert scanned.status_code == 200, (start, end, scanned.data)
+        response = api.post(url("run-scrap", run.pk), {**scrap, "lot_no": code}, format="json")
+        assert response.status_code == 200, (start, end, response.data)
+    assert len(response.data["scraps"]) == 4
+    # Yalnız GS ve boşluk: lot okutulmamıştır.
+    blank = " \x1d\r\n"
+    scanned = api.post(url("run-scan", run.pk), {"lot_no": blank}, format="json")
+    assert scanned.json()["errors"] == {"lot_no": ["Lot okutulmalı ya da seçilmelidir."]}
+    response = api.post(url("run-scrap", run.pk), {**scrap, "lot_no": blank}, format="json")
+    assert response.json()["errors"] == {"lot_no": ["Fire için lot okutulmalıdır."]}
+    assert client(depo).post(url("run-scan", run.pk), {"lot_no": cap}).status_code == 403
+
+
+def test_run_scan_reads_archived_case_gtins(line: Line, planner, depo, filler):
+    """Dolum ortak lot çözümü eski koli GTIN'ini (arşiv: koli içi miktar değişince yerine yenisi
+    verildi) güncel koli GTIN'i gibi okur: ambalajın eski koli barkodu lotu bulur; mamulün eski
+    koli barkodu da lotunu bulur, servis `lot_material_mismatch` der ("lot bulunamadı" değil).
+    Arşiv satırları doğrudan yazılır (okutma malzeme türüne bakmaz)."""
+    run = started_run(line, planner, depo, filler)
+    cases = {
+        line.cap: ("38690000000013", "48690000000010"),  # (güncel, eski) koli GTIN'i
+        line.finished: ("18690000000019", "28690000000016"),
+    }
+    for material, (current, old) in cases.items():
+        conversion = MaterialUnitConversion.objects.create(
+            material=material, unit=unit("KOLI"), factor_to_base=D("12"), gtin=current
+        )
+        RetiredGtin.objects.create(
+            conversion=conversion, gtin=old, factor_to_base=D("6"), replaced_by=current
+        )
+    api = client(filler)
+    cap_old, finished_old = cases[line.cap][1], cases[line.finished][1]
+    cap = line.lots["cap"].lot_no
+
+    scanned = api.post(url("run-scan", run.pk), {"lot_no": f"(01){cap_old}(10){cap}"})
+    assert scanned.status_code == 200, scanned.data
+    scrap = {
+        "kind": "PACKAGING",
+        "reason_code": "DAMAGED_PACKAGING",
+        "quantity": "2",
+        "lot_no": f"]C101{cap_old}10{cap.lower()}\x1d17281015",
+    }
+    response = api.post(url("run-scrap", run.pk), scrap, format="json")
+    assert response.status_code == 200, response.data
+    finished = stocked_lot(
+        "24", material=line.finished, location=line.finished_store, source=Lot.Source.FILLING
+    )
+    wrong = api.post(
+        url("run-scan", run.pk), {"lot_no": f"(01){finished_old}(10){finished.lot_no}"}
+    )
+    assert (wrong.status_code, wrong.data["code"]) == (400, "lot_material_mismatch")
+    missing = api.post(url("run-scan", run.pk), {"lot_no": f"(01){cap_old}(10)YOK-1"})
+    assert missing.data == {
+        "code": "lot_not_found",
+        "detail": "Ambalaj için YOK-1 lotu bulunamadı.",
+    }
+    denied = client(depo).post(url("run-scan", run.pk), {"lot_no": f"(01){cap_old}(10){cap}"})
+    assert denied.status_code == 403
 
 
 def test_run_detail_shows_line_stock(line: Line, planner, depo, filler):

@@ -58,7 +58,8 @@ class HazardStatement(MasterDataModel):
         P = "P", "Önlem ifadesi"
         EUH = "EUH", "Ek ifade"
 
-    code = CodeField("kod", unique=True)
+    # Büyük/küçük harf korunur: H360Fd (üremeye zarar, F kesin / d şüpheli) ile H360FD farklıdır.
+    code = CodeField("kod", unique=True, upper=False)
     kind = models.CharField("tür", max_length=4, choices=Kind.choices)
     text = models.TextField("metin")
 

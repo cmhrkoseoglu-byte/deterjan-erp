@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from django.core import mail
@@ -9,7 +10,7 @@ from django.core.exceptions import PermissionDenied
 from apps.core import event_names as ev
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
-from apps.core.roles import LABORATUVAR
+from apps.core.roles import ADMIN, LABORATUVAR
 from apps.inventory import services as inventory
 from apps.inventory.models import GoodsReceipt, Lot
 from apps.inventory.tests.factories import stocked_lot
@@ -18,6 +19,7 @@ from apps.masterdata.models import CompanyProfile
 from apps.masterdata.tests.factories import SupplierFactory, unit
 from apps.production.tests.factories import approved_order as approved_production_order
 from apps.production.tests.factories import build_plant
+from apps.purchasing import pdf as pdf_module
 from apps.purchasing import selectors, services
 from apps.purchasing.models import PurchaseOrder, PurchaseRequest
 from apps.purchasing.pdf import purchase_order_pdf
@@ -298,6 +300,39 @@ def test_pdf_renders(manager: User) -> None:
     assert purchase_order_pdf(order)[:4] == b"%PDF"
     _company("Örnek Deterjan A.Ş.")  # çok satırlı adres ve sicil satırıyla da basılır
     assert purchase_order_pdf(order)[:4] == b"%PDF"
+
+
+def test_pdf_reprint_keeps_codes_from_send_time(
+    buyer: User, manager: User, make_user: Callable[..., User], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Gönderilmiş siparişin yeniden basımında tedarikçi ve malzeme kodu gönderildiği andaki
+    haliyle; gönderilmemiş sipariş bugünkü kodlarla basılır."""
+    supplier = SupplierFactory.create(email="satis@tedarikci.com")
+    material = raw_material(name="Soda")
+    sent = services.mark_sent(
+        buyer, approved_order(manager, [line(material)], supplier=supplier), email=supplier.email
+    )
+    unsent = approved_order(manager, [line(material)], supplier=supplier)
+    old_supplier, old_material = supplier.code, material.code
+    admin = make_user(ADMIN)
+    masterdata.recode_record(admin, supplier, "TED-YENI", "Yeni kod", reason="change")
+    masterdata.recode_record(admin, material, "MLZ-YENI", "Yeni kod", reason="change")
+
+    texts: list[str] = []
+    real = pdf_module.Paragraph
+
+    def spy(text: str, *args: Any, **kwargs: Any) -> Any:
+        texts.append(text)
+        return real(text, *args, **kwargs)
+
+    monkeypatch.setattr(pdf_module, "Paragraph", spy)
+    assert purchase_order_pdf(PurchaseOrder.objects.get(pk=sent.pk))[:4] == b"%PDF"
+    assert f"{old_supplier} — {supplier.name}" in texts
+    assert f"{old_material} — Soda" in texts
+    assert not any("TED-YENI" in text or "MLZ-YENI" in text for text in texts)
+    texts.clear()
+    assert purchase_order_pdf(PurchaseOrder.objects.get(pk=unsent.pk))[:4] == b"%PDF"
+    assert f"TED-YENI — {supplier.name}" in texts and "MLZ-YENI — Soda" in texts
 
 
 # --- talep -----------------------------------------------------------------------------------

@@ -203,3 +203,55 @@ def document_type(prefix: str) -> CodeType | None:
 
 def lot_type(prefix: str) -> CodeType | None:
     return _REGISTRY.get(f"{LOT}.{prefix}")
+
+
+# --- çıktı doküman kodları (ISO 9001 md. 7.5) ----------------------------------------------------
+
+
+@dataclass(frozen=True)
+class OutputType:
+    """Basılı çıktı (PDF, Excel). Doküman no ve revizyonlar `core.OutputDocument`'tadır;
+    `template_version` şablon kodda değişince artırılır (ekran yeni revizyon ister)."""
+
+    key: str
+    label: str
+    group: str
+    formats: tuple[str, ...]
+    template_version: int = 1
+    legal: bool = False  # yasal belge (irsaliye): bandı açmadan önce mali müşavire danışılır
+    suggested_code: str = ""  # Türk KYS geleneğinde öneri (FR-KAL-001); yalnızca öneridir
+
+
+_OUTPUTS: dict[str, OutputType] = {}
+
+
+def register_output(
+    key: str,
+    *,
+    label: str,
+    group: str,
+    formats: Sequence[str],
+    template_version: int = 1,
+    legal: bool = False,
+    suggested_code: str = "",
+) -> OutputType:
+    """Çıktıyı kaydeder (modülün `AppConfig.ready()`'sinde). `group` ekrandaki başlıktır."""
+    item = OutputType(
+        key=key,
+        label=label,
+        group=group,
+        formats=tuple(formats),
+        template_version=template_version,
+        legal=legal,
+        suggested_code=suggested_code,
+    )
+    _OUTPUTS[key] = item
+    return item
+
+
+def output_type(key: str) -> OutputType | None:
+    return _OUTPUTS.get((key or "").strip())
+
+
+def output_types() -> list[OutputType]:
+    return sorted(_OUTPUTS.values(), key=lambda item: (item.group, item.label))

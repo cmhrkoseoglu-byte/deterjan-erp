@@ -459,6 +459,120 @@ class CodeMigrationRun(ImmutableModel):
         return f"Kod göçü #{self.pk}"
 
 
+class OutputDocument(BaseModel):
+    """Basılı çıktının doküman kontrol bilgisi (ISO 9001 md. 7.5): doküman no, ilk yayın tarihi,
+    revizyonlar. `is_active` açıksa bugünkü çıktıya alt bilgi bandı basılır; belge kendi
+    tarihindeki bant durumuyla (`OutputBandChange`) ve revizyonun saklanan doküman no ve ilk yayın
+    tarihiyle basılır. İlk revizyondan sonra doküman no ve ilk yayın tarihi yalnız yeni revizyonla
+    değişir. Yalnızca `core.coding.outputs` yazar; çıktı türleri
+    `core.coding.registry.register_output` ile kayıtlı.
+    """
+
+    key = models.CharField("çıktı", max_length=64, unique=True)
+    doc_code = models.CharField("doküman no", max_length=32, blank=True)
+    first_issue_date = models.DateField("ilk yayın tarihi", null=True, blank=True)
+    is_active = models.BooleanField("çıktıya basılsın", default=False)
+
+    class Meta:
+        verbose_name = "çıktı dokümanı"
+        verbose_name_plural = "çıktı dokümanları"
+        ordering = ["key"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["doc_code"],
+                condition=~models.Q(doc_code=""),
+                name="core_outputdocument_code_uniq",
+                violation_error_message="Bu doküman numarası başka bir çıktıda kullanılıyor.",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return self.doc_code or self.key
+
+
+class OutputDocumentRevision(ImmutableModel):
+    """Çıktı dokümanının revizyonu (değiştirilemez): yürürlük tarihi, değişiklik açıklaması,
+    onaylayan. Belge, tarihinde yürürlükte olan ve o güne kadar girilmiş (`created_at`) revizyonla
+    basılır; bantta revizyonun saklanan doküman no ve ilk yayın tarihi yazar (yeniden basım ilk
+    basımdaki gibidir)."""
+
+    immutable_message = "Doküman revizyonları değiştirilemez."
+
+    output = models.ForeignKey(
+        OutputDocument,
+        verbose_name="çıktı dokümanı",
+        on_delete=models.PROTECT,
+        related_name="revisions",
+    )
+    revision_no = models.PositiveSmallIntegerField("revizyon no")
+    revision_date = models.DateField("revizyon (yürürlük) tarihi")
+    # Revizyon girildiğinde çıktının doküman no ve ilk yayın tarihi.
+    doc_code = models.CharField("doküman no", max_length=32, blank=True, default="")
+    first_issue_date = models.DateField("ilk yayın tarihi", null=True, blank=True)
+    change_note = models.TextField("değişiklik açıklaması")
+    approved_by_name = models.CharField("onaylayan", max_length=150)
+    approved_on = models.DateField("onay tarihi")
+    # Revizyon girildiğinde çıktının şablon sürümü (kayıttaki sürüm büyükse ekran uyarır).
+    template_version = models.PositiveIntegerField("şablon sürümü", default=1)
+    created_at = models.DateTimeField("kayıt zamanı", auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        verbose_name="giren",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "doküman revizyonu"
+        verbose_name_plural = "doküman revizyonları"
+        ordering = ["output", "-revision_no"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["output", "revision_no"], name="core_outputdocrev_output_no_uniq"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.output} Rev.{self.revision_no:02d}"
+
+
+class OutputBandChange(ImmutableModel):
+    """Çıktı bandının açılması ya da kapanması (değiştirilemez). Belge kendi tarihindeki bant
+    durumuyla basılır: bant açılmadan önceki tarihli belge bantsız, bant kapatılsa da açıkken
+    tarihlenen belge bantlı basılır."""
+
+    immutable_message = "Bant değişiklikleri değiştirilemez."
+
+    output = models.ForeignKey(
+        OutputDocument,
+        verbose_name="çıktı dokümanı",
+        on_delete=models.PROTECT,
+        related_name="band_changes",
+    )
+    is_active = models.BooleanField("çıktıya basılsın")
+    effective_date = models.DateField("geçerlilik tarihi")
+    created_at = models.DateTimeField("kayıt zamanı", auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        verbose_name="değiştiren",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "bant değişikliği"
+        verbose_name_plural = "bant değişiklikleri"
+        ordering = ["output", "-effective_date", "-id"]
+
+    def __str__(self) -> str:
+        state = "açık" if self.is_active else "kapalı"
+        return f"{self.output} bant {state} ({self.effective_date:%d.%m.%Y})"
+
+
 def attachment_upload_to(instance: "Attachment", filename: str) -> str:
     """Dosya adı tahmin edilemez olsun diye rastgele; özgün ad `original_name`'de tutulur."""
     extension = os.path.splitext(filename)[1].lower()[:10]

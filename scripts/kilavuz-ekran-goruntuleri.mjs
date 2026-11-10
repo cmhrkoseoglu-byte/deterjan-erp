@@ -109,6 +109,7 @@ async function session(user) {
     page,
     get: (url) => call("GET", url),
     post: (url, data = {}) => call("POST", url, data),
+    patch: (url, data = {}) => call("PATCH", url, data),
   };
   sessions.set(user, s);
   return s;
@@ -460,7 +461,20 @@ async function ensureProblemReport() {
   });
 }
 
+/** GS1 bölümü ve palet etiketi boş görünmesin: önek girilmemişse örnek önek (testlerdeki gibi). */
+async function ensureGs1() {
+  const admin = await session("admin");
+  const gs1 = await admin.get("/masterdata/gs1-settings/");
+  if (gs1.company_prefix) return;
+  await admin.patch("/masterdata/gs1-settings/", {
+    company_prefix: "8691234",
+    next_item_reference: 1,
+    note: NOTE,
+  });
+}
+
 const SETUP = [
+  ["GS1 ayarları", ensureGs1],
   ["mal kabul ve numuneler", ensureReceipt],
   ["malzeme hazırlamada emir", ensurePrepOrder],
   ["tartımı süren şarj", ensureWeighing],
@@ -999,6 +1013,16 @@ const SHOTS = [
     user: "admin",
     run: async (page) =>
       go(page, "/ana-veriler/etiket-ayarlari", "GS1 firma öneki"),
+  },
+  {
+    name: "admin-kodlama",
+    user: "admin",
+    run: async (page) => go(page, "/sistem/kodlama", "Ana veri kodları"),
+  },
+  {
+    name: "admin-kodlama-gs1",
+    user: "admin",
+    run: async (page) => go(page, "/sistem/kodlama?bolum=gs1", "Sıradaki SSCC seri no"),
   },
 
   // gecis.md
