@@ -1298,15 +1298,16 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   - GTIN önerisi yalnız mamulde, firma öneki ve sıradaki ürün referansı girilince açılır:
     - "GTIN öner" sıradaki boş GTIN-13'ü yazar; kullanılmış ürün ve koli GTIN'leri atlanır.
     - Önerilen GTIN ya da ondan en çok 10 ileri referans kaydedilince sayaç ilerler.
-    - Koli dönüşümünde "Koli GTIN'i öner": ürün GTIN'inden gösterge hanesi 1-8 ile ilk boş
-      GTIN-14.
     - Ekran yalnız taze öneriyi sunar. Önerilen GTIN kaydederken başka kayda verilmişse sıradaki
       öneri yazılır ve sarı not çıkar. Malzeme ya da birim değişince önerilen koli GTIN'i silinir;
       geç gelen öneri elle yazılmış GTIN'in üstüne yazılmaz.
+  - Koli dönüşümünde "Koli GTIN'i öner" yalnız mamulde: ürün GTIN'inden gösterge hanesi 1-8
+    ile ilk boş GTIN-14 (firma öneki gerekmez). Hammadde, ambalaj ve yarı mamulde öneri yoktur
+    (GTIN tedarikçinindir); dönüşüm API'si malzemenin türünü (`material_type`) döner.
   - Etiketler:
-    - Koli etiketinin (01) ve palet etiketinin (02) alanında koli GTIN'i basılır (palette
-      yanında (37) koli sayısı). Koli GTIN'i yoksa bugünkü gibi ürün GTIN'i basılır; etiket
-      penceresinde sarı uyarı çıkar.
+    - Koli etiketinin (01) ve palet etiketinin (02) alanında lotun koli GTIN'i basılır (palette
+      yanında (37) koli sayısı; lotun koli düzeni Adım 7 ekinde). Lotun koli GTIN'i yoksa ürün
+      GTIN'i basılır; etiket penceresinde sarı uyarı çıkar.
     - Yalnız okutulabilen GS1 barkodu basılır. GTIN geçersizse ya da lot numarası GS1'e uymuyorsa
       (20 karakterden uzun, GS1 karakter kümesi dışında ya da parantez veya > içeren) koli ve
       palet etiketi firma içi `LOT:` barkodunu taşır. Palet SSCC'si her zaman basılır. Etiket
@@ -1367,8 +1368,10 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   - Cari: ülke kodu (ISO 3166-1 alpha-2, varsayılan TR). Tedarikçi ve müşteri formunda Türkçe
     adlı ülke listesi, listede "Ülke" sütunu; Excel şablonunda "Ülke kodu" sütunu (boşsa TR).
   - GBF dili ISO 639-1 listesinden seçilir (Türkçe adlarla); sunucu kodu denetler, boşsa tr.
-    Eski kayıtlarda serbest metin olan dil göçte koda çevrilir (Türkçe → tr, eng → en …);
-    tanınmayan değer kalır, kayıt düzenlenirken listeden seçilir.
+    Eski kayıtlarda serbest metin olan dil göçte koda çevrilir (Türkçe/TÜRKÇE → tr,
+    İNGİLİZ/eng → en …, Türkçe İ/I kuralıyla); yalnız geçerli ISO 639-1 koduna karşılık gelen
+    değer yazılır, tanınmayan değer olduğu gibi kalır ve kayıt düzenlenirken listeden seçilir.
+    Göç hiçbir değerde hata vermez.
   - Tehlike ifadeleri: H kodunda ek harflerin büyük/küçük harfi korunur (H360Fd ile H360FD ayrı
     ifadelerdir); P ve EUH büyük harfe çevrilir. Kod alanı kendi kuralıyla düzeltilir
     (`CodeField(upper=False)`); formda not var.
@@ -1381,20 +1384,26 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
     testleri yeşil.
 - **Adım 7 eki:** koli düzeni değişimi ve GTIN kilidinin kapsamı (kararlar DECISIONS "Paket 2,
   GS1: sahibin kararları").
-  - Lotu olan mamulde koli içi miktar (KOLI dönüşümünün temel birim karşılığı) yalnız aynı
-    güncellemede yeni koli GTIN'iyle değişir (`case_gtin_required`). Eski koli GTIN'i eski
-    miktarıyla arşivlenir (`masterdata.RetiredGtin`, göç masterdata 0008; değiştiren ve zaman
-    denetim günlüğünde), hiçbir ürüne ya da koliye bir daha verilmez; GTIN önerileri onu atlar.
+  - Koli GTIN'i tanımlı ve lotu olan mamulde koli içi miktar (KOLI dönüşümünün temel birim
+    karşılığı) yalnız aynı güncellemede yeni koli GTIN'iyle değişir (`case_gtin_required`); koli
+    GTIN'i olmayan mamulde doğrudan değişir, önceden açılmış lotlar kendi koli düzenini tutar.
+    Eski koli GTIN'i eski miktarıyla arşivlenir (`masterdata.RetiredGtin`, göç masterdata 0008;
+    değiştiren ve zaman denetim günlüğünde), hiçbir ürüne ya da koliye bir daha verilmez; GTIN
+    önerileri onu atlar.
   - Okutma: eski koli GTIN'i malzemeyi bulur, koli içi miktar arşivdeki miktardır, sarı uyarı çıkar
     ("Eski koli GTIN'i okutuldu …"). Üretim, dolum ve sevkiyatta lot çözümü aynıdır.
-  - Etiketler lotun açıldığı andaki koli GTIN'iyle basılır. İrsaliyede koli sayısı lotun açıldığı
-    andaki koli içi miktarla hesaplanır; sevk edilmiş irsaliyenin yeniden basımı değişmez.
+  - Lotun koli düzeni lot açılırken lota yazılır (`Lot.case_factor`, `Lot.case_gtin`;
+    `inventory.services.create_lot`, mamulün KOLI dönüşümü işlem sonuna kadar kilitli; göç
+    inventory 0008 var olan lotları doldurur; Paket 2 incelemesinde). Koli ve palet etiketi bu
+    koli GTIN'iyle (yoksa ürün GTIN'iyle) basılır, irsaliyede koli sayısı bu miktarla
+    hesaplanır; koli düzeni nasıl değişirse değişsin eski lotlar ve sevk edilmiş irsaliyenin
+    yeniden basımı aynı kalır.
   - GTIN kilidi yalnız mamulde: hammadde, ambalaj ve yarı mamulde tedarikçi GTIN'i lot olsa da
     düzeltilir (denetim günlüğüne yazılır). Lotu olan malzemenin türü mamulden ya da mamule
     değişmez (`material_type_locked`; ekran, Excel aktarımı ve yönetim paneli).
-  - Ön yüz: dönüşüm formunda miktar kayıttakinden farklı olunca koli GTIN'i açılır, boşalır ve
-    zorunlu olur ("Koli GTIN'i öner" çıkar); eski koli GTIN'leri listelenir; kilit metinleri
-    mamulü anar.
+  - Ön yüz: koli GTIN'i tanımlı ve lotu olan mamulde dönüşüm formunda miktar kayıttakinden
+    farklı olunca koli GTIN'i açılır, boşalır ve zorunlu olur ("Koli GTIN'i öner" çıkar); eski
+    koli GTIN'leri listelenir; kilit metinleri mamulü anar.
   - Kanıt: `masterdata/tests/test_pack_change.py`, `inventory/tests/test_retired_gtin_scan.py`,
     `inventory/tests/test_gs1_labels.py`, `sales/tests/test_shipments.py` (irsaliye koli sayısı),
     üretim, dolum ve sevkiyat API testleri; ön yüz `MasterDataPage.test.tsx`; tam backend ve ön yüz
@@ -1406,8 +1415,51 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
     kodu.
   - Planlama: kod önerisi, kod kilidi, Excel'de boş kod, cari ülkesi; yeni "GTIN ve koli GTIN'i"
     bölümü (GTIN öner, lot kilidi yalnız mamulde, koli GTIN'i, koli içi adet değişimi, tür kilidi).
-  - Depo, dolum, üretim ve sevkiyat: koli GS1 barkoduyla okutma, eski etiket uyarısı, Türkçe harfli
-    lotta QR, SKT farkı uyarısı, toplamada bir koli, irsaliyede koli sayısı.
+  - Depo, dolum, üretim ve sevkiyat: mamul kolisinin GS1 barkoduyla okutma (tedarikçinin koli
+    barkodu lotu bulmaz), Türkçe harfli lotta QR, SKT farkı uyarısı, toplamada bir koli,
+    irsaliyede koli sayısı.
   - Ekran görüntüleri: `admin-kodlama`, `admin-kodlama-gs1` (yeni), `admin-etiket-ayarlari`
     (yenilendi). `scripts/kilavuz-ekran-goruntuleri.mjs` bunları üretir; demo verisinde GS1 öneki
     yoksa örnek önek girer.
+- **Paket 2 incelemesi** (2026-11-10): dört alan (çıktılar, lotun koli düzeni, ana veri ve İSG,
+  ön yüz) bağımsız denetçilerle iki turda incelendi; doğrulanan 23 bulgu ve denetçilerin kalan
+  notları düzeltildi; ardından belgeler, son düzeltmeler ve bulguların tamlığı bir tur daha
+  bağımsız denetlendi. Davranış değiştiren her düzeltme, düzeltme olmadan kırılan bir testle
+  korunur; kılavuz ve belge düzeltmeleri okunarak denetlendi. Kararlar DECISIONS "Paket 2,
+  standart kodlar: ayrıca sorulmayan kurallar", "Paket 2, çıktılar: sahibin kararı", "Lotun
+  koli düzeniyle kararının uygulaması" ve "İnceleme sonrası ayrıca".
+  - Çıktılar (sahibin kararı "İlk basımdaki gibi"): revizyon doküman no ve ilk yayın tarihini
+    saklar; bandın açılıp kapanması tarihiyle saklanır (`OutputBandChange`; göç core 0008).
+    Yeniden basım belgenin tarihindeki bandı taşır; geç girilen revizyon önceki tarihli belgeleri
+    değiştirmez. İlk revizyondan sonra doküman no ve ilk yayın tarihi yalnız yeni revizyonla
+    değişir (`output_doc_locked`); ilk revizyon ikisiyle girilir (`revision_needs_doc`). Tarihler
+    01.01.2000'den önce olamaz. Çıktı listesi sabit sayıda sorguyla okunur; çıktı ve kod türü
+    listeleri şemada sayfalı.
+  - Lotun koli düzeni (sahibin kararı "Lotun koli düzeniyle"): Adım 7 ekindeki gibi lota yazılır
+    (göç inventory 0008). Lot API'si `case_units` (temel birimi adet olan mamulde lotun koli içi
+    adedi) ve `material_case_gtin`'i (lotun etiketlerinin bastığı koli GTIN'i; kontrol hanesi
+    yanlışsa boş) verir.
+  - Ana veri ve İSG: GBF dili göçü (hse 0003) Türkçe büyük İ'li ya da uzun değerlerde hata
+    vermez, yalnız geçerli ISO 639-1 koduna çevirir. Yönetim panelinde ülke kodu, UN/ECE kodu,
+    sembol ve kullanılan birimin türü ve katsayısı salt okunur. "Koli GTIN'i öner" yalnız
+    mamulde; GS1 ve çıktı notları "denetim günlüğüne yazılır".
+  - Ön yüz: çıktı penceresi kılavuz sırasıyla çalışır (doküman no ve tarih, ilk revizyon, bant,
+    not); bir bölümü kaydetmek ötekinde yazılanı silmez; geç gelen yanıt başka çıktının
+    penceresine yazılmaz, bildirimle söylenir. Etiket penceresinde "Koli içi adet" lotun koli içi
+    adediyle gelir, farklı adette sarı uyarı çıkar. Kodlama sistematiği ekranının üst notu,
+    notların nereye yazıldığını (Geçmiş ya da denetim günlüğü) söyler.
+  - Kılavuz: tedarikçinin koli barkodu lotu bulmaz (depo, dolum, üretim); çıktı adımları ve
+    yeniden basım (bant ve revizyon gün düzeyinde); Geçmiş ile denetim günlüğü; lotun koli
+    düzeni, etikette koli içi adet ve irsaliyede koli sayısı; toplamada bir koli koşulu; Excel'de
+    boş kodun koşulu; "Koli GTIN'i öner" yalnız mamulde; yönetim panelinde salt okunur alanlar.
+  - Canlıya alırken bir kez: eski metni kalan GBF dillerini listeleyin (KURULUM §8).
+  - Kanıt: `core/tests/test_outputs.py` (yeniden basım, geç girilen revizyon, kilit, tarih alt
+    sınırı, göç, sorgu sayısı, şema), `core/tests/test_output_wiring.py` (kayıtlı 33 çıktının
+    hepsi gerçek üreticisiyle: her PDF sayfasında ve her Excel sayfasının alt bilgisinde bant;
+    tarihli belgeler kendi tarihindeki revizyonla, bant açılmadan önceki belge bantsız),
+    `quality/tests/test_coa.py` ve `purchasing/tests/test_services.py` (kodların belge tarihindeki
+    hali), `inventory/tests/test_lot_case_layout.py` (göç ve eşzamanlılık testleri dahil),
+    `sales/tests/test_shipments.py`, `hse/tests/test_standard_codes.py`,
+    `masterdata/tests/test_standard_codes.py`, `masterdata/tests/test_gs1.py`; ön yüz
+    `coding.test.tsx`, `MasterDataPage.test.tsx`, `inventory.test.tsx`, `filling.test.tsx`,
+    `components.test.tsx`; tam backend (2093) ve ön yüz (603) testleri yeşil.

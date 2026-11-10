@@ -225,6 +225,10 @@ export interface OutputRevision {
   revision_no: number;
   /** Yürürlük tarihi (YYYY-MM-DD). */
   revision_date: string;
+  /** Revizyon girildiğindeki doküman no ve ilk yayın tarihi: bu revizyonla basılan belgeye
+   * bunlar basılır (yeniden basımda da). */
+  doc_code: string;
+  first_issue_date: string | null;
   change_note: string;
   approved_by_name: string;
   approved_on: string;
@@ -244,6 +248,8 @@ export interface OutputDocumentRow {
   suggested_code: string;
   doc_code: string;
   first_issue_date: string | null;
+  /** Revizyonu var: doküman no ve ilk yayın tarihi artık yalnız yeni revizyonla değişir. */
+  doc_locked: boolean;
   /** Bant çıktıya basılıyor mu? */
   is_active: boolean;
   revision_no: number | null;
@@ -255,7 +261,10 @@ export interface OutputDocumentRow {
   revisions: OutputRevision[];
 }
 
-/** Verilmeyen alan değişmez; not zorunlu. */
+/**
+ * Verilmeyen alan değişmez; not zorunlu. Revizyonu olan çıktıda (`doc_locked`) doküman no ve ilk
+ * yayın tarihi değişmez (`output_doc_locked`); yeni revizyonla değişir.
+ */
 export interface OutputDocumentUpdate {
   doc_code?: string;
   first_issue_date?: string;
@@ -263,6 +272,10 @@ export interface OutputDocumentUpdate {
   note: string;
 }
 
+/**
+ * Yeni revizyon. Doküman no ve ilk yayın tarihi verilirse çıktıda da değişir ve revizyonda
+ * saklanır; ilk revizyon ikisi olmadan eklenmez (`revision_needs_doc`).
+ */
 export interface OutputRevisionCreate {
   revision_date: string;
   change_note: string;
@@ -270,6 +283,8 @@ export interface OutputRevisionCreate {
   approved_on: string;
   /** Yalnızca ilk revizyonda: kalite sistemindeki güncel revizyon no (verilmezse 00). */
   revision_no?: number;
+  doc_code?: string;
+  first_issue_date?: string;
 }
 
 export async function listOutputs(): Promise<OutputDocumentRow[]> {

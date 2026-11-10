@@ -474,7 +474,7 @@ describe("dolum hattı tableti", () => {
     [
       "koli GTIN'i yoksa sarı uyarı verir",
       "",
-      "Koli GTIN'i tanımlı değil; koli etiketine ürün GTIN'i basılır.",
+      "Bu lotun koli GTIN'i yok; koli etiketine ürün GTIN'i basılır.",
     ],
   ])("partinin koli etiketi lotun koli GTIN'ine göre %s", async (_name, caseGtin, text) => {
     const user = userEvent.setup();
@@ -495,6 +495,32 @@ describe("dolum hattı tableti", () => {
       expect(warning).toHaveTextContent(text);
       expect(alertStyle(warning)).toContain("--mantine-color-yellow-light"); // sarı
     }
+  });
+
+  it("partinin koli etiketinde koli içi adet çıktı lotunun koli içi miktarıyla gelir; çelişen adet sarı uyarı verir", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("dolum"));
+    vi.mocked(fillingApi.getRun).mockResolvedValue(run({ finished_product_gtin: "8690000000012" }));
+    vi.mocked(inventoryApi.getLot).mockResolvedValue({
+      ...outputLot("18690000000019"),
+      case_units: "12.000000",
+    });
+    renderApp("/dolum/partiler/41");
+
+    await user.click(await screen.findByRole("button", { name: "Koli etiketi" }));
+    const dialog = await screen.findByRole("dialog");
+    // Parti kaydı koli içi miktarı bilmez: pencere açılınca çıktı lotundan okunur.
+    const units = within(dialog).getByRole("textbox", { name: "Koli içi adet" });
+    await waitFor(() => expect(units).toHaveValue("12"));
+    expect(inventoryApi.getLot).toHaveBeenCalledWith(95);
+    expect(within(dialog).queryByTestId("units-warning")).not.toBeInTheDocument();
+    await user.clear(units);
+    await user.type(units, "24");
+    const warning = within(dialog).getByTestId("units-warning");
+    expect(warning).toHaveTextContent(
+      "Bu lotun koli GTIN'i 12 adetlik koli içindir; farklı adet etikette barkodla çelişir.",
+    );
+    expect(alertStyle(warning)).toContain("--mantine-color-yellow-light"); // sarı
   });
 
   const noGs1 =

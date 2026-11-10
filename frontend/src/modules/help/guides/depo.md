@@ -53,8 +53,7 @@ Dolum hattına ambalaj hazırlamak aynı şekildedir: **Dolum > Ambalaj hazırla
 - Okutulan lot yanlış malzemeye aitse kırmızı uyarı çıkar ve uyarı sesi duyulur. Doğru lotu bulun.
 - Karantinadaki, bloke ya da SKT'si geçmiş lot kabul edilmez. Laboratuvara sorun.
 - Etiket okunmayacak kadar bozuksa lot sayfasından **Etiket yazdır** ile yenisini basın.
-- Kolinin GS1 barkodu da okutulabilir: barkoddaki GTIN malzemeyi, lot alanı lotu bulur.
-- **Eski etiket okutuldu** uyarısı, kodu sonradan değişmiş bir kaydın eski etiketidir. Okutma geçerlidir; etiketi fırsat buldukça yenileyin.
+- Tedarikçinin koli barkodu (GS1) lotu bulmaz: barkoddaki lot numarası tedarikçinindir. Mal kabulde basılan lot etiketini okutun ya da lot numarasını elle yazın.
 - Lot numarasında Türkçe harf varsa etikette çizgi barkod yerine "Barkod yok: QR kodu okutun." yazar; QR kodunu okutun.
 - Barkoddaki son kullanma tarihi lot kaydındakinden farklıysa sarı uyarı çıkar. Etiketi ve lotu kontrol edin.
 
@@ -65,7 +64,7 @@ Sevkiyat birimi sevkiyat planlayınca toplama görevi düşer.
 1. **Sevkiyat > Toplama** sekmesinde sevkiyatın kartına dokunun. Toplama ekranı açılır.
 2. Toplayacağınız satıra dokunun. Önce siparişe rezerve edilen lot, sonra SKT'si en yakın lot önerilir.
 3. Paletin ya da kolinin etiketini **Lot okut** alanına okutun.
-4. **Miktar** boş kalırsa satırın kalanı alınır. Koli etiketini okutursanız miktar bir koli olur (satırın kalanını aşmaz). **Topla**'ya basın. Mal sevk alanına taşınır.
+4. **Miktar** boş kalırsa satırın kalanı alınır. Koli etiketini okutunca alanın altında "1 koli = …" yazarsa miktar bir koli olur (satırın kalanını aşmaz). Yazmazsa (etikette koli GTIN'i yoksa ya da koli dönüşümü pasifse) miktar satırın kalanıyla gelir; kontrol edin. **Topla**'ya basın. Mal sevk alanına taşınır.
 5. Rezerve olmayan bir lot okutursanız gerekçe sorulur. Uygun gerekçeyi seçip **Gerekçeyle topla**'ya basın.
 6. Yanlış okuttuysanız okutulan lotlar listesinde **Geri al**'a basın.
 7. Mal araca yüklenince **Yükleme tamam**'a basın. Sevkiyat birimine sevk onayı görevi düşer.

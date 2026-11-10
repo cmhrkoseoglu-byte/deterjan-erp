@@ -29,7 +29,8 @@ from apps.filling.tests.factories import (
 from apps.inventory.models import Lot, LotLink, StockMovement
 from apps.inventory.services import current_balance
 from apps.inventory.tests.factories import quarantine_location, stocked_lot
-from apps.masterdata.models import Location, Material
+from apps.masterdata import services as masterdata
+from apps.masterdata.models import Location, Material, MaterialUnitConversion, RetiredGtin
 from apps.masterdata.tests.factories import BulkMaterialFactory, MaterialFactory, unit
 from apps.quality.models import Sample, SampleStage
 from apps.quality.testing import open_sample_for, pass_sample
@@ -348,6 +349,22 @@ def test_start_run_opens_quarantined_d_lot(line: Line, planner, depo, filler, pu
     with pytest.raises(BusinessRuleError) as exc:
         services.start_run(filler, order)
     assert exc.value.code == "run_in_progress"
+
+
+@pytest.mark.usefixtures("invariants")
+def test_filling_lot_keeps_the_case_layout_of_the_day(line: Line, planner, depo, filler):
+    """Dolum lotu mamulün o günkü koli düzeniyle açılır (`Lot.case_factor`, `Lot.case_gtin`;
+    CUMHUR, 2026-11-05): KOLI dönüşümü sonra yeni koli GTIN'iyle değişse de lotunki değişmez
+    (irsaliyedeki koli sayısı ve koli / palet etiketi bunu kullanır)."""
+    case = MaterialUnitConversion.objects.create(
+        material=line.finished, unit=unit("KOLI"), factor_to_base=D("12"), gtin="18690000000019"
+    )
+    run = started_run(line, planner, depo, filler)
+    masterdata.update_record(planner, case, {"factor_to_base": D("24"), "gtin": "28690000000016"})
+    assert RetiredGtin.objects.get(conversion=case).factor_to_base == D("12")  # kilitliydi
+
+    lot = Lot.objects.get(pk=run.output_lot.pk)
+    assert (lot.case_factor, lot.case_gtin) == (D("12"), "18690000000019")
 
 
 def test_run_needs_ready_order(line: Line, planner, filler):

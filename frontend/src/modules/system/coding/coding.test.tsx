@@ -1,5 +1,6 @@
+import { notifications } from "@mantine/notifications";
 import { QueryObserver } from "@tanstack/react-query";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../../api/auth";
@@ -238,7 +239,10 @@ describe("Sistem > Kodlama sistematiği", () => {
     const save = within(dialog).getByRole("button", { name: "Kaydet" });
     expect(save).toBeDisabled(); // not zorunlu
     await userEvent.click(within(dialog).getByLabelText(/Biçimi etkinleştir/));
-    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Canlıya geçiş");
+    const note = within(dialog).getByLabelText(/Değişiklik notu/);
+    // Biçim değişikliği notuyla Geçmiş bölümünde görünür.
+    expect(note).toHaveAttribute("placeholder", "Neden değiştirildi? (geçmişte görünür)");
+    await userEvent.type(note, "Canlıya geçiş");
     await waitFor(() => expect(save).toBeEnabled());
     await userEvent.click(save);
     const confirm = await screen.findByText(/verilmiş olanlar değişmez/);
@@ -872,6 +876,7 @@ describe("Sistem > Kodlama sistematiği > Çıktılar", () => {
     suggested_code: "FR-KAL-001",
     doc_code: "",
     first_issue_date: null,
+    doc_locked: false,
     is_active: false,
     revision_no: null,
     revision_date: null,
@@ -883,6 +888,8 @@ describe("Sistem > Kodlama sistematiği > Çıktılar", () => {
     id: 1,
     revision_no: 1,
     revision_date: "2026-10-15",
+    doc_code: "FR-SVK-001",
+    first_issue_date: "2026-01-10",
     change_note: "Lot alanı eklendi",
     approved_by_name: "Kalite Müdürü",
     approved_on: "2026-10-14",
@@ -899,12 +906,66 @@ describe("Sistem > Kodlama sistematiği > Çıktılar", () => {
     suggested_code: "FR-SVK-001",
     doc_code: "FR-SVK-001",
     first_issue_date: "2026-01-10",
+    doc_locked: true,
     is_active: true,
     revision_no: 1,
     revision_date: "2026-10-15",
     template_changed: true,
     revisions: [revision],
   };
+  const dateFloor = "Tarih 01.01.2000'den önce olamaz.";
+  const auditNote = "Neden değiştirildi? (denetim günlüğüne yazılır)";
+  const docRequired = "Doküman no boş bırakılamaz.";
+  const issueRequired = "İlk yayın tarihi boş bırakılamaz.";
+  const codeTaken = "Bu doküman no başka çıktıda kullanılıyor.";
+
+  /** Listedeki çıktının penceresini açar. */
+  async function edit(label: string) {
+    await userEvent.click(await screen.findByRole("button", { name: `Düzenle: ${label}` }));
+    return screen.findByRole("dialog", { name: `Çıktı: ${label}` });
+  }
+
+  async function open(label: string) {
+    renderApp("/sistem/kodlama?bolum=cikti");
+    return edit(label);
+  }
+
+  /** Elle sonuçlanan istek: yanıt (ya da hata) pencere kapandıktan sonra gelsin diye. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<T>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    return { promise, resolve, reject };
+  }
+
+  /** Yeni revizyonun alanlarını doldurur (yürürlük ve onay aynı gün). */
+  async function fillRevision(dialog: HTMLElement, date: string, change = "Yeni alan") {
+    fireEvent.change(within(dialog).getByLabelText(/Yürürlük tarihi/), { target: { value: date } });
+    fireEvent.change(within(dialog).getByLabelText(/Onay tarihi/), { target: { value: date } });
+    await userEvent.type(within(dialog).getByLabelText(/^Onaylayan/), "Kalite Müdürü");
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik açıklaması/), change);
+  }
+
+  /** "Revizyonu ekle"ye basar ve onaylar. */
+  async function confirmRevision(dialog: HTMLElement) {
+    await userEvent.click(within(dialog).getByRole("button", { name: "Revizyonu ekle" }));
+    const confirm = await screen.findByText(/sonradan değiştirilemez/);
+    await userEvent.click(
+      within(confirm.closest("section") ?? document.body).getByRole("button", {
+        name: "Revizyonu ekle",
+      }),
+    );
+  }
+
+  /** Üstteki doküman alanları ve revizyon formundaki aynı etiketli alanlar (kilitli çıktıda). */
+  function docFields(dialog: HTMLElement) {
+    const [docNo, revisionDocNo] = within(dialog).getAllByLabelText("Doküman no");
+    const [issue, revisionIssue] = within(dialog).getAllByLabelText(/İlk yayın tarihi/);
+    return { docNo, issue, revisionDocNo, revisionIssue };
+  }
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -940,6 +1001,9 @@ describe("Sistem > Kodlama sistematiği > Çıktılar", () => {
     expect(within(dialog).getByText(/mali müşavirinize danışın/)).toBeInTheDocument();
     expect(within(dialog).getByText(/yeni revizyon girin/)).toBeInTheDocument();
     expect(within(dialog).getByText("Lot alanı eklendi")).toBeInTheDocument();
+    // Revizyon satırında revizyonla basılan doküman no.
+    const revisionRow = within(dialog).getByText("Lot alanı eklendi").closest("tr")!;
+    expect(within(revisionRow).getByText("FR-SVK-001")).toBeInTheDocument();
     expect(within(dialog).getByText("Yeni revizyon: Rev. 02")).toBeInTheDocument();
     // Revizyonu olan çıktıda revizyon no seçilmez (birer artar).
     expect(within(dialog).queryByLabelText(/Revizyon no/)).not.toBeInTheDocument();
@@ -964,7 +1028,10 @@ describe("Sistem > Kodlama sistematiği > Çıktılar", () => {
     });
     const save = within(dialog).getByRole("button", { name: "Kaydet" });
     expect(save).toBeDisabled(); // not zorunlu
-    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Doküman listesi");
+    // Not denetim günlüğüne yazılır (Geçmiş bölümü yalnız biçim değişikliklerini gösterir).
+    const note = within(dialog).getByLabelText(/Değişiklik notu/);
+    expect(note).toHaveAttribute("placeholder", auditNote);
+    await userEvent.type(note, "Doküman listesi");
     await userEvent.click(save);
 
     await waitFor(() =>
@@ -976,12 +1043,15 @@ describe("Sistem > Kodlama sistematiği > Çıktılar", () => {
     );
   });
 
-  it("ilk revizyonu kalite sistemindeki numarasıyla, onayla ekler", async () => {
+  it("ilk revizyonu kalite sistemindeki numarasıyla, üstte yazılan doküman no ve ilk yayın tarihiyle ekler", async () => {
     vi.mocked(codingApi.addOutputRevision).mockResolvedValue({
       ...coa,
+      doc_code: "FR-KAL-001",
+      first_issue_date: "2026-01-10",
+      doc_locked: true,
       revision_no: 3,
       revision_date: "2026-10-01",
-      revisions: [{ ...revision, revision_no: 3 }],
+      revisions: [{ ...revision, revision_no: 3, doc_code: "FR-KAL-001" }],
     });
     renderApp("/sistem/kodlama?bolum=cikti");
 
@@ -1003,13 +1073,22 @@ describe("Sistem > Kodlama sistematiği > Çıktılar", () => {
     });
     await userEvent.type(within(dialog).getByLabelText(/^Onaylayan/), "Kalite Müdürü");
     await userEvent.type(within(dialog).getByLabelText(/Değişiklik açıklaması/), "İlk yayın");
-    await userEvent.click(add);
-    const confirm = await screen.findByText(/sonradan değiştirilemez/);
-    await userEvent.click(
-      within(confirm.closest("section") ?? document.body).getByRole("button", {
-        name: "Revizyonu ekle",
-      }),
-    );
+    // İlk revizyon doküman no ve ilk yayın tarihi olmadan eklenmez; ne yapılacağı yazar.
+    expect(add).toBeDisabled();
+    const needsDoc = "İlk revizyon için önce yukarıda doküman no ve ilk yayın tarihini girin.";
+    expect(within(dialog).getByText(needsDoc)).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText("Doküman no"), "fr-kal-001");
+    expect(add).toBeDisabled(); // ilk yayın tarihi de gerekir
+    fireEvent.change(within(dialog).getByLabelText(/İlk yayın tarihi/), {
+      target: { value: "2026-01-10" },
+    });
+    expect(within(dialog).queryByText(needsDoc)).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "Doküman no ve ilk yayın tarihi ilk revizyonla birlikte kaydedilir.",
+      ),
+    ).toBeInTheDocument();
+    await confirmRevision(dialog);
 
     await waitFor(() =>
       expect(codingApi.addOutputRevision).toHaveBeenCalledWith("quality.coa", {
@@ -1018,8 +1097,602 @@ describe("Sistem > Kodlama sistematiği > Çıktılar", () => {
         approved_by_name: "Kalite Müdürü",
         approved_on: "2026-09-30",
         revision_no: 3,
+        doc_code: "FR-KAL-001",
+        first_issue_date: "2026-01-10",
       }),
     );
+  });
+
+  it("kılavuz sırası: doküman no ve tarih yazılır, ilk revizyon eklenir, bant işaretlenip notla kaydedilir", async () => {
+    const first: codingApi.OutputRevision = {
+      ...revision,
+      id: 2,
+      revision_no: 0,
+      revision_date: "2026-10-15",
+      approved_on: "2026-10-15",
+      doc_code: "FR-KAL-001",
+      change_note: "İlk yayın",
+    };
+    const withRevision: codingApi.OutputDocumentRow = {
+      ...coa,
+      doc_code: "FR-KAL-001",
+      first_issue_date: "2026-01-10",
+      doc_locked: true,
+      revision_no: 0,
+      revision_date: "2026-10-15",
+      revisions: [first],
+    };
+    vi.mocked(codingApi.listOutputs).mockResolvedValue([coa]);
+    vi.mocked(codingApi.addOutputRevision).mockResolvedValue(withRevision);
+    vi.mocked(codingApi.updateOutput).mockResolvedValue({ ...withRevision, is_active: true });
+    const dialog = await open("Analiz sertifikası");
+
+    // 1. Doküman no ve ilk yayın tarihi (Kaydet'e basılmadan).
+    await userEvent.type(within(dialog).getByLabelText("Doküman no"), "fr-kal-001");
+    fireEvent.change(within(dialog).getByLabelText(/İlk yayın tarihi/), {
+      target: { value: "2026-01-10" },
+    });
+    // 2. İlk revizyon yazılan doküman no ve tarihle eklenir.
+    await fillRevision(dialog, "2026-10-15", "İlk yayın");
+    await confirmRevision(dialog);
+    await waitFor(() =>
+      expect(codingApi.addOutputRevision).toHaveBeenCalledWith("quality.coa", {
+        revision_date: "2026-10-15",
+        change_note: "İlk yayın",
+        approved_by_name: "Kalite Müdürü",
+        approved_on: "2026-10-15",
+        doc_code: "FR-KAL-001",
+        first_issue_date: "2026-01-10",
+      }),
+    );
+    expect(await within(dialog).findByText("Yeni revizyon: Rev. 01")).toBeInTheDocument();
+    // Doküman no ve tarih kayıtta: alanlar kayıttaki değerlerle kapalı; sonraki revizyonun formu
+    // kayıttakilerle dolu gelir (yeniden yazılmaz, yazım hatası numarayı değiştirmez).
+    const { docNo, issue, revisionDocNo, revisionIssue } = docFields(dialog);
+    expect(docNo).toHaveValue("FR-KAL-001");
+    expect(docNo).toBeDisabled();
+    expect(issue).toHaveValue("2026-01-10");
+    expect(revisionDocNo).toHaveValue("FR-KAL-001");
+    expect(revisionIssue).toHaveValue("2026-01-10");
+    expect(within(dialog).queryByText(docRequired)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(issueRequired)).not.toBeInTheDocument();
+    // 3. Bant açılabilir; işaretlenip notla kaydedilir (doküman alanları gönderilmez).
+    const band = within(dialog).getByLabelText(/Çıktıya basılsın/);
+    expect(band).toBeEnabled();
+    await userEvent.click(band);
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Bant açıldı");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(codingApi.updateOutput).toHaveBeenCalledWith("quality.coa", {
+        note: "Bant açıldı",
+        is_active: true,
+      }),
+    );
+    // Liste kaydedilen satırı gösterir.
+    expect(await screen.findByText("Basılıyor")).toBeInTheDocument();
+    expect(screen.queryByText("Basılmıyor")).not.toBeInTheDocument();
+  });
+
+  it("sonraki revizyon numarasız gönderilir; pencere yeni satırı ve sıradaki numarayı gösterir, yazılan not kalır", async () => {
+    const second: codingApi.OutputRevision = {
+      ...revision,
+      id: 2,
+      revision_no: 2,
+      revision_date: "2026-10-20",
+      approved_on: "2026-10-20",
+      change_note: "Yeni alan",
+    };
+    vi.mocked(codingApi.listOutputs).mockResolvedValue([waybill]);
+    vi.mocked(codingApi.addOutputRevision).mockResolvedValue({
+      ...waybill,
+      revision_no: 2,
+      revision_date: "2026-10-20",
+      template_changed: false,
+      revisions: [second, revision],
+    });
+    const dialog = await open("İrsaliye");
+    expect(within(dialog).getByText("Yeni revizyon: Rev. 02")).toBeInTheDocument();
+    // Üstte yazılıp kaydedilmemiş not ve bant seçimi revizyon eklenince kalır.
+    await userEvent.click(within(dialog).getByLabelText(/Çıktıya basılsın/));
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Bant kapanacak");
+    await fillRevision(dialog, "2026-10-20");
+    await confirmRevision(dialog);
+
+    await waitFor(() =>
+      expect(codingApi.addOutputRevision).toHaveBeenCalledWith("sales.waybill", {
+        revision_date: "2026-10-20",
+        change_note: "Yeni alan",
+        approved_by_name: "Kalite Müdürü",
+        approved_on: "2026-10-20",
+      }),
+    );
+    expect(await within(dialog).findByText("Yeni revizyon: Rev. 03")).toBeInTheDocument();
+    expect(within(dialog).getByText("Yeni alan")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/yeni revizyon girin/)).not.toBeInTheDocument();
+    // Revizyon formu boşalır; üstteki not ve bant seçimi kalır.
+    expect(within(dialog).getByLabelText(/Değişiklik açıklaması/)).toHaveValue("");
+    expect(within(dialog).getByLabelText(/^Onaylayan/)).toHaveValue("");
+    expect(within(dialog).getByLabelText(/Değişiklik notu/)).toHaveValue("Bant kapanacak");
+    expect(within(dialog).getByLabelText(/Çıktıya basılsın/)).not.toBeChecked();
+    // Liste yeni revizyonu gösterir.
+    expect(screen.getByText("Rev. 02 · 20.10.2026")).toBeInTheDocument();
+  });
+
+  it("doküman kaydı yazılmış revizyon alanlarını silmez; liste kaydedilen doküman no'yu gösterir", async () => {
+    vi.mocked(codingApi.listOutputs).mockResolvedValue([coa]);
+    vi.mocked(codingApi.updateOutput).mockResolvedValue({
+      ...coa,
+      doc_code: "FR-KAL-001",
+      first_issue_date: "2026-01-10",
+    });
+    const dialog = await open("Analiz sertifikası");
+    await userEvent.type(within(dialog).getByLabelText(/^Onaylayan/), "Kalite Müdürü");
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik açıklaması/), "İlk yayın");
+    await userEvent.type(within(dialog).getByLabelText("Doküman no"), "FR-KAL-001");
+    fireEvent.change(within(dialog).getByLabelText(/İlk yayın tarihi/), {
+      target: { value: "2026-01-10" },
+    });
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Liste");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+
+    await waitFor(() =>
+      expect(codingApi.updateOutput).toHaveBeenCalledWith("quality.coa", {
+        note: "Liste",
+        doc_code: "FR-KAL-001",
+        first_issue_date: "2026-01-10",
+      }),
+    );
+    // Kaydedilen bölümün notu boşalır; revizyon alanları kalır.
+    await waitFor(() => expect(within(dialog).getByLabelText(/Değişiklik notu/)).toHaveValue(""));
+    expect(within(dialog).getByLabelText(/^Onaylayan/)).toHaveValue("Kalite Müdürü");
+    expect(within(dialog).getByLabelText(/Değişiklik açıklaması/)).toHaveValue("İlk yayın");
+    expect(within(dialog).getByLabelText("Doküman no")).toHaveValue("FR-KAL-001");
+    // Liste kaydedilen doküman no'yu gösterir (öneri yerine).
+    expect(screen.getByText("FR-KAL-001")).toBeInTheDocument();
+    expect(screen.queryByText("Öneri: FR-KAL-001")).not.toBeInTheDocument();
+  });
+
+  it("revizyonu olan çıktıda doküman no ve ilk yayın tarihi yalnız yeni revizyonla değişir; yalnız değişen gönderilir", async () => {
+    const second: codingApi.OutputRevision = {
+      ...revision,
+      id: 2,
+      revision_no: 2,
+      revision_date: "2026-11-02",
+      approved_on: "2026-11-02",
+      doc_code: "FR-SVK-002",
+      change_note: "Yeni alan",
+    };
+    vi.mocked(codingApi.listOutputs).mockResolvedValue([waybill]);
+    vi.mocked(codingApi.updateOutput).mockResolvedValue({ ...waybill, is_active: false });
+    vi.mocked(codingApi.addOutputRevision).mockResolvedValue({
+      ...waybill,
+      is_active: false,
+      doc_code: "FR-SVK-002",
+      revision_no: 2,
+      revision_date: "2026-11-02",
+      revisions: [second, revision],
+    });
+    const dialog = await open("İrsaliye");
+    const { docNo, issue, revisionDocNo, revisionIssue } = docFields(dialog);
+    // Üstte kayıttaki değerlerle kapalı; nedeni yazar.
+    expect(docNo).toBeDisabled();
+    expect(docNo).toHaveValue("FR-SVK-001");
+    expect(docNo).toHaveAccessibleDescription(
+      "Doküman no ve ilk yayın tarihi yeni revizyonla değişir.",
+    );
+    expect(issue).toBeDisabled();
+    expect(issue).toHaveValue("2026-01-10");
+    // Revizyon formu kayıttaki doküman no ve ilk yayın tarihiyle gelir.
+    const form = within(dialog).getByRole("group", { name: "Yeni revizyon: Rev. 02" });
+    expect(form).toContainElement(revisionDocNo);
+    expect(form).toContainElement(revisionIssue);
+    expect(revisionDocNo).toBeEnabled();
+    expect(revisionDocNo).toHaveValue("FR-SVK-001");
+    expect(revisionIssue).toHaveValue("2026-01-10");
+    expect(revisionIssue).toHaveAttribute("min", "2000-01-01");
+
+    // Bandı kapatan kayıt doküman no ve tarihi göndermez.
+    await userEvent.click(within(dialog).getByLabelText(/Çıktıya basılsın/));
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Bant kapatıldı");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(codingApi.updateOutput).toHaveBeenCalledWith("sales.waybill", {
+        note: "Bant kapatıldı",
+        is_active: false,
+      }),
+    );
+
+    // Yeni revizyon yalnız değişen doküman no'yu gönderir (ilk yayın tarihi aynı).
+    await userEvent.clear(revisionDocNo);
+    await userEvent.type(revisionDocNo, "fr-svk-002");
+    await fillRevision(dialog, "2026-11-02");
+    await confirmRevision(dialog);
+    await waitFor(() =>
+      expect(codingApi.addOutputRevision).toHaveBeenCalledWith("sales.waybill", {
+        revision_date: "2026-11-02",
+        change_note: "Yeni alan",
+        approved_by_name: "Kalite Müdürü",
+        approved_on: "2026-11-02",
+        doc_code: "FR-SVK-002",
+      }),
+    );
+    // Pencere yeni doküman no'yu gösterir; her revizyon kendi doküman no'suyla listelenir.
+    expect(await within(dialog).findByText("Yeni revizyon: Rev. 03")).toBeInTheDocument();
+    expect(docFields(dialog).docNo).toHaveValue("FR-SVK-002");
+    expect(docFields(dialog).revisionDocNo).toHaveValue("FR-SVK-002");
+    const table = within(dialog).getByRole("table");
+    expect(within(table).getByText("FR-SVK-002")).toBeInTheDocument();
+    expect(within(table).getByText("FR-SVK-001")).toBeInTheDocument();
+
+    // Numara revizyonla değiştikten sonraki bant kaydı da doküman no'yu göndermez (eski numarayı
+    // göndermek `output_doc_locked` alırdı).
+    vi.mocked(codingApi.updateOutput).mockClear();
+    await userEvent.click(within(dialog).getByLabelText(/Çıktıya basılsın/));
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Bant açıldı");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(codingApi.updateOutput).toHaveBeenCalledWith("sales.waybill", {
+        note: "Bant açıldı",
+        is_active: true,
+      }),
+    );
+  });
+
+  it("kilitli çıktıda yeni revizyon doküman no ve ilk yayın tarihi silinerek eklenmez; boş alan nedenini söyler", async () => {
+    vi.mocked(codingApi.listOutputs).mockResolvedValue([waybill]);
+    const dialog = await open("İrsaliye");
+    const { revisionDocNo, revisionIssue } = docFields(dialog);
+    await fillRevision(dialog, "2026-11-02");
+    const add = within(dialog).getByRole("button", { name: "Revizyonu ekle" });
+    expect(add).toBeEnabled();
+    expect(within(dialog).queryByText(docRequired)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(issueRequired)).not.toBeInTheDocument();
+    // Silinen alan düğmenin neden kapandığını söyler (gri öneri dolu değer sanılmasın).
+    await userEvent.clear(revisionDocNo);
+    expect(add).toBeDisabled();
+    expect(revisionDocNo).toHaveAttribute("placeholder", "FR-SVK-001");
+    expect(revisionDocNo).toHaveAccessibleDescription(docRequired);
+    await userEvent.type(revisionDocNo, "FR-SVK-001");
+    expect(add).toBeEnabled();
+    expect(within(dialog).queryByText(docRequired)).not.toBeInTheDocument();
+    fireEvent.change(revisionIssue, { target: { value: "" } });
+    expect(add).toBeDisabled();
+    expect(revisionIssue).toHaveAccessibleDescription(issueRequired);
+    // İki haneli yıl (0026) da kabul edilmez.
+    fireEvent.change(revisionIssue, { target: { value: "0026-01-10" } });
+    expect(revisionIssue).toHaveAccessibleDescription(dateFloor);
+    expect(add).toBeDisabled();
+    expect(codingApi.addOutputRevision).not.toHaveBeenCalled();
+  });
+
+  it("kilitli çıktıda yalnız değişen ilk yayın tarihi yeni revizyonla gönderilir; pencere yeni tarihi gösterir", async () => {
+    const second: codingApi.OutputRevision = {
+      ...revision,
+      id: 2,
+      revision_no: 2,
+      revision_date: "2026-11-02",
+      approved_on: "2026-11-02",
+      first_issue_date: "2026-01-05",
+      change_note: "Yeni alan",
+    };
+    const renumbered: codingApi.OutputDocumentRow = {
+      ...waybill,
+      first_issue_date: "2026-01-05",
+      revision_no: 2,
+      revision_date: "2026-11-02",
+      revisions: [second, revision],
+    };
+    vi.mocked(codingApi.listOutputs).mockResolvedValue([waybill]);
+    vi.mocked(codingApi.addOutputRevision).mockResolvedValue(renumbered);
+    vi.mocked(codingApi.updateOutput).mockResolvedValue({ ...renumbered, is_active: false });
+    const dialog = await open("İrsaliye");
+    fireEvent.change(docFields(dialog).revisionIssue, { target: { value: "2026-01-05" } });
+    await fillRevision(dialog, "2026-11-02");
+    await confirmRevision(dialog);
+
+    // Doküman no aynı kaldı: yalnız ilk yayın tarihi gönderilir.
+    await waitFor(() =>
+      expect(codingApi.addOutputRevision).toHaveBeenCalledWith("sales.waybill", {
+        revision_date: "2026-11-02",
+        change_note: "Yeni alan",
+        approved_by_name: "Kalite Müdürü",
+        approved_on: "2026-11-02",
+        first_issue_date: "2026-01-05",
+      }),
+    );
+    expect(await within(dialog).findByText("Yeni revizyon: Rev. 03")).toBeInTheDocument();
+    expect(docFields(dialog).issue).toHaveValue("2026-01-05");
+    expect(docFields(dialog).revisionIssue).toHaveValue("2026-01-05");
+
+    // Sonraki bant kaydı eski ilk yayın tarihini göndermez.
+    await userEvent.click(within(dialog).getByLabelText(/Çıktıya basılsın/));
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Bant kapatıldı");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() =>
+      expect(codingApi.updateOutput).toHaveBeenCalledWith("sales.waybill", {
+        note: "Bant kapatıldı",
+        is_active: false,
+      }),
+    );
+  });
+
+  it("ilk revizyon doküman no'yu kaydedince önceki doküman kaydının hatası kalkar", async () => {
+    vi.mocked(codingApi.listOutputs).mockResolvedValue([coa]);
+    vi.mocked(codingApi.updateOutput).mockRejectedValue(
+      httpError(400, { code: "output_code_taken", detail: codeTaken }),
+    );
+    vi.mocked(codingApi.addOutputRevision).mockResolvedValue({
+      ...coa,
+      doc_code: "FR-KAL-002",
+      first_issue_date: "2026-01-10",
+      doc_locked: true,
+      revision_no: 0,
+      revision_date: "2026-10-15",
+      revisions: [
+        {
+          ...revision,
+          id: 2,
+          revision_no: 0,
+          revision_date: "2026-10-15",
+          approved_on: "2026-10-15",
+          doc_code: "FR-KAL-002",
+          change_note: "İlk yayın",
+        },
+      ],
+    });
+    const dialog = await open("Analiz sertifikası");
+    const docNo = within(dialog).getByLabelText("Doküman no");
+    await userEvent.type(docNo, "FR-KAL-001");
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Liste");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    expect(await within(dialog).findByText(codeTaken)).toBeInTheDocument();
+
+    // Başka numarayla ilk revizyon eklenir: numara kaydedildi, eski hata kalkar; not kalır.
+    await userEvent.clear(docNo);
+    await userEvent.type(docNo, "FR-KAL-002");
+    fireEvent.change(within(dialog).getByLabelText(/İlk yayın tarihi/), {
+      target: { value: "2026-01-10" },
+    });
+    await fillRevision(dialog, "2026-10-15", "İlk yayın");
+    await confirmRevision(dialog);
+    expect(await within(dialog).findByText("Yeni revizyon: Rev. 01")).toBeInTheDocument();
+    expect(docFields(dialog).docNo).toHaveValue("FR-KAL-002");
+    expect(within(dialog).queryByText(codeTaken)).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Değişiklik notu/)).toHaveValue("Liste");
+  });
+
+  it("geç gelen ilk revizyon yanıtı açık çıktının doküman kaydı hatasını silmez", async () => {
+    const show = vi.spyOn(notifications, "show").mockReturnValue("bildirim");
+    const pending = deferred<codingApi.OutputDocumentRow>();
+    vi.mocked(codingApi.addOutputRevision).mockReturnValue(pending.promise);
+    vi.mocked(codingApi.updateOutput).mockRejectedValue(
+      httpError(400, { code: "output_doc_locked", detail: "Kayıt reddedildi." }),
+    );
+    let dialog = await open("Analiz sertifikası");
+    await userEvent.type(within(dialog).getByLabelText("Doküman no"), "FR-KAL-001");
+    fireEvent.change(within(dialog).getByLabelText(/İlk yayın tarihi/), {
+      target: { value: "2026-01-10" },
+    });
+    await fillRevision(dialog, "2026-10-15", "İlk yayın");
+    await confirmRevision(dialog);
+    await waitFor(() => expect(codingApi.addOutputRevision).toHaveBeenCalled());
+    const confirm = screen.getByText(/sonradan değiştirilemez/).closest("section")!;
+    await userEvent.click(within(confirm).getByRole("button", { name: "Vazgeç" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Vazgeç" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    dialog = await edit("İrsaliye");
+    await userEvent.click(within(dialog).getByLabelText(/Çıktıya basılsın/));
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Not");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    expect(await within(dialog).findByText("Kayıt reddedildi.")).toBeInTheDocument();
+
+    pending.resolve({
+      ...coa,
+      doc_code: "FR-KAL-001",
+      first_issue_date: "2026-01-10",
+      doc_locked: true,
+      revision_no: 0,
+      revision_date: "2026-10-15",
+      revisions: [{ ...revision, id: 9, revision_no: 0, doc_code: "FR-KAL-001" }],
+    });
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(expect.objectContaining({ color: "green" })),
+    );
+    expect(await screen.findByText("FR-KAL-001")).toBeInTheDocument();
+    expect(within(dialog).getByText("Kayıt reddedildi.")).toBeInTheDocument();
+  });
+
+  it("kilitli çıktıda revizyon eklenince kaydedilemeyen bant kaydının hatası kalır", async () => {
+    vi.mocked(codingApi.listOutputs).mockResolvedValue([waybill]);
+    vi.mocked(codingApi.updateOutput).mockRejectedValue(
+      httpError(400, { code: "output_doc_locked", detail: "Kayıt reddedildi." }),
+    );
+    vi.mocked(codingApi.addOutputRevision).mockResolvedValue({
+      ...waybill,
+      revision_no: 2,
+      revision_date: "2026-11-02",
+      revisions: [
+        {
+          ...revision,
+          id: 2,
+          revision_no: 2,
+          revision_date: "2026-11-02",
+          approved_on: "2026-11-02",
+          change_note: "Yeni alan",
+        },
+        revision,
+      ],
+    });
+    const dialog = await open("İrsaliye");
+    await userEvent.click(within(dialog).getByLabelText(/Çıktıya basılsın/));
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Bant kapatıldı");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    expect(await within(dialog).findByText("Kayıt reddedildi.")).toBeInTheDocument();
+    await fillRevision(dialog, "2026-11-02");
+    await confirmRevision(dialog);
+    expect(await within(dialog).findByText("Yeni revizyon: Rev. 03")).toBeInTheDocument();
+    expect(within(dialog).getByText("Kayıt reddedildi.")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Çıktıya basılsın/)).not.toBeChecked();
+    expect(within(dialog).getByLabelText(/Değişiklik notu/)).toHaveValue("Bant kapatıldı");
+  });
+
+  it.each([
+    ["kayıt", "yanıtı"],
+    ["kayıt", "hatası"],
+    ["revizyon", "yanıtı"],
+    ["revizyon", "hatası"],
+  ] as const)(
+    "kapatılan çıktının geç gelen %s %s açık çıktının penceresini değiştirmez; sonuç bildirimle söylenir",
+    async (request, outcome) => {
+      const show = vi.spyOn(notifications, "show").mockReturnValue("bildirim");
+      const pending = deferred<codingApi.OutputDocumentRow>();
+      const withDoc = { ...coa, doc_code: "FR-KAL-001", first_issue_date: "2026-01-10" };
+      const saved: codingApi.OutputDocumentRow =
+        request === "kayıt"
+          ? withDoc
+          : {
+              ...withDoc,
+              doc_locked: true,
+              revision_no: 0,
+              revision_date: "2026-10-15",
+              revisions: [{ ...revision, id: 9, revision_no: 0, doc_code: "FR-KAL-001" }],
+            };
+      if (request === "kayıt") vi.mocked(codingApi.updateOutput).mockReturnValue(pending.promise);
+      else vi.mocked(codingApi.addOutputRevision).mockReturnValue(pending.promise);
+      const api = request === "kayıt" ? codingApi.updateOutput : codingApi.addOutputRevision;
+
+      // Analiz sertifikası kaydedilir ya da ilk revizyonu eklenir; yanıt gelmeden pencere kapanır.
+      let dialog = await open("Analiz sertifikası");
+      await userEvent.type(within(dialog).getByLabelText("Doküman no"), "FR-KAL-001");
+      fireEvent.change(within(dialog).getByLabelText(/İlk yayın tarihi/), {
+        target: { value: "2026-01-10" },
+      });
+      if (request === "kayıt") {
+        await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Liste");
+        await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+      } else {
+        await fillRevision(dialog, "2026-10-15", "İlk yayın");
+        await confirmRevision(dialog);
+      }
+      await waitFor(() => expect(api).toHaveBeenCalled());
+      if (request === "revizyon") {
+        const confirm = screen.getByText(/sonradan değiştirilemez/).closest("section")!;
+        await userEvent.click(within(confirm).getByRole("button", { name: "Vazgeç" }));
+      }
+      await userEvent.click(within(dialog).getByRole("button", { name: "Vazgeç" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+      // İrsaliye açılır: bant kapatılıp not yazılır, revizyon formu doldurulur. Düğmeler kapatılan
+      // çıktının süren isteğini beklemez.
+      dialog = await edit("İrsaliye");
+      const band = within(dialog).getByLabelText(/Çıktıya basılsın/);
+      await userEvent.click(band);
+      await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Not");
+      await userEvent.type(within(dialog).getByLabelText(/^Onaylayan/), "Depo Şefi");
+      await userEvent.type(within(dialog).getByLabelText(/Değişiklik açıklaması/), "Yeni alan");
+      const save = within(dialog).getByRole("button", { name: "Kaydet" });
+      const add = within(dialog).getByRole("button", { name: "Revizyonu ekle" });
+      expect(save).toBeEnabled();
+      expect(add).toBeEnabled();
+
+      if (outcome === "yanıtı") pending.resolve(saved);
+      else pending.reject(httpError(400, { code: "output_code_taken", detail: codeTaken }));
+      const message = {
+        kayıt: {
+          yanıtı: "Analiz sertifikası kaydedildi.",
+          hatası: `Analiz sertifikası kaydedilemedi: ${codeTaken}`,
+        },
+        revizyon: {
+          yanıtı: "Analiz sertifikası: Rev. 00 eklendi.",
+          hatası: `Analiz sertifikası revizyonu eklenemedi: ${codeTaken}`,
+        },
+      }[request][outcome];
+      await waitFor(() =>
+        expect(show).toHaveBeenCalledWith(
+          expect.objectContaining({ color: outcome === "yanıtı" ? "green" : "red", message }),
+        ),
+      );
+      // Liste kapatılan çıktının kaydını gösterir.
+      if (outcome === "yanıtı") expect(await screen.findByText("FR-KAL-001")).toBeInTheDocument();
+
+      // İrsaliye penceresi olduğu gibi kalır.
+      expect(within(dialog).queryByText(codeTaken)).not.toBeInTheDocument();
+      expect(band).not.toBeChecked();
+      expect(within(dialog).getByLabelText(/Değişiklik notu/)).toHaveValue("Not");
+      expect(within(dialog).getByLabelText(/^Onaylayan/)).toHaveValue("Depo Şefi");
+      expect(within(dialog).getByLabelText(/Değişiklik açıklaması/)).toHaveValue("Yeni alan");
+      expect(docFields(dialog).revisionDocNo).toHaveValue("FR-SVK-001");
+      expect(save).toBeEnabled();
+      expect(add).toBeEnabled();
+    },
+  );
+
+  it("başka bölüme geçildikten sonra gelen hata da bildirimle söylenir", async () => {
+    const show = vi.spyOn(notifications, "show").mockReturnValue("bildirim");
+    const pending = deferred<codingApi.OutputDocumentRow>();
+    vi.mocked(codingApi.listOutputs).mockResolvedValue([coa]);
+    vi.mocked(codingApi.updateOutput).mockReturnValue(pending.promise);
+    const { router } = renderApp("/sistem/kodlama?bolum=cikti");
+    const dialog = await edit("Analiz sertifikası");
+    await userEvent.type(within(dialog).getByLabelText("Doküman no"), "FR-KAL-001");
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Liste");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+    await waitFor(() => expect(codingApi.updateOutput).toHaveBeenCalled());
+
+    // Pencere açıkken bölüm değişir (ör. tarayıcının geri düğmesi): pencere bölümle kaldırılır.
+    await act(() => router.navigate("/sistem/kodlama?bolum=ana-veri"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    pending.reject(httpError(400, { code: "output_code_taken", detail: codeTaken }));
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          color: "red",
+          message: `Analiz sertifikası kaydedilemedi: ${codeTaken}`,
+        }),
+      ),
+    );
+  });
+
+  it("tarih alanları 01.01.2000'den önceki tarihi (elle yazılan 0026 yılı) kabul etmez", async () => {
+    vi.mocked(codingApi.listOutputs).mockResolvedValue([coa]);
+    const dialog = await open("Analiz sertifikası");
+    const [issue, effective, approved] = [/İlk yayın tarihi/, /Yürürlük tarihi/, /Onay tarihi/].map(
+      (label) => within(dialog).getByLabelText(label),
+    );
+    for (const input of [issue, effective, approved]) {
+      expect(input).toHaveAttribute("min", "2000-01-01");
+    }
+    const save = within(dialog).getByRole("button", { name: "Kaydet" });
+    const add = within(dialog).getByRole("button", { name: "Revizyonu ekle" });
+
+    // İlk yayın tarihi: satır içi hata; ne kaydedilir ne ilk revizyonla gönderilir.
+    await userEvent.type(within(dialog).getByLabelText("Doküman no"), "FR-KAL-001");
+    fireEvent.change(issue, { target: { value: "0026-01-10" } });
+    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Liste");
+    await fillRevision(dialog, "2026-10-15");
+    expect(within(dialog).getByText(dateFloor)).toBeInTheDocument();
+    expect(save).toBeDisabled();
+    expect(add).toBeDisabled();
+    fireEvent.change(issue, { target: { value: "2026-01-10" } });
+    expect(within(dialog).queryByText(dateFloor)).not.toBeInTheDocument();
+    expect(save).toBeEnabled();
+    expect(add).toBeEnabled();
+
+    // Yürürlük ve onay tarihi: revizyon eklenmez; doküman kaydı etkilenmez.
+    for (const [input, valid] of [
+      [effective, "2026-10-15"],
+      [approved, "2026-10-15"],
+    ] as const) {
+      fireEvent.change(input, { target: { value: "1999-12-31" } });
+      expect(within(dialog).getByText(dateFloor)).toBeInTheDocument();
+      expect(add).toBeDisabled();
+      expect(save).toBeEnabled();
+      fireEvent.change(input, { target: { value: valid } });
+      expect(add).toBeEnabled();
+    }
+    expect(codingApi.updateOutput).not.toHaveBeenCalled();
+    expect(codingApi.addOutputRevision).not.toHaveBeenCalled();
   });
 });
 
@@ -1090,7 +1763,10 @@ describe("Sistem > Kodlama sistematiği > GS1", () => {
       "12",
     );
     expect(save).toBeDisabled(); // not zorunlu
-    await userEvent.type(within(dialog).getByLabelText(/Değişiklik notu/), "Yeni seri");
+    const note = within(dialog).getByLabelText(/Değişiklik notu/);
+    // GS1 değişikliğinin notu denetim günlüğüne yazılır (Geçmiş bölümünde görünmez).
+    expect(note).toHaveAttribute("placeholder", "Neden değiştirildi? (denetim günlüğüne yazılır)");
+    await userEvent.type(note, "Yeni seri");
     await userEvent.click(save);
 
     await waitFor(() =>

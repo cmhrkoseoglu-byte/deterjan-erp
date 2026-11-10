@@ -50,7 +50,13 @@ from apps.inventory.models import (
 )
 from apps.inventory.state import goods_receipt_states, lot_states, stock_adjustment_states
 from apps.masterdata import services as masterdata
-from apps.masterdata.models import Location, Material, Supplier, UnitOfMeasure
+from apps.masterdata.models import (
+    Location,
+    Material,
+    MaterialUnitConversion,
+    Supplier,
+    UnitOfMeasure,
+)
 
 QUANTITY_STEP = Decimal("0.0001")
 MovementType = StockMovement.Type
@@ -607,6 +613,25 @@ def default_expiry_date(material: Material, start: date) -> date | None:
     return start + timedelta(days=material.shelf_life_days)
 
 
+def _lock_case_conversion(material: Material) -> str:
+    """Mamulün KOLI dönüşümünü işlem sonuna kadar kilitler ve koli GTIN'ini döner (yoksa "";
+    `masterdata.case_gtin` gibi pasif dönüşümünki de). Yalnız dönüşüm satırı kilitlenir, KOLI birimi
+    değil: başka mamulün lotu beklemez. Koli düzeni değişikliği (`masterdata.update_record`,
+    `set_active`) aynı satırı kilitler: lot açan işlem sürerken yapılan değişiklik işlemin bitmesini
+    bekler ve açılan lotu görür (koli GTIN'i kilitlenir; koli içi miktar yalnız yeni koli GTIN'iyle
+    değişir, eski GTIN eski miktarıyla arşivlenir). Süren değişikliği de lot bekler, yeni düzeni
+    alır. Koli GTIN'i kilitli satırdan okunur: dönüşüm henüz yoksa kilitlenecek satır da yoktur ve
+    o sırada açılan dönüşümün koli GTIN'i lota yazılmaz (en çok koli içi miktarı okunur; lot ürün
+    GTIN'iyle basılır ve o miktarla sayılır)."""
+    rows = list(
+        MaterialUnitConversion.objects.select_for_update(of=("self",))
+        .filter(material=material, unit__code=masterdata.CASE_UNIT)
+        .order_by()
+        .only("pk", "gtin")
+    )
+    return next((row.gtin for row in rows if row.gtin), "")
+
+
 @transaction.atomic
 def create_lot(
     actor: User | None,
@@ -622,11 +647,16 @@ def create_lot(
     day: date | None = None,
     note: str = "",
 ) -> Lot:
-    """Yeni lot açar (denetim günlüklü).
+    """Yeni lot açar (denetim günlüklü). Lot açmanın tek yolu budur.
 
     `lot_no` verilmezse kaynağa göre otomatik numara (`H-`, `B-`, `D-` + `day`). SKT verilmezse
     üretim tarihi (yoksa `day`/bugün) + malzemenin raf ömrü. Başlangıç durumu `QUARANTINE` ya da
-    `RELEASED` olabilir; serbest açılan lotta serbest bırakan ve zaman doldurulur.
+    `RELEASED` olabilir; serbest açılan lotta serbest bırakan ve zaman doldurulur. Mamul lotuna
+    açıldığı günkü koli düzeni yazılır (`case_factor`, `case_gtin`; CUMHUR, 2026-11-05): KOLI
+    dönüşümünün koli içi miktarı (dönüşüm aktifse) ve koli GTIN'i (pasifse de). İrsaliye ve koli /
+    palet etiketi bunu kullanır; koli düzeni sonra değişse de lotunki değişmez. KOLI dönüşümü işlem
+    sonuna kadar kilitlenir (`_lock_case_conversion`): var olan KOLI dönüşümündeki değişiklik lotla
+    yarışmaz.
     """
     actor = _actor(actor)
     if source not in Lot.Source.values:
@@ -660,6 +690,9 @@ def create_lot(
         expiry_date=expiry_date,
         status_note=note,
     )
+    if material.material_type == Material.Type.FINISHED:
+        lot.case_gtin = _lock_case_conversion(material)  # koli içi miktardan önce, kilitli satırdan
+        lot.case_factor = masterdata.case_factor_at(material, None)
     if status == Lot.Status.RELEASED:
         lot.released_by = actor
         lot.released_at = timezone.now()

@@ -305,7 +305,7 @@ function Gs1Modal({ settings, onClose, onSaved }: ModalProps) {
         <Textarea
           size="md"
           label={cs.note}
-          placeholder={cs.notePlaceholder}
+          placeholder={cs.auditNotePlaceholder}
           withAsterisk
           autosize
           minRows={2}

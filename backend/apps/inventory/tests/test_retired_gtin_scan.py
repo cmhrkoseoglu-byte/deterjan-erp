@@ -312,7 +312,8 @@ def test_resolve_lot_finds_the_lot_of_an_archived_case(product: Material) -> Non
 
 def test_scan_api_returns_the_old_case_quantity(client_for, product: Material) -> None:
     """Okutma yanıtı: eski koli içi miktar (`units_per_case`), koli birimi ve uyarı; lotun
-    `material_case_gtin`'i güncel koli GTIN'i kalır."""
+    `material_case_gtin`'i lotun açıldığı günkü koli GTIN'idir (lot koli düzeni değiştikten sonra
+    açıldı: güncel koli GTIN'i)."""
     lot = finished_lot(product)
     client = client_for("depo")
     response = client.get(SCAN, {"code": f"(01){OLD_CASE}(17)281015(10){LOT_NO}"})

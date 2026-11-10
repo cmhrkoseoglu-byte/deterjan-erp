@@ -7,8 +7,11 @@ import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied
 from django.db import OperationalError, connection, transaction
+from django.urls import path as route
 from django.utils import timezone
+from drf_spectacular.generators import SchemaGenerator
 
+from apps.core.api import coding as coding_api
 from apps.core.coding import formats, registry, selectors, services
 from apps.core.coding.formats import Format
 from apps.core.exceptions import BusinessRuleError
@@ -539,6 +542,21 @@ def test_api_list_detail_update_preview_and_revisions(client_for):
 
     revisions = client.get(f"{BASE}/types/{WIDGET}/revisions/").json()
     assert [row["note"] for row in revisions["results"]] == ["Biçim"]
+
+
+def test_api_types_list_schema_is_paginated():
+    """OpenAPI şeması gerçek yanıtı anlatır: sayfalı nesne; `kind`, `page` ve `page_size`."""
+    schema = SchemaGenerator(
+        patterns=[route("api/v1/coding/types/", coding_api.CodeTypeListView.as_view())]
+    ).get_schema(request=None, public=True)
+    operation = schema["paths"]["/api/v1/coding/types/"]["get"]
+    parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+    assert set(parameters) == {"kind", "page", "page_size"}
+    assert parameters["kind"]["schema"]["enum"] == sorted(registry.KINDS)
+    body = operation["responses"]["200"]["content"]["application/json"]["schema"]
+    assert body == {"$ref": "#/components/schemas/PaginatedCodeTypeList"}
+    page = schema["components"]["schemas"]["PaginatedCodeTypeList"]
+    assert {"count", "next", "previous", "results"} <= set(page["properties"])
 
 
 @pytest.mark.django_db

@@ -337,7 +337,7 @@ describe("LabelPrintModal", () => {
 
   it("seçilen etiketin uyarısını sarı gösterir", async () => {
     vi.mocked(labelsApi.listPrinters).mockResolvedValue([]);
-    const warning = "Koli GTIN'i tanımlı değil; koli etiketine ürün GTIN'i basılır.";
+    const warning = "Bu lotun koli GTIN'i yok; koli etiketine ürün GTIN'i basılır.";
     renderWithProviders(
       <LabelPrintModal opened onClose={vi.fn()} options={[{ ...options[0], warning }]} />,
     );

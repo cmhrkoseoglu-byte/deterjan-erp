@@ -17,7 +17,11 @@ import {
 } from "../../api/labels";
 import { useAuth } from "../../auth/AuthContext";
 import { hasAnyRole } from "../../auth/roles";
-import { LabelPrintModal, type LabelKindOption } from "../../components/labels/LabelPrintModal";
+import {
+  LabelPrintModal,
+  UnitsPerCaseWarning,
+  type LabelKindOption,
+} from "../../components/labels/LabelPrintModal";
 import { formatDateTime } from "../../i18n/format";
 import { tr } from "../../i18n/tr";
 import { PALLET_ROLES } from "./config";
@@ -25,15 +29,27 @@ import { PALLET_ROLES } from "./config";
 const t = tr.labels;
 
 /**
- * Lot için etiket seçenekleri: lot etiketi; mamulde koli etiketi (D-6: GTIN'e göre). Koli GTIN'i
- * (`material_case_gtin`) ve `gs1_label` verilmezse bilinmiyor sayılır (dolum ekranı; lot kaydından
- * okunur).
+ * Lot için etiket seçenekleri: lot etiketi; mamulde koli etiketi (D-6: GTIN'e göre). Lotun koli
+ * GTIN'i (`material_case_gtin`), `gs1_label` ve koli içi miktarı (`case_units`) verilmezse
+ * bilinmiyor sayılır (dolum ekranı; lot kaydından okunur).
  */
 type LabelLot = Pick<
   Lot,
-  "id" | "material_type" | "material_gtin" | "material_case_gtin" | "gs1_label"
+  "id" | "material_type" | "material_gtin" | "material_case_gtin" | "gs1_label" | "case_units"
 >;
 type LabelHint = Pick<LabelKindOption, "hint" | "warning">;
+type UnitsPerCase = Pick<LabelKindOption, "defaultUnitsPerCase" | "gtinUnitsPerCase">;
+
+/** Koli içi adet: varsayılanı lotun koli içi miktarı (tam sayıysa). Lot koli GTIN'i basıyorsa
+ * yazılan adet o miktardan farklıyken sarı uyarı çıkar (koli GTIN'i koli içeriğini belirler). */
+function unitsPerCase(lot: LabelLot): UnitsPerCase {
+  const units = lot.case_units ? Number(lot.case_units) : NaN;
+  if (!Number.isFinite(units) || units <= 0) return {};
+  return {
+    ...(Number.isInteger(units) ? { defaultUnitsPerCase: units } : {}),
+    ...(lot.material_case_gtin ? { gtinUnitsPerCase: units } : {}),
+  };
+}
 
 /** GTIN'i (ürün ya da koli GTIN'i) olan lotun koli etiketine ve paletin GTIN ve lot barkodlarına
  * GS1 barkodu basılamıyor mu (sunucu `gs1_label: false`: lot numarası GS1'e uymuyor ya da GTIN
@@ -42,9 +58,9 @@ function noGs1Label(lot: LabelLot): boolean {
   return lot.gs1_label === false && Boolean(lot.material_case_gtin || lot.material_gtin);
 }
 
-/** Koli etiketi: koli GTIN'i varsa o basılır; yoksa ürün GTIN'i (sarı uyarıyla) ya da firma içi
- * barkod. Koli GTIN'i henüz bilinmiyorsa ürün GTIN'ine göre söylenir. GS1 barkodu basılamıyorsa
- * sarı uyarı. */
+/** Koli etiketi: lotun koli GTIN'i varsa o basılır; yoksa ürün GTIN'i (sarı uyarıyla) ya da firma
+ * içi barkod. Koli GTIN'i henüz bilinmiyorsa ürün GTIN'ine göre söylenir. GS1 barkodu
+ * basılamıyorsa sarı uyarı. */
 function caseHint(lot: LabelLot): LabelHint {
   if (noGs1Label(lot)) return { warning: t.noGs1Label };
   if (lot.material_case_gtin) return { hint: t.caseGtinHint };
@@ -83,6 +99,7 @@ function lotLabelOptions(lot: LabelLot, caseFirst = false) {
       printPath: printPaths.lot(lot.id),
       printKind: "case",
       withUnitsPerCase: true,
+      ...unitsPerCase(lot),
     });
   }
   return caseFirst ? options.reverse() : options;
@@ -99,7 +116,8 @@ export function LotLabelButton({
   label?: string;
 }) {
   const [open, setOpen] = useState(false);
-  // Koli GTIN'i verilmediyse (dolum ekranı) pencere açılınca lot kaydından okunur; `gs1_label` de.
+  // Koli GTIN'i verilmediyse (dolum ekranı) pencere açılınca lot kaydından okunur; `gs1_label` ve
+  // koli içi miktar da.
   const detail = useQuery({
     queryKey: ["inventory", "lot", lot.id],
     queryFn: () => getLot(lot.id),
@@ -107,6 +125,7 @@ export function LotLabelButton({
   });
   const caseGtin = lot.material_case_gtin ?? detail.data?.material_case_gtin;
   const gs1Label = lot.gs1_label ?? detail.data?.gs1_label;
+  const caseUnits = lot.case_units ?? detail.data?.case_units;
   return (
     <>
       <Button
@@ -120,7 +139,7 @@ export function LotLabelButton({
         opened={open}
         onClose={() => setOpen(false)}
         options={lotLabelOptions(
-          { ...lot, material_case_gtin: caseGtin, gs1_label: gs1Label },
+          { ...lot, material_case_gtin: caseGtin, gs1_label: gs1Label, case_units: caseUnits },
           caseFirst,
         )}
       />
@@ -144,8 +163,11 @@ export function PalletSection({ lot }: { lot: Lot }) {
   const queryClient = useQueryClient();
   const canCreate = hasAnyRole(user, PALLET_ROLES);
   const [cases, setCases] = useState<number | "">("");
-  const [units, setUnits] = useState<number | "">("");
+  // Koli içi adet; yazılmadıkça (null) lotun koli içi miktarı gösterilir ve gönderilir.
+  const [units, setUnits] = useState<number | "" | null>(null);
   const [printing, setPrinting] = useState<PalletLabel | null>(null);
+  const { defaultUnitsPerCase, gtinUnitsPerCase } = unitsPerCase(lot);
+  const shownUnits = units ?? defaultUnitsPerCase ?? "";
   const settings = useQuery({ queryKey: labelQueryKeys.settings, queryFn: getLabelSettings });
   const enabled = settings.data?.sscc_enabled ?? false;
   const pallets = useQuery({
@@ -155,7 +177,11 @@ export function PalletSection({ lot }: { lot: Lot }) {
   });
   const create = useMutation({
     mutationFn: () =>
-      createPallet({ lot: lot.id, case_count: Number(cases), units_per_case: units || null }),
+      createPallet({
+        lot: lot.id,
+        case_count: Number(cases),
+        units_per_case: shownUnits || null,
+      }),
     onSuccess: (pallet) => {
       notifications.show({ color: "green", message: t.palletCreated(pallet.sscc) });
       setCases("");
@@ -212,7 +238,7 @@ export function PalletSection({ lot }: { lot: Lot }) {
             <NumberInput
               label={t.unitsPerCase}
               min={1}
-              value={units}
+              value={shownUnits}
               onChange={(value) => setUnits(value === "" ? "" : Number(value))}
               w={140}
             />
@@ -225,6 +251,7 @@ export function PalletSection({ lot }: { lot: Lot }) {
             </Button>
           </Group>
         )}
+        {canCreate && <UnitsPerCaseWarning units={shownUnits} gtinUnits={gtinUnitsPerCase} />}
       </Stack>
       {printing && (
         <LabelPrintModal

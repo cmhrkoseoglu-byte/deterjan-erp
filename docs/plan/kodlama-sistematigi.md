@@ -214,7 +214,9 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
 - Bant, admin açtığı çıktıya basılır:
   - **PDF:** "Doküman no · Yayın tarihi · Rev. no · Rev. tarihi · Sayfa x/y"
   - **Excel:** yazdırma alt bilgisi ve dosya özellikleri
-- **Yeniden basım:** belgenin tarihinde yürürlükte olan revizyon ve o tarihteki kodlar basılır.
+- **Yeniden basım** (CUMHUR, 2026-11-05, "İlk basımdaki gibi"): belgenin tarihinde yürürlükte olan
+  ve o güne kadar girilmiş revizyon, o revizyonla saklanan doküman no ve yayın tarihi, o günkü bant
+  durumu ve o tarihteki kodlar basılır. Doküman no ilk revizyondan sonra yeni revizyonla değişir.
 - **Şablon sürümü:** her üreticinin şablon sürümü vardır. Şablon değişip yeni revizyon girilmezse
   ekran uyarır.
 - **İrsaliye:** bandı açmadan önce mali müşavire danışılır. Etiketlere bant basılmaz.
@@ -238,9 +240,10 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
     (37) koli sayısı basılır.
   - Okutmada koli GTIN'i koli birimiyle çözülür.
   - Tanımlı değilse bugünkü davranış sürer ve uyarı verilir.
-- **Koli düzeni değişimi** (CUMHUR, 2026-11-05): lotu olan mamulde koli içi miktar değişince koliye
-  yeni GTIN verilir; eski GTIN eski miktarıyla arşivlenir ve bir daha verilmez. Okutmada eski
-  miktar önerilir; etikette ve irsaliyede lotun açıldığı günkü koli düzeni geçerlidir.
+- **Koli düzeni değişimi** (CUMHUR, 2026-11-05): koli GTIN'i tanımlı ve lotu olan mamulde koli içi
+  miktar değişince koliye yeni GTIN verilir; eski GTIN eski miktarıyla arşivlenir ve bir daha
+  verilmez. Okutmada eski miktar önerilir. Lotun koli düzeni (koli içi miktar, koli GTIN'i) lot
+  açılırken lota yazılır; etikette ve irsaliyede o düzen geçerlidir.
 - **Etiket:** yalnız okutulabilen GS1 barkodu basılır (geçerli GTIN, GS1'e uyan lot no); değilse
   firma içi `LOT:` barkodu. Türkçe harfli ya da > içeren lot numarasında çizgi barkod yerine QR
   okutulur.
@@ -290,6 +293,8 @@ Lokasyon etiketinde kod hiç kesilmez; sığmazsa yazı küçülür. Bugün uzun
 3. Canlıdaki biçime uymayan kodlar için göç önizlemesi çalıştırılır ve sahibe gösterilir. Yedek
    alındıktan sonra göç uygulanır.
 4. Paket 2 yayına alınır; çıktı kodları firmanın doküman listesinden girilip etkinleştirilir.
+   Yayından sonra bir kez, göçün tanımayıp olduğu gibi bıraktığı GBF dilleri listelenir ve GBF
+   formundaki dil listesinden düzeltilir (KURULUM §8; liste boşsa iş yok).
 
 ## 10. Adımlar
 

@@ -295,6 +295,16 @@ Komut, bu sürümden önce kodu değişmiş ana veri kayıtlarının eski kodlar
 kod geçmişine yükler: eski kod başka kayda verilmez ve kayıt eski koduyla da bulunur. Tekrar
 çalıştırmak bir şey yazmaz.
 
+**Kodlama sistematiği (Paket 2) güncellemesinden sonra bir kez:** göç, güvenlik bilgi
+formlarının (GBF) serbest metin dilini ISO 639-1 koduna çevirir, tanımadığı değeri olduğu gibi
+bırakır. Geçerli GBF'lerde kalanları listeleyin (malzeme kodu, revizyon no, dil); **İSG ve
+çevre > GBF arşivi**'nde malzeme koduyla arayıp GBF'yi açın ve dil listesinden düzeltin.
+Arşivdeki eski revizyonlar değiştirilemez, dilleri olduğu gibi kalır. Liste boşsa (`[]`) iş yok:
+
+```bash
+scripts/prod-compose.sh exec backend python manage.py shell -c "from apps.core.standards import is_language_code; from apps.hse.models import SafetyDataSheet as S; print([(s.material.code, s.revision_no, s.language) for s in S.objects.filter(superseded_at__isnull=True).select_related('material') if not is_language_code(s.language)])"
+```
+
 **Geri dönüş:** yeni sürüm sorunluysa ve veritabanı değişikliği (migration) içeriyorsa önceki koda
 dönmek yetmez, veritabanı da güncelleme öncesine dönmelidir:
 

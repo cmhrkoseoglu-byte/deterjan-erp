@@ -1054,7 +1054,9 @@ def update_gs1_settings(
         raise PermissionDenied(GS1_ADMIN_MESSAGE)
     note = (note or "").strip()
     if not note:
-        raise BusinessRuleError("note_required", "Değişiklik notu yazın (geçmişte görünür).")
+        raise BusinessRuleError(
+            "note_required", "Değişiklik notu yazın (denetim günlüğüne yazılır)."
+        )
     get_label_settings()
     instance = LabelSettings.objects.select_for_update().order_by("pk").first()
     assert instance is not None
@@ -1250,7 +1252,16 @@ def gtin_suggestion(material_type: str | None = None) -> GtinSuggestion:
 
 def case_gtin_suggestion(material: Material) -> CaseGtinSuggestion:
     """Koli GTIN'i önerisi: malzemenin GTIN-13'ünden (ya da GTIN-12/14'ünden) gösterge hanesi 1-8
-    ile türetilen ilk boş GTIN-14 (gösterge + 12 hane + kontrol hanesi)."""
+    ile türetilen ilk boş GTIN-14 (gösterge + 12 hane + kontrol hanesi).
+
+    Yalnız mamulde: hammadde, ambalaj ve yarı mamulün GTIN'i tedarikçinindir; GS1'de koli GTIN'ini
+    marka sahibi verir, tedarikçinin koli GTIN'i koli etiketinden girilir."""
+    if material.material_type != Material.Type.FINISHED:
+        return CaseGtinSuggestion(
+            None,
+            "Koli GTIN'i önerisi yalnız mamulde kullanılır; tedarikçinin koli GTIN'ini koli "
+            "etiketinden girin.",
+        )
     gtin = (material.gtin or "").strip()
     if not gtin:
         return CaseGtinSuggestion(
@@ -1329,8 +1340,10 @@ def case_gtin(material: Material) -> str:
 def case_gtin_at(material: Material, when: datetime | None) -> str:
     """`when` anında yürürlükteki koli GTIN'i: o andan sonra arşivlenmiş en eski koli GTIN'i (koli
     içi miktar değişmeden önceki GTIN; `RetiredGtin`), yoksa bugünkü koli GTIN'i (`case_gtin`);
-    hiçbiri yoksa "". `when` None ise bugünkü koli GTIN'i. Lotun koli ve palet etiketleri lotun
-    açıldığı andaki koli GTIN'iyle basılır (`inventory.labels`).
+    hiçbiri yoksa "". `when` None ise bugünkü koli GTIN'i. Etiketler bunu kullanmaz: lotun koli ve
+    palet etiketi lot açılırken lota yazılan koli GTIN'iyle basılır (`Lot.case_gtin`). Geçmiş an
+    için yalnız arşivi bilir: sonradan ilk kez girilen koli GTIN'ini o andan önce de yürürlükte
+    sayar. inventory 0008 göçü var olan lotları bu kuralın kopyasıyla doldurdu.
 
     Önce bugünkü GTIN, sonra arşiv okunur: yeni GTIN ve arşiv satırı birlikte yazılır; iki okuma
     arasında koli düzeni değişirse arşiv satırı görülür ve eski lot yine eski GTIN'ini alır."""
@@ -1345,8 +1358,11 @@ def case_gtin_at(material: Material, when: datetime | None) -> str:
 def case_factor_at(material: Material, when: datetime | None) -> Decimal | None:
     """`when` anında yürürlükteki koli içi miktar (temel birimde): o andan sonra arşivlenmiş en eski
     koli GTIN'inin miktarı (koli düzeni değişmeden önceki), yoksa bugünkü aktif KOLI dönüşümünün
-    katsayısı; koli dönüşümü yoksa None. İrsaliyede koli sayısı lotun açıldığı andaki koli içi
-    miktarla hesaplanır (CUMHUR, 2026-11-05). Okuma sırası `case_gtin_at`'teki gibidir."""
+    katsayısı; koli dönüşümü yoksa None. Lot açılırken (`when` None) lotun koli içi miktarı bununla
+    yazılır (`inventory.services.create_lot`, `Lot.case_factor`); irsaliye lotunkini kullanır
+    (CUMHUR, 2026-11-05). Geçmiş an için yalnız arşivi bilir (koli GTIN'i olmayan mamuldeki miktar
+    değişikliğini bilmez): lotun koli düzeni için lotun alanlarını okuyun. Okuma sırası
+    `case_gtin_at`'teki gibidir."""
     case_unit = UnitOfMeasure.objects.filter(code=CASE_UNIT).first()
     current = unit_factor_to_base(material, case_unit) if case_unit is not None else None
     if when is not None:

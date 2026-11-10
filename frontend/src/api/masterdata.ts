@@ -59,6 +59,8 @@ export interface RetiredGtin {
 export interface Conversion extends Audited {
   material: number;
   material_code: string;
+  /** Malzemenin türü (salt okunur): koli GTIN'i önerisi yalnız mamulde. */
+  material_type: MaterialType;
   unit: number;
   unit_code: string;
   factor_to_base: string;
@@ -222,7 +224,10 @@ export interface GtinSuggestion {
   reason: string;
 }
 
-/** Malzemenin GTIN'inden türetilen ilk boş koli GTIN'i (GTIN-14); türetilemezse `reason`. */
+/**
+ * Mamulün GTIN'inden türetilen ilk boş koli GTIN'i (GTIN-14); türetilemezse `reason`. Mamul dışı
+ * malzemede öneri yoktur (koli GTIN'i tedarikçinindir; ön yüz düğmeyi yalnız mamulde gösterir).
+ */
 export interface CaseGtinSuggestion {
   gtin: string | null;
   reason: string;

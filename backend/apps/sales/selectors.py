@@ -3,7 +3,7 @@ sipariş geçmişi, SKT'si yaklaşan rezerve lotlar; sevkiyat satırları, topla
 verisi ve müşteriye sevk edilen lotlar (Adım 3.2)."""
 
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -28,7 +28,7 @@ from apps.inventory import selectors as inventory_selectors
 from apps.inventory.models import StockReservation
 from apps.inventory.services import format_quantity
 from apps.masterdata import services as masterdata
-from apps.masterdata.models import Customer, Material
+from apps.masterdata.models import Customer
 from apps.sales.models import SalesOrder, SalesOrderLine, Shipment, ShipmentLine, ShipmentPick
 
 EXPIRY_WARNING_DAYS = 30
@@ -309,15 +309,13 @@ def pick_suggestions(shipment: Shipment) -> list[dict[str, Any]]:
     return result
 
 
-def case_breakdown(
-    material: Material, quantity: Decimal, when: datetime | None = None
-) -> tuple[int | None, Decimal]:
-    """Miktarın tam koli sayısı ve koliye girmeyen kalan (temel birimde). Mamulün koli dönüşümü
-    yoksa (None, miktar). `when` verilirse o anda yürürlükteki koli içi miktarla: irsaliye lotun
-    açıldığı andaki koli düzenini kullanır (CUMHUR, 2026-11-05; eski koliler eski adetle sayılır,
-    sevk edilmiş irsaliyenin yeniden basımı değişmez)."""
-    factor = masterdata.case_factor_at(material, when)
-    if not factor or factor <= 0:
+def case_breakdown(quantity: Decimal, factor: Decimal | None) -> tuple[int | None, Decimal]:
+    """Miktarın tam koli sayısı ve koliye girmeyen kalan (temel birimde), 1 koli = `factor`. Koli
+    içi miktar yoksa ya da sıfırdan büyük değilse (None, miktar). İrsaliye lotun koli düzenini
+    kullanır (`Lot.case_factor`, lotun açıldığı günkü koli içi miktar; CUMHUR, 2026-11-05): eski
+    lotun kolileri eski adetle sayılır, sevk edilmiş irsaliyenin yeniden basımı koli düzeni sonra
+    değişse de (miktar, pasife alınan dönüşüm, Excel'den içe aktarma) değişmez."""
+    if factor is None or factor <= 0:
         return None, quantity
     cases = int(quantity // factor)
     return cases, quantity - cases * factor
@@ -351,7 +349,7 @@ def waybill_data(shipment: Shipment) -> dict[str, Any]:
     )
     for pick in picks:
         product = pick.line.order_line.product
-        cases, rest = case_breakdown(product, pick.quantity, pick.lot.created_at)
+        cases, rest = case_breakdown(pick.quantity, pick.lot.case_factor)
         lines.append(
             {
                 "line_no": pick.line.order_line.line_no,

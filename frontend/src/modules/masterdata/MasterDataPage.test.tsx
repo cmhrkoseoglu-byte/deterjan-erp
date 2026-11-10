@@ -646,6 +646,7 @@ describe("GS1: malzeme GTIN'i ve koli GTIN'i", () => {
     id: 21,
     material: 6,
     material_code: "MAM-1",
+    material_type: "FINISHED",
     unit: 7,
     unit_code: "KOLI",
     factor_to_base: "12.000000",
@@ -1204,6 +1205,49 @@ describe("GS1: malzeme GTIN'i ve koli GTIN'i", () => {
         gtin: "18690000000019",
       }),
     );
+  });
+
+  it("yeni koli dönüşümünde 'Koli GTIN'i öner' yalnız mamulde çıkar; hammaddede çıkmaz", async () => {
+    // Hammaddenin GTIN'i tedarikçinindir: koli GTIN'i tedarikçinin koli etiketinden girilir.
+    const raw: Material = { ...las, gtin: "8690000000029" };
+    records([finished, raw]);
+    renderApp("/ana-veriler/birim-donusumleri");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Yeni" }));
+    const dialog = await screen.findByRole("dialog");
+    await choose(dialog, "Birim", "KOLI - Koli");
+    await choose(dialog, "Malzeme", "MAM-1 - Bulaşık deterjanı 750 ml");
+    expect(await within(dialog).findByRole("button", { name: "Koli GTIN'i öner" })).toBeEnabled();
+    await choose(dialog, "Malzeme", "HM-LAS - LAS");
+    expect(
+      within(dialog).queryByRole("button", { name: "Koli GTIN'i öner" }),
+    ).not.toBeInTheDocument();
+    // Alan açık kalır: tedarikçinin koli GTIN'i elle yazılır.
+    expect(within(dialog).getByLabelText(/Koli GTIN'i/)).toBeEnabled();
+    expect(mdApi.suggestCaseGtin).not.toHaveBeenCalled();
+  });
+
+  it("düzenlenen hammadde koli dönüşümünde koli GTIN'i boş olsa da 'Koli GTIN'i öner' çıkmaz", async () => {
+    const rawCase: mdApi.Conversion = {
+      ...caseConversion,
+      id: 22,
+      material: 5,
+      material_code: "HM-LAS",
+      material_type: "RAW",
+      factor_to_base: "25.000000",
+      base_unit_code: "KG",
+      gtin: "",
+      gtin_locked: false,
+    };
+    records([las], [rawCase]);
+    renderApp("/ana-veriler/birim-donusumleri");
+
+    await userEvent.click(await screen.findByText("HM-LAS"));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/Koli GTIN'i/)).toBeEnabled();
+    expect(
+      within(dialog).queryByRole("button", { name: "Koli GTIN'i öner" }),
+    ).not.toBeInTheDocument();
   });
 
   it("koli GTIN'i türetilemezse nedeni görünür; koli dışı birime geçince yazılan GTIN silinir", async () => {

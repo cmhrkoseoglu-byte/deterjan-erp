@@ -34,7 +34,7 @@ Depo **Ambalaj hazır** deyince **Görevlerim**'e dolum görevi düşer.
 
 ## Lot okutulamıyorsa
 
-- Lot numarasını **Lot okut** alanına elle yazıp Enter'a basın. Ambalajın koli etiketindeki GS1 barkodu da okutulabilir.
+- Lot numarasını **Lot okut** alanına elle yazıp Enter'a basın. Ambalajın tedarikçi koli barkodu lotu bulmaz; mal kabulde basılan lot etiketini okutun.
 - Bulk için **Tanklardaki serbest bulk** tablosunda tankın satırına dokunun. Lot seçilir.
 - Reçetede olmayan malzemenin lotunu okutursanız kırmızı uyarı çıkar ve uyarı sesi duyulur. Kaydedilmez.
 - Tabloda bulk lot yoksa bulk henüz laboratuvardan serbest çıkmamıştır. Laboratuvara sorun.
@@ -54,7 +54,7 @@ Depo **Ambalaj hazır** deyince **Görevlerim**'e dolum görevi düşer.
 
 Parti ekranının üstündeki **Koli etiketi** düğmesi etiket penceresini açar. Yazıcıyı ve kopya sayısını seçip gönderin. Yazıcı tanımlı değilse PDF olarak alıp basın.
 
-Koli etiketine malzemenin koli GTIN'i basılır. Pencerede sarı uyarı çıkarsa koli GTIN'i tanımlı değildir ve etikete ürün GTIN'i basılır; planlamaya haber verin. Lot numarası GS1'e uymuyorsa ya da GTIN geçersizse pencere bunu söyler ve etikete firma içi barkod basılır.
+Koli etiketine lotun koli GTIN'i basılır (lot açılırken malzemede tanımlı olan). **Koli içi adet** lotun koli içi adediyle gelir; başka adet yazarsanız sarı uyarı çıkar (koli GTIN'i o adetlik koli içindir). Pencerede "Bu lotun koli GTIN'i yok" uyarısı çıkarsa bu lotun etiketlerine ürün GTIN'i basılır; sonraki lotlar için planlamaya koli GTIN'ini girmesini söyleyin. Lot numarası GS1'e uymuyorsa ya da GTIN geçersizse pencere bunu söyler ve etikete firma içi barkod basılır.
 
 ## Partiyi ve dolumu bitirme
 

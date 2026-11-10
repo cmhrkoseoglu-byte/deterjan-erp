@@ -219,9 +219,12 @@ export const tr = {
     gs1Hint: "Malzemenin GTIN'i var: GS1-128 barkod basılır.",
     internalHint: "Malzemenin GTIN'i yok: firma içi barkod basılır.",
     caseGtinHint: "Koli etiketine koli GTIN'i basılır.",
-    noCaseGtin: "Koli GTIN'i tanımlı değil; koli etiketine ürün GTIN'i basılır.",
+    noCaseGtin: "Bu lotun koli GTIN'i yok; koli etiketine ürün GTIN'i basılır.",
     palletCaseGtinHint: "Palet etiketine koli GTIN'i ve koli sayısı basılır.",
-    noCaseGtinPallet: "Koli GTIN'i tanımlı değil; palet etiketine ürün GTIN'i basılır.",
+    noCaseGtinPallet: "Bu lotun koli GTIN'i yok; palet etiketine ürün GTIN'i basılır.",
+    // Koli GTIN'i koli içeriğini belirler (GS1): etikete yazılan adet onunla aynı olmalı.
+    caseUnitsMismatch: (units: string) =>
+      `Bu lotun koli GTIN'i ${units} adetlik koli içindir; farklı adet etikette barkodla çelişir.`,
     noGs1Label:
       "Bu lotun koli etiketine GS1 barkodu basılmaz (lot numarası GS1'e uymuyor ya da GTIN geçersiz); firma içi barkod ya da QR kodu basılır.",
     // Palet etiketinde SSCC (GS1-128) her zaman basılır; QR kodu yoktur.

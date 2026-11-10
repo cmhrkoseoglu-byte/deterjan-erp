@@ -106,22 +106,16 @@ def available_lots(
 
 
 def lots_with_stock() -> QuerySet[Lot]:
-    """Lotlar, toplam stok (`total_quantity`) ve malzemenin koli GTIN'i (`material_case_gtin`)
-    açıklamalarıyla."""
+    """Lotlar, toplam stok (`total_quantity`) açıklamasıyla. Lotun koli düzeni (`case_factor`,
+    `case_gtin`) lotun kendi alanlarıdır: liste malzeme başına sorgu yapmaz."""
     total = (
         StockBalance.objects.filter(lot=OuterRef("pk"))
         .values("lot")
         .annotate(total=Sum("quantity"))
         .values("total")
     )
-    case_gtin = (
-        MaterialUnitConversion.objects.filter(material=OuterRef("material"), unit__code=CASE_UNIT)
-        .exclude(gtin="")
-        .values("gtin")[:1]
-    )
     return Lot.objects.select_related("material__base_unit", "supplier").annotate(
-        total_quantity=Coalesce(Subquery(total), ZERO),
-        material_case_gtin=Coalesce(Subquery(case_gtin), Value("")),
+        total_quantity=Coalesce(Subquery(total), ZERO)
     )
 
 
@@ -638,17 +632,6 @@ def _with_case(
         result.unit = conversion.unit.code
         result.units_per_case = conversion.factor_to_base
     return result
-
-
-def case_gtin(material_id: int) -> str:
-    """Malzemenin koli (KOLI) dönüşümündeki GTIN; yoksa "" (`LotSerializer`)."""
-    gtin = (
-        MaterialUnitConversion.objects.filter(material_id=material_id, unit__code=CASE_UNIT)
-        .exclude(gtin="")
-        .values_list("gtin", flat=True)
-        .first()
-    )
-    return gtin or ""
 
 
 def _lots_by_no(lot_no: str, material: Material | None = None) -> list[Lot]:

@@ -5,9 +5,11 @@ from decimal import Decimal
 import pytest
 
 from apps.core.exceptions import BusinessRuleError
+from apps.core.roles import ADMIN
 from apps.inventory.tests.factories import storage_location
+from apps.masterdata import services as masterdata
 from apps.quality import coa, services
-from apps.quality.models import QualityDecision
+from apps.quality.models import QualityDecision, Sample
 from apps.quality.tests.factories import line, quarantined_raw_lot, sample_with_spec, tdef
 
 D = Decimal
@@ -42,6 +44,25 @@ def test_coa_contents(lab, manager):
     assert labels["Şartlı kabul gerekçesi"] == "Müşteri onaylı"
     assert labels["Yönetim onayı"].startswith(str(manager))
     assert labels["Onaylayan"].startswith(str(lab))
+
+
+def test_coa_reprint_keeps_product_code_from_decision_time(lab, make_user):
+    """Yeniden basımda ürün kodu kararın verildiği andaki haliyle (kod sonradan değişse de)."""
+    lot, _q = quarantined_raw_lot()
+    sample = sample_with_spec(lab, lot)
+    services.record_result(lab, sample, line(sample, "PH"), numeric_value=D("7.5"))
+    services.record_result(lab, sample, line(sample, "GORUNUS"), text_value="Berrak")
+    services.decide(
+        lab, sample, QualityDecision.Decision.RELEASE, release_location=storage_location()
+    )
+    material = lot.material
+    old = material.code
+    masterdata.recode_record(make_user(ADMIN), material, "MAMUL-YENI", "Yeni kod", reason="change")
+
+    fresh = Sample.objects.select_related("lot__material").get(pk=sample.pk)
+    assert fresh.lot.material.code == "MAMUL-YENI"
+    assert coa.info_rows(fresh)[0] == ["Ürün", f"{old} — {material.name}"]
+    assert coa.coa_pdf(fresh).startswith(b"%PDF")
 
 
 def test_format_decimal():

@@ -3,8 +3,10 @@ revizyon no ve tarihi (docs/plan/kodlama-sistematigi.md §6.1).
 
 ISO bir kod biçimi istemez; kodlar firmanın kalite yönetim sisteminin doküman listesinden girilir.
 Her çıktı başlangıçta kapalıdır (çıktı bugünkü gibi basılır). Admin doküman no ve en az bir revizyon
-girip "çıktıya basılsın"ı açınca bant basılır. Belge, kendi tarihinde yürürlükte olan revizyonla
-basılır (yeniden basımda da).
+girip "çıktıya basılsın"ı açınca bant basılır. Yeniden basım ilk basımdaki gibidir (CUMHUR,
+2026-11-05): belge kendi tarihindeki bant durumuyla ve o tarihte yürürlükte olan (o güne kadar
+girilmiş) revizyonun saklanan doküman no ve ilk yayın tarihiyle basılır. Bu yüzden ilk
+revizyondan sonra doküman no ve ilk yayın tarihi yalnız yeni revizyonla değişir.
 """
 
 import re
@@ -14,24 +16,34 @@ from typing import Any
 
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection, transaction
+from django.db.models import Prefetch, QuerySet
 from django.utils import timezone
 
 from apps.core.audit import log_change
 from apps.core.coding.registry import OutputType, output_type, output_types
 from apps.core.coding.services import require_admin
 from apps.core.exceptions import BusinessRuleError
-from apps.core.models import AuditLog, OutputDocument, OutputDocumentRevision, User
+from apps.core.models import (
+    AuditLog,
+    OutputBandChange,
+    OutputDocument,
+    OutputDocumentRevision,
+    User,
+)
 from apps.core.services import save_with_audit
 
 # KYS doküman numaraları: FR-KAL-001, F.KAL.01, PR/01 gibi.
 DOC_CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9./-]{0,31}$")
 MAX_REVISION = 99
-# Çıktı ayarı değişiklikleri sırayla (doküman no tekliği, ilk kaydın açılışı).
+# Hatalı yazılan tarih (ör. 0026 yılı) revizyonlar değiştirilemediği için geri alınamaz.
+EARLIEST_DATE = date(2000, 1, 1)
+# Çıktı ayarı değişiklikleri sırayla (doküman no tekliği, ilk kaydın açılışı, revizyonlar).
 _OUTPUT_LOCK_ID = 730102
 
 
 def _day(value: date | None) -> str:
-    return f"{value:%d.%m.%Y}" if value else "—"
+    """15.11.2026: yıl her zaman dört hane."""
+    return f"{value.day:02d}.{value.month:02d}.{value.year:04d}" if value else "—"
 
 
 @dataclass(frozen=True)
@@ -66,26 +78,38 @@ class DocumentControl:
 
 
 def document_control(key: str, *, on: date | None = None) -> DocumentControl | None:
-    """Çıktı basılırken: bant açık ve doküman no girilmişse belgenin tarihinde (`on`, yoksa bugün)
-    yürürlükte olan revizyon. Bant kapalıysa ya da o tarihte yürürlükte revizyon yoksa None (çıktı
-    bugünkü gibi basılır). Kayıtsız çıktı geliştirme hatasıdır (anahtar yazım hatası): fırlatır,
-    böylece üreticinin testi yakalar."""
+    """Çıktı basılırken belgenin tarihindeki (`on`, yoksa bugün) doküman kontrol bilgisi: o gün
+    bant açıktıysa o gün yürürlükte olan ve o güne kadar sisteme girilmiş revizyon, revizyonun
+    saklanan doküman no ve ilk yayın tarihiyle (yeniden basım ilk basımdaki gibidir; geriye
+    tarihli girilen revizyon, girildiği günden önceki tarihli belgeleri değiştirmez). O gün bant
+    kapalıysa (henüz açılmamışsa) ya da yürürlükte revizyon yoksa None: belge bantsız basılır.
+    Kayıtsız çıktı geliştirme hatasıdır (anahtar yazım hatası): fırlatır, böylece üreticinin testi
+    yakalar."""
     if output_type(key) is None:
         raise ImproperlyConfigured(f"Kayıtsız çıktı: {key}")
-    row = OutputDocument.objects.filter(key=key, is_active=True).exclude(doc_code="").first()
-    if row is None:
-        return None
     on = on or timezone.localdate()
+    # Aynı gün birden çok değişiklikte sonuncusu geçerlidir.
+    band_on = (
+        OutputBandChange.objects.filter(output__key=key, effective_date__lte=on)
+        .order_by("-effective_date", "-pk")
+        .values_list("is_active", flat=True)
+        .first()
+    )
+    if not band_on:
+        return None
+    # Belgenin günü bitmeden girilmemiş revizyon o gün basılamazdı (`created_at` yerel güne göre).
     revision = (
-        OutputDocumentRevision.objects.filter(output=row, revision_date__lte=on)
+        OutputDocumentRevision.objects.filter(
+            output__key=key, revision_date__lte=on, created_at__date__lte=on
+        )
         .order_by("-revision_no")
         .first()
     )
-    if revision is None:
+    if revision is None or not revision.doc_code:
         return None
     return DocumentControl(
-        doc_code=row.doc_code,
-        first_issue_date=row.first_issue_date,
+        doc_code=revision.doc_code,
+        first_issue_date=revision.first_issue_date,
         revision_no=revision.revision_no,
         revision_date=revision.revision_date,
     )
@@ -97,6 +121,8 @@ def _revision_dict(revision: OutputDocumentRevision) -> dict[str, Any]:
         "id": revision.pk,
         "revision_no": revision.revision_no,
         "revision_date": revision.revision_date,
+        "doc_code": revision.doc_code,
+        "first_issue_date": revision.first_issue_date,
         "change_note": revision.change_note,
         "approved_by_name": revision.approved_by_name,
         "approved_on": revision.approved_on,
@@ -106,19 +132,26 @@ def _revision_dict(revision: OutputDocumentRevision) -> dict[str, Any]:
     }
 
 
-def describe_output(item: OutputType, row: OutputDocument | None = None) -> dict[str, Any]:
-    """Kodlama ekranındaki çıktı satırı."""
-    if row is None:
-        row = OutputDocument.objects.filter(key=item.key).first()
-    revisions = (
-        list(
-            OutputDocumentRevision.objects.filter(output=row)
-            .select_related("created_by")
-            .order_by("-revision_no")
+def _rows() -> QuerySet[OutputDocument]:
+    """Çıktı kayıtları, revizyonları (en yeniden eskiye) önceden alınmış."""
+    return OutputDocument.objects.prefetch_related(
+        Prefetch(
+            "revisions",
+            queryset=OutputDocumentRevision.objects.select_related("created_by").order_by(
+                "-revision_no"
+            ),
         )
-        if row is not None
-        else []
     )
+
+
+def describe_output(
+    item: OutputType, row: OutputDocument | None = None, *, with_row: bool = True
+) -> dict[str, Any]:
+    """Kodlama ekranındaki çıktı satırı. `row` verilmezse okunur (`with_row=False`: kaydın
+    olmadığı biliniyor, yeniden sorulmaz); verilen `row` `_rows()` ile okunmuş olmalıdır."""
+    if row is None and with_row:
+        row = _rows().filter(key=item.key).first()
+    revisions = list(row.revisions.all()) if row is not None else []
     latest = revisions[0] if revisions else None
     return {
         "key": item.key,
@@ -129,6 +162,8 @@ def describe_output(item: OutputType, row: OutputDocument | None = None) -> dict
         "suggested_code": item.suggested_code,
         "doc_code": row.doc_code if row else "",
         "first_issue_date": row.first_issue_date if row else None,
+        # İlk revizyondan sonra doküman no ve ilk yayın tarihi yalnız yeni revizyonla değişir.
+        "doc_locked": bool(revisions),
         "is_active": bool(row and row.is_active),
         "revision_no": latest.revision_no if latest else None,
         "revision_date": latest.revision_date if latest else None,
@@ -140,8 +175,9 @@ def describe_output(item: OutputType, row: OutputDocument | None = None) -> dict
 
 
 def overview() -> list[dict[str, Any]]:
-    rows = {row.key: row for row in OutputDocument.objects.all()}
-    return [describe_output(item, rows.get(item.key)) for item in output_types()]
+    """Bütün kayıtlı çıktılar (sabit sayıda sorgu: kayıtlar ve revizyonları)."""
+    rows = {row.key: row for row in _rows()}
+    return [describe_output(item, rows.get(item.key), with_row=False) for item in output_types()]
 
 
 def _get_output(key: str) -> OutputType:
@@ -167,8 +203,52 @@ def _row(item: OutputType, actor: User) -> OutputDocument:
 def _note(note: str) -> str:
     note = (note or "").strip()
     if not note:
-        raise BusinessRuleError("note_required", "Değişiklik notu yazın (geçmişte görünür).")
+        raise BusinessRuleError(
+            "note_required", "Değişiklik notu yazın (denetim günlüğüne yazılır)."
+        )
     return note
+
+
+def _doc_code(value: str, *, allow_blank: bool) -> str:
+    """Büyük harfe çevrilmiş ve biçimi denetlenmiş doküman no (`allow_blank`: boş, doküman no
+    yok demektir)."""
+    code = value.strip().upper()
+    if (code or not allow_blank) and not DOC_CODE_RE.match(code):
+        raise BusinessRuleError(
+            "invalid_doc_code",
+            "Doküman no harf ya da rakamla başlamalı; yalnızca A-Z, 0-9, -, . ve / içermelidir "
+            "(en fazla 32 karakter).",
+        )
+    return code
+
+
+def _check_code_free(row: OutputDocument, code: str) -> None:
+    """Doküman no çıktılar arasında tektir: başka bir çıktının bugünkü numarası da revizyonlarına
+    yazılmış numarası da (bant hiç açılmamış olsa da) verilmez."""
+    if OutputDocument.objects.filter(doc_code=code).exclude(pk=row.pk).exists():
+        raise BusinessRuleError(
+            "output_code_taken", "Bu doküman numarası başka bir çıktıda kullanılıyor."
+        )
+    if OutputDocumentRevision.objects.filter(doc_code=code).exclude(output=row).exists():
+        raise BusinessRuleError(
+            "output_code_taken",
+            "Bu doküman numarası başka bir çıktının revizyonlarında kullanıldı; başka çıktıya "
+            "verilemez.",
+        )
+
+
+def _check_date(value: date, future_message: str) -> None:
+    if value > timezone.localdate():
+        raise BusinessRuleError("future_date", future_message)
+    if value < EARLIEST_DATE:
+        raise BusinessRuleError("invalid_date", "Tarih 01.01.2000'den önce olamaz.")
+
+
+def _doc_locked() -> BusinessRuleError:
+    return BusinessRuleError(
+        "output_doc_locked",
+        "Doküman no ve ilk yayın tarihi ilk revizyondan sonra yalnız yeni revizyonla değişir.",
+    )
 
 
 @transaction.atomic
@@ -182,46 +262,46 @@ def update_output(
     is_active: bool | None = None,
 ) -> OutputDocument:
     """Çıktının doküman no, ilk yayın tarihi ve bant ayarını değiştirir (yalnız admin; not
-    zorunlu). Doküman no çıktılar arasında tektir; bandı açmak için doküman no, ilk yayın tarihi ve
-    en az bir revizyon gerekir; ilk yayın tarihi ileri bir tarih ve ilk revizyondan sonra
-    olamaz."""
+    zorunlu). Doküman no çıktılar arasında tektir; ilk yayın tarihi ileri bir tarih ya da
+    01.01.2000'den önce olamaz. İlk revizyondan sonra doküman no ve ilk yayın tarihi yalnız yeni
+    revizyonla değişir (`add_revision`; aynı değeri göndermek değişiklik sayılmaz). Bandı açmak
+    için doküman no, ilk yayın tarihi ve en az bir revizyon gerekir. Bandı açmak ya da kapatmak
+    bugünden geçerli bir bant kaydı yazar: önceki tarihli belgeler o günkü durumlarıyla basılır."""
     require_admin(actor)
     item = _get_output(key)
     note = _note(note)
     row = _row(item, actor)
-    if doc_code is not None:
-        code = doc_code.strip().upper()
-        if code and not DOC_CODE_RE.match(code):
-            raise BusinessRuleError(
-                "invalid_doc_code",
-                "Doküman no harf ya da rakamla başlamalı; yalnızca A-Z, 0-9, -, . ve / içermelidir "
-                "(en fazla 32 karakter).",
-            )
-        if code and OutputDocument.objects.filter(doc_code=code).exclude(pk=row.pk).exists():
-            raise BusinessRuleError(
-                "output_code_taken", "Bu doküman numarası başka bir çıktıda kullanılıyor."
-            )
+    locked = row.revisions.exists()
+    if doc_code is not None and doc_code.strip().upper() != row.doc_code:
+        if locked:
+            raise _doc_locked()
+        code = _doc_code(doc_code, allow_blank=True)
+        if code:
+            _check_code_free(row, code)
         row.doc_code = code
-    if first_issue_date is not None:
-        if first_issue_date > timezone.localdate():
-            raise BusinessRuleError("future_date", "İlk yayın tarihi ileri bir tarih olamaz.")
-        first = row.revisions.order_by("revision_date").first()
-        if first is not None and first_issue_date > first.revision_date:
-            raise BusinessRuleError(
-                "issue_after_revision", "İlk yayın tarihi ilk revizyonun tarihinden sonra olamaz."
-            )
+    if first_issue_date is not None and first_issue_date != row.first_issue_date:
+        if locked:
+            raise _doc_locked()
+        _check_date(first_issue_date, "İlk yayın tarihi ileri bir tarih olamaz.")
         row.first_issue_date = first_issue_date
+    band_changed = is_active is not None and is_active != row.is_active
     if is_active is not None:
         row.is_active = is_active
-    if row.is_active and (
-        not row.doc_code or row.first_issue_date is None or not row.revisions.exists()
-    ):
+    if row.is_active and (not row.doc_code or row.first_issue_date is None or not locked):
         raise BusinessRuleError(
             "output_not_ready",
             "Bandı açmak için önce doküman no, ilk yayın tarihi ve en az bir revizyon "
             "girilmelidir.",
         )
-    return save_with_audit(row, actor, note=note)
+    row = save_with_audit(row, actor, note=note)
+    if band_changed:
+        OutputBandChange.objects.create(
+            output=row,
+            is_active=row.is_active,
+            effective_date=timezone.localdate(),
+            created_by=actor,
+        )
+    return row
 
 
 @transaction.atomic
@@ -234,12 +314,22 @@ def add_revision(
     approved_by_name: str,
     approved_on: date,
     revision_no: int | None = None,
+    doc_code: str | None = None,
+    first_issue_date: date | None = None,
 ) -> OutputDocumentRevision:
     """Yeni revizyon ekler (yalnız admin). İlk revizyonun numarası seçilebilir (varsayılan 00;
     kalite sisteminde revizyonu ilerlemiş form, ör. Rev. 03, olduğu gibi girilir), sonrakiler birer
     artar. Revizyon onaylandıktan sonra yürürlüğe girer: onay tarihi yürürlük tarihinden sonra,
-    yürürlük tarihi ileri bir tarih, önceki revizyondan ve ilk yayın tarihinden önce olamaz.
-    Değişiklik açıklaması, onaylayan ve onay tarihi zorunludur. Revizyonlar değiştirilemez."""
+    yürürlük tarihi ileri bir tarih, 01.01.2000'den, önceki revizyondan ve ilk yayın tarihinden
+    önce olamaz. Değişiklik açıklaması, onaylayan ve onay tarihi zorunludur. Revizyonlar
+    değiştirilemez. Geriye tarihli revizyon, girildiği günden önceki tarihli belgelere basılmaz
+    (o belgeler ilk basımdaki gibi kalır; `document_control`).
+
+    Doküman no ve ilk yayın tarihi yeni revizyonla değişir (`doc_code`, `first_issue_date`;
+    `update_output`'taki gibi denetlenir, ilk yayın tarihi ilk revizyondan sonra olamaz): çıktı
+    kaydına değişiklik açıklamasıyla yazılır. Revizyon o anki doküman no ve ilk yayın tarihini
+    saklar; belge, tarihinde yürürlükte olan revizyonun bu bilgileriyle basılır. İlk revizyon için
+    ikisi de kayıtlı olmalı ya da bu çağrıda verilmelidir."""
     require_admin(actor)
     item = _get_output(key)
     change_note = (change_note or "").strip()
@@ -251,21 +341,44 @@ def add_revision(
     today = timezone.localdate()
     if revision_date > today or approved_on > today:
         raise BusinessRuleError("future_date", "Revizyon ve onay tarihi ileri bir tarih olamaz.")
+    if revision_date < EARLIEST_DATE or approved_on < EARLIEST_DATE:
+        raise BusinessRuleError("invalid_date", "Tarih 01.01.2000'den önce olamaz.")
     if approved_on > revision_date:
         raise BusinessRuleError(
             "approval_after_effective",
             "Onay tarihi yürürlük tarihinden sonra olamaz (revizyon onaylanınca yürürlüğe girer).",
         )
+    new_code = _doc_code(doc_code, allow_blank=False) if doc_code is not None else None
+    if first_issue_date is not None:
+        _check_date(first_issue_date, "İlk yayın tarihi ileri bir tarih olamaz.")
     row = _row(item, actor)
     previous = OutputDocumentRevision.objects.filter(output=row).order_by("-revision_no").first()
+    code = row.doc_code if new_code is None else new_code
+    issue = row.first_issue_date if first_issue_date is None else first_issue_date
+    if previous is None and (not code or issue is None):
+        raise BusinessRuleError(
+            "revision_needs_doc", "İlk revizyon için doküman no ve ilk yayın tarihi girilmelidir."
+        )
+    if code != row.doc_code:
+        _check_code_free(row, code)
     if previous is not None and revision_date < previous.revision_date:
         raise BusinessRuleError(
             "revision_date_invalid", "Revizyon tarihi önceki revizyondan önce olamaz."
         )
-    if row.first_issue_date is not None and revision_date < row.first_issue_date:
+    if issue is not None and revision_date < issue:
         raise BusinessRuleError(
             "revision_date_invalid", "Revizyon tarihi ilk yayın tarihinden önce olamaz."
         )
+    if previous is not None and issue != row.first_issue_date:
+        first = (
+            OutputDocumentRevision.objects.filter(output=row)
+            .order_by("revision_date", "revision_no")
+            .first()
+        )
+        if first is not None and issue is not None and issue > first.revision_date:
+            raise BusinessRuleError(
+                "issue_after_revision", "İlk yayın tarihi ilk revizyonun tarihinden sonra olamaz."
+            )
     if previous is not None:
         number = previous.revision_no + 1
         if revision_no is not None and revision_no != number:
@@ -278,10 +391,17 @@ def add_revision(
         raise BusinessRuleError(
             "revision_no_invalid", f"Revizyon no 00-{MAX_REVISION} arasında olmalıdır."
         )
+    note = f"Yeni revizyon {number:02d}: {change_note}"
+    if code != row.doc_code or issue != row.first_issue_date:
+        row.doc_code = code
+        row.first_issue_date = issue
+        row = save_with_audit(row, actor, note=note)
     revision = OutputDocumentRevision.objects.create(
         output=row,
         revision_no=number,
         revision_date=revision_date,
+        doc_code=code,
+        first_issue_date=issue,
         change_note=change_note,
         approved_by_name=approved_by_name,
         approved_on=approved_on,
@@ -293,6 +413,6 @@ def add_revision(
         row,
         AuditLog.Action.CUSTOM,
         {"revision_no": [previous.revision_no if previous else None, number]},
-        f"Yeni revizyon {number:02d}: {change_note}",
+        note,
     )
     return revision

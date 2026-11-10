@@ -23,6 +23,7 @@ vi.mock("../../api/labels", async (importOriginal) => ({
   listPrinters: vi.fn(),
   getLabelSettings: vi.fn(),
   listPallets: vi.fn(),
+  createPallet: vi.fn(),
 }));
 vi.mock("../../api/inventory", async (importOriginal) => ({
   ...(await importOriginal<typeof inventoryApi>()),
@@ -352,7 +353,7 @@ describe("lot etiketleri (GS1)", () => {
     [
       "koli GTIN'i yoksa ürün GTIN'i için sarı uyarı verir",
       "",
-      "Koli GTIN'i tanımlı değil; koli etiketine ürün GTIN'i basılır.",
+      "Bu lotun koli GTIN'i yok; koli etiketine ürün GTIN'i basılır.",
     ],
   ])("mamul lotunun koli etiketinde %s", async (_name, caseGtin, text) => {
     vi.mocked(inventoryApi.getLot).mockResolvedValue(finished(caseGtin));
@@ -387,8 +388,97 @@ describe("lot etiketleri (GS1)", () => {
     });
     const warning = within(dialog).getByTestId("label-warning");
     expect(warning).toHaveTextContent(
-      "Koli GTIN'i tanımlı değil; palet etiketine ürün GTIN'i basılır.",
+      "Bu lotun koli GTIN'i yok; palet etiketine ürün GTIN'i basılır.",
     );
+    expect(alertStyle(warning)).toContain("--mantine-color-yellow-light"); // sarı
+  });
+
+  /** Koli GTIN'iyle çelişen koli içi adedin sarı uyarısı (12'lik koli). */
+  const unitsWarning =
+    "Bu lotun koli GTIN'i 12 adetlik koli içindir; farklı adet etikette barkodla çelişir.";
+
+  it("koli etiketinde koli içi adet lotun koli içi miktarıyla gelir; koli GTIN'iyle çelişen adet sarı uyarı verir", async () => {
+    const dialog = await openLabel(
+      { ...finished("18690000000019"), case_units: "12.000000" },
+      "koli",
+    );
+    const units = within(dialog).getByRole("textbox", { name: "Koli içi adet" });
+    const link = () => within(dialog).getByRole("link", { name: "Aç" }).getAttribute("href");
+    expect(units).toHaveValue("12");
+    expect(link()).toContain("units_per_case=12");
+    expect(within(dialog).queryByTestId("units-warning")).not.toBeInTheDocument();
+
+    await userEvent.clear(units);
+    await userEvent.type(units, "24");
+    const warning = within(dialog).getByTestId("units-warning");
+    expect(warning).toHaveTextContent(unitsWarning);
+    expect(alertStyle(warning)).toContain("--mantine-color-yellow-light"); // sarı
+    // Uyarı basmayı engellemez (eksik son koli): yazılan adet basılır.
+    expect(link()).toContain("units_per_case=24");
+    // Lotun miktarına dönülünce uyarı kalkar.
+    await userEvent.clear(units);
+    await userEvent.type(units, "12");
+    expect(within(dialog).queryByTestId("units-warning")).not.toBeInTheDocument();
+
+    // Pencere yeniden açılınca yazılan adet unutulur, lotun miktarı gelir.
+    await userEvent.clear(units);
+    await userEvent.type(units, "24");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Vazgeç" }));
+    await userEvent.click(screen.getByRole("button", { name: "Etiket yazdır" }));
+    const again = await screen.findByRole("dialog");
+    await userEvent.click(within(again).getByRole("textbox", { name: "Etiket" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Koli etiketi" }));
+    expect(within(again).getByRole("textbox", { name: "Koli içi adet" })).toHaveValue("12");
+  });
+
+  it("lotun koli GTIN'i yoksa koli içi adet yine lotun miktarıyla gelir; farklı adet uyarı vermez", async () => {
+    const dialog = await openLabel({ ...finished(""), case_units: "12.000000" }, "koli");
+    const units = within(dialog).getByRole("textbox", { name: "Koli içi adet" });
+    expect(units).toHaveValue("12");
+    await userEvent.clear(units);
+    await userEvent.type(units, "24");
+    expect(within(dialog).queryByTestId("units-warning")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["adet birimli olmayan lotta (null)", null],
+    ["tam sayı olmayan miktarda", "12.500000"],
+  ])("koli içi adet %s boş gelir", async (_name, caseUnits) => {
+    const dialog = await openLabel(
+      { ...finished("18690000000019"), case_units: caseUnits },
+      "koli",
+    );
+    expect(within(dialog).getByRole("textbox", { name: "Koli içi adet" })).toHaveValue("");
+    expect(within(dialog).queryByTestId("units-warning")).not.toBeInTheDocument();
+  });
+
+  it("palet formunda koli içi adet lotun koli içi miktarıyla gelir ve gönderilir; çelişen adet sarı uyarı verir", async () => {
+    vi.mocked(labelsApi.getLabelSettings).mockResolvedValue(settings);
+    vi.mocked(labelsApi.createPallet).mockResolvedValue(pallet);
+    vi.mocked(inventoryApi.getLot).mockResolvedValue({
+      ...finished("18690000000019"),
+      case_units: "12.000000",
+    });
+    renderApp("/depo/lotlar/7");
+
+    const units = await screen.findByRole("textbox", { name: "Koli içi adet" });
+    expect(units).toHaveValue("12");
+    expect(screen.queryByTestId("units-warning")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "Koli sayısı" }), "40");
+    await userEvent.click(screen.getByRole("button", { name: "SSCC al" }));
+    await waitFor(() =>
+      expect(labelsApi.createPallet).toHaveBeenCalledWith({
+        lot: 7,
+        case_count: 40,
+        units_per_case: 12,
+      }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Vazgeç" })); // palet etiketi penceresi
+
+    await userEvent.clear(units);
+    await userEvent.type(units, "24");
+    const warning = screen.getByTestId("units-warning");
+    expect(warning).toHaveTextContent(unitsWarning);
     expect(alertStyle(warning)).toContain("--mantine-color-yellow-light"); // sarı
   });
 

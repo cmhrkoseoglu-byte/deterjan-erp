@@ -24,6 +24,7 @@ import {
   printLabel,
   type LabelOutput,
 } from "../../api/labels";
+import { formatNumber } from "../../i18n/format";
 import { tr } from "../../i18n/tr";
 import { optionLabel } from "../../modules/common/useOptions";
 
@@ -43,6 +44,33 @@ export interface LabelKindOption {
   /** Lot yazdırma ucunda `kind` alanı ("lot" ya da "case"). */
   printKind?: "lot" | "case";
   withUnitsPerCase?: boolean;
+  /** "Koli içi adet"in varsayılanı (ör. lotun koli içi adedi). Adet yazılmadıkça alanda durur;
+   * pencere açıldıktan sonra gelse de (dolum ekranı lotu açılışta okur) alana gelir. */
+  defaultUnitsPerCase?: number;
+  /** Etikete basılan koli GTIN'inin koli içi adedi: yazılan adet farklıysa sarı uyarı çıkar. */
+  gtinUnitsPerCase?: number;
+}
+
+/** Yazılan koli içi adet basılan koli GTIN'inin adedinden farklıysa sarı uyarı (GS1: koli GTIN'i
+ * koli içeriğini belirler). Adet boşsa etikete adet yazılmaz, uyarı da çıkmaz. */
+export function UnitsPerCaseWarning({
+  units,
+  gtinUnits,
+}: {
+  units: number | "";
+  gtinUnits?: number;
+}) {
+  if (!units || gtinUnits === undefined || units === gtinUnits) return null;
+  return (
+    <Alert
+      color="yellow"
+      variant="light"
+      icon={<IconAlertTriangle size={18} />}
+      data-testid="units-warning"
+    >
+      {t.caseUnitsMismatch(formatNumber(gtinUnits))}
+    </Alert>
+  );
 }
 
 type Output = LabelOutput | "printer";
@@ -72,8 +100,11 @@ export function LabelPrintModal({
   const [output, setOutput] = useState<Output | null>(null);
   const [printer, setPrinter] = useState<string | null>(null);
   const [copies, setCopies] = useState<number>(1);
-  const [unitsPerCase, setUnitsPerCase] = useState<number | "">("");
+  // Koli içi adet; yazılmadıkça (null) seçeneğin varsayılanı gösterilir ve gönderilir.
+  const [unitsPerCase, setUnitsPerCase] = useState<number | "" | null>(null);
   const option = options.find((o) => o.value === kind) ?? options[0];
+  const shownUnits = unitsPerCase ?? option?.defaultUnitsPerCase ?? "";
+  const units = option?.withUnitsPerCase && shownUnits ? shownUnits : null;
   const hasPrinters = (printers.data?.length ?? 0) > 0;
   const effectiveOutput: Output = output ?? (hasPrinters ? "printer" : "pdf");
 
@@ -82,6 +113,7 @@ export function LabelPrintModal({
     setKind(options[0]?.value ?? "");
     setCopies(1);
     setOutput(null);
+    setUnitsPerCase(null);
     // Seçenekler her çizimde yeniden kurulur; yalnızca açılışta sıfırla.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened]);
@@ -99,7 +131,7 @@ export function LabelPrintModal({
         printer: Number(printer),
         copies,
         ...(option.printKind ? { kind: option.printKind } : {}),
-        ...(option.withUnitsPerCase && unitsPerCase ? { units_per_case: unitsPerCase } : {}),
+        ...(units ? { units_per_case: units } : {}),
       }),
     onSuccess: (result) => {
       notifications.show({ color: "green", message: t.sent(result.printed, result.printer) });
@@ -109,7 +141,6 @@ export function LabelPrintModal({
   });
 
   if (!option) return null;
-  const units = option.withUnitsPerCase && unitsPerCase ? unitsPerCase : null;
   const downloadHref =
     effectiveOutput === "printer"
       ? undefined
@@ -191,11 +222,14 @@ export function LabelPrintModal({
             <NumberInput
               label={t.unitsPerCase}
               min={1}
-              value={unitsPerCase}
+              value={shownUnits}
               onChange={(value) => setUnitsPerCase(value === "" ? "" : Number(value))}
             />
           )}
         </Group>
+        {option.withUnitsPerCase && (
+          <UnitsPerCaseWarning units={units ?? ""} gtinUnits={option.gtinUnitsPerCase} />
+        )}
         {send.isError && (
           <Alert color="red" variant="light">
             {getErrorMessage(send.error)}

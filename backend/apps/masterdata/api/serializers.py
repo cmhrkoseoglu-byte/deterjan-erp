@@ -93,6 +93,11 @@ class RetiredGtinSerializer(serializers.ModelSerializer):
 class MaterialUnitConversionSerializer(serializers.ModelSerializer):
     unit_code = serializers.CharField(source="unit.code", read_only=True)
     material_code = serializers.CharField(source="material.code", read_only=True)
+    material_type = serializers.CharField(
+        source="material.material_type",
+        read_only=True,
+        help_text="Malzemenin türü; koli GTIN'i önerisi yalnız mamulde (FINISHED).",
+    )
     base_unit_code = serializers.CharField(source="material.base_unit.code", read_only=True)
     gtin_locked = serializers.SerializerMethodField(
         help_text="Lotu olan mamulde koli GTIN'i dolu: değiştirilemez; koli içi miktar yalnız "
@@ -110,6 +115,7 @@ class MaterialUnitConversionSerializer(serializers.ModelSerializer):
             "id",
             "material",
             "material_code",
+            "material_type",
             "unit",
             "unit_code",
             "factor_to_base",
@@ -407,7 +413,11 @@ class GtinSuggestionSerializer(serializers.Serializer):
 
 class CaseGtinSuggestionSerializer(serializers.Serializer):
     gtin = serializers.CharField(
-        allow_null=True, help_text="Ürün GTIN'inden gösterge hanesi 1-8 ile türetilen boş GTIN-14"
+        allow_null=True,
+        help_text=(
+            "Ürün GTIN'inden gösterge hanesi 1-8 ile türetilen boş GTIN-14; mamul değilse ya da "
+            "türetilemezse boş (nedeni reason'da)"
+        ),
     )
     reason = serializers.CharField()
 

@@ -527,7 +527,8 @@ def test_case_gtin_at_reads_the_current_gtin_before_the_archive(
 
 def test_case_factor_at(planner, invariants) -> None:
     """Yürürlükteki koli içi miktar: o andan sonra arşivlenmiş en eski GTIN'in miktarı, yoksa
-    bugünkü aktif KOLI dönüşümünün katsayısı; koli dönüşümü yoksa None (irsaliyede koli sayısı)."""
+    bugünkü aktif KOLI dönüşümünün katsayısı; koli dönüşümü yoksa None (lot açılırken
+    `Lot.case_factor`)."""
     no_case = make_material(planner, "MM-9", gtin="")
     assert services.case_factor_at(no_case, timezone.now()) is None
     case = locked_case(planner)

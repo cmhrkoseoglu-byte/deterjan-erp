@@ -16,8 +16,12 @@ export interface Lot {
   material_name: string;
   material_type: MaterialType;
   material_gtin: string;
-  /** GS1: malzemenin KOLI dönüşümündeki koli GTIN'i (yoksa ""); koli ve palet etiketine basılır. */
+  /** GS1: bu lotun koli ve palet etiketine basılan koli GTIN'i (lotun açıldığı günkü koli
+   * düzeni); "" ise etiketlere ürün GTIN'i basılır. */
   material_case_gtin?: string;
+  /** Lotun koli içi miktarı (lotun açıldığı günkü koli düzeni, ondalık metin: "12.000000");
+   * yalnız temel birimi adet olan mamulde, yoksa null. Koli içi adedin varsayılanıdır. */
+  case_units?: string | null;
   /** GS1: koli etiketine ve paletin GTIN ve lot barkodlarına GS1 barkodu basılır mı (salt okunur;
    * paletin SSCC'si her zaman basılır). false: lot numarası GS1'e uymuyor ya da GTIN geçersiz (ya
    * da yok); yerine firma içi barkod basılır. */

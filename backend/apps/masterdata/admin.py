@@ -36,6 +36,17 @@ class MasterDataAdmin(AuditedAdminMixin, admin.ModelAdmin):
 class UnitOfMeasureAdmin(MasterDataAdmin):
     list_display = ("code", "name", "kind", "factor_to_kind_base", "is_active")
     list_filter = ("kind", "is_active")
+    # UN/ECE kodu ve sembol yalnızca uygulamadan girilir: panel kaydı servisteki biçim denetimini
+    # (UN/ECE Rec 20 ortak kodu) atlar.
+    readonly_fields = (*MasterDataAdmin.readonly_fields, "unece_code", "symbol")
+
+    def get_readonly_fields(self, request: HttpRequest, obj: Model | None = None) -> Any:
+        # Kullanılan birimin türü ve katsayısı panelden de değişmez (servis kuralı `unit_in_use`;
+        # panel kaydı servisleri atlar, o birimle çevrilen her miktar sessizce değişirdi).
+        fields = super().get_readonly_fields(request, obj)
+        if isinstance(obj, UnitOfMeasure) and services.is_referenced(obj):
+            return (*fields, "kind", "factor_to_kind_base")
+        return fields
 
 
 @admin.register(MaterialCategory)
@@ -97,16 +108,22 @@ class EquipmentAdmin(MasterDataAdmin):
     list_filter = ("equipment_type", "is_active")
 
 
+# Ülke kodu yalnızca uygulamadan girilir: panel kaydı servisteki ISO 3166-1 denetimini atlar.
+PARTNER_READONLY_FIELDS = (*MasterDataAdmin.readonly_fields, "country_code")
+
+
 @admin.register(Supplier)
 class SupplierAdmin(MasterDataAdmin):
     list_filter = ("is_active",)
     list_display = ("code", "name", "tax_number", "phone", "is_active")
+    readonly_fields = PARTNER_READONLY_FIELDS
 
 
 @admin.register(Customer)
 class CustomerAdmin(MasterDataAdmin):
     list_filter = ("is_active",)
     list_display = ("code", "name", "tax_number", "phone", "is_active")
+    readonly_fields = PARTNER_READONLY_FIELDS
 
 
 @admin.register(RetiredGtin)

@@ -169,7 +169,8 @@ class MaterialViewSet(MasterDataViewSet):
     @extend_schema(request=None, responses=s.CaseGtinSuggestionSerializer)
     @action(detail=True, methods=["get"], url_path="case-gtin-suggestion")
     def case_gtin_suggestion(self, request: Request, pk: str | None = None) -> Response:
-        """Koli GTIN'i önerisi: ürün GTIN'inden gösterge hanesi 1-8 ile türetilen ilk boş GTIN-14
+        """Koli GTIN'i önerisi (yalnız mamulde): ürün GTIN'inden gösterge hanesi 1-8 ile türetilen
+        ilk boş GTIN-14. Öteki türlerde ve türetilemezse `gtin` boştur, `reason` nedenini yazar
         (malzeme yazma rolleri)."""
         suggestion = services.case_gtin_suggestion(self.get_object())
         return Response(s.CaseGtinSuggestionSerializer(suggestion).data)

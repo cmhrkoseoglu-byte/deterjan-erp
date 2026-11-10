@@ -2,6 +2,7 @@
 farklı lot gerekçesi, geri alma, yükleme, sevk (SHIPMENT hareketi, rezervasyon kullanımı,
 sipariş durumu), iptal, iş akışı görevleri ve durum makinesi."""
 
+import io
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import timedelta
@@ -14,12 +15,13 @@ from django.utils import timezone
 
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
-from apps.core.roles import DEPO, YONETIM
+from apps.core.roles import DEPO, PLANLAMA, YONETIM
 from apps.inventory import services as inventory
 from apps.inventory.models import Lot, StockMovement, StockReservation
 from apps.inventory.services import current_balance
 from apps.inventory.tests.factories import storage_location
-from apps.masterdata.models import Location
+from apps.masterdata import importers
+from apps.masterdata.models import Location, Material, MaterialUnitConversion, RetiredGtin
 from apps.masterdata.tests.factories import CustomerFactory
 from apps.sales import selectors, services
 from apps.sales.models import SalesOrder, Shipment
@@ -38,6 +40,7 @@ D = Decimal
 Status = Shipment.Status
 Commit = Callable[[], AbstractContextManager[Any]]
 VEHICLE = {"vehicle_plate": "34 abc 123", "driver_name": "Ali Veli", "driver_id_no": "12345678901"}
+CONVERSIONS = "/api/v1/masterdata/conversions/"
 
 
 @pytest.fixture
@@ -786,37 +789,85 @@ def waybill_cases(shipment: Shipment) -> list[tuple[int | None, Decimal]]:
     ]
 
 
-def test_waybill_counts_cases_with_the_case_quantity_of_the_lot(
-    seller: User, picker: User, dock: Location
-) -> None:
-    """İrsaliyede koli sayısı lotun açıldığı andaki koli içi miktarla hesaplanır (CUMHUR,
-    2026-11-05): koli düzeni değişmeden önce açılmış lotun kolileri eski adetle sayılır, sevk
-    edilmiş irsaliyenin yeniden basımı değişmez, yeni düzende açılan lot yeni adetle sayılır."""
-    from apps.masterdata.models import MaterialUnitConversion, RetiredGtin
+def case_conversion(product: Material) -> MaterialUnitConversion:
+    return MaterialUnitConversion.objects.get(material=product, unit__code="KOLI")
 
-    product = finished_product()  # 1 KOLI = 12 ADET
-    finished_lot(product, "48")  # koli düzeni değişmeden önce
+
+def change_case(client: Any, product: Material, data: dict[str, Any]) -> None:
+    """Planlama mamulün KOLI dönüşümünü değiştirir (API → `masterdata.services.update_record`)."""
+    response = client.patch(f"{CONVERSIONS}{case_conversion(product).pk}/", data, format="json")
+    assert response.status_code == 200, response.json()
+
+
+def waybill_lots(shipment: Shipment) -> list[tuple[str, int | None, Decimal]]:
+    """Yeniden basılan irsaliyenin satırları: (lot, koli, koliye girmeyen adet)."""
+    return [
+        (line["lot_no"], line["cases"], line["loose_units"])
+        for line in selectors.waybill_data(Shipment.objects.get(pk=shipment.pk))["lines"]
+    ]
+
+
+def test_waybill_counts_cases_with_the_case_quantity_of_the_lot(
+    seller: User, picker: User, planner: User, dock: Location, client_for: Callable[..., Any]
+) -> None:
+    """İrsaliyede koli sayısı lotun açıldığı günkü koli içi miktarla hesaplanır (`Lot.case_factor`;
+    CUMHUR, 2026-11-05). Koli GTIN'i olmayan mamulde planlama koli içi miktarı değiştirir (API ya
+    da Excel'den içe aktarma; koli GTIN'i olmadığından arşiv yazılmaz): sevk edilmiş irsaliyenin
+    yeniden basımı değişmez, eski lotun kolileri eski adetle, yeni düzende açılan lotunkiler yeni
+    adetle sayılır."""
+    product = finished_product()  # 1 KOLI = 12 ADET, koli GTIN'i yok
+    finished_lot(product, "48")  # koli düzeni değişmeden önce açılan lot
     first = ship(seller, picker, product, "24")
     assert waybill_cases(first) == [(2, D("0"))]
 
-    # Koli düzeni 12'den 24'e değişti: eski koli GTIN'i eski miktarıyla arşivde, katsayı 24 (servis
-    # kuralı masterdata/tests/test_pack_change.py'de).
-    case = MaterialUnitConversion.objects.get(material=product, unit__code="KOLI")
-    RetiredGtin.objects.create(
-        conversion=case,
-        gtin="18690000000019",
-        factor_to_base=D("12"),
-        replaced_by="28690000000016",
-    )
-    MaterialUnitConversion.objects.filter(pk=case.pk).update(factor_to_base=D("24"))
-
+    change_case(client_for(PLANLAMA), product, {"factor_to_base": "24"})
+    assert not RetiredGtin.objects.exists()
     assert waybill_cases(first) == [(2, D("0"))]  # yeniden basım değişmez
     second = ship(seller, picker, product, "24")  # eski lotun kolileri (12 adet) yeni düzende
     assert waybill_cases(second) == [(2, D("0"))]
     assert selectors.waybill_data(second)["total_cases"] == 2
-    finished_lot(product, "48")  # yeni düzende açılan lot
+    finished_lot(product, "48")  # yeni düzende açılan lot: 1 koli = 24
     third = ship(seller, picker, product, "48")
     assert waybill_cases(third) == [(2, D("0"))]
+
+    # Excel'den içe aktarmayla 1 KOLI = 6 ADET: sevk edilmiş irsaliyeler yine değişmez.
+    rows = f"Malzeme kodu,Birim,Temel birim karşılığı\n{product.code},KOLI,6\n"
+    upload = io.BytesIO(rows.encode())
+    upload.name = "donusum.csv"
+    importers.run_import(planner, "conversions", upload, "donusum.csv")
+    assert case_conversion(product).factor_to_base == D("6")
+    assert [waybill_cases(shipment) for shipment in (first, second, third)] == [[(2, D("0"))]] * 3
+
+
+def test_waybill_reprint_keeps_the_case_count_after_a_pack_change_and_deactivation(
+    seller: User, picker: User, dock: Location, client_for: Callable[..., Any]
+) -> None:
+    """Koli GTIN'i kilitli mamulde koli düzeni yeni koli GTIN'iyle değişir (12 → 24; masterdata eski
+    GTIN'i eski miktarıyla arşivler), sonra KOLI dönüşümü pasife alınır (planlama, API). Sevk
+    edilmiş irsaliyenin yeniden basımı değişmez; her lot kendi koli düzeniyle sayılır, dönüşüm
+    pasifken açılan lotun satırında koli sayısı yoktur."""
+    planner = client_for(PLANLAMA)
+    product = finished_product(gtin="8690000000012")
+    change_case(planner, product, {"gtin": "18690000000019"})  # ilk koli GTIN'i (lot yokken)
+    old = finished_lot(product, "48")  # lotu var: koli GTIN'i kilitli
+    first = ship(seller, picker, product, "30")
+    assert waybill_lots(first) == [(old.lot_no, 2, D("6"))]
+
+    change_case(planner, product, {"factor_to_base": "24", "gtin": "28690000000016"})
+    assert RetiredGtin.objects.get().factor_to_base == D("12")
+    new = finished_lot(product, "48")  # yeni düzende açılan lot: 1 koli = 24
+    response = planner.post(f"{CONVERSIONS}{case_conversion(product).pk}/deactivate/")
+    assert response.status_code == 200, response.json()
+    late = finished_lot(product, "30")  # dönüşüm pasifken açılan lot: koli içi miktar yok
+
+    assert waybill_lots(first) == [(old.lot_no, 2, D("6"))]  # yeniden basım değişmez
+    second = ship(seller, picker, product, "96")
+    assert waybill_lots(second) == [
+        (old.lot_no, 1, D("6")),
+        (new.lot_no, 2, D("0")),
+        (late.lot_no, None, D("30")),
+    ]
+    assert selectors.waybill_data(second)["total_cases"] == 3
 
 
 def test_waybill_seller_comes_from_company_profile(
@@ -880,6 +931,7 @@ def test_waybill_band_uses_revision_in_force_on_waybill_date(
 
     from apps.core import pdf as core_pdf
     from apps.core.coding import outputs
+    from apps.core.models import OutputBandChange, OutputDocument, OutputDocumentRevision
     from apps.core.roles import ADMIN
     from apps.sales.waybill import WAYBILL_OUTPUT, waybill_pdf
 
@@ -893,7 +945,7 @@ def test_waybill_band_uses_revision_in_force_on_waybill_date(
         admin, WAYBILL_OUTPUT, note="Liste", doc_code="FR-SVK-001", first_issue_date=ago(90)
     )
     for days in (60, 10):
-        outputs.add_revision(
+        revision = outputs.add_revision(
             admin,
             WAYBILL_OUTPUT,
             revision_date=ago(days),
@@ -901,7 +953,17 @@ def test_waybill_band_uses_revision_in_force_on_waybill_date(
             approved_by_name="Kalite Müdürü",
             approved_on=ago(days),
         )
+        # Yürürlüğe girdiği gün girildi (geç girilen revizyon önceki tarihli belgeye basılmaz).
+        OutputDocumentRevision.objects.filter(pk=revision.pk).update(
+            created_at=timezone.now() - timedelta(days=days)
+        )
     outputs.update_output(admin, WAYBILL_OUTPUT, note="Bant", is_active=True)
+    # Servis bandı bugünden açar; 90 gün önceden beri açık bant kaydı doğrudan yazılır.
+    OutputBandChange.objects.create(
+        output=OutputDocument.objects.get(key=WAYBILL_OUTPUT),
+        is_active=True,
+        effective_date=ago(90),
+    )
 
     product = finished_product()
     lot = finished_lot(product, "10")

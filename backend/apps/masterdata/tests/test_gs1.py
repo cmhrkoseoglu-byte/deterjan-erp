@@ -36,6 +36,11 @@ CONVERSIONS = "/api/v1/masterdata/conversions/"
 PREFIX = "8691234"
 GTIN = "8690000000012"
 CASE_GTIN = "18690000000019"  # GTIN'in gösterge hanesi 1 ile koli GTIN'i
+NOTE_REQUIRED = "Değişiklik notu yazın (denetim günlüğüne yazılır)."
+NOT_FINISHED_CASE = (
+    "Koli GTIN'i önerisi yalnız mamulde kullanılır; tedarikçinin koli GTIN'ini koli etiketinden "
+    "girin."
+)
 # Gövdesi ASCII olmayan rakam, kontrol hanesi ASCII "2" (869000000001 → 8690000000012): eski
 # `str.isdigit` denetimi bunları kabul ederdi (int() bu rakamları da okur).
 NON_ASCII_BODIES = [
@@ -62,6 +67,13 @@ def finished(code: str, **extra: Any) -> dict[str, Any]:
         "base_unit": unit("ADET"),
         **extra,
     }
+
+
+def finished_material(**extra: Any) -> Material:
+    """Servis kuralları olmadan açılan mamul (GTIN'i doğrudan yazılır)."""
+    return MaterialFactory.create(
+        material_type=Material.Type.FINISHED, base_unit=unit("ADET"), **extra
+    )
 
 
 def add_conversion(actor, material, gtin: str = "", unit_code: str = "KOLI"):
@@ -103,6 +115,11 @@ def test_gs1_settings_are_admin_only_and_need_a_note(admin, planner) -> None:
         assert rule_error(
             services.update_gs1_settings, admin, note=note, company_prefix=PREFIX
         ) == ("note_required")
+    # Not denetim günlüğüne yazılır (Geçmiş bölümü yalnız biçim değişikliklerini ve göçleri
+    # gösterir).
+    with pytest.raises(BusinessRuleError) as missing:
+        services.update_gs1_settings(admin, note="", company_prefix=PREFIX)
+    assert missing.value.message == NOTE_REQUIRED
     assert services.get_label_settings().gs1_company_prefix == ""
 
 
@@ -218,7 +235,8 @@ def test_gs1_settings_api(client_for, admin) -> None:
         "updated_by_name": "",
     }
     missing_note = client.patch(GS1, {"company_prefix": PREFIX}, format="json")
-    assert missing_note.status_code == 400 and missing_note.json()["code"] == "note_required"
+    assert missing_note.status_code == 400
+    assert missing_note.json() == {"code": "note_required", "detail": NOTE_REQUIRED}
     bad = client.patch(GS1, {"company_prefix": "86912", "note": "x"}, format="json")
     assert bad.status_code == 400 and bad.json()["code"] == "invalid_gs1_prefix"
     assert bad.json()["detail"] == "GS1 firma öneki 6-12 haneli bir sayı olmalıdır."
@@ -693,13 +711,30 @@ def test_case_gtin_suggestion(planner) -> None:
     second = "2" + GTIN[:12] + gs1_check_digit("2" + GTIN[:12])
     assert services.case_gtin_suggestion(material).gtin == second
     # GTIN-12 ve GTIN-14'ten de türetilir (14 haneli biçimin ortadaki 12 hanesi).
-    upc = MaterialFactory.create(gtin="614141000036")
+    upc = finished_material(gtin="614141000036")
     base = "061414100003"
     assert services.case_gtin_suggestion(upc).gtin == "1" + base + gs1_check_digit("1" + base)
     # Ürün GTIN'i yoksa ya da GTIN-8 ise öneri yok.
-    assert services.case_gtin_suggestion(MaterialFactory.create()).gtin is None
-    gtin8 = services.case_gtin_suggestion(MaterialFactory.create(gtin="96385074"))
-    assert gtin8.gtin is None and "elle girin" in gtin8.reason
+    no_gtin = services.case_gtin_suggestion(finished_material())
+    assert no_gtin.gtin is None and "Önce malzemenin GTIN'ini girin" in no_gtin.reason
+    gtin8 = services.case_gtin_suggestion(finished_material(gtin="96385074"))
+    assert gtin8.gtin is None and "bu GTIN'den türetilemez" in gtin8.reason
+
+
+@pytest.mark.parametrize(
+    "material_type", [Material.Type.RAW, Material.Type.PACKAGING, Material.Type.BULK]
+)
+def test_case_gtin_suggestion_only_for_finished_goods(client_for, material_type) -> None:
+    """Hammadde, ambalaj ve yarı mamulün GTIN'i tedarikçinindir: koli GTIN'i türetilmez (GS1'de koli
+    GTIN'ini marka sahibi verir; tedarikçinin koli GTIN'i koli etiketinden girilir)."""
+    material = MaterialFactory.create(material_type=material_type, gtin=GTIN)
+    assert services.case_gtin_suggestion(material) == services.CaseGtinSuggestion(
+        None, NOT_FINISHED_CASE
+    )
+    url = f"/api/v1/masterdata/materials/{material.pk}/case-gtin-suggestion/"
+    response = client_for(PLANLAMA).get(url)
+    assert response.status_code == 200
+    assert response.json() == {"gtin": None, "reason": NOT_FINISHED_CASE}
 
 
 def test_case_gtin_suggestion_when_all_indicators_are_used(planner) -> None:
@@ -730,8 +765,11 @@ def test_conversion_api_writes_case_gtin(client_for, planner) -> None:
     created = client.post(CONVERSIONS, {**payload, "gtin": CASE_GTIN}, format="json")
     assert created.status_code == 201, created.json()
     assert created.json()["gtin"] == CASE_GTIN and created.json()["gtin_locked"] is False
+    # Malzemenin türü: ön yüz koli GTIN'i önerisini yalnız mamulde gösterir.
+    assert created.json()["material_type"] == Material.Type.FINISHED
     listed = client.get(CONVERSIONS, {"material": material.pk}).json()
     assert listed["count"] == 1 and listed["results"][0]["gtin_locked"] is False
+    assert listed["results"][0]["material_type"] == Material.Type.FINISHED
     pallet = client.post(
         CONVERSIONS, {**payload, "unit": unit("PALET").pk, "gtin": "28690000000016"}, format="json"
     )
@@ -745,7 +783,19 @@ def test_conversion_api_writes_case_gtin(client_for, planner) -> None:
     detail = client.get(f"/api/v1/masterdata/materials/{material.pk}/").json()
     assert detail["gtin_locked"] is False
     assert detail["conversions"][0]["gtin"] == CASE_GTIN
+    assert detail["conversions"][0]["material_type"] == Material.Type.FINISHED
     assert client.get("/api/v1/masterdata/materials/").json()["results"][0]["gtin_locked"] is False
+
+    raw = MaterialFactory.create()  # hammadde (KG)
+    raw_case = client.post(
+        CONVERSIONS,
+        {"material": raw.pk, "unit": unit("KOLI").pk, "factor_to_base": "25"},
+        format="json",
+    )
+    assert raw_case.status_code == 201, raw_case.json()
+    assert raw_case.json()["material_type"] == Material.Type.RAW
+    raw_listed = client.get(CONVERSIONS, {"material": raw.pk}).json()["results"]
+    assert [row["material_type"] for row in raw_listed] == [Material.Type.RAW]
 
 
 def test_admin_panel_cannot_edit_gtins(admin) -> None:

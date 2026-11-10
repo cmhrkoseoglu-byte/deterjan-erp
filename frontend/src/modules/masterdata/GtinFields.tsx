@@ -12,6 +12,7 @@ import {
   listRecords,
   suggestCaseGtin,
   suggestGtin,
+  type Material,
   type RetiredGtin,
   type Unit,
 } from "../../api/masterdata";
@@ -185,10 +186,11 @@ function RetiredGtinList({ rows, baseUnit }: { rows: RetiredGtin[]; baseUnit: st
 
 /**
  * Koli GTIN'i: yalnızca birimi KOLI olan dönüşümde görünür (koli dışı birime geçilince yazılan
- * değer silinir). Malzeme seçiliyse ve alan boşsa "Koli GTIN'i öner" malzemenin GTIN'inden
- * türetilen ilk boş GTIN-14'ü yazar; türetilemezse nedeni gösterilir. Önerilen GTIN o malzemenin
- * GTIN'inden türetilir: malzeme ya da birim değişince alanda duruyorsa silinir (kullanıcının
- * yazdığı GTIN kalır).
+ * değer silinir). Mamul seçiliyse ve alan boşsa "Koli GTIN'i öner" mamulün GTIN'inden türetilen
+ * ilk boş GTIN-14'ü yazar; türetilemezse nedeni gösterilir. Hammadde, ambalaj ve yarı mamulde
+ * öneri yoktur: GTIN tedarikçinindir, koli GTIN'i tedarikçinin koli etiketinden girilir. Önerilen
+ * GTIN o malzemenin GTIN'inden türetilir: malzeme ya da birim değişince alanda duruyorsa silinir
+ * (kullanıcının yazdığı GTIN kalır).
  *
  * Lotu olan mamulde alan kilitlidir; koli içi miktar değişince (`unlocked`) alan açılır, boşalır ve
  * zorunlu olur: yeni koli GTIN'i girilir ya da önerilir, eskisi eski miktarıyla arşivlenir.
@@ -211,6 +213,19 @@ export function CaseGtinField(props: FieldComponentProps) {
     ? String(record.unit_code ?? "")
     : units.data?.find((row) => String(row.id) === unit)?.code;
   const isCase = unitCode === CASE_UNIT;
+  // Öneri yalnız mamulde: düzenlemede tür kayıttan, yeni kayıtta seçilen malzemenin türü listeden
+  // okunur (birim kodu gibi; seçim değişince yeni istek yapılmaz).
+  const materials = useQuery({
+    queryKey: ["options", "materials", "types"],
+    queryFn: async () =>
+      (await listRecords<Material>("materials", { is_active: true, page_size: 500 })).results,
+    enabled: !record,
+    staleTime: 60_000,
+  });
+  const materialType = record
+    ? String(record.material_type ?? "")
+    : materials.data?.find((row) => String(row.id) === material)?.material_type;
+  const finished = materialType === "FINISHED";
   const [reason, setReason] = useState("");
   // "Koli GTIN'i öner"in alana yazdığı GTIN ve türetildiği seçim (malzeme, birim).
   const applied = useRef<(CaseChoice & { gtin: string }) | null>(null);
@@ -281,7 +296,7 @@ export function CaseGtinField(props: FieldComponentProps) {
 
   if (!isCase) return null;
   const empty = !fieldText(props, field.name);
-  const canSuggest = !disabled && Boolean(material) && empty;
+  const canSuggest = !disabled && finished && Boolean(material) && empty;
   // Koli içi miktar değişti: yeni koli GTIN'i zorunlu, açıklama eski GTIN'in ne olacağını söyler.
   const input = unlocked
     ? { ...field, required: true, description: g.packChanged(savedGtin) }

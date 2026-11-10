@@ -24,7 +24,7 @@ Kullanıcılar **Sistem > Kullanıcılar** ekranında yönetilir. Bu ekranı yal
 - **Personel kartı**: çalışanın sicil no, birim, görev, kimlik, iletişim ve mezuniyet bilgileri ile özlük belgeleri **Personel** ekranındaki kartındadır; aylık puantaj, ücretler, bordro ve tatil takvimi aynı bölümün sekmelerindedir (Yönetim kılavuzu, "Personel", "Puantaj", "Bordro" ve "Personel maliyeti"). Hesabı açtıktan sonra kişinin kartında **Sistem kullanıcısı** olarak bu hesabı seçin. İşten ayrılan kişinin hesabını pasife alırken kartına da **İşten ayrıldı**'yı kaydedin.
 - Rollerin kendisi sabittir ve `seed_roles` komutuyla oluşur; eklenmez ya da silinmez.
 - Bu ekrandaki her değişiklik denetim günlüğüne yazılır; şifreler günlüğe yazılmaz.
-- Yönetim paneli (/admin/) yalnızca iç ağdan açılır; kullanıcı işleri için gerekmez.
+- Yönetim paneli (/admin/) yalnızca iç ağdan açılır; kullanıcı işleri için gerekmez. Panelde GTIN'ler, ülke kodu, birimin UN/ECE kodu ve sembolü salt okunurdur; bunları uygulamadan girin. Biçimi kodlama sistematiğinden ayarlanan ana veri türlerinde (malzeme, malzeme kategorisi, depo, lokasyon, ekipman, tedarikçi, müşteri) kod salt okunurdur ve panelden yeni kayıt açılmaz. Kullanılan birimin türü ve katsayısı panelden de uygulamadan da değiştirilemez.
 
 ## Sorun bildirimleri
 
@@ -44,7 +44,7 @@ Kullanıcı sağ üstteki **Sorun bildir** simgesiyle bildirim gönderince **Gö
 
 ## Kodlama sistematiği
 
-Ana veri kodlarının, belge ve lot numaralarının biçimi, çıktıların doküman kodu ve GS1 ayarları **Sistem > Kodlama sistematiği** ekranındadır. Bu ekranı yalnızca sistem yöneticisi görür. Her değişiklik notuyla **Geçmiş** bölümüne yazılır. Değişiklik yalnızca bundan sonra verilecek kod ve numaraları etkiler; verilmiş olanlar değişmez.
+Ana veri kodlarının, belge ve lot numaralarının biçimi, çıktıların doküman kodu ve GS1 ayarları **Sistem > Kodlama sistematiği** ekranındadır. Bu ekranı yalnızca sistem yöneticisi görür. Biçim değişiklikleri ve kod göçleri notuyla **Geçmiş** bölümünde görünür; GS1 ve çıktı ayarlarındaki değişikliklerin notu denetim günlüğüne yazılır (GS1 bölümünde son değişiklik, çıktı penceresinde revizyonlar görünür). Değişiklik yalnızca bundan sonra verilecek kod ve numaraları etkiler; verilmiş olanlar değişmez.
 
 ![Kodlama sistematiği](/kilavuz/admin-kodlama.jpg)
 
@@ -77,10 +77,15 @@ Mevcut kodları yeni biçime taşır. Önce yedek alın; ekran son yedeğin zama
 Basılı çıktılara (PDF ve Excel) kalite yönetim sisteminizin doküman numarası, yayın tarihi ve revizyonu basılır.
 
 1. **Çıktılar** bölümünde çıktıyı açın. **Doküman no**'yu ve **İlk yayın tarihi**'ni girin.
-2. **Revizyonlar** altında ilk revizyonu ekleyin: revizyon no, yürürlük tarihi, değişiklik açıklaması, onaylayan ve onay tarihi.
-3. **Çıktıya basılsın**'ı işaretleyip kaydedin. Bant PDF'in her sayfasının altına, Excel'de yazdırma alt bilgisine basılır.
+2. **Revizyonlar** altında ilk revizyonu ekleyin: revizyon no, yürürlük tarihi, değişiklik açıklaması, onaylayan ve onay tarihi. Doküman no ve ilk yayın tarihi ilk revizyonla birlikte kaydedilir; ikisi girilmeden **Revizyonu ekle** açılmaz. Eklemeden önce ikisini kontrol edin: sonra yalnız yeni revizyonla değişir, revizyona yazılan numara da başka çıktıya verilmez.
+3. **Çıktıya basılsın**'ı işaretleyin, **Değişiklik notu**'nu yazıp **Kaydet**'e basın. Bant PDF'in her sayfasının altına, Excel'de yazdırma alt bilgisine basılır.
 
-> Belge kendi tarihinde yürürlükte olan revizyonla basılır (yeniden basımda da). Revizyonlar değiştirilemez ve silinemez. **Şablon değişti** uyarısı görürseniz değişikliği kalite sisteminizde onaylayıp yeni revizyon girin. İrsaliyede bandı açmadan önce mali müşavirinize danışın.
+- Belge kendi tarihindeki bantla basılır; yeniden basımda da ilk basımdaki gibi: o gün yürürlükte olan revizyon ve onunla kaydedilen doküman no ve ilk yayın tarihi. Bant açılmadan önceki tarihli belge bantsız basılır; bandı sonradan kapatmak, önceki günlerde açıkken tarihlenen belgelerin yeniden basımını değiştirmez. Bant ve revizyon değişikliği o günün tamamına uygulanır: bandı açtığınız ya da kapattığınız, revizyon girdiğiniz gün tarihli belge, değişiklikten önce basılmış olsa da yeniden basımda yeni durumla basılır. Bu yüzden bandı gün başında, o gün belge basılmadan açın.
+- İlk revizyondan sonra doküman no ve ilk yayın tarihi yalnız yeni revizyonla değişir: revizyon formunda kayıttakilerle gelir, değiştirdiğiniz değer o revizyonla yürürlüğe girer. Yanlış numarayı da böyle düzeltin. Yanlış numara o çıktının revizyonunda kalır: bir çıktının revizyonuna yazılmış numara, bant hiç açılmamış olsa da, başka çıktıya verilmez.
+- Geriye tarihli girdiğiniz revizyon, girdiğiniz günden önceki tarihli belgelere basılmaz.
+- Revizyonlar değiştirilemez ve silinemez. Tarihler 01.01.2000'den önce olamaz.
+
+> **Şablon değişti** uyarısı görürseniz değişikliği kalite sisteminizde onaylayıp yeni revizyon girin. İrsaliyede bandı açmadan önce mali müşavirinize danışın.
 
 **GS1**
 
