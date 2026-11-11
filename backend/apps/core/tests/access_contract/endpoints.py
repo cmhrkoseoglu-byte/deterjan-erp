@@ -36,10 +36,18 @@ class _AllEndpoints(EndpointEnumerator):
 
 
 def endpoints() -> list[tuple[str, str, Any]]:
-    """`(metot, yol, callback)` üçlüleri; yol ve metoda göre sıralı, tekrarsız."""
+    """`(metot, yol, callback)` üçlüleri; yol ve metoda göre sıralı, tekrarsız.
+
+    GET'i olan her yola HEAD, her yola OPTIONS eklenir: izin katmanı bunları da denetler ve bazı
+    görünümler yalnız `GET`'i okuma sayar (HEAD ve OPTIONS yazma rolleriyle denetlenir).
+    """
     seen: dict[tuple[str, str], Any] = {}
     for path, method, callback in _AllEndpoints().get_api_endpoints():
         seen.setdefault((method.upper(), path), callback)
+    for (method, path), callback in list(seen.items()):
+        if method == "GET":
+            seen.setdefault(("HEAD", path), callback)
+        seen.setdefault(("OPTIONS", path), callback)
     return sorted(
         ((method, path, callback) for (method, path), callback in seen.items()),
         key=lambda item: (item[1], item[0]),
@@ -58,8 +66,11 @@ def decide(method: str, path: str, callback: Any, user: Any) -> str:
     view.args = ()
     view.kwargs = {name: "1" for name in PARAM.findall(path)}
     view.headers = {}
-    actions = getattr(callback, "actions", None)
+    actions = dict(getattr(callback, "actions", None) or {})
     if actions:
+        # DRF'nin yönlendiricisi gibi: HEAD, GET'in eylemine gider; OPTIONS `metadata` eylemidir.
+        if "get" in actions and "head" not in actions:
+            actions["head"] = actions["get"]
         view.action_map = actions
     drf_request = view.initialize_request(request, *view.args, **view.kwargs)
     view.request = drf_request
