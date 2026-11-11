@@ -30,7 +30,7 @@ from rest_framework.test import APIClient
 from apps.core import records
 from apps.core.models import User
 from apps.core.tests.access_contract import snapshot
-from apps.core.tests.access_contract.personas import PERSONAS, make_personas
+from apps.core.tests.access_contract.personas import PERSONAS, make_personas, persona_client
 from apps.core.tests.factories import UserFactory
 from apps.golive import services as golive
 from apps.golive.models import ProblemReport
@@ -114,10 +114,7 @@ def attempt(call: Callable[[], Any]) -> Any:
 
 
 def client_for(user: User | None) -> APIClient:
-    client = APIClient()
-    if user is not None:
-        client.force_authenticate(user)
-    return client
+    return persona_client(user)
 
 
 def outcome(response: Any) -> str:

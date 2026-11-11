@@ -37,7 +37,7 @@ from rest_framework.test import APIClient
 from apps.core import events
 from apps.core.models import User
 from apps.core.tests.access_contract import snapshot
-from apps.core.tests.access_contract.personas import PERSONAS, make_personas
+from apps.core.tests.access_contract.personas import PERSONAS, make_personas, persona_client
 from apps.workflow import realtime, rules, services
 from apps.workflow.models import Notification, Task
 
@@ -438,10 +438,7 @@ class Pushes:
 
 
 def _client(user: User | None) -> APIClient:
-    client = APIClient()
-    if user is not None:
-        client.force_authenticate(user)
-    return client
+    return persona_client(user)
 
 
 def _status_or(response: Any, value: Callable[[Any], Value]) -> Value:

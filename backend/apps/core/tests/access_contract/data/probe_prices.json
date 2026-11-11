@@ -20,7 +20,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -78,7 +78,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -170,7 +170,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -318,13 +318,7 @@
    "status": 200
   },
   "inactive": {
-   "lines": [
-    {}
-   ],
-   "money": {
-    "extra_costs": null
-   },
-   "status": 200
+   "status": 401
   },
   "laboratuvar": {
    "lines": [
@@ -612,8 +606,7 @@
    "status": 200
   },
   "inactive": {
-   "code": "record_not_found",
-   "status": 400
+   "status": 401
   },
   "laboratuvar": {
    "entries": [
@@ -1013,10 +1006,7 @@
    "status": 200
   },
   "inactive": {
-   "rows": [
-    {}
-   ],
-   "status": 200
+   "status": 401
   },
   "laboratuvar": {
    "rows": [
@@ -1093,7 +1083,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -1185,7 +1175,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -1254,7 +1244,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -1324,7 +1314,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -1416,9 +1406,7 @@
    "status": 200
   },
   "inactive": {
-   "lines": [],
-   "money": {},
-   "status": 200
+   "status": 401
   },
   "laboratuvar": {
    "lines": [],
@@ -1531,8 +1519,7 @@
    "status": 200
   },
   "inactive": {
-   "code": "record_not_found",
-   "status": 400
+   "status": 401
   },
   "laboratuvar": {
    "entries": [
@@ -1694,10 +1681,7 @@
    "status": 200
   },
   "inactive": {
-   "rows": [
-    {}
-   ],
-   "status": 200
+   "status": 401
   },
   "laboratuvar": {
    "rows": [
@@ -1771,8 +1755,7 @@
    "status": 200
   },
   "inactive": {
-   "descriptions": [],
-   "status": 200
+   "status": 401
   },
   "laboratuvar": {
    "descriptions": [],
@@ -1854,7 +1837,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -1949,7 +1932,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -2139,8 +2122,7 @@
    "status": 400
   },
   "inactive": {
-   "code": "record_not_found",
-   "status": 400
+   "status": 401
   },
   "laboratuvar": {
    "code": "record_not_found",
@@ -2383,7 +2365,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -2458,7 +2440,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -2523,7 +2505,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -2736,7 +2718,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -2808,8 +2790,7 @@
    "status": 200
   },
   "inactive": {
-   "sensitive_columns": {},
-   "status": 200
+   "status": 401
   },
   "laboratuvar": {
    "sensitive_columns": {},
@@ -2904,7 +2885,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -2998,7 +2979,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -3101,7 +3082,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403
@@ -3266,8 +3247,7 @@
    "status": 400
   },
   "inactive": {
-   "code": "record_not_found",
-   "status": 400
+   "status": 401
   },
   "laboratuvar": {
    "code": "record_not_found",
@@ -3404,7 +3384,7 @@
    "status": 403
   },
   "inactive": {
-   "status": 403
+   "status": 401
   },
   "laboratuvar": {
    "status": 403

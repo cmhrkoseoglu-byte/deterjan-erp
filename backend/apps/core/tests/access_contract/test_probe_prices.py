@@ -45,7 +45,7 @@ from apps.core.roles import (
     YONETIM,
 )
 from apps.core.tests.access_contract import snapshot
-from apps.core.tests.access_contract.personas import PERSONAS, make_personas
+from apps.core.tests.access_contract.personas import PERSONAS, make_personas, persona_client
 from apps.core.tests.factories import UserFactory
 from apps.costing import services as costing
 from apps.costing.models import CostRate, CostStage
@@ -868,9 +868,7 @@ def test_price_and_cost_visibility_matches_snapshot(
     scene = _scene(lambda: django_capture_on_commit_callbacks(execute=True))
     clients: dict[str, APIClient] = {}
     for persona, user in users.items():
-        clients[persona] = APIClient()
-        if user is not None:
-            clients[persona].force_authenticate(user)
+        clients[persona] = persona_client(user)
     assert tuple(clients) == PERSONAS
     assert _sensitive_columns() == SENSITIVE_COLUMNS, (
         f"Raporların hassas sütunları değişti: {_sensitive_columns()}. Bilinçliyse (plan §8) "

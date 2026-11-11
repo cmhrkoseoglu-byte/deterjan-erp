@@ -37,7 +37,7 @@ from apps.core.attachments import attachment_targets
 from apps.core.coding.registry import MASTER, CodeType, code_types
 from apps.core.models import Attachment, User
 from apps.core.tests.access_contract import snapshot
-from apps.core.tests.access_contract.personas import PERSONAS, make_personas
+from apps.core.tests.access_contract.personas import PERSONAS, make_personas, persona_client
 from apps.core.tests.factories import UserFactory
 from apps.filling.models import FillingOrder, FillingRun, PackagingSpec
 from apps.golive.services import report_problem
@@ -464,10 +464,7 @@ class Probe:
         self.users = users
         self.clients: dict[str, APIClient] = {}
         for persona, user in users.items():
-            client = APIClient()
-            if user is not None:
-                client.force_authenticate(user)
-            self.clients[persona] = client
+            self.clients[persona] = persona_client(user)
         self.admin = self.clients["admin"]
         self.cases: dict[str, dict[str, Any]] = {}
 

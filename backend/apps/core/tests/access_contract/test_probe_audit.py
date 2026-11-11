@@ -44,7 +44,7 @@ from apps.core.coding import services as coding
 from apps.core.models import Attachment, AuditLog, User
 from apps.core.roles import ADMIN, DEPO, DOLUM, LABORATUVAR, PLANLAMA, SATIN_ALMA, URETIM, YONETIM
 from apps.core.tests.access_contract import snapshot
-from apps.core.tests.access_contract.personas import make_personas
+from apps.core.tests.access_contract.personas import make_personas, persona_client
 from apps.core.tests.factories import DEFAULT_PASSWORD
 from apps.costing import services as costing
 from apps.costing.models import CostStage
@@ -426,10 +426,7 @@ def _counted(entries: Iterable[Mapping[str, Any]]) -> list[str]:
 
 
 def _client(user: User | None) -> APIClient:
-    client = APIClient()
-    if user is not None:
-        client.force_authenticate(user)
-    return client
+    return persona_client(user)
 
 
 def _list(client: APIClient, **params: str) -> tuple[int, list[dict[str, Any]]]:
