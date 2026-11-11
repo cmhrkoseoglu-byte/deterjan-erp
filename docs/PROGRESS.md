@@ -1463,3 +1463,10 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
     `masterdata/tests/test_standard_codes.py`, `masterdata/tests/test_gs1.py`; ön yüz
     `coding.test.tsx`, `MasterDataPage.test.tsx`, `inventory.test.tsx`, `filling.test.tsx`,
     `components.test.tsx`; tam backend (2093) ve ön yüz (603) testleri yeşil.
+
+## 2026-11-10 — Kişiye özel yetkiler: plan
+
+- Plan yazıldı: `docs/plan/kisi-yetkileri.md`. Sahip kararları DECISIONS'ta ("2026-11-10 —
+  Kişiye özel yetkiler"). Rol varsayılanları ve planın koda dair iddiaları dört bağımsız doğrulama
+  turunda bugünkü koda (262dede) karşı denetlendi; bulgular plana işlendi (2026-11-11). Plan onay
+  bekliyor; kod değişmedi.
