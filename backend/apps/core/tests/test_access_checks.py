@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from apps.core import checks
+from apps.core.access import VIEW, register_module, register_section, temporary_catalog
 from apps.core.permissions import HasAccess, HasRole, ReadRule, SignedIn
 from apps.production.access import ORDERS, PREP
 
@@ -40,6 +41,28 @@ def test_dependency_check(tmp_path: Path) -> None:
         "alpha modülü beta modülünün yetki bölümlerini kullanıyor ama beta modülüne bağlı değil "
         "(CLAUDE.md §3).",
         "delta modülü beta modülünün yetki bölümlerini kullanıyor ama beta modülüne bağlı değil "
+        "(CLAUDE.md §3).",
+    ]
+
+
+def test_dependency_check_counts_section_keys_given_as_text(tmp_path: Path) -> None:
+    with temporary_catalog():
+        register_module("beta", "Beta", order=998)
+        register_section("beta.orders", "Emirler", levels=(VIEW,))
+        _app(tmp_path, "alpha", {"views.py": 'RULE = HasAccess("beta.orders")\n'})
+        _app(
+            tmp_path,
+            "gamma",
+            {"views.py": 'from apps.beta import selectors\nRULE = HasAccess("beta.orders")\n'},
+        )
+        _app(tmp_path, "delta", {"views.py": 'A = "beta.unknown"\nB = "beta.orders: emirler"\n'})
+        _app(tmp_path, "zeta", {"views.py": 'RULE = HasAccess("sensitive.prices")\n'})
+        _app(tmp_path, "beta", {"access.py": "X = 1\n"})
+
+        errors = checks.dependency_errors(tmp_path)
+
+    assert errors == [
+        "alpha modülü beta modülünün yetki bölümlerini kullanıyor ama beta modülüne bağlı değil "
         "(CLAUDE.md §3).",
     ]
 

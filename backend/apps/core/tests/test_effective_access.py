@@ -4,6 +4,7 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
+from django.contrib.auth.models import Group
 from django.db.models import Prefetch
 
 from apps.core.access import (
@@ -18,6 +19,7 @@ from apps.core.access import (
     ReadScope,
     Section,
     grant,
+    register_field_openers,
     register_module,
     register_open_records,
     register_section,
@@ -26,6 +28,7 @@ from apps.core.access import (
 from apps.core.effective_access import (
     ADMIN_ACCESS,
     NO_ACCESS,
+    active_overrides,
     compute_access,
     effective_access,
 )
@@ -151,6 +154,20 @@ def test_closing_open_records_keeps_reads_through_view(demo: object) -> None:
     assert depo_closed.allows("demo.orders", VIEW)
 
 
+def test_sees_fields(demo: dict[str, Section]) -> None:
+    register_field_openers("demo.customer.contact", demo["plain"])
+    closed = ("demo.open_records", READ)
+    group = "demo.customer.contact"
+
+    assert compute_access([]).sees_fields(group)
+    assert not compute_access([], revokes=[closed]).sees_fields(group)
+    assert compute_access([DEPO], revokes=[closed]).sees_fields(group)
+    assert not compute_access([DEPO], revokes=[closed, ("demo.plain", VIEW)]).sees_fields(group)
+    assert compute_access([], revokes=[closed], is_admin=True).sees_fields(group)
+    with pytest.raises(KeyError, match="Tanımsız alan grubu"):
+        compute_access([], is_admin=True).sees_fields("demo.customer.kontak")
+
+
 def test_admin_and_inactive(demo: object) -> None:
     admin = compute_access([DEPO], is_admin=True)
     inactive = compute_access([DEPO], is_active=False)
@@ -252,7 +269,7 @@ def test_effective_access_reads_active_overrides(make_user: Callable[..., User])
 
 
 @pytest.mark.django_db
-def test_effective_access_uses_prefetched_overrides(
+def test_effective_access_uses_prefetched_roles_and_overrides(
     make_user: Callable[..., User], django_assert_num_queries: Any
 ) -> None:
     user = make_user(DEPO)
@@ -260,15 +277,36 @@ def test_effective_access_uses_prefetched_overrides(
         user=user, key="production.prep", level=CHANGE, effect="revoke", note="x"
     )
     loaded = User.objects.prefetch_related(
-        Prefetch("access_overrides", queryset=AccessOverride.objects.filter(ended_at__isnull=True)),
-        "groups",
+        "groups", Prefetch("access_overrides", queryset=active_overrides())
     ).get(pk=user.pk)
-    loaded.role_names  # noqa: B018 - rolleri önceden yükler
 
     with django_assert_num_queries(0):
         result = effective_access(loaded)
 
+    assert loaded.role_names == frozenset({DEPO})
     assert not result.allows("production.prep", CHANGE)
+
+
+@pytest.mark.django_db
+def test_refresh_access_drops_prefetched_roles_and_overrides(
+    make_user: Callable[..., User],
+) -> None:
+    user = make_user(DEPO)
+    loaded = User.objects.prefetch_related(
+        "groups", Prefetch("access_overrides", queryset=active_overrides())
+    ).get(pk=user.pk)
+    assert loaded.access.allows("production.prep", CHANGE)
+
+    AccessOverride.objects.create(
+        user=user, key="production.prep", level=CHANGE, effect="revoke", note="x"
+    )
+    user.groups.add(Group.objects.get(name=PLANLAMA))
+    assert loaded.access.allows("production.prep", CHANGE)
+
+    loaded.refresh_access()
+
+    assert loaded.role_names == frozenset({DEPO, PLANLAMA})
+    assert not loaded.access.allows("production.prep", CHANGE)
 
 
 @pytest.mark.django_db

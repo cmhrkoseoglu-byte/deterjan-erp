@@ -54,7 +54,7 @@ ENTITIES = "src/modules/masterdata/entities.tsx"
 def contact(name: str) -> Need:
     """İletişim alanlarını tam gören: Ana veriler'in açık kayıtları ya da alanları okuyan
     bölümlerden birinde Görür (müşteride sales, Satış siparişleri'ni ekler; §3.1)."""
-    return any_of(level(OPEN_RECORDS, READ), *(level(item) for item in access.readers(name)))
+    return any_of(level(OPEN_RECORDS, READ), *(level(item) for item in access.field_openers(name)))
 
 
 ROWS: list[Row] = [

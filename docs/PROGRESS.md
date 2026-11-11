@@ -1470,3 +1470,78 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   Kişiye özel yetkiler"). Rol varsayılanları ve planın koda dair iddiaları dört bağımsız doğrulama
   turunda bugünkü koda (262dede) karşı denetlendi; bulgular plana işlendi (2026-11-11). Plan onay
   bekliyor; kod değişmedi.
+
+## 2026-11-11 — Kişiye özel yetkiler: 1. adım (sözleşme testi ve altyapı)
+
+- Plan CUMHUR tarafından onaylandı ("Onaylıyorum", 2026-11-11). Kullanıcı için bir şey değişmedi;
+  modüller rol denetimini 2-7. adımlarda bırakır.
+- **Sözleşme testi** bugünkü koddan üretildi (`backend/apps/core/tests/access_contract/`):
+  - uç nokta anlık görüntüsü: 1195 durum (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) × 14
+    persona;
+  - sondalar: panolar ve raporlar, fiyat ve maliyet, kayıt paneli ve ekler, görev ve bildirim
+    kuralları, servis içindeki iş kuralları, denetim günlüğü;
+  - ön yüz eşlik testi (`frontend/src/auth/parity/`): menü, sekmeler, varsayılan sekme, rota
+    korumaları, arama kaynakları, pano bağlantıları, kayıt bağlantılarının hedefi.
+
+  Altyapıdan sonra hepsi aynı sonucu verir. Farklar izin listesinde planın maddesine bağlıdır:
+  yeni katalog uç noktası ve iki yeni model.
+- **Altyapı:** katalog (her modülün `access.py`'si: 75 bölüm, 7 "Açık kayıtlar" satırı, 2 hassas
+  veri hakkı), geçerli yetki hesabı (`core.effective_access`), denetim ilkeleri (`HasAccess`,
+  `ReadRule`, `SignedIn`, `AdminOnly`, `AccessMixin`, `require_access`; 403'te `required`),
+  `AccessOverride` ve `AccessCatalogSnapshot`, `sync_access_catalog` (canlıdaki göç servisinde),
+  `me` yanıtında `access` ve `is_admin`, `GET /api/v1/access/catalog/`, sistem denetimleri,
+  `export_access` ve ön yüzün `access.gen.ts` dosyası (CI güncel olduğunu denetler).
+- **Paket denkliği:** 735 satır. Her modülün bugünkü rol denetimleri (ön yüz sabitleri dahil) 256
+  rol bileşiminin hepsinde yeni yetkiyle aynı karara varır; katalogda düzeltme gerekmedi.
+- **Katalog kararı:** Hassas veriler, Görevler ve Sistem gruplarının menüde kendi modülü yoktur
+  (`menu=False`); Sistem menüsü bugünkü gibi yalnız admine açıktır (plan §2'ye yazıldı).
+- **Bağımsız inceleme** (adımın sonunda; bulunanlar düzeltildi, anlık görüntüler bugünkü kodla
+  aynı kaldı):
+  - Pasif kullanıcı uç nokta anlık görüntüsünde ve sondalarda canlıdaki gibi anonimdir; uç nokta
+    anlık görüntüsü kimliği canlıdaki gibi doğrular (anlık görüntüler bugünkü koddan yeniden
+    üretildi).
+  - İzin listesi (backend ve ön yüz) adıma bağlıdır: her kayıt açıldığı adımda (`step`) geçerli
+    olur; desenlerde yalnız `*` ve `?` jokerdir; gerekli bir kayıt hiçbir farkla eşleşmezse test
+    bozulur, böylece onaylı bir değişikliğin geri alınması da yakalanır.
+  - Müşteri ve tedarikçinin vergi, adres ve iletişim alanları kayıt okumasından ayrıldı
+    (`register_field_openers`, `EffectiveAccess.sees_fields`): alanları açan bölümde Görür ya da
+    modülün Açık kayıtlar satırı. Okuyan bölümler katalog sırasıyla yazılır; modüllerin yüklenme
+    sırası katalog özetini değiştirmez.
+  - `AccessMixin` bugünkü kararları birebir taşıyabilir: eylem + metot anahtarı (`"picks:post"`),
+    `read_methods`, `write_access` ve `A | B` birleşimleri. Bugün 31 uç noktada HEAD, 29'unda
+    OPTIONS kararı GET'ten farklıdır (yarıdan fazlası İSG ve bakımda); anlık görüntü bunları
+    dondurdu.
+  - 403 yanıtındaki eksik yetki ipucu, okuma kuralında Görür'ü (açık okumalı bölümde ayrıca Açık
+    kayıtlar satırını) söyler.
+  - Çok kişiyi birlikte hesaplayan yerler rolleri de önceden yükleyebilir; yetki tazelemesi önceden
+    yüklenmiş rolleri ve ayarları da bırakır.
+  - `sync_access_catalog` aynı anda çalışan iki kurulumda çift kopya yazmaz (işlem kilidi).
+  - Sistem denetimi, bölüm anahtarı yazıyla verildiğinde de (`HasAccess("quality.samples")`) modül
+    bağımlılığını denetler.
+  - `export_access --check` dosya yoksa hata verir; yeniden üretme komutu Docker ile yazılır.
+    Backend konteyneri ön yüzün kaynaklarını salt okunur görür (paket denkliği ön yüz sabitlerini
+    okur). Gizli bilgi taraması üretilen `access.gen.ts`'i atlar (katalog özeti gizli bilgi
+    değildir; CI dosyanın güncel olduğunu denetler).
+- **CLAUDE.md:** kural 12 (geçiş cümlesiyle), §3, §5'in ilk kısmı ve §7 onaylı metinle yazıldı.
+  §7'deki yol düzeltildi: test tek dosya değil, `apps/core/tests/access_contract/` klasörüdür.
+- **Sahibe soru (6. adımdan önce):** yönetim panosundaki onay bekleyen satın alma siparişlerinin TL
+  toplamını bugün yalnız yönetim görüyor. Plandaki kuralla (Fiyatları görür) planlama ve satın alma
+  rolünü birlikte taşıyan, yönetimde olmayan kişi de görür. `reporting` paket denkliğinde strict
+  xfail olarak duruyor.
+- **Sonraki adımlar için notlar** (ajanların incelemesinden):
+  - 2. adım: `inventory/services.py`'deki iki mesaj rol adı söylüyor ("admin yetkisindedir",
+    "yalnızca laboratuvar").
+  - 4. adım: `probe_rules`'ta şartlı kabulün "kendi önerisi" hücreleri §8 madde 5 ile değişir.
+  - 5. adım: `costing/services.py` ve `personnel/services.py`'de rol adı geçen mesajlar; personel
+    kartı yanıtı ve kart geçmişi bordro tutarı taşıyabiliyor (Bordro: Görür'e bağlanmalı). İSG ve
+    bakımda HEAD ve OPTIONS bugün yazma rolüyle denetleniyor; anlık görüntü bunu dondurdu.
+  - 6. adım: denetim günlüğü süzmesi kayıt adındaki (`object_repr`) tutarları, fiyat düzeltmesi
+    notunun lot ve lot maliyeti kayıtlarına yayılan kopyalarını, içerik türü olmayan kayıtları
+    (bordro erişimi, rapor indirme) ve personel kartı notundaki bordro tutarlarını kapsamalı.
+    `probe_reports`'ta §8 madde 12 için `job.*.stale.download` farkları beklenir.
+  - 7. adım: `probe_workflow`'da §8 madde 6 (görevi üstlenen) ve 10 (yükten gelen alıcı) farkları;
+    süper kullanıcı bugün rol bildirimi almıyor, alıcı hesabı bunu korumalı.
+  - 8. adım: arama kaynakları kayıt okumasıyla değil Görür ile süzülür; mal kabul masraf paneli
+    gösterme (Fiyatları görür) ve kaydetme (Değiştirir) ayrılır; Tatiller sayfasındaki hafta tatili
+    kartı Personel ayarları'na bağlanır; eşlik testi kayıt sayfalarının içindeki bağlantıları
+    dondurmaz, §8 madde 2 için ayrı bir bölüm gerekir.

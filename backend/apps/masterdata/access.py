@@ -5,9 +5,9 @@ from apps.core.access import (
     VIEW,
     ReadScope,
     grant,
+    register_field_openers,
     register_module,
     register_open_records,
-    register_readers,
     register_section,
 )
 from apps.core.roles import PLANLAMA, YONETIM
@@ -50,8 +50,8 @@ COMPANY = register_section(
 # (plan §3.1). Kapatılan kişi kartı yalnız tam görebilen bir bölümle görür; sales müşteri kartı
 # için kendi bölümünü ekler.
 OPEN_RECORDS = register_open_records("masterdata")
-register_readers("masterdata.customer.contact", CARDS)
-register_readers("masterdata.supplier.contact", CARDS)
+register_field_openers("masterdata.customer.contact", CARDS)
+register_field_openers("masterdata.supplier.contact", CARDS)
 
 grant(PLANLAMA, CARDS, VIEW, CHANGE)
 grant(YONETIM, CARDS, VIEW)

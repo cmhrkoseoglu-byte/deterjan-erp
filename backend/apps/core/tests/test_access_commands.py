@@ -58,6 +58,8 @@ def test_typescript_export_contains_catalog() -> None:
     assert "export type PermKey" in text
     assert '"production.prep": "vc"' in text
     assert perm_name("inventory.open_records") == "INVENTORY_OPEN_RECORDS"
+    assert "export const FIELD_OPENERS" in text
+    assert "docker compose exec -T backend python manage.py export_access --format=ts" in text
 
 
 def test_markdown_export_has_one_row_per_section() -> None:
@@ -82,6 +84,11 @@ def test_export_command_writes_and_checks(tmp_path: Path) -> None:
     target.write_text("// eski\n", encoding="utf-8")
     with pytest.raises(CommandError, match="güncel değil"):
         call_command("export_access", "--format=ts", f"--check={target}", stdout=out)
+
+
+def test_export_command_check_reports_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(CommandError, match="bulunamadı. Yeniden üretin"):
+        call_command("export_access", "--format=ts", f"--check={tmp_path / 'yok.ts'}")
 
 
 def test_export_command_prints_markdown() -> None:

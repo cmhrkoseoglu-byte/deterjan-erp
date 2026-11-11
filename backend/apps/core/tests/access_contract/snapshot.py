@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from apps.core.tests.access_contract.allowlist import MISSING, permitted
+from apps.core.tests.access_contract.allowlist import MISSING, Allowed, permitted, required_for
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 UPDATE_ENV = "ACCESS_SNAPSHOT_UPDATE"
@@ -47,10 +47,13 @@ def load(name: str, decode: Decode | None = None) -> dict[str, dict[str, Any]]:
     return decode(data) if decode else data
 
 
-def differences(name: str, expected: Cases, actual: Cases) -> tuple[list[str], list[str]]:
-    """(izinsiz farklar, izin listesindeki farklar) — okunur satırlar olarak."""
+def differences(
+    name: str, expected: Cases, actual: Cases
+) -> tuple[list[str], list[str], list[Allowed]]:
+    """(izinsiz farklar, izin listesindeki farklar, eşleşen kayıtlar); farklar okunur satırlar."""
     unexpected: list[str] = []
     allowed: list[str] = []
+    used: list[Allowed] = []
     for case in sorted(set(expected) | set(actual)):
         old_values = expected.get(case)
         new_values = actual.get(case)
@@ -66,7 +69,8 @@ def differences(name: str, expected: Cases, actual: Cases) -> tuple[list[str], l
                 unexpected.append(line)
             else:
                 allowed.append(f"{line} ({rule.item})")
-    return unexpected, allowed
+                used.append(rule)
+    return unexpected, allowed, used
 
 
 def _short(value: Any) -> str:
@@ -89,7 +93,7 @@ def check(
         raise AssertionError(
             f"Anlık görüntü yok: {path_for(name)}. 1. adımda {UPDATE_ENV}=1 ile üretilir."
         )
-    unexpected, _allowed = differences(name, load(name, decode), actual)
+    unexpected, _allowed, used = differences(name, load(name, decode), actual)
     if unexpected:
         shown = "\n".join(unexpected[:80])
         more = f"\n... ve {len(unexpected) - 80} fark daha" if len(unexpected) > 80 else ""
@@ -97,4 +101,12 @@ def check(
             f"Yetki sözleşmesi bozuldu ({name}): {len(unexpected)} izinsiz fark.\n"
             f"{shown}{more}\n"
             "Fark bilerek yapıldıysa allowlist.py'de planın bir maddesine bağlanmalıdır."
+        )
+    unused = [rule for rule in required_for(name) if not any(rule is item for item in used)]
+    if unused:
+        listed = "\n".join(str(rule) for rule in unused[:40])
+        raise AssertionError(
+            f"İzin listesindeki {len(unused)} kayıt hiçbir farkla eşleşmedi ({name}).\n"
+            f"{listed}\n"
+            "Onaylı değişiklik geri alınmış ya da kayıt artık gereksiz."
         )

@@ -8,6 +8,7 @@
 """
 
 import ast
+import re
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,10 @@ ENFORCED_APPS: frozenset[str] = frozenset()
 
 # Her modülün bölümüne bakabilen modüller: workflow herkesi dinler (CLAUDE.md §3).
 DEPENDENCY_EXEMPT: frozenset[str] = frozenset({"workflow"})
+
+# Katalog modülü → modülü kaydeden uygulama (çoğunda aynı ad).
+MODULE_OWNERS: dict[str, str] = {"sensitive": "core", "system": "core"}
+_SECTION_KEY = re.compile(r"^[a-z][a-z_]*\.[a-z][a-z_]*$")
 
 
 @checks.register("access")
@@ -61,6 +66,17 @@ def _imported_apps(path: Path) -> tuple[set[str], set[str]]:
                 access_imports.add(parts[1])
             else:
                 plain.add(parts[1])
+    # Bölüm anahtarı yazıyla da verilebilir (`HasAccess("quality.samples")`): kayıtlı anahtar
+    # taşıyan her metin, sahibi olan uygulamanın bölüm kullanımıdır.
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and _SECTION_KEY.match(node.value)
+            and access.has_section(node.value)
+        ):
+            module = node.value.split(".", 1)[0]
+            access_imports.add(MODULE_OWNERS.get(module, module))
     return plain, access_imports
 
 

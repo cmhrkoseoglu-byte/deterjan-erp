@@ -9,6 +9,7 @@ from apps.core.access import (
     CHANGE,
     VIEW,
     grant,
+    register_field_openers,
     register_module,
     register_readers,
     register_section,
@@ -56,7 +57,7 @@ SHIPPED_LOTS = register_section(
 register_readers("sales.salesorder", ORDERS)
 register_readers("sales.shipment", SHIPMENTS, PICKING)
 # Sevkiyat'ın Müşteriler sekmesi ve müşteri kartı, siparişleri gören kişide tam kalır (plan §3.1).
-register_readers("masterdata.customer.contact", ORDERS)
+register_field_openers("masterdata.customer.contact", ORDERS)
 
 for role in (SEVKIYAT, YONETIM, PLANLAMA, DEPO):
     grant(role, ORDERS, VIEW)

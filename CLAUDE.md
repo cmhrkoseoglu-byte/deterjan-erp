@@ -114,12 +114,12 @@ View'lar ince olur: doğrula → servisi çağır → serialize et. Serializer `
 12. **Yetki her uç noktada kontrol edilir.** Yetkiler modül bölümü ve düzey (görür / değiştirir /
    onaylar) bazındadır. Bölümler ve rollerin varsayılan yetki paketleri her modülün `access.py`
    dosyasındadır; kullanıcının geçerli yetkisi rol paketleri ile kişiye özel eklenen ya da kaldırılan
-   yetkilerden hesaplanır (`core.effective_access`; denetim ilkeleri `core.permissions`). API'de
-   `HasAccess`, serviste `require_access` kullanılır; arayüz aynı kuralı `can()` ile gösterir,
-   frontend'in butonu gizlemesi yetki sayılmaz. Onay ve karar adımları ayrı **onaylar** yetkisidir;
-   değiştirir onaylamayı kapsamaz. Admin rolü ve superuser her yetkiye sahiptir. Geçiş sürerken
-   (docs/plan/kisi-yetkileri.md, 2-8. adımlar) henüz geçmemiş modüller rol denetimini (`HasRole`,
-   `hasAnyRole`) korur; yeni ve geçen kod `HasAccess`, `require_access` ve `can()` kullanır.
+   yetkilerden hesaplanır (`core.permissions`). API'de `HasAccess`, serviste `require_access`
+   kullanılır; arayüz aynı kuralı `can()` ile gösterir, frontend'in butonu gizlemesi yetki sayılmaz.
+   Onay ve karar adımları ayrı **onaylar** yetkisidir; değiştirir onaylamayı kapsamaz. Admin rolü ve
+   superuser her yetkiye sahiptir. Geçiş sürerken (docs/plan/kisi-yetkileri.md, 2-8. adımlar) henüz
+   geçmemiş modüller rol denetimini (`HasRole`, `hasAnyRole`) korur; yeni ve geçen kod `HasAccess`,
+   `require_access` ve `can()` kullanır.
 
 ## 5. Roller
 
@@ -150,9 +150,8 @@ gerektirdiği yetkisi olmayanlar görevi ve bildirimini almaz.
   Stoka dokunan her testin sonunda çağrılır.
 - API testleri yetkiyi de test eder (yetkisiz rol 403 almalı).
 - Yetki sözleşme testi (`apps/core/tests/access_contract/`) her adımda yeşil olur: kişiye özel yetki
-  yokken her uç nokta × persona kararı ve sondaların sonuçları dondurulmuş anlık görüntüyle aynıdır.
-  Fark yalnız `allowlist.py`'de planın onaylı bir maddesine bağlıysa kabul edilir; başka bir
-  değişiklik sahibin onayı ve DECISIONS kaydıyla anlık görüntüye işlenir.
+  yokken her uç nokta × rol kararı dondurulmuş anlık görüntüyle aynıdır. Bilinçli bir değişiklik
+  sahibin onayı ve DECISIONS kaydıyla anlık görüntüye işlenir.
 - `pytest` yeşil olmadan bir adım tamamlanmış sayılmaz.
 
 ## 8. Çalışma protokolü (Claude için)

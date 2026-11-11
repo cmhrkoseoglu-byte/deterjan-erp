@@ -16,7 +16,7 @@ from django.contrib.auth.models import Group
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.uploadedfile import UploadedFile
-from django.db import models, transaction
+from django.db import connection, models, transaction
 from django.db.models import F, Q, QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
@@ -684,6 +684,9 @@ def purge_expired_personal_data(now: Any = None) -> dict[str, int]:
 
 # --- yetki kataloğu (docs/plan/kisi-yetkileri.md §5.2) -----------------------------------------
 
+# pg_advisory_xact_lock anahtarı: yetki kataloğu kopyası.
+ACCESS_SYNC_LOCK_ID = 7_302_011
+
 
 @transaction.atomic
 def sync_access_catalog() -> tuple[AccessCatalogSnapshot, bool]:
@@ -695,9 +698,10 @@ def sync_access_catalog() -> tuple[AccessCatalogSnapshot, bool]:
     (canlıdaki göç servisi) çağırır. Döner: (son kopya, yeni yazıldı mı).
     """
     digest = access.catalog_hash()
-    latest = (
-        AccessCatalogSnapshot.objects.select_for_update().order_by("-created_at", "-id").first()
-    )
+    # Tablo boşken de çalışan işlem kilidi: aynı anda çalışan iki kurulum çift kopya yazmaz.
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock(%s)", [ACCESS_SYNC_LOCK_ID])
+    latest = AccessCatalogSnapshot.objects.order_by("-id").first()
     if latest is not None and latest.catalog_hash == digest:
         return latest, False
     snapshot = AccessCatalogSnapshot.objects.create(catalog_hash=digest, catalog=access.catalog())

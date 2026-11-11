@@ -12,11 +12,17 @@ from typing import Any
 from apps.core import access
 from apps.core.roles import ROLE_LABELS
 
+REGENERATE = (
+    "Yeniden üretin (depo kökünde): docker compose exec -T backend python manage.py "
+    "export_access --format=ts > frontend/src/auth/access.gen.ts"
+)
+
 TS_HEADER = """\
 // Bu dosya üretilir; elle değiştirmeyin.
 // Kaynak: backend/apps/*/access.py (docs/plan/kisi-yetkileri.md §5.1).
-// Yeniden üretmek için (backend klasöründe):
-//   python manage.py export_access --format=ts --output ../frontend/src/auth/access.gen.ts
+// Yeniden üretmek için (depo kökünde):
+//   docker compose exec -T backend python manage.py export_access --format=ts \\
+//     > frontend/src/auth/access.gen.ts
 """
 
 
@@ -104,9 +110,13 @@ def to_typescript() -> str:
         '/** Paket sahibi → bölüm → "vca" harfleri (rol varsayılanları). */',
         "export const PACKAGES: Readonly<Record<string, Readonly<Record<string, string>>>> = "
         f"{_json(data['packages'])};\n",
-        "/** Kayıt türü ya da alan grubu → okuyabilen bölümler. */",
+        "/** Kayıt türü → okuyabilen bölümler (bölümlerden birinde okuma yeter). */",
         "export const READERS: Readonly<Record<string, readonly PermKey[]>> = "
-        f"{_json(data['readers'])};",
+        f"{_json(data['readers'])};\n",
+        "/** Alan grubu → tam gösteren bölümler (Görür); grubun modülünün Açık kayıtlar satırı da"
+        " yeter. */",
+        "export const FIELD_OPENERS: Readonly<Record<string, readonly PermKey[]>> = "
+        f"{_json(data['field_openers'])};",
     ]
     return "\n".join(parts) + "\n"
 

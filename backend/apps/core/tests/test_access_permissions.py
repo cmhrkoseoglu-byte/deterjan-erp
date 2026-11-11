@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 from apps.core.access import APPROVE, CHANGE, READ, VIEW
 from apps.core.authentication import CsrfFailed
 from apps.core.exceptions import api_exception_handler
-from apps.core.models import User
+from apps.core.models import AccessOverride, User
 from apps.core.permissions import (
     REQUIRED_ATTR,
     AccessMixin,
@@ -95,9 +95,24 @@ def test_read_rule_is_any_of(make_user: Callable[..., User]) -> None:
     assert ReadRule("sales.orders")().has_permission(drf_request(make_user(DEPO)), VIEW_STUB)
     denied = drf_request(nobody)
     assert not ReadRule("sales.orders")().has_permission(denied, VIEW_STUB)
-    assert noted(denied) == [("sales.orders", READ)]
+    assert noted(denied) == [("sales.orders", VIEW)]
     with pytest.raises(ValueError, match="En az bir bölüm"):
         ReadRule()
+
+
+def test_read_rule_hint_names_view_and_open_records(make_user: Callable[..., User]) -> None:
+    user = make_user()
+    AccessOverride.objects.create(
+        user=user, key="production.open_records", level=READ, effect="revoke", note="x"
+    )
+    request = drf_request(user)
+
+    assert not ReadRule(ORDERS, BATCHES)().has_permission(request, VIEW_STUB)
+    assert noted(request) == [
+        ("production.orders", VIEW),
+        ("production.open_records", READ),
+        ("production.batches", VIEW),
+    ]
 
 
 def test_signed_in_matches_is_authenticated(make_user: Callable[..., User]) -> None:
@@ -135,6 +150,56 @@ def test_access_mixin_maps_actions_and_denies_unknown_writes() -> None:
     assert type(listing).__name__ == "ReadRule(production.orders)"
     assert isinstance(custom, DenyUnknownAction)
     assert not custom.has_permission(drf_request(None), VIEW_STUB)
+
+
+def test_access_mixin_reads_head_and_options_by_default() -> None:
+    (head,) = _DemoViewSet("list", "HEAD").get_permissions()
+    (options,) = _DemoViewSet("metadata", "OPTIONS").get_permissions()
+
+    assert type(head).__name__ == "ReadRule(production.orders)"
+    assert type(options).__name__ == "ReadRule(production.orders)"
+
+
+WRITE = HasRole(DEPO)
+
+
+class _MethodViewSet(AccessMixin):
+    """Bugünkü kararları birebir çeviren bir görünüm: GET ile POST ayrı, HEAD okuma sayılmaz,
+    listede olmayan istekler tek bir yazma rolüyle korunur."""
+
+    read_access = ReadRule(ORDERS)
+    read_methods = frozenset({"GET"})
+    write_access = WRITE
+    action_access = {
+        "picks:post": HasAccess(PREP, CHANGE),
+        "picks": ReadRule(PREP),
+        "approve": HasAccess(ORDERS, APPROVE) | HasAccess(PREP, CHANGE),
+    }
+
+    def __init__(self, action: str | None, method: str) -> None:
+        self.action = action
+        self.request = factory.generic(method, "/x/")
+
+
+def test_access_mixin_method_keys_read_methods_and_write_access(
+    make_user: Callable[..., User],
+) -> None:
+    def name(action: str, method: str) -> str:
+        (permission,) = _MethodViewSet(action, method).get_permissions()
+        return type(permission).__name__
+
+    assert name("picks", "POST") == "HasAccess(production.prep, change)"
+    assert name("picks", "GET") == "ReadRule(production.prep)"
+    assert name("list", "GET") == "ReadRule(production.orders)"
+    (head,) = _MethodViewSet("list", "HEAD").get_permissions()
+    (close,) = _MethodViewSet("close", "POST").get_permissions()
+    assert isinstance(head, WRITE)
+    assert isinstance(close, WRITE)
+
+    (either,) = _MethodViewSet("approve", "POST").get_permissions()
+    assert either.has_permission(drf_request(make_user(PLANLAMA)), VIEW_STUB)
+    assert either.has_permission(drf_request(make_user(DEPO)), VIEW_STUB)
+    assert not either.has_permission(drf_request(make_user()), VIEW_STUB)
 
 
 def test_require_access(make_user: Callable[..., User]) -> None:

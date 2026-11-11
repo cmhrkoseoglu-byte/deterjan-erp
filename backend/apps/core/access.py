@@ -143,6 +143,7 @@ _MODULES: dict[str, Module] = {}
 _SECTIONS: dict[str, Section] = {}
 _PACKAGES: dict[str, set[tuple[str, str]]] = {holder: set() for holder in HOLDERS}
 _READERS: dict[str, tuple[str, ...]] = {}
+_FIELD_OPENERS: dict[str, tuple[str, ...]] = {}
 
 
 def _key_of(section: SectionRef) -> str:
@@ -281,13 +282,34 @@ def grant(holder: str, section: Section, *levels: str) -> None:
 
 
 def register_readers(name: str, *sections: SectionRef) -> None:
-    """Bir kayıt türünü (`"production.productionorder"`) ya da alan grubunu okuyabilen bölümler
-    (plan §5.1 tablosu). Bölümlerden birinde okuma yeter."""
-    if not sections:
-        raise ValueError(f"{name}: en az bir bölüm verilmelidir.")
+    """Bir kayıt türünü (`"production.productionorder"`) okuyabilen bölümler (plan §5.1 tablosu):
+    bölümlerden birinde okuma (`can_read`) yeter. API'deki okuma kuralı aynı listedir."""
+    _append(_READERS, name, sections)
+
+
+def register_field_openers(name: str, *sections: SectionRef) -> None:
+    """Bir alan grubunu (`"masterdata.customer.contact"`) tam gösteren bölümler (plan §3.1, §5.6):
+    bölümlerden birinde Görür ya da grubun modülünün "Açık kayıtlar" satırı yeter
+    (`EffectiveAccess.sees_fields`). Başka bir modül, kendi bölümünü ekleyebilir (ör. sales
+    müşteri kartı için Satış siparişleri)."""
+    _append(_FIELD_OPENERS, name, sections)
+
+
+def _append(
+    registry: dict[str, tuple[str, ...]], name: str, sections: Iterable[SectionRef]
+) -> None:
     keys = tuple(_key_of(section) for section in sections)
-    previous = _READERS.get(name, ())
-    _READERS[name] = previous + tuple(key for key in keys if key not in previous)
+    if not keys:
+        raise ValueError(f"{name}: en az bir bölüm verilmelidir.")
+    previous = registry.get(name, ())
+    registry[name] = previous + tuple(key for key in keys if key not in previous)
+
+
+def _ordered(keys: Iterable[str]) -> tuple[str, ...]:
+    """Bölüm anahtarları katalog sırasıyla: kayıt sırası (hangi modülün önce yüklendiği) çıktıyı
+    ve katalog özetini değiştirmez."""
+    order = {item.key: index for index, item in enumerate(sections())}
+    return tuple(sorted(keys, key=lambda key: (order.get(key, len(order)), key)))
 
 
 # --- okuma ----------------------------------------------------------------------------------------
@@ -335,11 +357,23 @@ def packages() -> dict[str, frozenset[tuple[str, str]]]:
 
 
 def readers(name: str) -> tuple[Section, ...]:
-    return tuple(section(key) for key in _READERS.get(name, ()))
+    return tuple(section(key) for key in _ordered(_READERS.get(name, ())))
 
 
 def reader_names() -> list[str]:
     return sorted(_READERS)
+
+
+def field_openers(name: str) -> tuple[Section, ...]:
+    return tuple(section(key) for key in _ordered(_FIELD_OPENERS.get(name, ())))
+
+
+def field_opener_names() -> list[str]:
+    return sorted(_FIELD_OPENERS)
+
+
+def has_field_group(name: str) -> bool:
+    return name in _FIELD_OPENERS
 
 
 def letters(entries: Iterable[tuple[str, str]], key: str) -> str:
@@ -387,7 +421,10 @@ def catalog() -> dict[str, Any]:
             holder: {key: letters(entries, key) for key in sorted({key for key, _ in entries})}
             for holder, entries in all_packages.items()
         },
-        "readers": {name: list(_READERS[name]) for name in sorted(_READERS)},
+        "readers": {name: list(_ordered(_READERS[name])) for name in sorted(_READERS)},
+        "field_openers": {
+            name: list(_ordered(_FIELD_OPENERS[name])) for name in sorted(_FIELD_OPENERS)
+        },
     }
 
 
@@ -416,6 +453,15 @@ def validate() -> list[str]:
         for key in keys:
             if key not in _SECTIONS:
                 errors.append(f"{name}: okuyan bölüm tanımsız ({key}).")
+    for name, keys in _FIELD_OPENERS.items():
+        if open_records_section(name.split(".", 1)[0]) is None:
+            errors.append(f"{name}: alan grubunun modülünde Açık kayıtlar satırı yok.")
+        for key in keys:
+            target = _SECTIONS.get(key)
+            if target is None:
+                errors.append(f"{name}: alanları açan bölüm tanımsız ({key}).")
+            elif not target.has_view:
+                errors.append(f"{name}: alanları açan bölümün Görür düzeyi yok ({key}).")
     errors.extend(_requirement_cycles())
     return errors
 
@@ -449,6 +495,7 @@ def temporary_catalog() -> Iterator[None]:
         dict(_SECTIONS),
         copy.deepcopy(_PACKAGES),
         dict(_READERS),
+        dict(_FIELD_OPENERS),
     )
     try:
         yield
@@ -461,6 +508,8 @@ def temporary_catalog() -> Iterator[None]:
         _PACKAGES.update(saved[2])
         _READERS.clear()
         _READERS.update(saved[3])
+        _FIELD_OPENERS.clear()
+        _FIELD_OPENERS.update(saved[4])
 
 
 # --- core'un bölümleri: hassas veriler ve sistem --------------------------------------------------

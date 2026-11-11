@@ -1,9 +1,10 @@
 // Bu dosya üretilir; elle değiştirmeyin.
 // Kaynak: backend/apps/*/access.py (docs/plan/kisi-yetkileri.md §5.1).
-// Yeniden üretmek için (backend klasöründe):
-//   python manage.py export_access --format=ts --output ../frontend/src/auth/access.gen.ts
+// Yeniden üretmek için (depo kökünde):
+//   docker compose exec -T backend python manage.py export_access --format=ts \
+//     > frontend/src/auth/access.gen.ts
 
-export const ACCESS_CATALOG_HASH = "17e05779ff22ef81822f72861b9198246d712c99f0fd8f5d3965057f5ac8395a";
+export const ACCESS_CATALOG_HASH = "f7caf85d093703e420f5f9560375658b3d34648d6ed35f2212ba8094eea7902a";
 
 export type AccessLevel = "read" | "view" | "change" | "approve";
 export type ReadScope = "view" | "shared" | "any_role" | "open";
@@ -2239,7 +2240,7 @@ export const PACKAGES: Readonly<Record<string, Readonly<Record<string, string>>>
   }
 };
 
-/** Kayıt türü ya da alan grubu → okuyabilen bölümler. */
+/** Kayıt türü → okuyabilen bölümler (bölümlerden birinde okuma yeter). */
 export const READERS: Readonly<Record<string, readonly PermKey[]>> = {
   "filling.fillingorder": [
     "filling.orders",
@@ -2255,8 +2256,8 @@ export const READERS: Readonly<Record<string, readonly PermKey[]>> = {
     "filling.specs"
   ],
   "hse.incident": [
-    "hse.incidents",
-    "hse.incident_report"
+    "hse.incident_report",
+    "hse.incidents"
   ],
   "hse.safetydatasheet": [
     "hse.sds"
@@ -2275,13 +2276,6 @@ export const READERS: Readonly<Record<string, readonly PermKey[]>> = {
   ],
   "maintenance.maintenanceworkorder": [
     "maintenance.work_orders"
-  ],
-  "masterdata.customer.contact": [
-    "masterdata.cards",
-    "sales.orders"
-  ],
-  "masterdata.supplier.contact": [
-    "masterdata.cards"
   ],
   "production.productionbatch": [
     "production.orders",
@@ -2309,5 +2303,16 @@ export const READERS: Readonly<Record<string, readonly PermKey[]>> = {
   "sales.shipment": [
     "sales.shipments",
     "sales.picking"
+  ]
+};
+
+/** Alan grubu → tam gösteren bölümler (Görür); grubun modülünün Açık kayıtlar satırı da yeter. */
+export const FIELD_OPENERS: Readonly<Record<string, readonly PermKey[]>> = {
+  "masterdata.customer.contact": [
+    "masterdata.cards",
+    "sales.orders"
+  ],
+  "masterdata.supplier.contact": [
+    "masterdata.cards"
   ]
 };

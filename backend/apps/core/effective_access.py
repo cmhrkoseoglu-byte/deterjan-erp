@@ -59,6 +59,20 @@ class EffectiveAccess:
         """Bölümlerden birinin kayıtlarını okuyabilir mi?"""
         return any(self.allows(item, READ) for item in sections)
 
+    def sees_fields(self, name: str) -> bool:
+        """Alan grubunu tam görür mü (ör. müşteri ve tedarikçinin vergi, adres ve iletişim
+        bilgileri; plan §3.1, §5.6)? Grubun modülünün "Açık kayıtlar" satırı ya da alanları açan
+        bölümlerden birinde Görür yeter. Tanımsız grup adı hata verir: yazım yanlışı alanları
+        açmaz."""
+        if not access.has_field_group(name):
+            raise KeyError(f"Tanımsız alan grubu: {name}")
+        if self.is_admin:
+            return True
+        records = access.open_records_section(name.split(".", 1)[0])
+        if records is not None and (records.key, READ) in self.entries:
+            return True
+        return any((item.key, VIEW) in self.entries for item in access.field_openers(name))
+
     def letters(self) -> dict[str, str]:
         """`me` yanıtı için: bölüm → "rvca" harfleri (yetkisi olmayan bölüm yazılmaz)."""
         result: dict[str, str] = {}
@@ -181,9 +195,9 @@ def _reads(item: Section, entries: set[Entry], roles: set[str]) -> bool:
 def effective_access(user: Any) -> EffectiveAccess:
     """Kullanıcının geçerli yetkisi: rolleri ve etkin kişiye özel ayarları (veritabanından).
 
-    Çok kişiyi birlikte hesaplayan yerler `access_overrides` ilişkisini önceden yükleyebilir
-    (`prefetch_related(Prefetch("access_overrides", queryset=active_overrides()))`); o zaman
-    sorgu yapılmaz.
+    Çok kişiyi birlikte hesaplayan yerler rolleri ve ayarları önceden yükler; o zaman sorgu
+    yapılmaz: `prefetch_related("groups", Prefetch("access_overrides",
+    queryset=active_overrides()))`.
     """
     if user is None or not getattr(user, "is_authenticated", False):
         return NO_ACCESS
@@ -199,12 +213,17 @@ def effective_access(user: Any) -> EffectiveAccess:
     return compute_access(user.role_names, grants=grants, revokes=revokes)
 
 
-def _active_overrides(user: Any) -> list[Any]:
+def active_overrides() -> Any:
+    """Etkin kişiye özel ayarlar (bitmemiş satırlar); önceden yüklemek için."""
     from apps.core.models import AccessOverride
 
+    return AccessOverride.objects.filter(ended_at__isnull=True)
+
+
+def _active_overrides(user: Any) -> list[Any]:
     if user.pk is None:
         return []
     cache = getattr(user, "_prefetched_objects_cache", {})
     if "access_overrides" in cache:
         return [item for item in cache["access_overrides"] if item.ended_at is None]
-    return list(AccessOverride.objects.filter(user_id=user.pk, ended_at__isnull=True))
+    return list(active_overrides().filter(user_id=user.pk))

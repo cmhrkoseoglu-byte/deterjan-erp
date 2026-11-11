@@ -2378,7 +2378,8 @@ değiştirme zorunlu, yalnızca admin):
     fiyatıdır). Bordro, Ücretler: Görür'ü ister. Personel maliyeti; Maliyetleri görür, Ücretler:
     Görür ve Bordro: Görür'ü ister.
   - Panodaki onay bekleyen satın alma siparişi toplamı Fiyatları görür'e (karar 6), stok değeri
-    Maliyetleri görür'e bağlıdır.
+    Maliyetleri görür'e bağlıdır. Toplamı bugün yalnız yönetim görüyor; fark 1. adımda ortaya çıktı,
+    sahibe soruldu (2026-11-11), yanıt bekleniyor (plan §12).
   - Personel ayarları (bordro parametreleri, hafta tatili günleri) ve canlı başlangıç tarihi kendi
     "Ayarlar" satırlarındadır (karar 7). Onaylı bordronun ödeme tarihini düzeltmek Onaylar'dır.
   - Var olan kullanıcının rolleri ve yetkileri yalnız admin tarafından, Sistem > Kullanıcılar >

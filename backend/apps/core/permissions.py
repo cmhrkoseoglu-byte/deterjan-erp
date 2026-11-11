@@ -22,16 +22,24 @@ from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from django.core.exceptions import PermissionDenied
-from rest_framework.permissions import SAFE_METHODS, BasePermission
+from rest_framework.permissions import (
+    SAFE_METHODS,
+    BasePermission,
+    OperandHolder,
+    SingleOperandHolder,
+)
 from rest_framework.request import Request
 
 from apps.core import access
-from apps.core.access import READ, VIEW, SectionRef
+from apps.core.access import READ, VIEW, ReadScope, SectionRef
 from apps.core.models import User
 from apps.core.roles import ALL_ROLES
 
 DEFAULT_MESSAGE = "Bu işlem için yetkiniz yok."
 REQUIRED_ATTR = "_access_required"
+
+# DRF izin sınıfı ya da `A | B`, `A & B`, `~A` birleşimi.
+PermissionClass = type[BasePermission] | OperandHolder | SingleOperandHolder
 
 
 def user_has_role(user: Any, roles: tuple[str, ...]) -> bool:
@@ -143,7 +151,15 @@ def ReadRule(*sections: SectionRef) -> type[BasePermission]:  # noqa: N802
     if not sections:
         raise ValueError("En az bir bölüm verilmelidir.")
     targets = tuple(access.section(item) for item in sections)
-    required = tuple((target.key, READ) for target in targets)
+    # Eksik yetki ipucu verilebilecek yetkiyi söyler: bölümde Görür, açık okumalı bölümde ayrıca
+    # modülün "Açık kayıtlar" satırı.
+    hints: list[tuple[str, str]] = []
+    for target in targets:
+        hints.append((target.key, VIEW))
+        records = access.open_records_section(target.module)
+        if target.read is ReadScope.OPEN and records is not None:
+            hints.append((records.key, READ))
+    required = tuple(dict.fromkeys(hints))
 
     class _ReadRule(AccessPermission):
         required_access = required
@@ -194,22 +210,36 @@ class DenyUnknownAction(AccessPermission):
 
 
 class AccessMixin:
-    """ViewSet'lerde eylem bazında bölüm denetimi.
+    """ViewSet'lerde eylem ve metot bazında bölüm denetimi; bugünkü kararlar birebir çevrilir.
 
-    - `action_access`: eylem → izin sınıfı (ör. `{"approve": HasAccess(ORDERS, APPROVE)}`);
-    - `read_access`: listede olmayan okuma eylemlerinin izni (ör. `ReadRule(ORDERS, PREP)`).
+    İzin şu sırayla aranır:
 
-    Listede olmayan yazma eylemi reddedilir; böylece yeni bir eylem yetkisiz açılamaz.
+    1. `action_access["<eylem>:<metot>"]`, ör. `"picks:post"`: aynı eylemde GET ve POST ayrıdır;
+    2. `action_access["<eylem>"]`, ör. `"approve"`;
+    3. metot `read_methods` içindeyse `read_access` (varsayılan GET, HEAD, OPTIONS; bugün yalnız
+       GET'i okuma sayan görünüm `frozenset({"GET"})` verir);
+    4. `write_access`: listede olmayan öteki istekler (bugün tek bir yazma rolüyle korunanlar);
+    5. hiçbiri yoksa reddedilir; böylece yeni bir eylem yetkisiz açılamaz.
+
+    DRF, HEAD isteğini GET'in eylemine, OPTIONS isteğini `metadata` eylemine gönderir. Değerler
+    izin sınıfı ya da `HasAccess(A) | HasAccess(B)` gibi birleşimlerdir.
     """
 
-    read_access: ClassVar[type[BasePermission] | None] = None
-    action_access: ClassVar[Mapping[str, type[BasePermission]]] = {}
+    read_access: ClassVar[PermissionClass | None] = None
+    read_methods: ClassVar[frozenset[str]] = frozenset(SAFE_METHODS)
+    write_access: ClassVar[PermissionClass | None] = None
+    action_access: ClassVar[Mapping[str, PermissionClass]] = {}
 
-    def get_permissions(self) -> list[BasePermission]:
-        action = getattr(self, "action", None)
-        if action is not None and action in self.action_access:
-            return [self.action_access[action]()]
+    def get_permissions(self) -> list[Any]:
         request = getattr(self, "request", None)
-        if request is not None and request.method in SAFE_METHODS and self.read_access:
+        method = str(getattr(request, "method", "") or "").upper()
+        action = getattr(self, "action", None)
+        if action is not None:
+            for key in (f"{action}:{method.lower()}", action):
+                if key in self.action_access:
+                    return [self.action_access[key]()]
+        if method in self.read_methods and self.read_access is not None:
             return [self.read_access()]
+        if self.write_access is not None:
+            return [self.write_access()]
         return [DenyUnknownAction()]

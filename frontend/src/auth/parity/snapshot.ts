@@ -1,4 +1,12 @@
-import { ALLOWED, MISSING, permitted, sameValue, type Allowed } from "./allowlist";
+import {
+  ALLOWED,
+  CURRENT_STEP,
+  MISSING,
+  permitted,
+  requiredFor,
+  sameValue,
+  type Allowed,
+} from "./allowlist";
 import { PERSONAS } from "./personas";
 
 /**
@@ -97,15 +105,17 @@ function short(value: unknown): string {
   return text.length <= 200 ? text : `${text.slice(0, 197)}...`;
 }
 
-/** (izinsiz farklar, izin listesindeki farklar) — okunur satırlar olarak. */
+/** İzinsiz farklar, izin listesindeki farklar (okunur satırlar) ve eşleşen kayıtlar. */
 export function differences(
   section: string,
   expected: Cases,
   actual: Cases,
   allowed: readonly Allowed[] = ALLOWED,
-): { unexpected: string[]; permitted: string[] } {
+  step: number = CURRENT_STEP,
+): { unexpected: string[]; permitted: string[]; used: Allowed[] } {
   const unexpected: string[] = [];
   const allowedLines: string[] = [];
+  const used: Allowed[] = [];
   const names = [...new Set([...Object.keys(expected), ...Object.keys(actual)])].sort();
   for (const name of names) {
     const oldValues = expected[name];
@@ -119,26 +129,50 @@ export function differences(
       const newValue = newValues && persona in newValues ? newValues[persona] : MISSING;
       if (sameValue(oldValue, newValue)) continue;
       const line = `${section} › ${name} [${persona}]: ${short(oldValue)} → ${short(newValue)}`;
-      const rule = permitted(section, name, persona, oldValue, newValue, allowed);
-      if (rule) allowedLines.push(`${line} (${rule.item})`);
-      else unexpected.push(line);
+      const rule = permitted(section, name, persona, oldValue, newValue, allowed, step);
+      if (rule) {
+        allowedLines.push(`${line} (${rule.item})`);
+        used.push(rule);
+      } else unexpected.push(line);
     }
   }
-  return { unexpected, permitted: allowedLines };
+  return { unexpected, permitted: allowedLines, used };
 }
 
-/** Bölümü dondurulmuş anlık görüntüyle karşılaştırır; izinsiz farkta okunur bir hata fırlatır. */
-export function compareSection(baseline: Baseline | null, section: string, actual: Cases): void {
+function ruleLabel(rule: Allowed): string {
+  return `${rule.item}: ${rule.section} › ${rule.case} [${rule.persona ?? "*"}]`;
+}
+
+/**
+ * Bölümü dondurulmuş anlık görüntüyle karşılaştırır. İzinsiz farkta ve hiçbir farkla eşleşmeyen
+ * gerekli izin kaydında okunur bir hata fırlatır.
+ */
+export function compareSection(
+  baseline: Baseline | null,
+  section: string,
+  actual: Cases,
+  allowed: readonly Allowed[] = ALLOWED,
+  step: number = CURRENT_STEP,
+): void {
   if (!baseline) {
     throw new Error(`Anlık görüntü yok: ${FILE_NAME}. 1. adımda ${UPDATE_ENV}=1 ile üretilir.`);
   }
-  const { unexpected } = differences(section, baseline[section] ?? {}, actual);
-  if (unexpected.length === 0) return;
-  const shown = unexpected.slice(0, 80).join("\n");
-  const more = unexpected.length > 80 ? `\n... ve ${unexpected.length - 80} fark daha` : "";
-  throw new Error(
-    `Ön yüz yetki eşliği bozuldu (${section}): ${unexpected.length} izinsiz fark.\n` +
-      `${shown}${more}\n` +
-      "Fark bilerek yapıldıysa allowlist.ts'de planın bir maddesine bağlanmalıdır.",
-  );
+  const { unexpected, used } = differences(section, baseline[section] ?? {}, actual, allowed, step);
+  if (unexpected.length > 0) {
+    const shown = unexpected.slice(0, 80).join("\n");
+    const more = unexpected.length > 80 ? `\n... ve ${unexpected.length - 80} fark daha` : "";
+    throw new Error(
+      `Ön yüz yetki eşliği bozuldu (${section}): ${unexpected.length} izinsiz fark.\n` +
+        `${shown}${more}\n` +
+        "Fark bilerek yapıldıysa allowlist.ts'de planın bir maddesine bağlanmalıdır.",
+    );
+  }
+  const unused = requiredFor(section, allowed, step).filter((rule) => !used.includes(rule));
+  if (unused.length > 0) {
+    throw new Error(
+      `İzin listesindeki ${unused.length} kayıt hiçbir farkla eşleşmedi (${section}).\n` +
+        `${unused.slice(0, 40).map(ruleLabel).join("\n")}\n` +
+        "Onaylı değişiklik geri alınmış ya da kayıt artık gereksiz.",
+    );
+  }
 }

@@ -44,7 +44,11 @@ class User(AbstractUser):
 
     @cached_property
     def role_names(self) -> frozenset[str]:
-        """Kullanıcının rol kodları (önbellekli; rol değişince `refresh_roles()` çağrılır)."""
+        """Kullanıcının rol kodları (önbellekli; rol değişince `refresh_roles()` çağrılır).
+        Roller önceden yüklendiyse (`prefetch_related("groups")`) sorgu yapılmaz."""
+        prefetched = getattr(self, "_prefetched_objects_cache", {})
+        if "groups" in prefetched:
+            return frozenset(group.name for group in prefetched["groups"])
         return frozenset(self.groups.values_list("name", flat=True))
 
     @property
@@ -66,9 +70,14 @@ class User(AbstractUser):
         return self.is_superuser or self.has_role(ADMIN)
 
     def refresh_roles(self) -> None:
-        """Rol ve yetki önbelleğini temizler (rol ya da kişiye özel yetki değişince)."""
+        """Rol ve yetki önbelleğini temizler (rol ya da kişiye özel yetki değişince); önceden
+        yüklenmiş roller ve kişiye özel ayarlar da bırakılır."""
         self.__dict__.pop("role_names", None)
         self.__dict__.pop("access", None)
+        prefetched = getattr(self, "_prefetched_objects_cache", None)
+        if prefetched:
+            prefetched.pop("groups", None)
+            prefetched.pop("access_overrides", None)
 
     refresh_access = refresh_roles
 

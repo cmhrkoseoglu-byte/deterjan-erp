@@ -10,7 +10,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
-from apps.core.access_export import to_markdown, to_typescript
+from apps.core.access_export import REGENERATE, to_markdown, to_typescript
 
 
 class Command(BaseCommand):
@@ -27,12 +27,11 @@ class Command(BaseCommand):
         text = to_typescript() if options["format"] == "ts" else to_markdown()
         if options["check"]:
             path = Path(options["check"])
-            current = path.read_text(encoding="utf-8") if path.exists() else ""
+            if not path.exists():
+                raise CommandError(f"{path} bulunamadı. {REGENERATE}")
+            current = path.read_text(encoding="utf-8")
             if current.replace("\r\n", "\n") != text:
-                raise CommandError(
-                    f"{path} güncel değil. Yeniden üretin: python manage.py export_access "
-                    f"--format={options['format']} --output {path}"
-                )
+                raise CommandError(f"{path} güncel değil. {REGENERATE}")
             self.stdout.write(f"{path} güncel.")
             return
         if options["output"]:

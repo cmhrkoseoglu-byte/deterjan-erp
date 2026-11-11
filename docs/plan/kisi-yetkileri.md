@@ -1066,12 +1066,18 @@ Kural 12'ye 1. adımda bir geçiş cümlesi eklenir ve 8. adımın commit'inde s
 - **§3:** katman listesine `access.py  # Yetki bölümleri ve rol varsayılan paketleri (yalnız veri)`
   eklenir; `core` satırı "Kullanıcı, rol, yetki kataloğu ve kişiye özel yetkiler, BaseModel, …"
   olur.
-- **§7:** "Yetki sözleşme testi (`apps/core/tests/test_access_contract.py`) her adımda yeşil olur:
+- **§7:** "Yetki sözleşme testi (`apps/core/tests/access_contract/`) her adımda yeşil olur:
   kişiye özel yetki yokken her uç nokta × rol kararı dondurulmuş anlık görüntüyle aynıdır. Bilinçli
-  bir değişiklik sahibin onayı ve DECISIONS kaydıyla anlık görüntüye işlenir."
+  bir değişiklik sahibin onayı ve DECISIONS kaydıyla anlık görüntüye işlenir." Yol 1. adımda
+  düzeltildi: test tek dosya değil, bir klasördür.
 
 ## 12. Sonra sorulacaklar (ilgili adımdan önce)
 
+- **Panodaki bekleyen satın alma toplamı** (6. adımdan önce; 1. adımın paket denkliği gösterdi).
+  Yönetim panosundaki onay bekleyen satın alma siparişlerinin TL toplamını bugün yalnız yönetim
+  görüyor. §3'teki kuralla (Fiyatları görür) planlama ve satın alma rollerini birlikte taşıyan,
+  yönetimde olmayan kişi de görür; bu kişi tutarları satın almada zaten görüyor. Plandaki kural mı
+  uygulansın, bugünkü gibi yalnız yönetim mi? Sahibe soruldu (2026-11-11).
 - **İrsaliyedeki şoför kimlik numarası** (10. adımdan önce): irsaliye PDF'inde tam numarayı
   kimlerin göreceği KVKK.md ile birlikte netleşir; belge mi düzeltilsin, ayrı bir hak mı olsun?
   Bugünkü durum size ayrıca sunulur.
