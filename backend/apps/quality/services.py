@@ -431,6 +431,7 @@ def open_sample(
     """Lota numune açar (`NM-`). **Diğer modüllerden çağrılabilir** (mal kabul, şarj bitişi,
     dolum); yetkiyi çağıran denetler. Spesifikasyon o anki onaylı sürüme sabitlenir (yoksa boş
     kalır). Lot karantinada ya da bloke olmalı; aynı lot ve aşamada açık numune varsa reddedilir.
+    Lotu üreten iş (dolum partisi, üretim şarjı) bitmeden yalnız şarj sırası numunesi açılır.
     Olay `sample.created` laboratuvara "Numune analizi" görevi açar."""
     with transaction.atomic():
         lot = Lot.objects.select_for_update(of=("self",)).select_related("material").get(pk=lot.pk)
@@ -442,6 +443,13 @@ def open_sample(
                 f"Lot {lot.lot_no} {lot_states.label(lot.status).lower()}; numune "
                 "yalnızca karantinadaki ya da bloke lota açılır (serbest lotu önce bloke edin).",
             )
+        if stage != SampleStage.IN_PROCESS:
+            unfinished = inventory.unfinished_output(lot)
+            if unfinished:
+                raise BusinessRuleError(
+                    "lot_output_unfinished",
+                    f"{unfinished}; son kontrol numunesi parti bitince kendiliğinden açılır.",
+                )
         if Sample.objects.filter(lot=lot, stage=stage, status__in=OPEN_SAMPLE_STATUSES).exists():
             raise BusinessRuleError(
                 "sample_already_open", f"Lot {lot.lot_no} için bu aşamada açık numune var."
@@ -745,6 +753,12 @@ def _apply_to_lot(actor: User | None, sample: Sample, decision: QualityDecision,
 def _validate_decision(sample: Sample, decision: str, reason: str) -> None:
     if decision not in Decision.values:
         raise BusinessRuleError("invalid_decision", "Geçersiz kalite kararı.")
+    if sample.stage != SampleStage.IN_PROCESS:
+        unfinished = inventory.unfinished_output(sample.lot)
+        if unfinished:
+            raise BusinessRuleError(
+                "lot_output_unfinished", f"{unfinished}; parti bitmeden lota karar verilemez."
+            )
     if sample.specification_id is None:
         raise BusinessRuleError(
             "sample_has_no_specification",
