@@ -23,6 +23,13 @@ export interface CurrentUser {
   /** Rol kodları (Django Group adları), alfabetik sıralı. */
   roles: Role[];
   is_superuser: boolean;
+  /** Admin rolü ya da süper kullanıcı (docs/plan/kisi-yetkileri.md §5.9). */
+  is_admin?: boolean;
+  /**
+   * Geçerli yetkiler: bölüm → "rvca" harfleri (r kayıtları okur, v görür, c değiştirir, a onaylar).
+   * Arayüz 8. adıma kadar rollere bakar; bu alan o adımda kullanılır.
+   */
+  access?: Readonly<Record<string, string>>;
   /** İki aşamalı doğrulama (doğrulayıcı uygulama) kurulu mu? */
   otp_enabled: boolean;
   /**

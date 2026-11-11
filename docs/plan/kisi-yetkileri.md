@@ -1,7 +1,7 @@
 # Kişiye özel yetkiler
 
-> **Durum:** taslak, CUMHUR'un onayını bekliyor (2026-11-11). Sahip kararları `docs/DECISIONS.md`
-> "2026-11-10 — Kişiye özel yetkiler" kaydındadır. Onaylanınca adım adım uygulanır (§10).
+> **Durum:** CUMHUR onayladı (2026-11-11); adım adım uygulanıyor (§10, ilerleme `docs/PROGRESS.md`).
+> Sahip kararları `docs/DECISIONS.md` "2026-11-10 — Kişiye özel yetkiler" kaydındadır.
 
 ## 1. Amaç ve sahip kararları
 
@@ -59,7 +59,8 @@ Bu çalışmayla admin, modüllerin bölümlerini kişi bazında açıp kapatabi
 - **Yalnız işlem bölümleri** (Görür'ü olmayanlar: arıza bildirimi, lot bloke etme, mal kabul fiyat
   ve masrafları, iade teslim alma ve imha, limit üstü sipariş onayı, tüm birimlerin iş emirlerini
   yürütme) menüde modül açmaz. Bir modül, Görür'ü olan bölümlerinden birinde Görür varsa menüde
-  görünür.
+  görünür. Hassas veriler, Görevler ve Sistem gruplarının menüde kendi modülü yoktur; bölümleri menü
+  açmaz (Sistem menüsü bugünkü gibi yalnız admine açıktır).
 - **Geçerli yetki** = herkese açık temel + kişinin rollerinin paketleri + kişiye eklenenler −
   kişiden kaldırılanlar. Ardından iki kısıt uygulanır:
   - **Yalnız yönetim (KVKK):** personel, bordro, personel maliyeti, olaylar ve kazalar ve denetim

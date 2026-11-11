@@ -54,6 +54,11 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response |
         # Başka bir işlem aynı kayıtları kilitliyordu; işlem geri alındı, kullanıcı yeniden dener.
         return Response({"code": "busy", "detail": BUSY_DETAIL}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Bölüm denetiminin eksik yetkisi (docs/plan/kisi-yetkileri.md §5.4): servisten gelen hatada
+    # hatanın kendisinde, API izin katmanının reddinde istekte yazılıdır.
+    required = getattr(exc, "required", None)
+    if required is None and isinstance(exc, exceptions.PermissionDenied):
+        required = _noted_required(context)
     if isinstance(exc, DjangoValidationError):
         exc = exceptions.ValidationError(as_serializer_error(exc))
     elif isinstance(exc, Http404):
@@ -84,4 +89,11 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response |
     codes = exc.get_codes()
     code = codes if isinstance(codes, str) else exc.default_code
     response.data = {"code": code, "detail": str(exc.detail)}
+    if required and code == "permission_denied":
+        response.data["required"] = [{"key": key, "level": level} for key, level in required]
     return response
+
+
+def _noted_required(context: dict[str, Any]) -> list[tuple[str, str]]:
+    request = context.get("request")
+    return list(getattr(request, "_access_required", None) or [])

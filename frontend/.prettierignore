@@ -1,3 +1,5 @@
 dist
 node_modules
 package-lock.json
+# Üretilen dosya (backend: python manage.py export_access --format=ts).
+src/auth/access.gen.ts

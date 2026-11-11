@@ -9,7 +9,13 @@ from django.http import HttpRequest
 
 from apps.core.audit import log_change
 from apps.core.coding.registry import MASTER, master_type_for_model
-from apps.core.models import AuditLog, DocumentSequence, User
+from apps.core.models import (
+    AccessCatalogSnapshot,
+    AccessOverride,
+    AuditLog,
+    DocumentSequence,
+    User,
+)
 from apps.core.roles import ROLE_LABELS
 from apps.core.services import save_with_audit
 
@@ -141,3 +147,18 @@ class AuditLogAdmin(ReadOnlyAdmin):
 class DocumentSequenceAdmin(ReadOnlyAdmin):
     list_display = ("prefix", "year", "last_number")
     list_filter = ("year",)
+
+
+@admin.register(AccessOverride)
+class AccessOverrideAdmin(ReadOnlyAdmin):
+    """Kişiye özel yetkiler salt okunurdur; yalnız Sistem > Kullanıcılar > Yetkiler değiştirir."""
+
+    list_display = ("user", "key", "level", "effect", "created_at", "created_by", "ended_at")
+    list_filter = ("effect", "level", "end_reason")
+    search_fields = ("user__username", "user__full_name", "key", "note")
+    list_select_related = ("user", "created_by")
+
+
+@admin.register(AccessCatalogSnapshot)
+class AccessCatalogSnapshotAdmin(ReadOnlyAdmin):
+    list_display = ("created_at", "catalog_hash")

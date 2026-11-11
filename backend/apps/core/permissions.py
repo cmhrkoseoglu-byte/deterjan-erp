@@ -1,21 +1,37 @@
-"""Rol bazlı API izinleri.
+"""API ve servis izinleri.
 
-Kullanım:
+Rol bazlı (bugünkü):
 
     class StockView(APIView):
         permission_classes = [HasRole("depo", "planlama")]
 
-`admin` rolündeki kullanıcılar ve superuser'lar rol korumalı her uç noktaya erişir.
-Giriş yapılmamışsa 401, rol yetkisi yoksa 403 döner.
+Bölüm ve düzey bazlı (docs/plan/kisi-yetkileri.md §5.4; modüller adım adım geçer):
+
+    class ProductionOrderViewSet(AccessMixin, viewsets.ModelViewSet):
+        read_access = ReadRule(ORDERS, PREP, BATCHES)
+        action_access = {"create": HasAccess(ORDERS, CHANGE), "approve": HasAccess(ORDERS, APPROVE)}
+
+    # services.py
+    require_access(actor, ORDERS, APPROVE, "Üretim emrini onaylama yetkiniz yok.")
+
+`admin` rolündeki kullanıcılar ve superuser'lar her uç noktaya erişir. Giriş yapılmamışsa 401,
+yetki yoksa 403 döner; 403 yanıtı bölüm denetiminde eksik yetkiyi `required` listesinde söyler.
 """
 
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, ClassVar
 
-from rest_framework.permissions import BasePermission
+from django.core.exceptions import PermissionDenied
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.request import Request
 
+from apps.core import access
+from apps.core.access import READ, VIEW, SectionRef
 from apps.core.models import User
 from apps.core.roles import ALL_ROLES
+
+DEFAULT_MESSAGE = "Bu işlem için yetkiniz yok."
+REQUIRED_ATTR = "_access_required"
 
 
 def user_has_role(user: Any, roles: tuple[str, ...]) -> bool:
@@ -34,7 +50,7 @@ def HasRole(*roles: str) -> type[BasePermission]:  # noqa: N802 - sınıf gibi k
         raise ValueError("En az bir rol verilmelidir.")
 
     class _HasRole(BasePermission):
-        message = "Bu işlem için yetkiniz yok."
+        message = DEFAULT_MESSAGE
         required_roles = roles
 
         def has_permission(self, request: Request, view: Any) -> bool:
@@ -42,3 +58,158 @@ def HasRole(*roles: str) -> type[BasePermission]:  # noqa: N802 - sınıf gibi k
 
     _HasRole.__name__ = _HasRole.__qualname__ = f"HasRole({', '.join(roles)})"
     return _HasRole
+
+
+# --- bölüm ve düzey bazlı yetki -------------------------------------------------------------------
+
+
+def _active_user(user: Any) -> User | None:
+    if not isinstance(user, User) or not user.is_authenticated or not user.is_active:
+        return None
+    return user
+
+
+def has_access(user: Any, section: SectionRef, level: str = VIEW) -> bool:
+    """Kullanıcı aktif, giriş yapmış ve bölümün bu düzeyine sahip mi (admin her zaman)?"""
+    active = _active_user(user)
+    return active is not None and active.access.allows(section, level)
+
+
+def can_read(user: Any, *sections: SectionRef) -> bool:
+    """Bölümlerden birinin kayıtlarını okuyabilir mi (Görür ya da okuma kapsamı)?"""
+    active = _active_user(user)
+    return active is not None and active.access.can_read(*sections)
+
+
+class MissingAccess(PermissionDenied):
+    """Servis denetiminde eksik yetki. API 403 döner; `required` eksik yetkiyi söyler."""
+
+    def __init__(self, message: str, required: tuple[tuple[str, str], ...]) -> None:
+        super().__init__(message)
+        self.required = required
+
+
+def require_access(
+    actor: Any, section: SectionRef, level: str = VIEW, message: str | None = None
+) -> None:
+    """Servis denetimi: yetki yoksa `MissingAccess` fırlatır. Mesaj rol adı değil işi söyler
+    (ör. "Üretim emrini onaylama yetkiniz yok.")."""
+    if not has_access(actor, section, level):
+        target = access.section(section)
+        raise MissingAccess(message or DEFAULT_MESSAGE, ((target.key, level),))
+
+
+def _note_required(request: Request, allowed: bool, required: tuple[tuple[str, str], ...]) -> None:
+    """İzin kararını isteğe yazar; hata işleyici reddedilen isteğin 403 yanıtına eksik yetkiyi
+    ekler. Geçen izin listeyi temizler: `A | B`'de A reddedip B geçerse istek izinlidir."""
+    if allowed:
+        setattr(request, REQUIRED_ATTR, [])
+        return
+    noted: list[tuple[str, str]] = getattr(request, REQUIRED_ATTR, None) or []
+    noted.extend(item for item in required if item not in noted)
+    setattr(request, REQUIRED_ATTR, noted)
+
+
+class AccessPermission(BasePermission):
+    """Bölüm denetimi yapan izin sınıflarının ortak atası (sistem denetimi bunu tanır)."""
+
+    message = DEFAULT_MESSAGE
+    required_access: ClassVar[tuple[tuple[str, str], ...]] = ()
+
+
+def HasAccess(section: SectionRef, level: str = VIEW) -> type[BasePermission]:  # noqa: N802
+    """Bölümün bu düzeyine sahip kullanıcılara izin veren DRF izin sınıfı üretir."""
+    target = access.section(section)
+    if level not in target.levels:
+        raise ValueError(f"{target.key}: düzey bölümde yok ({level}).")
+    required = ((target.key, level),)
+
+    class _HasAccess(AccessPermission):
+        required_access = required
+
+        def has_permission(self, request: Request, view: Any) -> bool:
+            allowed = has_access(request.user, target, level)
+            if _active_user(request.user) is not None:
+                _note_required(request, allowed, required)
+            return allowed
+
+    _HasAccess.__name__ = _HasAccess.__qualname__ = f"HasAccess({target.key}, {level})"
+    return _HasAccess
+
+
+def ReadRule(*sections: SectionRef) -> type[BasePermission]:  # noqa: N802
+    """Okuma izni: bölümlerden herhangi birinde okuma yeter (ör. emir okuması Üretim emirleri,
+    Malzeme hazırlama ya da Şarj ve tartım ile)."""
+    if not sections:
+        raise ValueError("En az bir bölüm verilmelidir.")
+    targets = tuple(access.section(item) for item in sections)
+    required = tuple((target.key, READ) for target in targets)
+
+    class _ReadRule(AccessPermission):
+        required_access = required
+
+        def has_permission(self, request: Request, view: Any) -> bool:
+            allowed = can_read(request.user, *targets)
+            if _active_user(request.user) is not None:
+                _note_required(request, allowed, required)
+            return allowed
+
+    names = ", ".join(target.key for target in targets)
+    _ReadRule.__name__ = _ReadRule.__qualname__ = f"ReadRule({names})"
+    return _ReadRule
+
+
+def SignedIn(reason: str) -> type[BasePermission]:  # noqa: N802
+    """Giriş yapan herkese açık uç noktanın açık işareti (bugünkü `IsAuthenticated` ile aynı).
+
+    `reason` neden herkese açık olduğunu söyler (ör. "kişinin kendi hesabı"); sistem denetimi
+    işaretsiz uç noktayı yakalar.
+    """
+    if not reason.strip():
+        raise ValueError("Herkese açık uç noktanın nedeni yazılmalıdır.")
+
+    class _SignedIn(AccessPermission):
+        signed_in_reason = reason
+
+        def has_permission(self, request: Request, view: Any) -> bool:
+            return bool(request.user and request.user.is_authenticated)
+
+    _SignedIn.__name__ = _SignedIn.__qualname__ = f"SignedIn({reason})"
+    return _SignedIn
+
+
+class AdminOnly(AccessPermission):
+    """Yalnız sistem yöneticisi (admin rolü ya da süper kullanıcı)."""
+
+    def has_permission(self, request: Request, view: Any) -> bool:
+        active = _active_user(request.user)
+        return active is not None and active.is_admin
+
+
+class DenyUnknownAction(AccessPermission):
+    """`AccessMixin`'de tanımlanmamış yazma eylemi: kapalı varsayılan."""
+
+    def has_permission(self, request: Request, view: Any) -> bool:
+        return False
+
+
+class AccessMixin:
+    """ViewSet'lerde eylem bazında bölüm denetimi.
+
+    - `action_access`: eylem → izin sınıfı (ör. `{"approve": HasAccess(ORDERS, APPROVE)}`);
+    - `read_access`: listede olmayan okuma eylemlerinin izni (ör. `ReadRule(ORDERS, PREP)`).
+
+    Listede olmayan yazma eylemi reddedilir; böylece yeni bir eylem yetkisiz açılamaz.
+    """
+
+    read_access: ClassVar[type[BasePermission] | None] = None
+    action_access: ClassVar[Mapping[str, type[BasePermission]]] = {}
+
+    def get_permissions(self) -> list[BasePermission]:
+        action = getattr(self, "action", None)
+        if action is not None and action in self.action_access:
+            return [self.action_access[action]()]
+        request = getattr(self, "request", None)
+        if request is not None and request.method in SAFE_METHODS and self.read_access:
+            return [self.read_access()]
+        return [DenyUnknownAction()]

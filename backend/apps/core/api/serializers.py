@@ -42,9 +42,15 @@ class MeSerializer(serializers.ModelSerializer):
     Güvenlik alanları (Faz 5): `otp_enabled`, `password_change_required` (yöneticinin verdiği
     geçici şifreyle girdi; SPA önce şifre değiştirmeye götürür), `otp_setup_required` (rol 2FA
     istiyor, kurulmamış; SPA Güvenlik sayfasına yönlendirir), `field_device` (bu tarayıcı saha
-    tableti) ve `idle_timeout_seconds` (hareketsizlik süresi)."""
+    tableti) ve `idle_timeout_seconds` (hareketsizlik süresi).
+
+    Yetki alanları (docs/plan/kisi-yetkileri.md §5.9): `is_admin` (admin rolü ya da süper
+    kullanıcı) ve `access` (bölüm → "rvca" harfleri: r kayıtları okur, v görür, c değiştirir,
+    a onaylar; yetkisi olmayan bölüm yazılmaz)."""
 
     roles = serializers.ListField(child=serializers.CharField(), read_only=True)
+    is_admin = serializers.BooleanField(read_only=True)
+    access = serializers.SerializerMethodField()
     otp_enabled = serializers.SerializerMethodField()
     password_change_required = serializers.BooleanField(
         source="must_change_password", read_only=True
@@ -62,6 +68,8 @@ class MeSerializer(serializers.ModelSerializer):
             "email",
             "roles",
             "is_superuser",
+            "is_admin",
+            "access",
             "otp_enabled",
             "password_change_required",
             "otp_setup_required",
@@ -69,6 +77,12 @@ class MeSerializer(serializers.ModelSerializer):
             "idle_timeout_seconds",
         ]
         read_only_fields = fields
+
+    @extend_schema_field(
+        {"type": "object", "additionalProperties": {"type": "string", "pattern": "^r?v?c?a?$"}}
+    )
+    def get_access(self, obj: User) -> dict[str, str]:
+        return obj.access.letters()
 
     def _request(self) -> Any:
         request = self.context.get("request")

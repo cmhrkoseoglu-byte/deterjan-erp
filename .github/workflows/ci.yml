@@ -59,6 +59,10 @@ jobs:
         run: mypy
       - name: Eksik migration yok
         run: python manage.py makemigrations --check --dry-run --settings=config.settings.test
+      - name: Ön yüzün yetki dosyası güncel
+        run: >-
+          python manage.py export_access --format=ts
+          --check ../frontend/src/auth/access.gen.ts --settings=config.settings.test
       - name: pytest
         run: pytest
 

@@ -36,7 +36,15 @@ class Allowed:
         )
 
 
-ALLOWED: tuple[Allowed, ...] = ()
+ALLOWED: tuple[Allowed, ...] = (
+    # 1. adım: planın eklediği yeni uç noktalar (plan §5.5).
+    Allowed(
+        item="yeni uç nokta: yetki kataloğu (plan §5.1)",
+        snapshot="endpoints",
+        case="* /api/v1/access/catalog/",
+        old=MISSING,
+    ),
+)
 
 
 def permitted(snapshot: str, case: str, persona: str, old: object, new: object) -> Allowed | None:

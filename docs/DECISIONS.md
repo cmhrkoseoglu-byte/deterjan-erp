@@ -2319,7 +2319,8 @@ değiştirme zorunlu, yalnızca admin):
 ## 2026-11-10 — Kişiye özel yetkiler
 
 - **İstek (CUMHUR):** "kullanıcılara yetkinlik atamak istiyorum. modülleri görüntüleye bilme ve
-  değiştirebileceği bir sistem geliştirelim". Plan: `docs/plan/kisi-yetkileri.md` (onay bekliyor).
+  değiştirebileceği bir sistem geliştirelim". Plan: `docs/plan/kisi-yetkileri.md` (CUMHUR onayladı,
+  2026-11-11: "Onaylıyorum").
 - **Kararlar (CUMHUR, 2026-11-10, soruların yanıtları):**
   - Yapı: "Rol + kişiye ek/çıkar". Roller varsayılan yetki paketidir; admin kişiye yetki ekler ya
     da rolünden geleni kaldırır. İlk gün herkesin erişimi bugünküyle aynıdır.
@@ -2349,7 +2350,7 @@ değiştirme zorunlu, yalnızca admin):
   - Açık okumalar: "Evet, ayrı bir adımda". Bugün giriş yapan herkesin okuyabildiği kayıtlar ilk
     sürümde aynen kalır; bir kişi için kapatılabilir, lot sayfası ve seçim listeleri çalışmaya
     devam eder. Sonra ayrı bir adımda (Faz B) yalnız Görür yetkisi olanlara kapatılır.
-- **Planla önerilen, ayrıca sorulmayan kurallar** (plan onayıyla kesinleşir; değiştirilebilir):
+- **Planla önerilen, ayrıca sorulmayan kurallar** (plan onayıyla kesinleşti, 2026-11-11):
   - Değiştirir ve Onaylar, Görür düzeyi olan bölümlerde Görür'ü verir. Onaylar Değiştirir'i,
     Değiştirir Onaylar'ı kapsamaz. Görür'ü olmayan işlem bölümleri menüde modül açmaz.
   - İlk gün erişimin aynı kaldığını bugünkü koddan üretilen sözleşme testi kanıtlar. Anlık görüntü
@@ -2406,6 +2407,6 @@ değiştirme zorunlu, yalnızca admin):
     gider oranının notunda yalnız bordro numarası yazar.
   - Yetki paketlerinin kopyası her sürümde saklanır ve denetim günlüğüne yazılır.
 - **İlk gün değişiklikleri:** planın §8'indeki tam liste.
-- **CLAUDE.md:** kural 12, §3, §5 ve §7 için metin önerildi (plan §11). Plan onayıyla onaylanır;
-  1. adımın, rol değiştirme cümlesi için 9. adımın commit'inde yazılır. Kural 12'ye 1. adımda
-  eklenen geçiş cümlesi 8. adımda silinir.
+- **CLAUDE.md:** kural 12, §3, §5 ve §7 için metin (plan §11) planla birlikte onaylandı. 1. adımda
+  kural 12 (geçiş cümlesiyle), §3, §5'in ilk kısmı ve §7 yazıldı; rol değiştirme cümlesi 9. adımda
+  yazılır, geçiş cümlesi 8. adımda silinir.
