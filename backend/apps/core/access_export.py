@@ -12,10 +12,17 @@ from typing import Any
 from apps.core import access
 from apps.core.roles import ROLE_LABELS
 
-REGENERATE = (
-    "Yeniden üretin (depo kökünde): docker compose exec -T backend python manage.py "
-    "export_access --format=ts > frontend/src/auth/access.gen.ts"
-)
+
+def regenerate_hint(fmt: str, target: str) -> str:
+    """Dosyayı yeniden üretme komutu. Depo kökünde çalışır: backend konteyneri ön yüzün
+    kaynaklarını salt okunur görür, çıktı konteynerin dışına yönlendirilir."""
+    return (
+        "Yeniden üretin (depo kökünde): docker compose exec -T backend python manage.py "
+        f"export_access --format={fmt} > {target}"
+    )
+
+
+REGENERATE = regenerate_hint("ts", "frontend/src/auth/access.gen.ts")
 
 TS_HEADER = """\
 // Bu dosya üretilir; elle değiştirmeyin.

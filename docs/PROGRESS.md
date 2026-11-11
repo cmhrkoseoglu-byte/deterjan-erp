@@ -1491,8 +1491,10 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   `AccessOverride` ve `AccessCatalogSnapshot`, `sync_access_catalog` (canlıdaki göç servisinde),
   `me` yanıtında `access` ve `is_admin`, `GET /api/v1/access/catalog/`, sistem denetimleri,
   `export_access` ve ön yüzün `access.gen.ts` dosyası (CI güncel olduğunu denetler).
-- **Paket denkliği:** 735 satır. Her modülün bugünkü rol denetimleri (ön yüz sabitleri dahil) 256
-  rol bileşiminin hepsinde yeni yetkiyle aynı karara varır; katalogda düzeltme gerekmedi.
+- **Paket denkliği:** 730 satır, 256 rol bileşiminin hepsinde. 717 satırda bugünkü rol denetimleri
+  (ön yüz sabitleri dahil) yeni yetkiyle aynı karara varır; 13 satır §8'in planlı farkıdır (1., 2.
+  ve 3. madde). Satın alma toplamının sahibin onayladığı kuralını ayrı bir test denetler.
+  Katalogda düzeltme gerekmedi.
 - **Katalog kararı:** Hassas veriler, Görevler ve Sistem gruplarının menüde kendi modülü yoktur
   (`menu=False`); Sistem menüsü bugünkü gibi yalnız admine açıktır (plan §2'ye yazıldı).
 - **Bağımsız inceleme** (adımın sonunda; bulunanlar düzeltildi, anlık görüntüler bugünkü kodla
@@ -1507,8 +1509,10 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
     (`register_field_openers`, `EffectiveAccess.sees_fields`): alanları açan bölümde Görür ya da
     modülün Açık kayıtlar satırı. Okuyan bölümler katalog sırasıyla yazılır; modüllerin yüklenme
     sırası katalog özetini değiştirmez.
-  - `AccessMixin` bugünkü kararları birebir taşıyabilir: eylem + metot anahtarı (`"picks:post"`),
-    `read_methods`, `write_access` ve `A | B` birleşimleri. Bugün 31 uç noktada HEAD, 29'unda
+  - `AccessMixin` bugünkü kararları birebir taşıyabilir: eylem + metot anahtarı (`"picks:post"`;
+    eylemi olmayan görünümde metodun adı, ör. `"put"`), `read_methods`, HEAD ve OPTIONS için
+    `other_safe_access` ve `A | B` birleşimleri; listede olmayan yazma eylemi her zaman reddedilir
+    (plan §5.4). Bugün 31 uç noktada HEAD, 29'unda
     OPTIONS kararı GET'ten farklıdır (yarıdan fazlası İSG ve bakımda); anlık görüntü bunları
     dondurdu.
   - 403 yanıtındaki eksik yetki ipucu, okuma kuralında Görür'ü (açık okumalı bölümde ayrıca Açık
@@ -1516,32 +1520,56 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   - Çok kişiyi birlikte hesaplayan yerler rolleri de önceden yükleyebilir; yetki tazelemesi önceden
     yüklenmiş rolleri ve ayarları da bırakır.
   - `sync_access_catalog` aynı anda çalışan iki kurulumda çift kopya yazmaz (işlem kilidi).
-  - Sistem denetimi, bölüm anahtarı yazıyla verildiğinde de (`HasAccess("quality.samples")`) modül
-    bağımlılığını denetler.
+  - Sistem denetimi HEAD ve OPTIONS isteklerini de denetler; bölüm anahtarı yazıyla verildiğinde
+    de (`HasAccess("quality.samples")`) modül bağımlılığını denetler.
   - `export_access --check` dosya yoksa hata verir; yeniden üretme komutu Docker ile yazılır.
     Backend konteyneri ön yüzün kaynaklarını salt okunur görür (paket denkliği ön yüz sabitlerini
     okur). Gizli bilgi taraması üretilen `access.gen.ts`'i atlar (katalog özeti gizli bilgi
     değildir; CI dosyanın güncel olduğunu denetler).
+- **İzin listesi önceden yazıldı** (plan §5.5 "Liste 1. adımda yazılır"): §8'in maddeleri ve planın
+  eklediği uç noktalar ve ekranlar, açıldıkları adımla (`step`): backend'de 685, ön yüzde 63 hücre
+  (2. adım 36, 4. adım 33, 5. adım 39, 6. adım 51, 7. adım 470, 8. adım 33, 9. adım 86). Her hücre
+  ayrı bir kayıttır ve ayrı ayrı gereklidir; yalnız yeni değeri uygulamaya bağlı 49 hücre gerekli
+  değildir. Yeni değeri plan sabitlemiyorsa yazılmadı; adım açılınca gözlenen değere sabitlenir
+  (test bunu ister; daraltmak onay istemez). Planın eklediği kayıtlar kapalı bir listedir (adıyla ve
+  adımıyla). Kayıtları dört ajan taslakladı, dört ajan çürütmeye çalıştı. `test_allowlist.py` ve
+  `allowlist.test.ts` her kaydın planın bir maddesine (§10'daki madde → adım eşlemesiyle) ve
+  dondurulmuş bir hücreye bağlı olduğunu bugünden denetler. Yönetimin yeni model kayıtları 5.
+  adımda biter (`until`); 6. adımda yerlerini yalnız admine görünme alır.
 - **CLAUDE.md:** kural 12 (geçiş cümlesiyle), §3, §5'in ilk kısmı ve §7 onaylı metinle yazıldı.
   §7'deki yol düzeltildi: test tek dosya değil, `apps/core/tests/access_contract/` klasörüdür.
-- **Sahibe soru (6. adımdan önce):** yönetim panosundaki onay bekleyen satın alma siparişlerinin TL
-  toplamını bugün yalnız yönetim görüyor. Plandaki kuralla (Fiyatları görür) planlama ve satın alma
-  rolünü birlikte taşıyan, yönetimde olmayan kişi de görür. `reporting` paket denkliğinde strict
-  xfail olarak duruyor.
+- **Sahip kararları (2026-11-11; DECISIONS):**
+  - İzin listesine planın eklediği iki kayıt türü ve Sistem > Rol yetkileri sekmesi de girer (plan
+    §5.5).
+  - Yönetim panosundaki onay bekleyen satın alma siparişlerinin TL toplamını bugün yalnız yönetim
+    görüyor. CUMHUR plandaki kuralı onayladı: 6. adımdan sonra panoyu açabilen ve Fiyatları
+    görür'ü olan kişi de görür (ör. planlama ve satın alma rollerini birlikte taşıyan, yönetimde
+    olmayan kişi). Plan §8'e eklendi. Katalogdaki kuralı `reporting` paket testi, kod
+    değişikliğini adıma bağlı `test_pending_purchase_total_for_planning_and_purchasing` denetler.
 - **Sonraki adımlar için notlar** (ajanların incelemesinden):
   - 2. adım: `inventory/services.py`'deki iki mesaj rol adı söylüyor ("admin yetkisindedir",
     "yalnızca laboratuvar").
-  - 4. adım: `probe_rules`'ta şartlı kabulün "kendi önerisi" hücreleri §8 madde 5 ile değişir.
+  - 4. adım: `probe_rules`'ta şartlı kabulün "kendi önerisi" onay hücreleri §8 madde 5 ile
+    `400 conditional_same_person` olur; reddetme değişmez. İadelerin sevkiyat seçiminde GET ve HEAD
+    kararları sabit, OPTIONS uygulamaya bırakıldı (görünümün okuma iznini izleyebilir).
   - 5. adım: `costing/services.py` ve `personnel/services.py`'de rol adı geçen mesajlar; personel
     kartı yanıtı ve kart geçmişi bordro tutarı taşıyabiliyor (Bordro: Görür'e bağlanmalı). İSG ve
     bakımda HEAD ve OPTIONS bugün yazma rolüyle denetleniyor; anlık görüntü bunu dondurdu.
+    §8 madde 8'in bordrosuz ay durumu adımdan önce sahibe sorulacak (plan §12).
   - 6. adım: denetim günlüğü süzmesi kayıt adındaki (`object_repr`) tutarları, fiyat düzeltmesi
     notunun lot ve lot maliyeti kayıtlarına yayılan kopyalarını, içerik türü olmayan kayıtları
     (bordro erişimi, rapor indirme) ve personel kartı notundaki bordro tutarlarını kapsamalı.
-    `probe_reports`'ta §8 madde 12 için `job.*.stale.download` farkları beklenir.
-  - 7. adım: `probe_workflow`'da §8 madde 6 (görevi üstlenen) ve 10 (yükten gelen alıcı) farkları;
-    süper kullanıcı bugün rol bildirimi almıyor, alıcı hesabı bunu korumalı.
-  - 8. adım: arama kaynakları kayıt okumasıyla değil Görür ile süzülür; mal kabul masraf paneli
-    gösterme (Fiyatları görür) ve kaydetme (Değiştirir) ayrılır; Tatiller sayfasındaki hafta tatili
-    kartı Personel ayarları'na bağlanır; eşlik testi kayıt sayfalarının içindeki bağlantıları
-    dondurmaz, §8 madde 2 için ayrı bir bölüm gerekir.
+    Rapor dosyası indirilirken yeniden denetim dosyanın kendi sütunlarına bakar (maliyet sütunu
+    olmayan stok raporunu isteyen engellenmez); iş ayrıntısındaki `can_download` değişmez.
+  - 7. adım: süper kullanıcı bugün rol bildirimi almıyor, alıcı hesabı bunu korumalı. Kural
+    bölümüne göre değişebilecek 26 iptal bildirimi hücresi izin listesinde yok; farkı çıkarsa
+    sahibe sorulur. Satın alma iptalinde planlama ve üretim kayıtları kuralın bölümünün Satın alma
+    siparişleri olduğunu varsayar.
+  - 8. adım: arama kaynakları, modül sekmeleri ve çok bölümlü rotalar Görür'e bağlanır (Kayıtları
+    okur'a değil); mal kabul masraf paneli gösterme (Fiyatları görür) ve kaydetme (Değiştirir)
+    ayrılır; Tatiller sayfasındaki hafta tatili kartı Personel ayarları'na bağlanır. Eşlik testi
+    kayıt sayfalarının içindeki bağlantıları dondurmaz, §8 madde 2 için ayrı bir bölüm gerekir.
+    "Yetkiniz yok" başlığı korunmalı (eşlik testi onu okur); süper kullanıcı personası `userWith`
+    dışında kurulur, `access` ve `is_admin` onda da doldurulmalı.
+  - 9. adım: `probe_audit` kişileri `core.update_user(..., roles=...)` ile kuruyor; rol değiştirme
+    Yetkiler ekranına taşınınca (§8 madde 13) sonda da değişir.

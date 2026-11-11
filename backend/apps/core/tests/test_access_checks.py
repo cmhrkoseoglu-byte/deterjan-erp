@@ -2,9 +2,14 @@
 
 from pathlib import Path
 
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
+from rest_framework.response import Response
+
 from apps.core import checks
-from apps.core.access import VIEW, register_module, register_section, temporary_catalog
-from apps.core.permissions import HasAccess, HasRole, ReadRule, SignedIn
+from apps.core.access import CHANGE, VIEW, register_module, register_section, temporary_catalog
+from apps.core.permissions import AccessMixin, HasAccess, HasRole, ReadRule, SignedIn
 from apps.production.access import ORDERS, PREP
 
 
@@ -85,3 +90,37 @@ def test_access_permission_recognition() -> None:
     assert checks._is_access_permission((HasAccess(ORDERS) | ReadRule(PREP))())
     assert not checks._is_access_permission(HasRole("depo")())
     assert not checks._is_access_permission((HasAccess(ORDERS) | HasRole("depo"))())
+
+
+class _HeadOptionsViewSet(AccessMixin, viewsets.ViewSet):
+    """HEAD ve OPTIONS'ı bölüm denetimi olmayan bir izne bırakan görünüm (E003 bunu görmeli)."""
+
+    read_access = ReadRule(ORDERS)
+    read_methods = frozenset({"GET"})
+    other_safe_access = IsAuthenticated
+    action_access = {"create": HasAccess(ORDERS, CHANGE)}
+
+    def list(self, request: Request) -> Response:
+        return Response([])
+
+    def create(self, request: Request) -> Response:
+        return Response({})
+
+
+def test_endpoint_check_covers_head_and_options() -> None:
+    callback = _HeadOptionsViewSet.as_view({"get": "list", "post": "create"})
+    endpoints = checks.with_head_and_options(
+        [("/api/v1/deneme/", "GET", callback), ("/api/v1/deneme/", "POST", callback)]
+    )
+
+    assert [(path, method) for path, method, _ in endpoints] == [
+        ("/api/v1/deneme/", "GET"),
+        ("/api/v1/deneme/", "HEAD"),
+        ("/api/v1/deneme/", "OPTIONS"),
+        ("/api/v1/deneme/", "POST"),
+    ]
+    assert checks.permission_errors(endpoints, {"core"}) == [
+        "HEAD /api/v1/deneme/: izin bölüm denetimi ya da açık işaret değil (IsAuthenticated).",
+        "OPTIONS /api/v1/deneme/: izin bölüm denetimi ya da açık işaret değil (IsAuthenticated).",
+    ]
+    assert checks.permission_errors(endpoints, {"sales"}) == []

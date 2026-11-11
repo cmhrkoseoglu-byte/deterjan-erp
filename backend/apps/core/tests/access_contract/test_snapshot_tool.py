@@ -74,6 +74,7 @@ def test_brackets_in_case_names_match_literally() -> None:
 def test_rules_of_a_later_step_are_not_active(monkeypatch: pytest.MonkeyPatch) -> None:
     rule = Allowed(item="§8 madde 5", snapshot="probe_rules", case="a [b]", step=4)
     monkeypatch.setattr(allowlist, "ALLOWED", (rule,))
+    monkeypatch.setattr(allowlist, "CURRENT_STEP", 3)
 
     unexpected, _, _ = snapshot.differences("probe_rules", {"a [b]": {"x": 1}}, {"a [b]": {"x": 2}})
     assert unexpected == ["a [b] [x]: 1 → 2"]
@@ -100,3 +101,16 @@ def test_required_rule_must_match(monkeypatch: pytest.MonkeyPatch, tmp_path: obj
     optional = Allowed(item="x", snapshot="probe", case="job", required=False)
     monkeypatch.setattr(allowlist, "ALLOWED", (optional,))
     snapshot.check("probe", {"job": {"uretim": 200}})
+
+
+def test_rules_end_after_their_last_step(monkeypatch: pytest.MonkeyPatch) -> None:
+    rule = Allowed(item="yeni model: deneme", snapshot="probe", case="a", step=1, until=5)
+    monkeypatch.setattr(allowlist, "ALLOWED", (rule,))
+
+    monkeypatch.setattr(allowlist, "CURRENT_STEP", 5)
+    assert allowlist.required_for("probe") == [rule]
+    assert snapshot.differences("probe", {"a": {"x": 1}}, {"a": {"x": 2}})[0] == []
+
+    monkeypatch.setattr(allowlist, "CURRENT_STEP", 6)
+    assert allowlist.required_for("probe") == []
+    assert snapshot.differences("probe", {"a": {"x": 1}}, {"a": {"x": 2}})[0] == ["a [x]: 1 → 2"]

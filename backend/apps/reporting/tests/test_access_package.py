@@ -20,8 +20,6 @@ değerleri `test_live_dict_constants` karşılaştırır. `menuRoles(...)` satı
 
 from collections.abc import Callable, Sequence
 
-import pytest
-
 from apps.core.access import APPROVE, COSTS, PRICES
 from apps.core.tests.access_helpers import (
     SIGNED_IN,
@@ -31,8 +29,10 @@ from apps.core.tests.access_helpers import (
     all_of,
     any_of,
     assert_rows,
+    effective_for,
     level,
     read,
+    role_subsets,
 )
 from apps.core.tests.test_access_package_shell import (
     MENU_ROLES,
@@ -292,20 +292,6 @@ PLANNED: list[Planned] = [
     ),
 ]
 
-# Plan ile bugünkü kodun ayrıştığı yerler; sahibe soruldu.
-MISMATCHES: list[Row] = [
-    # Onay bekleyen satın alma siparişlerinin TL toplamı bugün show_costs (yalnız yönetim, D-15)
-    # ile döner; plan §3.15 ve §3.18 Fiyatları görür'e bağlar. Pano yönetim ve planlamada açık
-    # olduğundan planlama + satın alma kişisi toplamı görmeye başlar.
-    _row(
-        "reporting.api.views.DASHBOARDS['management'] show_costs → "
-        "approvals.purchase_orders.total_try",
-        ("yonetim",),
-        all_of(level(MANAGEMENT), level(PRICES)),
-        lambda: tuple(set(_dashboard("management")) & set(SENSITIVE_ROLES["cost"])),
-    ),
-]
-
 
 def test_package_equivalence() -> None:
     assert_rows(ROWS)
@@ -316,14 +302,23 @@ def test_planned_changes() -> None:
     assert not errors, "Planlı farklar bozuk:\n" + "\n".join(errors)
 
 
-@pytest.mark.xfail(strict=True, reason="plan §3 ile bugünkü kod farklı; sahibe soruldu")
-def test_known_mismatches() -> None:
-    assert_rows(MISMATCHES)
+# Onay bekleyen satın alma siparişlerinin TL toplamı (plan §8, sahibin onayı 2026-11-11): plan
+# §3.15 ve §3.18 Fiyatları görür'e bağlar; bugünkü kod yalnız yönetime gösterir (show_costs, D-15).
+# Kural bir rol listesiyle yazılamaz (yönetim ya da planlama ve satın alma birlikte); katalog
+# tarafını bu test, kod tarafını adıma bağlı
+# `test_pending_purchase_total_for_planning_and_purchasing` denetler.
+PENDING_PURCHASE_TOTAL = all_of(level(MANAGEMENT), level(PRICES))
+
+
+def test_pending_purchase_total_follows_the_approved_rule() -> None:
+    for subset in role_subsets():
+        expected = "yonetim" in subset or {"planlama", "satin_alma"} <= subset
+        assert PENDING_PURCHASE_TOTAL.evaluate(effective_for(subset)) is expected, sorted(subset)
 
 
 def test_live_dict_constants() -> None:
     """Sözlükteki rol listeleri satırlardaki rollerle aynı (bugünkü kod)."""
-    rows = {row.source: row for row in [*ROWS, *MISMATCHES, *(p.row for p in PLANNED)]}
+    rows = {row.source: row for row in [*ROWS, *(p.row for p in PLANNED)]}
     for source, value in _LIVE:
         assert set(value()) == set(rows[source].roles), source
     assert REPORTS["stock-status"].roles == STOCK_ROLES

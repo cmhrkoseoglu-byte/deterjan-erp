@@ -215,11 +215,14 @@ class AccessMixin:
     İzin şu sırayla aranır:
 
     1. `action_access["<eylem>:<metot>"]`, ör. `"picks:post"`: aynı eylemde GET ve POST ayrıdır;
-    2. `action_access["<eylem>"]`, ör. `"approve"`;
+    2. `action_access["<eylem>"]`, ör. `"approve"`; eylemi olmayan görünümde (APIView) anahtar
+       metodun adıdır, ör. `"put"`;
     3. metot `read_methods` içindeyse `read_access` (varsayılan GET, HEAD, OPTIONS; bugün yalnız
        GET'i okuma sayan görünüm `frozenset({"GET"})` verir);
-    4. `write_access`: listede olmayan öteki istekler (bugün tek bir yazma rolüyle korunanlar);
-    5. hiçbiri yoksa reddedilir; böylece yeni bir eylem yetkisiz açılamaz.
+    4. `read_methods` dışında kalan güvenli metotlar (HEAD, OPTIONS) için `other_safe_access`
+       (bugün bunları yazma rolüyle denetleyen görünümler);
+    5. hiçbiri yoksa reddedilir: listede olmayan yazma eylemi her zaman reddedilir (plan §5.4),
+       böylece yeni bir eylem yetkisiz açılamaz.
 
     DRF, HEAD isteğini GET'in eylemine, OPTIONS isteğini `metadata` eylemine gönderir. Değerler
     izin sınıfı ya da `HasAccess(A) | HasAccess(B)` gibi birleşimlerdir.
@@ -227,19 +230,23 @@ class AccessMixin:
 
     read_access: ClassVar[PermissionClass | None] = None
     read_methods: ClassVar[frozenset[str]] = frozenset(SAFE_METHODS)
-    write_access: ClassVar[PermissionClass | None] = None
+    other_safe_access: ClassVar[PermissionClass | None] = None
     action_access: ClassVar[Mapping[str, PermissionClass]] = {}
 
     def get_permissions(self) -> list[Any]:
         request = getattr(self, "request", None)
         method = str(getattr(request, "method", "") or "").upper()
         action = getattr(self, "action", None)
-        if action is not None:
-            for key in (f"{action}:{method.lower()}", action):
-                if key in self.action_access:
-                    return [self.action_access[key]()]
+        keys = (f"{action}:{method.lower()}", action) if action is not None else (method.lower(),)
+        for key in keys:
+            if key in self.action_access:
+                return [self.action_access[key]()]
         if method in self.read_methods and self.read_access is not None:
             return [self.read_access()]
-        if self.write_access is not None:
-            return [self.write_access()]
+        if (
+            method in SAFE_METHODS
+            and method not in self.read_methods
+            and self.other_safe_access is not None
+        ):
+            return [self.other_safe_access()]
         return [DenyUnknownAction()]

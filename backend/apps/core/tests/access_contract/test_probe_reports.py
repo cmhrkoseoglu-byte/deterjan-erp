@@ -31,7 +31,7 @@ from rest_framework.test import APIClient
 
 from apps.core.models import User
 from apps.core.roles import PLANLAMA, SATIN_ALMA
-from apps.core.tests.access_contract import snapshot
+from apps.core.tests.access_contract import allowlist, snapshot
 from apps.core.tests.access_contract.personas import PERSONAS, make_personas, persona_client
 from apps.inventory.services import set_lot_cost
 from apps.inventory.tests.factories import stocked_lot
@@ -492,17 +492,21 @@ def test_reports_match_snapshot(
 def test_pending_purchase_total_for_planning_and_purchasing(
     make_user: Callable[..., User],
 ) -> None:
-    """Sahibin kararını bekleyen durum (plan §12). Yönetim panosundaki onay bekleyen satın alma
-    siparişlerinin TL toplamını bugün yalnız yönetim görür: planlama ve satın alma rolünü birlikte
-    taşıyan, yönetimde olmayan kişi görmez. Planın "Fiyatları görür" kuralı bunu açar; 6. adımda
-    sahibin kararına göre bu test ya kalır ya da §8'deki bir maddeye bağlanır."""
+    """Yönetim panosundaki onay bekleyen satın alma siparişlerinin TL toplamı (plan §8, sahibin
+    onayıyla). Bugün yalnız yönetim görür; 6. adımdan sonra panoyu açabilen ve Fiyatları görür'ü
+    olan kişi de görür. Personalar bu bileşimi içermediği için anlık görüntü değişikliği görmez;
+    bu test görür."""
     money_data(make_user)
     user = make_user(PLANLAMA, SATIN_ALMA)
 
     response = persona_client(user).get(f"{BASE}/dashboards/management/")
 
     assert response.status_code == 200
-    assert response.json()["approvals"]["purchase_orders"]["total_try"] is None
+    total = response.json()["approvals"]["purchase_orders"]["total_try"]
+    if allowlist.CURRENT_STEP < 6:
+        assert total is None
+    else:
+        assert total is not None
 
 
 def test_snapshot_file_is_complete() -> None:

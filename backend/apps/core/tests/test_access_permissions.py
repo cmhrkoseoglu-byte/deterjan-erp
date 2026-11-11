@@ -164,16 +164,17 @@ WRITE = HasRole(DEPO)
 
 
 class _MethodViewSet(AccessMixin):
-    """Bugünkü kararları birebir çeviren bir görünüm: GET ile POST ayrı, HEAD okuma sayılmaz,
-    listede olmayan istekler tek bir yazma rolüyle korunur."""
+    """Bugünkü kararları birebir çeviren bir görünüm: GET ile POST ayrı; HEAD ve OPTIONS okuma
+    sayılmaz, yazma rolüyle denetlenir."""
 
     read_access = ReadRule(ORDERS)
     read_methods = frozenset({"GET"})
-    write_access = WRITE
+    other_safe_access = WRITE
     action_access = {
         "picks:post": HasAccess(PREP, CHANGE),
         "picks": ReadRule(PREP),
         "approve": HasAccess(ORDERS, APPROVE) | HasAccess(PREP, CHANGE),
+        "put": HasAccess(ORDERS, CHANGE),
     }
 
     def __init__(self, action: str | None, method: str) -> None:
@@ -181,10 +182,10 @@ class _MethodViewSet(AccessMixin):
         self.request = factory.generic(method, "/x/")
 
 
-def test_access_mixin_method_keys_read_methods_and_write_access(
+def test_access_mixin_method_keys_read_methods_and_other_safe_access(
     make_user: Callable[..., User],
 ) -> None:
-    def name(action: str, method: str) -> str:
+    def name(action: str | None, method: str) -> str:
         (permission,) = _MethodViewSet(action, method).get_permissions()
         return type(permission).__name__
 
@@ -192,9 +193,19 @@ def test_access_mixin_method_keys_read_methods_and_write_access(
     assert name("picks", "GET") == "ReadRule(production.prep)"
     assert name("list", "GET") == "ReadRule(production.orders)"
     (head,) = _MethodViewSet("list", "HEAD").get_permissions()
-    (close,) = _MethodViewSet("close", "POST").get_permissions()
+    (options,) = _MethodViewSet("metadata", "OPTIONS").get_permissions()
     assert isinstance(head, WRITE)
-    assert isinstance(close, WRITE)
+    assert isinstance(options, WRITE)
+    # Listede olmayan yazma eylemi, güvenli metotların izni verilmiş olsa da reddedilir.
+    (close,) = _MethodViewSet("close", "POST").get_permissions()
+    (delete,) = _MethodViewSet("destroy", "DELETE").get_permissions()
+    assert isinstance(close, DenyUnknownAction)
+    assert isinstance(delete, DenyUnknownAction)
+
+    # Eylemi olmayan görünümde (APIView) anahtar metodun adıdır.
+    assert name(None, "PUT") == "HasAccess(production.orders, change)"
+    (patch,) = _MethodViewSet(None, "PATCH").get_permissions()
+    assert isinstance(patch, DenyUnknownAction)
 
     (either,) = _MethodViewSet("approve", "POST").get_permissions()
     assert either.has_permission(drf_request(make_user(PLANLAMA)), VIEW_STUB)

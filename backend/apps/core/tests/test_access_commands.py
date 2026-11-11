@@ -91,6 +91,17 @@ def test_export_command_check_reports_missing_file(tmp_path: Path) -> None:
         call_command("export_access", "--format=ts", f"--check={tmp_path / 'yok.ts'}")
 
 
+def test_export_command_hint_follows_the_format(tmp_path: Path) -> None:
+    target = tmp_path / "yetkiler.md"
+    target.write_text("eski\n", encoding="utf-8")
+
+    with pytest.raises(CommandError) as caught:
+        call_command("export_access", "--format=markdown", f"--check={target}")
+
+    assert f"--format=markdown > {target}" in str(caught.value)
+    assert "access.gen.ts" not in str(caught.value)
+
+
 def test_export_command_prints_markdown() -> None:
     out = StringIO()
 

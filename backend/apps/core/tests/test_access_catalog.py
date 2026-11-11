@@ -10,7 +10,7 @@ import pytest
 
 from apps.core import access
 from apps.core.access import ANY_ROLE, APPROVE, CHANGE, EVERYONE, READ, VIEW, Kind
-from apps.core.access_export import to_typescript
+from apps.core.access_export import REGENERATE, to_typescript
 from apps.core.roles import YONETIM
 
 FRONTEND_FILE = Path(__file__).resolve().parents[4] / "frontend" / "src" / "auth" / "access.gen.ts"
@@ -151,7 +151,5 @@ def test_actions_never_open_a_menu_module() -> None:
 def test_frontend_file_is_current() -> None:
     current = FRONTEND_FILE.read_text(encoding="utf-8").replace("\r\n", "\n")
 
-    assert current == to_typescript(), (
-        "frontend/src/auth/access.gen.ts güncel değil: python manage.py export_access "
-        "--format=ts --output ../frontend/src/auth/access.gen.ts"
-    )
+    message = f"frontend/src/auth/access.gen.ts güncel değil. {REGENERATE}"
+    assert current == to_typescript(), message

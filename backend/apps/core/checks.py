@@ -113,11 +113,37 @@ def endpoint_errors(enforced: Iterable[str]) -> list[str]:
     if not enforced:
         return []
     from rest_framework.schemas.generators import EndpointEnumerator
+
+    return permission_errors(
+        with_head_and_options(EndpointEnumerator().get_api_endpoints()), enforced
+    )
+
+
+def with_head_and_options(endpoints: Iterable[tuple[str, str, Any]]) -> list[tuple[str, str, Any]]:
+    """DRF'nin listesi HEAD ve OPTIONS'ı atlar; izin katmanı bunları da denetler (AccessMixin'de
+    ayrı izin alabilirler). GET'i olan her yola HEAD, her yola OPTIONS eklenir; sözleşme testinin
+    uç nokta listesiyle aynı kural."""
+    seen: dict[tuple[str, str], Any] = {}
+    for path, method, callback in endpoints:
+        seen.setdefault((path, method.upper()), callback)
+    for (path, method), callback in list(seen.items()):
+        if method == "GET":
+            seen.setdefault((path, "HEAD"), callback)
+        seen.setdefault((path, "OPTIONS"), callback)
+    return [(path, method, callback) for (path, method), callback in sorted(seen.items())]
+
+
+def permission_errors(
+    endpoints: Iterable[tuple[str, str, Any]], enforced: Iterable[str]
+) -> list[str]:
+    """Uç noktaların izinlerini, DRF'nin yönlendiricisi gibi eylemi seçerek denetler: HEAD GET'in
+    eylemine, OPTIONS `metadata` eylemine gider."""
     from rest_framework.test import APIRequestFactory
 
+    enforced = set(enforced)
     factory = APIRequestFactory()
     errors: list[str] = []
-    for path, method, callback in EndpointEnumerator().get_api_endpoints():
+    for path, method, callback in endpoints:
         cls = getattr(callback, "cls", None)
         if cls is None:
             continue
@@ -125,10 +151,14 @@ def endpoint_errors(enforced: Iterable[str]) -> list[str]:
         if len(module_parts) < 2 or module_parts[0] != "apps" or module_parts[1] not in enforced:
             continue
         view = cls(**getattr(callback, "initkwargs", {}))
-        actions = getattr(callback, "actions", None) or {}
-        view.action = actions.get(method.lower())
-        view.request = factory.generic(method, path)
+        actions = dict(getattr(callback, "actions", None) or {})
+        if actions:
+            if "get" in actions and "head" not in actions:
+                actions["head"] = actions["get"]
+            view.action_map = actions
+        view.args = ()
         view.kwargs = {}
+        view.request = view.initialize_request(factory.generic(method, path))
         for permission in view.get_permissions():
             if not _is_access_permission(permission):
                 errors.append(

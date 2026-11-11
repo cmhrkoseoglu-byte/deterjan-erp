@@ -2378,8 +2378,11 @@ değiştirme zorunlu, yalnızca admin):
     fiyatıdır). Bordro, Ücretler: Görür'ü ister. Personel maliyeti; Maliyetleri görür, Ücretler:
     Görür ve Bordro: Görür'ü ister.
   - Panodaki onay bekleyen satın alma siparişi toplamı Fiyatları görür'e (karar 6), stok değeri
-    Maliyetleri görür'e bağlıdır. Toplamı bugün yalnız yönetim görüyor; fark 1. adımda ortaya çıktı,
-    sahibe soruldu (2026-11-11), yanıt bekleniyor (plan §12).
+    Maliyetleri görür'e bağlıdır. Toplamı bugün yalnız yönetim görüyor; fark 1. adımda ortaya
+    çıktı. CUMHUR plandaki kuralı onayladı (2026-11-11): 6. adımdan sonra panoyu açabilen ve
+    Fiyatları görür'ü olan kişi de toplamı görür (ör. planlama ve satın alma rollerini birlikte
+    taşıyan, yönetimde olmayan kişi; tutarları satın almada zaten görüyor). İlk gün değişikliği
+    olarak plan §8'e eklendi.
   - Personel ayarları (bordro parametreleri, hafta tatili günleri) ve canlı başlangıç tarihi kendi
     "Ayarlar" satırlarındadır (karar 7). Onaylı bordronun ödeme tarihini düzeltmek Onaylar'dır.
   - Var olan kullanıcının rolleri ve yetkileri yalnız admin tarafından, Sistem > Kullanıcılar >
@@ -2411,3 +2414,20 @@ değiştirme zorunlu, yalnızca admin):
 - **CLAUDE.md:** kural 12, §3, §5 ve §7 için metin (plan §11) planla birlikte onaylandı. 1. adımda
   kural 12 (geçiş cümlesiyle), §3, §5'in ilk kısmı ve §7 yazıldı; rol değiştirme cümlesi 9. adımda
   yazılır, geçiş cümlesi 8. adımda silinir.
+
+## 2026-11-11 — Kişiye özel yetkiler: 1. adımın sahip kararları
+
+- **Bağlam:** 1. adımın sözleşme testi (plan §5.5) iki yerde sahibin kararını istedi.
+- **Panodaki bekleyen satın alma toplamı:** plandaki kural uygulanır ("plana uy"). 6. adımdan sonra
+  yönetim panosunu açabilen ve Fiyatları görür'ü olan kişi de toplamı görür (ör. planlama ve satın
+  alma rollerini birlikte taşıyan kişi). Gerekçe: bu kişi tutarları satın almada zaten görüyor.
+  Plan §8'e ilk gün değişikliği olarak eklendi.
+- **İzin listesinin planın eklediği kalemleri:** §5.5'in listesine, uç noktaların yanında planın
+  eklediği iki kayıt türü (kişiye özel yetki ve paket sürümü) ve Sistem > Rol yetkileri sekmesi de
+  girer. İki kayıt türü 1-5. adımlarda denetim günlüğünde bugünkü gibi yönetime de görünür (bu
+  adımlarda yalnız paket sürümü kaydı yazılır), 6. adımdan sonra yalnız admine. Gerekçe: üçü de
+  planın kendi getirdiği şeylerdir; sözleşme testi onları yeni fark olarak görür.
+- **İzin listesinin yazımı:** liste 1. adımda bütün maddeleriyle yazıldı, hücre başına; yeni değeri
+  plan sabitlemiyorsa açık bırakıldı ve adımı açılınca gözlenen değere sabitlenir (daraltmak onay
+  istemez, genişletmek ister).
+

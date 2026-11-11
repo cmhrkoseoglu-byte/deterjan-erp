@@ -1,8 +1,11 @@
 """Yetki kataloğunu ön yüz için TypeScript'e ya da belgeler için Markdown'a yazar.
 
-python manage.py export_access --format=ts --output ../frontend/src/auth/access.gen.ts
-python manage.py export_access --format=ts --check ../frontend/src/auth/access.gen.ts
-python manage.py export_access --format=markdown
+Backend konteyneri ön yüzün kaynaklarını salt okunur görür; dosya depo kökünden, çıktı konteynerin
+dışına yönlendirilerek üretilir (`access_export.REGENERATE`):
+
+- `export_access --format=ts` (ekrana; yönlendirme ile `frontend/src/auth/access.gen.ts`)
+- `export_access --format=ts --check ../frontend/src/auth/access.gen.ts` (CI)
+- `export_access --format=markdown`
 """
 
 from pathlib import Path
@@ -10,7 +13,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
-from apps.core.access_export import REGENERATE, to_markdown, to_typescript
+from apps.core.access_export import REGENERATE, regenerate_hint, to_markdown, to_typescript
 
 
 class Command(BaseCommand):
@@ -27,11 +30,16 @@ class Command(BaseCommand):
         text = to_typescript() if options["format"] == "ts" else to_markdown()
         if options["check"]:
             path = Path(options["check"])
+            hint = (
+                REGENERATE
+                if options["format"] == "ts"
+                else regenerate_hint(options["format"], options["check"])
+            )
             if not path.exists():
-                raise CommandError(f"{path} bulunamadı. {REGENERATE}")
+                raise CommandError(f"{path} bulunamadı. {hint}")
             current = path.read_text(encoding="utf-8")
             if current.replace("\r\n", "\n") != text:
-                raise CommandError(f"{path} güncel değil. {REGENERATE}")
+                raise CommandError(f"{path} güncel değil. {hint}")
             self.stdout.write(f"{path} güncel.")
             return
         if options["output"]:

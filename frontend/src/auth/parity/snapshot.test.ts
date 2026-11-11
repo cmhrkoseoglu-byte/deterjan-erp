@@ -69,8 +69,9 @@ describe("eşlik anlık görüntüsü aracı", () => {
 
   it("izinsiz farkta okunur bir hata verir, anlık görüntü yoksa nasıl üretileceğini söyler", () => {
     const baseline = { menu: { hse: { depo: true } } };
-    expect(() => compareSection(baseline, "menu", { hse: { depo: true } })).not.toThrow();
-    expect(() => compareSection(baseline, "menu", { hse: { depo: false } })).toThrow(
+    // İzin listesi açıkça boş verilir: gerçek liste 8. adımda menü kayıtlarını gerekli kılar.
+    expect(() => compareSection(baseline, "menu", { hse: { depo: true } }, [])).not.toThrow();
+    expect(() => compareSection(baseline, "menu", { hse: { depo: false } }, [])).toThrow(
       /1 izinsiz fark\.\nmenu › hse \[depo\]: true → false/,
     );
     expect(() => compareSection(null, "menu", {})).toThrow(/ACCESS_PARITY_UPDATE=1/);
@@ -125,5 +126,17 @@ describe("eşlik anlık görüntüsü aracı", () => {
     expect(() =>
       compareSection(baseline, "menu", { hse: { no_role: true } }, [other, optional]),
     ).not.toThrow();
+  });
+
+  it("kayıt son adımından sonra geçerli değildir", () => {
+    const rule: Allowed = { item: "yeni sayfa: deneme", section: "menu", case: "hse", until: 8 };
+    const expected = { hse: { no_role: true } };
+    const actual = { hse: { no_role: false } };
+    expect(differences("menu", expected, actual, [rule], 8).unexpected).toEqual([]);
+    expect(isActive(rule, 9)).toBe(false);
+    expect(requiredFor("menu", [rule], 9)).toEqual([]);
+    expect(differences("menu", expected, actual, [rule], 9).unexpected).toEqual([
+      "menu › hse [no_role]: true → false",
+    ]);
   });
 });

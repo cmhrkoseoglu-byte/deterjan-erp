@@ -551,6 +551,9 @@ yetkiyi verir. İki istisna listededir (§5.7).
 **İzin listesi:** dört parçanın her biri §8'in maddelerine bağlı açık bir izin listesi taşır
 (madde numarası → beklenen fark). Bu planın eklediği uç noktalar da listede adıyla yer alır:
 katalog, `me/access`, `users/{id}/access` ve geçmişi, `access/report`, iadelerin sevkiyat seçimi.
+Planın eklediği iki kayıt türü (kişiye özel yetki ve paket sürümü; denetim günlüğünde 1-5.
+adımlarda bugünkü gibi yönetime de, 6. adımdan sonra yalnız admine görünür) ve Sistem > Rol
+yetkileri sekmesi de listededir (sahibin onayıyla, 2026-11-11).
 Liste 1. adımda sözleşme testiyle birlikte yazılır; her adım yalnız kendi maddelerini açar. §8'in
 maddeleri bu planın onayıyla onaylanmış sayılır. Başka her fark ve anlık görüntü güncellemesi
 sahibin onayını ve DECISIONS kaydını ister.
@@ -896,6 +899,12 @@ fark edilir. Sözleşme testi bu listeyi izin listesi olarak kullanır (§5.5).
 12. Rapor dosyası indirilirken raporun yetkisi yeniden denetlenir: dosyayı istedikten sonra rolünü
     kaybeden kişi dosyayı indiremez.
 
+Sahibin onayıyla eklendi (2026-11-11; 6. adımda): yönetim panosundaki onay bekleyen satın alma
+siparişlerinin TL toplamını, panoyu açabilen ve Fiyatları görür'ü olan kişi de görür (ör. planlama
+ve satın alma rollerini birlikte taşıyan, yönetimde olmayan kişi; bugün yalnız yönetim). Sözleşme
+testinin personaları bu bileşimi içermez: katalogdaki kuralı reporting paket testi, kod
+değişikliğini adıma bağlı `test_pending_purchase_total_for_planning_and_purchasing` denetler.
+
 **Paket B ile:**
 
 13. Var olan kullanıcının rolleri Yetkiler sayfasından ve gerekçeyle değişir. `PATCH /users/{id}/`
@@ -1073,11 +1082,10 @@ Kural 12'ye 1. adımda bir geçiş cümlesi eklenir ve 8. adımın commit'inde s
 
 ## 12. Sonra sorulacaklar (ilgili adımdan önce)
 
-- **Panodaki bekleyen satın alma toplamı** (6. adımdan önce; 1. adımın paket denkliği gösterdi).
-  Yönetim panosundaki onay bekleyen satın alma siparişlerinin TL toplamını bugün yalnız yönetim
-  görüyor. §3'teki kuralla (Fiyatları görür) planlama ve satın alma rollerini birlikte taşıyan,
-  yönetimde olmayan kişi de görür; bu kişi tutarları satın almada zaten görüyor. Plandaki kural mı
-  uygulansın, bugünkü gibi yalnız yönetim mi? Sahibe soruldu (2026-11-11).
+- **Bordrosu olmayan ayın işçilik oranı notu** (5. adımdan önce; §8 madde 8). Personel
+  maliyetinden açılan gider oranının notunda tutar yerine bordro numarası yazar; canlı
+  başlangıcından önceki aylarda onaylı bordro olmadığından numara yoktur. Not o zaman ne yazsın
+  (ör. yalnız "Personel maliyetinden")?
 - **İrsaliyedeki şoför kimlik numarası** (10. adımdan önce): irsaliye PDF'inde tam numarayı
   kimlerin göreceği KVKK.md ile birlikte netleşir; belge mi düzeltilsin, ayrı bir hak mı olsun?
   Bugünkü durum size ayrıca sunulur.
