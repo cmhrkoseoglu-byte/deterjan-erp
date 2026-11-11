@@ -164,7 +164,8 @@ UNTRACKED = frozenset(
     {"password", "last_login", "created_at", "created_by", "updated_at", "updated_by"}
 )
 # Proje modeli sayısı: yeni modelin denetim günlüğünde kime görüneceği bir karardır.
-EXPECTED_MODELS = 122
+# 1. adım: core.accessoverride ve core.accesscatalogsnapshot eklendi (plan §5.2).
+EXPECTED_MODELS = 124
 
 
 # --- kayıt izi ---------------------------------------------------------------------------------

@@ -44,6 +44,14 @@ ALLOWED: tuple[Allowed, ...] = (
         case="* /api/v1/access/catalog/",
         old=MISSING,
     ),
+    # 1. adım: yeni modeller. Denetim günlüğünde bugünkü gibi yönetime de görünürler; yalnız admine
+    # kalmaları denetim günlüğü süzmesiyle gelir (plan §5.6, 6. adım).
+    Allowed(
+        item="yeni model: kişiye özel yetki ve paket sürümü (plan §5.2)",
+        snapshot="probe_audit",
+        case="model: core.access*",
+        old=MISSING,
+    ),
 )
 
 
