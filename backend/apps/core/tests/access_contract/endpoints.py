@@ -10,9 +10,10 @@ burada değil, sondalarda ve paket denkliğinde sınanır.
 import re
 from typing import Any
 
+from django.contrib.auth.models import AnonymousUser
 from rest_framework import exceptions
 from rest_framework.schemas.generators import EndpointEnumerator
-from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework.test import APIRequestFactory
 from rest_framework.views import APIView
 
 API_PREFIX = "/api/v1/"
@@ -58,10 +59,14 @@ _factory = APIRequestFactory()
 
 
 def decide(method: str, path: str, callback: Any, user: Any) -> str:
-    """Personanın bu uç noktadaki izin kararı: `allow`, `401` ya da `403`."""
+    """Personanın bu uç noktadaki izin kararı: `allow`, `401` ya da `403`.
+
+    Kimlik canlıdaki gibi doğrulanır: oturum ara katmanı kullanıcıyı isteğe yazar, görünümün kendi
+    kimlik doğrulayıcısı (SessionAuthentication) onu kabul eder ya da düşürür. Pasif kullanıcı bu
+    yüzden anonim sayılır; `force_authenticate` bunu atlardı.
+    """
     request = _factory.generic(method, PARAM.sub("1", path))
-    if user is not None:
-        force_authenticate(request, user=user)
+    request.user = user if user is not None else AnonymousUser()
     view = callback.cls(**getattr(callback, "initkwargs", {}))
     view.args = ()
     view.kwargs = {name: "1" for name in PARAM.findall(path)}
