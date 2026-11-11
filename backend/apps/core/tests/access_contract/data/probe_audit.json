@@ -1,0 +1,1440 @@
+{
+ "_note": "Okuyamayan persona (bkz. 'read: list') içerik durumlarında yer almaz; 'trail:' durumlarında o imzadaki kaydı görmeyen persona da yazılmaz. Fark satırındaki <yok> bunu anlatır.",
+ "amounts: fields": {
+  "admin": [
+   "costing.costrate note",
+   "costing.costrate rate_per_kg",
+   "costing.lotcost finished_scrap_cost",
+   "costing.lotcost note",
+   "costing.lotcost total_cost",
+   "costing.lotcost unit_cost",
+   "inventory.goodsreceipt extra_cost.amount",
+   "inventory.goodsreceiptextracost amount",
+   "inventory.goodsreceiptline currency",
+   "inventory.goodsreceiptline exchange_rate",
+   "inventory.goodsreceiptline unit_price",
+   "inventory.lot cost_is_estimated",
+   "inventory.lot unit_cost",
+   "personnel.employeewage gross_monthly",
+   "personnel.payrollitem amount",
+   "purchasing.purchaseorder currency",
+   "purchasing.purchaseorder exchange_rate",
+   "purchasing.purchaseorder line.unit_price",
+   "purchasing.purchaseorderline unit_price",
+   "workflow.task description"
+  ],
+  "superuser": [
+   "costing.costrate note",
+   "costing.costrate rate_per_kg",
+   "costing.lotcost finished_scrap_cost",
+   "costing.lotcost note",
+   "costing.lotcost total_cost",
+   "costing.lotcost unit_cost",
+   "inventory.goodsreceipt extra_cost.amount",
+   "inventory.goodsreceiptextracost amount",
+   "inventory.goodsreceiptline currency",
+   "inventory.goodsreceiptline exchange_rate",
+   "inventory.goodsreceiptline unit_price",
+   "inventory.lot cost_is_estimated",
+   "inventory.lot unit_cost",
+   "personnel.employeewage gross_monthly",
+   "personnel.payrollitem amount",
+   "purchasing.purchaseorder currency",
+   "purchasing.purchaseorder exchange_rate",
+   "purchasing.purchaseorder line.unit_price",
+   "purchasing.purchaseorderline unit_price",
+   "workflow.task description"
+  ],
+  "yonetim": [
+   "costing.costrate note",
+   "costing.costrate rate_per_kg",
+   "costing.lotcost finished_scrap_cost",
+   "costing.lotcost note",
+   "costing.lotcost total_cost",
+   "costing.lotcost unit_cost",
+   "inventory.goodsreceipt extra_cost.amount",
+   "inventory.goodsreceiptextracost amount",
+   "inventory.goodsreceiptline currency",
+   "inventory.goodsreceiptline exchange_rate",
+   "inventory.goodsreceiptline unit_price",
+   "inventory.lot cost_is_estimated",
+   "inventory.lot unit_cost",
+   "personnel.employeewage gross_monthly",
+   "personnel.payrollitem amount",
+   "purchasing.purchaseorder currency",
+   "purchasing.purchaseorder exchange_rate",
+   "purchasing.purchaseorder line.unit_price",
+   "purchasing.purchaseorderline unit_price",
+   "workflow.task description"
+  ]
+ },
+ "amounts: notes": {
+  "admin": [
+   "costing.lotcost create",
+   "inventory.goodsreceipt update",
+   "inventory.goodsreceiptline update",
+   "inventory.lot update",
+   "personnel.employee custom",
+   "purchasing.purchaseorder status_change"
+  ],
+  "superuser": [
+   "costing.lotcost create",
+   "inventory.goodsreceipt update",
+   "inventory.goodsreceiptline update",
+   "inventory.lot update",
+   "personnel.employee custom",
+   "purchasing.purchaseorder status_change"
+  ],
+  "yonetim": [
+   "costing.lotcost create",
+   "inventory.goodsreceipt update",
+   "inventory.goodsreceiptline update",
+   "inventory.lot update",
+   "personnel.employee custom",
+   "purchasing.purchaseorder status_change"
+  ]
+ },
+ "model: core.attachment": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.auditlog": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.codehistory": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.codemigrationrun": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.codescheme": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.codeschemerevision": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.codesequence": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.documentsequence": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.loginlockout": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.outputbandchange": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.outputdocument": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.outputdocumentrevision": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.recoverycode": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.totpdevice": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: core.user": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: costing.costrate": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: costing.departmentcostcenter": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: costing.lotcost": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: costing.lotcostline": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: costing.personnelcostsettings": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: costing.standardcost": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: filling.fillingconsumption": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: filling.fillingorder": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: filling.fillingrequirement": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: filling.fillingrun": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: filling.packagingpick": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: filling.packagingspec": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: filling.packagingspecline": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: filling.runlot": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: filling.scraprecord": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: golive.problemreport": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: golive.stockcomparison": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: golive.stockcomparisonline": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: hse.hazardstatement": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: hse.hsesettings": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: hse.incident": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: hse.materialhazard": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: hse.safetydatasheet": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: hse.storagelimit": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: hse.wastecontractor": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: hse.wasterecord": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.goodsreceipt": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.goodsreceiptextracost": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.goodsreceiptline": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.inventorysettings": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.lot": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.lotlink": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.lotnumbersequence": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.palletlabel": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.stockadjustment": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.stockadjustmentline": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.stockbalance": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.stockmovement": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: inventory.stockreservation": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: maintenance.changeoverrule": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: maintenance.downtime": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: maintenance.maintenanceplan": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: maintenance.maintenancesettings": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: maintenance.maintenanceworkorder": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: maintenance.workorderpart": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.companyprofile": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.customer": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.equipment": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.labelsettings": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.location": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.material": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.materialcategory": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.materialunitconversion": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.printer": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.retiredgtin": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.supplier": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.unitofmeasure": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: masterdata.warehouse": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: ops.backuprun": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: ops.checkstate": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: ops.heartbeat": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.attendanceentry": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.attendancemonth": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.attendancesettings": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.employee": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.employeedocument": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.employeewage": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.externalpayrollfigure": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.payrollapproval": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.payrollitem": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.payrollopeningbalance": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.payrollparameterset": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.payrollrun": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.payrollslip": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: personnel.publicholiday": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: production.batchconsumption": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: production.materialpick": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: production.productionbatch": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: production.productionorder": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: production.productionrequirement": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: production.reworkaddition": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: purchasing.purchaseorder": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: purchasing.purchaseorderline": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: purchasing.purchaserequest": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: purchasing.purchasingsettings": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: purchasing.receiptlinelink": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: quality.qualitydecision": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: quality.sample": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: quality.specification": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: quality.specificationline": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: quality.testdefinition": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: quality.testresult": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: recipes.recipe": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: recipes.recipeline": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: recipes.recipestep": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: recipes.recipeversion": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: reporting.reportjob": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: returns.customerreturn": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: returns.customerreturnline": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: sales.salesorder": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: sales.salesorderline": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: sales.shipment": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: sales.shipmentline": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: sales.shipmentpick": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: workflow.comment": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: workflow.notification": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "model: workflow.task": {
+  "admin": "full",
+  "superuser": "full",
+  "yonetim": "full"
+ },
+ "read: detail bordro erişimi (kayıtsız)": {
+  "admin": "- custom [month, year] note",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "- custom [month, year] note",
+  "uretim": 403,
+  "yonetim": "- custom [month, year] note"
+ },
+ "read: detail core.attachment create (olay fotoğrafı)": {
+  "admin": "core.attachment create [content_type, file, is_active, kind, mime_type, object_id, original_name, size]",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "core.attachment create [content_type, file, is_active, kind, mime_type, object_id, original_name, size]",
+  "uretim": 403,
+  "yonetim": "core.attachment create [content_type, file, is_active, kind, mime_type, object_id, original_name, size]"
+ },
+ "read: detail core.user login": {
+  "admin": "core.user login []",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "core.user login []",
+  "uretim": 403,
+  "yonetim": "core.user login []"
+ },
+ "read: detail costing.costrate create (işçilik notu)": {
+  "admin": "costing.costrate create [kind, note$, rate_per_kg$, stage, valid_from]",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "costing.costrate create [kind, note$, rate_per_kg$, stage, valid_from]",
+  "uretim": 403,
+  "yonetim": "costing.costrate create [kind, note$, rate_per_kg$, stage, valid_from]"
+ },
+ "read: detail costing.lotcost create": {
+  "admin": "costing.lotcost create [calculated_at, calculated_by, cost_date, finished_scrap_cost$, has_missing, is_current, is_estimated, lot, material, method, quantity, total_cost$, unit_cost$, version]",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "costing.lotcost create [calculated_at, calculated_by, cost_date, finished_scrap_cost$, has_missing, is_current, is_estimated, lot, material, method, quantity, total_cost$, unit_cost$, version]",
+  "uretim": 403,
+  "yonetim": "costing.lotcost create [calculated_at, calculated_by, cost_date, finished_scrap_cost$, has_missing, is_current, is_estimated, lot, material, method, quantity, total_cost$, unit_cost$, version]"
+ },
+ "read: detail golive.problemreport create": {
+  "admin": "golive.problemreport create [description, number, page_title, page_url]",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "golive.problemreport create [description, number, page_title, page_url]",
+  "uretim": 403,
+  "yonetim": "golive.problemreport create [description, number, page_title, page_url]"
+ },
+ "read: detail hse.incident create": {
+  "admin": "hse.incident create [description, incident_type, injured_person, injury, number, occurred_at, place, severity, status]",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "hse.incident create [description, incident_type, injured_person, injury, number, occurred_at, place, severity, status]",
+  "uretim": 403,
+  "yonetim": "hse.incident create [description, incident_type, injured_person, injury, number, occurred_at, place, severity, status]"
+ },
+ "read: detail inventory.goodsreceipt update (silinen ek masraf)": {
+  "admin": "inventory.goodsreceipt update [extra_cost.allocation, extra_cost.amount$, extra_cost.description, extra_cost.kind, extra_cost.receipt] note",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "inventory.goodsreceipt update [extra_cost.allocation, extra_cost.amount$, extra_cost.description, extra_cost.kind, extra_cost.receipt] note",
+  "uretim": 403,
+  "yonetim": "inventory.goodsreceipt update [extra_cost.allocation, extra_cost.amount$, extra_cost.description, extra_cost.kind, extra_cost.receipt] note"
+ },
+ "read: detail personnel.employeewage create": {
+  "admin": "personnel.employeewage create [employee, gross_monthly$, is_active, valid_from]",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "personnel.employeewage create [employee, gross_monthly$, is_active, valid_from]",
+  "uretim": 403,
+  "yonetim": "personnel.employeewage create [employee, gross_monthly$, is_active, valid_from]"
+ },
+ "read: detail personnel.payrollitem create": {
+  "admin": "personnel.payrollitem create [amount$, category, employee, is_active, kind, month, year]",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "personnel.payrollitem create [amount$, category, employee, is_active, kind, month, year]",
+  "uretim": 403,
+  "yonetim": "personnel.payrollitem create [amount$, category, employee, is_active, kind, month, year]"
+ },
+ "read: detail purchasing.purchaseorder status_change": {
+  "admin": "purchasing.purchaseorder status_change [status] note$",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "purchasing.purchaseorder status_change [status] note$",
+  "uretim": 403,
+  "yonetim": "purchasing.purchaseorder status_change [status] note$"
+ },
+ "read: detail workflow.comment create (olaya)": {
+  "admin": "workflow.comment create [author, body, content_type, object_id]",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "workflow.comment create [author, body, content_type, object_id]",
+  "uretim": 403,
+  "yonetim": "workflow.comment create [author, body, content_type, object_id]"
+ },
+ "read: detail workflow.task create (satın alma onayı)": {
+  "admin": "workflow.task create [assigned_role, description$, event_name, priority, related_content_type, related_object_id, related_repr, rule_code, status, title]",
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": "workflow.task create [assigned_role, description$, event_name, priority, related_content_type, related_object_id, related_repr, rule_code, status, title]",
+  "uretim": 403,
+  "yonetim": "workflow.task create [assigned_role, description$, event_name, priority, related_content_type, related_object_id, related_repr, rule_code, status, title]"
+ },
+ "read: fields": {
+  "admin": [
+   "action",
+   "actor",
+   "actor_name",
+   "changes",
+   "content_type",
+   "id",
+   "ip_address",
+   "note",
+   "object_id",
+   "object_repr",
+   "timestamp"
+  ],
+  "superuser": [
+   "action",
+   "actor",
+   "actor_name",
+   "changes",
+   "content_type",
+   "id",
+   "ip_address",
+   "note",
+   "object_id",
+   "object_repr",
+   "timestamp"
+  ],
+  "yonetim": [
+   "action",
+   "actor",
+   "actor_name",
+   "changes",
+   "content_type",
+   "id",
+   "ip_address",
+   "note",
+   "object_id",
+   "object_repr",
+   "timestamp"
+  ]
+ },
+ "read: list": {
+  "admin": 200,
+  "anonymous": 401,
+  "depo": 403,
+  "depo+sevkiyat": 403,
+  "dolum": 403,
+  "inactive": 403,
+  "laboratuvar": 403,
+  "no_role": 403,
+  "planlama": 403,
+  "satin_alma": 403,
+  "sevkiyat": 403,
+  "superuser": 200,
+  "uretim": 403,
+  "yonetim": 200
+ },
+ "search: 1.500,00": {
+  "admin": [
+   "personnel.employee custom"
+  ],
+  "superuser": [
+   "personnel.employee custom"
+  ],
+  "yonetim": [
+   "personnel.employee custom"
+  ]
+ },
+ "search: 12.345,60": {
+  "admin": [
+   "purchasing.purchaseorder status_change ×2"
+  ],
+  "superuser": [
+   "purchasing.purchaseorder status_change ×2"
+  ],
+  "yonetim": [
+   "purchasing.purchaseorder status_change ×2"
+  ]
+ },
+ "search: 45678.90": {
+  "admin": [
+   "personnel.employeewage create"
+  ],
+  "superuser": [
+   "personnel.employeewage create"
+  ],
+  "yonetim": [
+   "personnel.employeewage create"
+  ]
+ },
+ "search: 7.777,77": {
+  "admin": [
+   "costing.lotcost create ×3",
+   "inventory.goodsreceipt update",
+   "inventory.goodsreceiptline update",
+   "inventory.lot update ×3"
+  ],
+  "superuser": [
+   "costing.lotcost create ×3",
+   "inventory.goodsreceipt update",
+   "inventory.goodsreceiptline update",
+   "inventory.lot update ×3"
+  ],
+  "yonetim": [
+   "costing.lotcost create ×3",
+   "inventory.goodsreceipt update",
+   "inventory.goodsreceiptline update",
+   "inventory.lot update ×3"
+  ]
+ },
+ "search: Sondaş": {
+  "admin": [
+   "personnel.attendanceentry create",
+   "personnel.employee create",
+   "personnel.employee custom ×3",
+   "personnel.employee update"
+  ],
+  "superuser": [
+   "personnel.attendanceentry create",
+   "personnel.employee create",
+   "personnel.employee custom ×3",
+   "personnel.employee update"
+  ],
+  "yonetim": [
+   "personnel.attendanceentry create",
+   "personnel.employee create",
+   "personnel.employee custom ×3",
+   "personnel.employee update"
+  ]
+ },
+ "trail: - custom [format, report, rows] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: - custom [month, year] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: core.attachment create [content_type, file, is_active, kind, mime_type, object_id, original_name, size]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: core.codescheme create [is_active, key, kind, prefix, revision, type_prefixes, width, year_format] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: core.codescheme update [revision, width] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: core.user create [date_joined, full_name, is_active, is_staff, is_superuser, must_change_password, username] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: core.user login []": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: core.user login_failed [] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: core.user logout []": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: core.user update [password] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: core.user update [roles] note": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: costing.costrate create [kind, note$, rate_per_kg$, stage, valid_from]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: costing.costrate create [kind, rate_per_kg$, stage, valid_from]": {
+  "admin": 6,
+  "superuser": 6,
+  "yonetim": 6
+ },
+ "trail: costing.departmentcostcenter create [department, key, stage]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: costing.lotcost create [calculated_at, calculated_by, cost_date, finished_scrap_cost$, has_missing, is_current, is_estimated, lot, material, method, note$, quantity, total_cost$, unit_cost$, version] note$": {
+  "admin": 3,
+  "superuser": 3,
+  "yonetim": 3
+ },
+ "trail: costing.lotcost create [calculated_at, calculated_by, cost_date, finished_scrap_cost$, has_missing, is_current, is_estimated, lot, material, method, quantity, total_cost$, unit_cost$, version]": {
+  "admin": 8,
+  "superuser": 8,
+  "yonetim": 8
+ },
+ "trail: filling.packagingspec create [bulk_product, cases_per_pallet, fill_quantity, fill_tolerance_pct, fill_unit, finished_product, status, units_per_case, version_no]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: filling.packagingspec status_change [status]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: filling.packagingspecline create [material, quantity_per_unit, scrap_allowance_pct, sequence, spec]": {
+  "admin": 4,
+  "superuser": 4,
+  "yonetim": 4
+ },
+ "trail: golive.problemreport create [description, number, page_title, page_url]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: hse.incident create [description, incident_type, injured_person, injury, number, occurred_at, place, severity, status]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: hse.incident custom [] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: hse.incident status_change [status]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: inventory.goodsreceipt create [number, quarantine_location, receipt_date, status, storage_location, supplier]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: inventory.goodsreceipt create [number, receipt_date, status, storage_location, supplier]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: inventory.goodsreceipt status_change [status]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: inventory.goodsreceipt update [] note$": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: inventory.goodsreceipt update [extra_cost.allocation, extra_cost.amount$, extra_cost.description, extra_cost.kind, extra_cost.receipt] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: inventory.goodsreceiptextracost create [allocation, amount$, kind, receipt]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: inventory.goodsreceiptline create [currency$, exchange_rate$, line_no, material, quantity, receipt, unit, unit_price$]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: inventory.goodsreceiptline create [currency$, line_no, material, quantity, receipt, unit, unit_price$]": {
+  "admin": 6,
+  "superuser": 6,
+  "yonetim": 6
+ },
+ "trail: inventory.goodsreceiptline update [unit_price$] note$": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: inventory.lot create [cost_is_estimated$, lot_no, manufactured_at, material, source, status, status_note] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: inventory.lot create [cost_is_estimated$, lot_no, material, released_at, released_by, source, status, status_note, supplier] note": {
+  "admin": 5,
+  "superuser": 5,
+  "yonetim": 5
+ },
+ "trail: inventory.lot create [cost_is_estimated$, lot_no, material, source, status, status_note, supplier] note": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: inventory.lot status_change [status] note": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: inventory.lot update [unit_cost$] note": {
+  "admin": 8,
+  "superuser": 8,
+  "yonetim": 8
+ },
+ "trail: inventory.lot update [unit_cost$] note$": {
+  "admin": 3,
+  "superuser": 3,
+  "yonetim": 3
+ },
+ "trail: masterdata.material update [code] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: personnel.attendanceentry create [date, employee, holiday_half_worked, month, overtime_hours, status]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: personnel.attendancemonth create [month, number, status, year]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: personnel.attendancemonth status_change [status] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: personnel.attendancemonth update [approved_at, approved_by]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: personnel.employee create [bes_enrolled, department, full_name, is_active, payroll_external, title]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: personnel.employee custom [] note": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: personnel.employee custom [] note$": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: personnel.employee update [national_id, title]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: personnel.employeedocument create [employee, file, is_active, kind, mime_type, original_name, size]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: personnel.employeewage create [employee, gross_monthly$, is_active, valid_from]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: personnel.payrollitem create [amount$, category, employee, is_active, kind, month, year]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: production.batchconsumption create [actual_quantity, batch, deviation_pct, location, lot, lot_link, movement, planned_quantity, requirement, weighed_at, weighed_by]": {
+  "admin": 3,
+  "superuser": 3,
+  "yonetim": 3
+ },
+ "trail: production.materialpick create [from_location, lot, order, picked_at, picked_by, quantity, requirement, to_location, transfer_group]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: production.productionbatch create [batch_no, equipment, order, output_lot, planned_quantity, sequence, started_at, started_by, status]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: production.productionbatch status_change [status] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: production.productionorder create [equipment, number, planned_base_quantity, planned_date, planned_quantity, priority, product, production_location, recipe_version, status, unit]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: production.productionorder status_change [status]": {
+  "admin": 5,
+  "superuser": 5,
+  "yonetim": 5
+ },
+ "trail: production.productionrequirement create [instruction, is_water, material, order, recipe_line, required_quantity, sequence, tolerance_pct]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: production.productionrequirement create [is_water, material, order, recipe_line, required_quantity, sequence, tolerance_pct]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: purchasing.purchaseorder create [currency$, exchange_rate$, number, order_date, status, supplier]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: purchasing.purchaseorder status_change [status] note$": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: purchasing.purchaseorder update [line.base_quantity, line.expected_date, line.line_no, line.material, line.note, line.order, line.quantity, line.unit, line.unit_price$] note": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: purchasing.purchaseorderline create [base_quantity, expected_date, line_no, material, order, quantity, unit, unit_price$]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: quality.qualitydecision create [approval_status, decided_at, decided_by, decision, sample]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: quality.sample create [lot, number, origin, stage, status]": {
+  "admin": 3,
+  "superuser": 3,
+  "yonetim": 3
+ },
+ "trail: quality.sample status_change [status]": {
+  "admin": 4,
+  "superuser": 4,
+  "yonetim": 4
+ },
+ "trail: quality.sample update [decided_at]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: quality.sample update [specification]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: quality.specification create [material, sample_stage, status, version_no]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: quality.specification status_change [status]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: quality.specificationline create [is_mandatory, sequence, specification, test]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: quality.testresult create [is_within_spec, measured_at, measured_by, passed, sample, spec_line]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: recipes.recipeline create [instruction, is_water, material, quantity, sequence, tolerance_pct, unit, version]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: recipes.recipeline create [is_water, material, quantity, sequence, tolerance_pct, unit, version]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: recipes.recipeversion create [batch_size, batch_unit, recipe, status, version_no]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: recipes.recipeversion status_change [status]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: workflow.comment create [author, body, content_type, object_id]": {
+  "admin": 2,
+  "superuser": 2,
+  "yonetim": 2
+ },
+ "trail: workflow.task create [assigned_role, description$, event_name, priority, related_content_type, related_object_id, related_repr, rule_code, status, title]": {
+  "admin": 1,
+  "superuser": 1,
+  "yonetim": 1
+ },
+ "trail: workflow.task create [assigned_role, description, event_name, priority, related_content_type, related_object_id, related_repr, rule_code, status, title]": {
+  "admin": 7,
+  "superuser": 7,
+  "yonetim": 7
+ },
+ "trail: workflow.task status_change [status] note": {
+  "admin": 5,
+  "superuser": 5,
+  "yonetim": 5
+ }
+}

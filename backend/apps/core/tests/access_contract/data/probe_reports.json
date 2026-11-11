@@ -1,0 +1,741 @@
+{
+ "_format": "Her durum: {değer: o değeri alan personalar}. Değerlerin anlamı test_probe_reports.py başındaki açıklamada.",
+ "dashboard.lab.status": {
+  "200": "yonetim planlama laboratuvar admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "dashboard.lab.vs_admin": {
+  "-": "anonymous inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat",
+  "same": "yonetim planlama laboratuvar admin superuser"
+ },
+ "dashboard.management.money.approvals.purchase_orders.total_try": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "null": "planlama",
+  "value": "yonetim admin superuser"
+ },
+ "dashboard.management.money.stock_value": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "null": "planlama",
+  "value": "yonetim admin superuser"
+ },
+ "dashboard.management.status": {
+  "200": "yonetim planlama admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "dashboard.management.vs_admin": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "approvals.purchase_orders.total_try:value>null stock_value:dict>null": "planlama",
+  "same": "yonetim admin superuser"
+ },
+ "dashboard.production.status": {
+  "200": "yonetim planlama uretim admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "dashboard.production.vs_admin": {
+  "-": "anonymous inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "same": "yonetim planlama uretim admin superuser"
+ },
+ "dashboard.shipping.status": {
+  "200": "yonetim planlama depo sevkiyat admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role uretim laboratuvar dolum satin_alma"
+ },
+ "dashboard.shipping.vs_admin": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum satin_alma",
+  "same": "yonetim planlama depo sevkiyat admin superuser depo+sevkiyat"
+ },
+ "dashboard.warehouse.status": {
+  "200": "yonetim planlama depo admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role uretim laboratuvar dolum sevkiyat satin_alma"
+ },
+ "dashboard.warehouse.vs_admin": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat satin_alma",
+  "same": "yonetim planlama depo admin superuser depo+sevkiyat"
+ },
+ "dashboards.list": {
+  "401": "anonymous",
+  "lab": "laboratuvar",
+  "lab management production shipping warehouse": "yonetim planlama admin superuser",
+  "none": "inactive no_role dolum satin_alma",
+  "production": "uretim",
+  "shipping": "sevkiyat",
+  "shipping warehouse": "depo depo+sevkiyat"
+ },
+ "job.filling.request": {
+  "202 DONE": "yonetim planlama dolum admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat"
+ },
+ "job.filling.requested.columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama dolum admin superuser"
+ },
+ "job.filling.requested.download": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat",
+  "200": "yonetim planlama dolum admin superuser"
+ },
+ "job.filling.stale.detail": {
+  "-": "anonymous",
+  "200 can_download=true": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.filling.stale.download": {
+  "-": "anonymous",
+  "200": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.production.request": {
+  "202 DONE": "yonetim planlama uretim admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "job.production.requested.columns": {
+  "-": "anonymous inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama uretim admin superuser"
+ },
+ "job.production.requested.download": {
+  "-": "anonymous inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "200": "yonetim planlama uretim admin superuser"
+ },
+ "job.production.stale.detail": {
+  "-": "anonymous",
+  "200 can_download=true": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.production.stale.download": {
+  "-": "anonymous",
+  "200": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.quality.request": {
+  "202 DONE": "yonetim planlama laboratuvar admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "job.quality.requested.columns": {
+  "-": "anonymous inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama laboratuvar admin superuser"
+ },
+ "job.quality.requested.download": {
+  "-": "anonymous inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat",
+  "200": "yonetim planlama laboratuvar admin superuser"
+ },
+ "job.quality.stale.detail": {
+  "-": "anonymous",
+  "200 can_download=true": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.quality.stale.download": {
+  "-": "anonymous",
+  "200": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.shipments.request": {
+  "202 DONE": "yonetim planlama sevkiyat admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar dolum satin_alma"
+ },
+ "job.shipments.requested.columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum satin_alma",
+  "all": "yonetim planlama sevkiyat admin superuser depo+sevkiyat"
+ },
+ "job.shipments.requested.download": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum satin_alma",
+  "200": "yonetim planlama sevkiyat admin superuser depo+sevkiyat"
+ },
+ "job.shipments.stale.detail": {
+  "-": "anonymous",
+  "200 can_download=true": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.shipments.stale.download": {
+  "-": "anonymous",
+  "200": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.stock-movements.request": {
+  "202 DONE": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role uretim laboratuvar dolum sevkiyat"
+ },
+ "job.stock-movements.requested.columns": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "all": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.stock-movements.requested.download": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "200": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.stock-movements.stale.detail": {
+  "-": "anonymous",
+  "200 can_download=true": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.stock-movements.stale.download": {
+  "-": "anonymous",
+  "200": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.stock-status.request": {
+  "202 DONE": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role uretim laboratuvar dolum sevkiyat"
+ },
+ "job.stock-status.requested.columns": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "all": "yonetim admin superuser",
+  "all -cost_is_estimated -unit_cost -value": "planlama depo satin_alma depo+sevkiyat"
+ },
+ "job.stock-status.requested.download": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "200": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.stock-status.stale.detail": {
+  "-": "anonymous",
+  "200 can_download=true": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.stock-status.stale.download": {
+  "-": "anonymous",
+  "200": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.task-durations.request": {
+  "202 DONE": "yonetim planlama admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "job.task-durations.requested.columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama admin superuser"
+ },
+ "job.task-durations.requested.download": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "200": "yonetim planlama admin superuser"
+ },
+ "job.task-durations.stale.detail": {
+  "-": "anonymous",
+  "200 can_download=true": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "job.task-durations.stale.download": {
+  "-": "anonymous",
+  "200": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.list.others": {
+  "401": "anonymous",
+  "none": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.list.requested": {
+  "401": "anonymous",
+  "filling": "dolum",
+  "filling production quality shipments stock-movements stock-status task-durations": "yonetim planlama admin superuser",
+  "none": "inactive no_role",
+  "production": "uretim",
+  "quality": "laboratuvar",
+  "shipments": "sevkiyat",
+  "shipments stock-movements stock-status": "depo+sevkiyat",
+  "stock-movements stock-status": "depo satin_alma"
+ },
+ "jobs.list.stale": {
+  "401": "anonymous",
+  "filling production quality shipments stock-movements stock-status task-durations": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.admin.detail": {
+  "-": "admin",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma superuser depo+sevkiyat"
+ },
+ "jobs.of.admin.download": {
+  "-": "admin",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma superuser depo+sevkiyat"
+ },
+ "jobs.of.depo+sevkiyat.detail": {
+  "-": "depo+sevkiyat",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser"
+ },
+ "jobs.of.depo+sevkiyat.download": {
+  "-": "depo+sevkiyat",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser"
+ },
+ "jobs.of.depo.detail": {
+  "-": "depo",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.depo.download": {
+  "-": "depo",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.dolum.detail": {
+  "-": "dolum",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim laboratuvar sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.dolum.download": {
+  "-": "dolum",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim laboratuvar sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.inactive.detail": {
+  "-": "inactive",
+  "401": "anonymous",
+  "404": "no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.inactive.download": {
+  "-": "inactive",
+  "401": "anonymous",
+  "404": "no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.laboratuvar.detail": {
+  "-": "laboratuvar",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.laboratuvar.download": {
+  "-": "laboratuvar",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.no_role.detail": {
+  "-": "no_role",
+  "401": "anonymous",
+  "404": "inactive yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.no_role.download": {
+  "-": "no_role",
+  "401": "anonymous",
+  "404": "inactive yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.planlama.detail": {
+  "-": "planlama",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.planlama.download": {
+  "-": "planlama",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.satin_alma.detail": {
+  "-": "satin_alma",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat admin superuser depo+sevkiyat"
+ },
+ "jobs.of.satin_alma.download": {
+  "-": "satin_alma",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat admin superuser depo+sevkiyat"
+ },
+ "jobs.of.sevkiyat.detail": {
+  "-": "sevkiyat",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim laboratuvar dolum satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.sevkiyat.download": {
+  "-": "sevkiyat",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim laboratuvar dolum satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.superuser.detail": {
+  "-": "superuser",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin depo+sevkiyat"
+ },
+ "jobs.of.superuser.download": {
+  "-": "superuser",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin depo+sevkiyat"
+ },
+ "jobs.of.uretim.detail": {
+  "-": "uretim",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.uretim.download": {
+  "-": "uretim",
+  "401": "anonymous",
+  "404": "inactive no_role yonetim planlama depo laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.yonetim.detail": {
+  "-": "yonetim",
+  "401": "anonymous",
+  "404": "inactive no_role planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "jobs.of.yonetim.download": {
+  "-": "yonetim",
+  "401": "anonymous",
+  "404": "inactive no_role planlama depo uretim laboratuvar dolum sevkiyat satin_alma admin superuser depo+sevkiyat"
+ },
+ "report.filling.list_columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama dolum admin superuser"
+ },
+ "report.filling.page.columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama dolum admin superuser"
+ },
+ "report.filling.page.row_count": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat",
+  "same": "yonetim planlama dolum admin superuser"
+ },
+ "report.filling.page.row_keys": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama dolum admin superuser"
+ },
+ "report.filling.page.status": {
+  "200": "yonetim planlama dolum admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat"
+ },
+ "report.filling.page.summary": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat",
+  "avg_bulk_variance good_units run_count scrap_rate": "yonetim planlama dolum admin superuser"
+ },
+ "report.filling.pdf.columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama dolum admin superuser"
+ },
+ "report.filling.pdf.status": {
+  "200": "yonetim planlama dolum admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat"
+ },
+ "report.filling.pdf.summary": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat",
+  "avg_bulk_variance good_units run_count scrap_rate": "yonetim planlama dolum admin superuser"
+ },
+ "report.filling.xlsx.columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama dolum admin superuser"
+ },
+ "report.filling.xlsx.status": {
+  "200": "yonetim planlama dolum admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat"
+ },
+ "report.filling.xlsx.summary": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar sevkiyat satin_alma depo+sevkiyat",
+  "avg_bulk_variance good_units run_count scrap_rate": "yonetim planlama dolum admin superuser"
+ },
+ "report.production.list_columns": {
+  "-": "anonymous inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama uretim admin superuser"
+ },
+ "report.production.page.columns": {
+  "-": "anonymous inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama uretim admin superuser"
+ },
+ "report.production.page.row_count": {
+  "-": "anonymous inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "same": "yonetim planlama uretim admin superuser"
+ },
+ "report.production.page.row_keys": {
+  "-": "anonymous inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama uretim admin superuser"
+ },
+ "report.production.page.status": {
+  "200": "yonetim planlama uretim admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "report.production.page.summary": {
+  "-": "anonymous inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "avg_yield batch_count batches_with_deviation": "yonetim planlama uretim admin superuser"
+ },
+ "report.production.pdf.columns": {
+  "-": "anonymous inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama uretim admin superuser"
+ },
+ "report.production.pdf.status": {
+  "200": "yonetim planlama uretim admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "report.production.pdf.summary": {
+  "-": "anonymous inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "avg_yield batch_count batches_with_deviation": "yonetim planlama uretim admin superuser"
+ },
+ "report.production.xlsx.columns": {
+  "-": "anonymous inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama uretim admin superuser"
+ },
+ "report.production.xlsx.status": {
+  "200": "yonetim planlama uretim admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "report.production.xlsx.summary": {
+  "-": "anonymous inactive no_role depo laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "avg_yield batch_count batches_with_deviation": "yonetim planlama uretim admin superuser"
+ },
+ "report.quality.list_columns": {
+  "-": "anonymous inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama laboratuvar admin superuser"
+ },
+ "report.quality.page.columns": {
+  "-": "anonymous inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama laboratuvar admin superuser"
+ },
+ "report.quality.page.row_count": {
+  "-": "anonymous inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat",
+  "same": "yonetim planlama laboratuvar admin superuser"
+ },
+ "report.quality.page.row_keys": {
+  "-": "anonymous inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama laboratuvar admin superuser"
+ },
+ "report.quality.page.status": {
+  "200": "yonetim planlama laboratuvar admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "report.quality.page.summary": {
+  "-": "anonymous inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat",
+  "avg_wait_hours out_of_spec_samples rejected_count rejection_rate sample_count": "yonetim planlama laboratuvar admin superuser"
+ },
+ "report.quality.pdf.columns": {
+  "-": "anonymous inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama laboratuvar admin superuser"
+ },
+ "report.quality.pdf.status": {
+  "200": "yonetim planlama laboratuvar admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "report.quality.pdf.summary": {
+  "-": "anonymous inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat",
+  "avg_wait_hours out_of_spec_samples rejected_count rejection_rate sample_count": "yonetim planlama laboratuvar admin superuser"
+ },
+ "report.quality.xlsx.columns": {
+  "-": "anonymous inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama laboratuvar admin superuser"
+ },
+ "report.quality.xlsx.status": {
+  "200": "yonetim planlama laboratuvar admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "report.quality.xlsx.summary": {
+  "-": "anonymous inactive no_role depo uretim dolum sevkiyat satin_alma depo+sevkiyat",
+  "avg_wait_hours out_of_spec_samples rejected_count rejection_rate sample_count": "yonetim planlama laboratuvar admin superuser"
+ },
+ "report.shipments.list_columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum satin_alma",
+  "all": "yonetim planlama sevkiyat admin superuser depo+sevkiyat"
+ },
+ "report.shipments.page.columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum satin_alma",
+  "all": "yonetim planlama sevkiyat admin superuser depo+sevkiyat"
+ },
+ "report.shipments.page.row_count": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum satin_alma",
+  "same": "yonetim planlama sevkiyat admin superuser depo+sevkiyat"
+ },
+ "report.shipments.page.row_keys": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum satin_alma",
+  "all": "yonetim planlama sevkiyat admin superuser depo+sevkiyat"
+ },
+ "report.shipments.page.status": {
+  "200": "yonetim planlama sevkiyat admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar dolum satin_alma"
+ },
+ "report.shipments.page.summary": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum satin_alma",
+  "customer_count on_time_rate shipment_count": "yonetim planlama sevkiyat admin superuser depo+sevkiyat"
+ },
+ "report.shipments.pdf.columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum satin_alma",
+  "all": "yonetim planlama sevkiyat admin superuser depo+sevkiyat"
+ },
+ "report.shipments.pdf.status": {
+  "200": "yonetim planlama sevkiyat admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar dolum satin_alma"
+ },
+ "report.shipments.pdf.summary": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum satin_alma",
+  "customer_count on_time_rate shipment_count": "yonetim planlama sevkiyat admin superuser depo+sevkiyat"
+ },
+ "report.shipments.xlsx.columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum satin_alma",
+  "all": "yonetim planlama sevkiyat admin superuser depo+sevkiyat"
+ },
+ "report.shipments.xlsx.status": {
+  "200": "yonetim planlama sevkiyat admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar dolum satin_alma"
+ },
+ "report.shipments.xlsx.summary": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum satin_alma",
+  "customer_count on_time_rate shipment_count": "yonetim planlama sevkiyat admin superuser depo+sevkiyat"
+ },
+ "report.stock-movements.list_columns": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "all": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "report.stock-movements.page.columns": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "all": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "report.stock-movements.page.row_count": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "same": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "report.stock-movements.page.row_keys": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "all": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "report.stock-movements.page.status": {
+  "200": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role uretim laboratuvar dolum sevkiyat"
+ },
+ "report.stock-movements.page.summary": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "row_count": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "report.stock-movements.pdf.columns": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "all": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "report.stock-movements.pdf.status": {
+  "200": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role uretim laboratuvar dolum sevkiyat"
+ },
+ "report.stock-movements.pdf.summary": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "row_count": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "report.stock-movements.xlsx.columns": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "all": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "report.stock-movements.xlsx.status": {
+  "200": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role uretim laboratuvar dolum sevkiyat"
+ },
+ "report.stock-movements.xlsx.summary": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "row_count": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "report.stock-status.list_columns": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "all": "yonetim admin superuser",
+  "all -cost_is_estimated -unit_cost -value": "planlama depo satin_alma depo+sevkiyat"
+ },
+ "report.stock-status.page.columns": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "all": "yonetim admin superuser",
+  "all -cost_is_estimated -unit_cost -value": "planlama depo satin_alma depo+sevkiyat"
+ },
+ "report.stock-status.page.row_count": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "same": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat"
+ },
+ "report.stock-status.page.row_keys": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "all": "yonetim admin superuser",
+  "all -cost_is_estimated -unit_cost -value": "planlama depo satin_alma depo+sevkiyat"
+ },
+ "report.stock-status.page.status": {
+  "200": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role uretim laboratuvar dolum sevkiyat"
+ },
+ "report.stock-status.page.summary": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "lot_count row_count": "planlama depo satin_alma depo+sevkiyat",
+  "lot_count row_count stock_value": "yonetim admin superuser"
+ },
+ "report.stock-status.pdf.columns": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "all": "yonetim admin superuser",
+  "all -cost_is_estimated -unit_cost -value": "planlama depo satin_alma depo+sevkiyat"
+ },
+ "report.stock-status.pdf.status": {
+  "200": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role uretim laboratuvar dolum sevkiyat"
+ },
+ "report.stock-status.pdf.summary": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "lot_count row_count": "planlama depo satin_alma depo+sevkiyat",
+  "lot_count row_count stock_value": "yonetim admin superuser"
+ },
+ "report.stock-status.xlsx.columns": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "all": "yonetim admin superuser",
+  "all -cost_is_estimated -unit_cost -value": "planlama depo satin_alma depo+sevkiyat"
+ },
+ "report.stock-status.xlsx.status": {
+  "200": "yonetim planlama depo satin_alma admin superuser depo+sevkiyat",
+  "401": "anonymous",
+  "403": "inactive no_role uretim laboratuvar dolum sevkiyat"
+ },
+ "report.stock-status.xlsx.summary": {
+  "-": "anonymous inactive no_role uretim laboratuvar dolum sevkiyat",
+  "lot_count row_count": "planlama depo satin_alma depo+sevkiyat",
+  "lot_count row_count stock_value": "yonetim admin superuser"
+ },
+ "report.task-durations.list_columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama admin superuser"
+ },
+ "report.task-durations.page.columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama admin superuser"
+ },
+ "report.task-durations.page.row_count": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "same": "yonetim planlama admin superuser"
+ },
+ "report.task-durations.page.row_keys": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama admin superuser"
+ },
+ "report.task-durations.page.status": {
+  "200": "yonetim planlama admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "report.task-durations.page.summary": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "bottleneck open_count overdue_count task_count": "yonetim planlama admin superuser"
+ },
+ "report.task-durations.pdf.columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama admin superuser"
+ },
+ "report.task-durations.pdf.status": {
+  "200": "yonetim planlama admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "report.task-durations.pdf.summary": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "bottleneck open_count overdue_count task_count": "yonetim planlama admin superuser"
+ },
+ "report.task-durations.xlsx.columns": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "all": "yonetim planlama admin superuser"
+ },
+ "report.task-durations.xlsx.status": {
+  "200": "yonetim planlama admin superuser",
+  "401": "anonymous",
+  "403": "inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat"
+ },
+ "report.task-durations.xlsx.summary": {
+  "-": "anonymous inactive no_role depo uretim laboratuvar dolum sevkiyat satin_alma depo+sevkiyat",
+  "bottleneck open_count overdue_count task_count": "yonetim planlama admin superuser"
+ },
+ "reports.list": {
+  "401": "anonymous",
+  "filling": "dolum",
+  "filling production quality shipments stock-movements stock-status task-durations": "yonetim planlama admin superuser",
+  "none": "inactive no_role",
+  "production": "uretim",
+  "quality": "laboratuvar",
+  "shipments": "sevkiyat",
+  "shipments stock-movements stock-status": "depo+sevkiyat",
+  "stock-movements stock-status": "depo satin_alma"
+ }
+}
