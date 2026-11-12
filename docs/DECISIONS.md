@@ -2431,3 +2431,25 @@ değiştirme zorunlu, yalnızca admin):
   plan sabitlemiyorsa açık bırakıldı ve adımı açılınca gözlenen değere sabitlenir (daraltmak onay
   istemez, genişletmek ister).
 
+## 2026-11-12 — Partisi bitmemiş lot serbest bırakılamaz
+
+- **Durum:** Bir dolum lotu, partisi bitmeden elle açılan son kontrol numunesiyle serbest
+  bırakılabildi; içinde henüz ürün yokken karar verilmiş oldu. Parti sonra bitirilmek istenince
+  sistem son kontrol numunesini serbest lota açamadığı için parti bitirilemiyordu.
+- **Karar (CUMHUR, 2026-11-12, "Evet, engelle"):** Dolum partisinin ya da üretim şarjının açtığı
+  lot için, parti (şarj) bitmeden:
+  - lot serbest bırakılamaz: kalite kararıyla da, adminin elle serbest bırakmasıyla (D-5) da;
+  - lota şarj sırası numunesi dışında numune açılamaz; son kontrol numunesi parti bitince
+    kendiliğinden açılır;
+  - lotu değiştiren kalite kararı (serbest, şartlı kabul, ret, yeniden işleme) verilemez. Kural
+    yürürlüğe girmeden açılmış numune de karara gidemez.
+
+  İptal edilen partinin (şarjın) lotu da serbest bırakılamaz; içinde ürün yoktur. Hata kodu
+  `lot_output_unfinished`; mesaj lotu, emri ve partiyi söyler.
+- **Açık kalan:** Lotu bloke etmek (laboratuvar) serbesttir. Kuraldan önce erken serbest bırakılmış
+  bir lotta yol budur: lot bloke edilir, parti bitirilir, son kontrol numunesi açılır ve karar
+  verilir.
+- **Uygulama:** `inventory.services.register_output_check` / `unfinished_output`; dolum
+  (`unfinished_run_reason`) ve üretim (`unfinished_batch_reason`) kendi denetimlerini `apps.py`'de
+  kaydeder (bağımlılık yönü: depo modülü onları tanımaz). Denetimi `quality.open_sample`,
+  kalite kararı ve `inventory.release_lot` kullanır.

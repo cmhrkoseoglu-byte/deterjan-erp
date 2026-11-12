@@ -833,3 +833,30 @@ def test_opening_closes_on_go_live_date(depo):
 
     services.set_go_live_date(depo, None)
     assert services.opening_is_open()
+
+
+def test_registered_output_check_blocks_release(monkeypatch: pytest.MonkeyPatch, make_user) -> None:
+    """Lotu üreten iş bitmediyse lot serbest bırakılamaz (DECISIONS 2026-11-12)."""
+    lot = stocked_lot("5", location=quarantine_location(), status=Lot.Status.QUARANTINE)
+    monkeypatch.setattr(services, "_OUTPUT_CHECKS", [])
+
+    def check(item: Lot) -> str | None:
+        return "deneme lotunun işi bitmedi" if item.pk == lot.pk else None
+
+    services.register_output_check(check)
+    services.register_output_check(check)
+
+    assert [check] == services._OUTPUT_CHECKS
+    assert services.unfinished_output(lot) == "deneme lotunun işi bitmedi"
+    with pytest.raises(BusinessRuleError) as caught:
+        services.release_lot(make_user("admin"), lot, "Elle")
+    assert caught.value.code == "lot_output_unfinished"
+    assert (
+        caught.value.message
+        == "deneme lotunun işi bitmedi; parti bitmeden lot serbest bırakılamaz."
+    )
+    lot.refresh_from_db()
+    assert lot.status == Lot.Status.QUARANTINE
+
+    monkeypatch.setattr(services, "_OUTPUT_CHECKS", [])
+    assert services.unfinished_output(lot) is None

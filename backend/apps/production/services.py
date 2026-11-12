@@ -954,6 +954,16 @@ def _maybe_await_qc(actor: User | None, order: ProductionOrder) -> None:
     transition_status(order, Status.QC_PENDING, actor, machine=production_order_states)
 
 
+def unfinished_batch_reason(lot: Lot) -> str | None:
+    """Dökme lotun şarjı bitmediyse (devam ediyor ya da iptal) nedeni. `inventory`'nin serbest
+    bırakma, son kontrol ve karar denetimine kaydedilir (`apps.py`)."""
+    batch = ProductionBatch.objects.filter(output_lot_id=lot.pk).select_related("order").first()
+    if batch is None or batch.status == ProductionBatch.Status.COMPLETED:
+        return None
+    state = "iptal edildi" if batch.status == ProductionBatch.Status.CANCELLED else "bitmedi"
+    return f"{lot.lot_no} lotunun şarjı {state} ({batch.order.number}, {batch.sequence}. şarj)"
+
+
 @transaction.atomic
 def finish_batch(
     actor: User | None, batch: ProductionBatch, output_quantity: Decimal, note: str = ""

@@ -1,6 +1,8 @@
+import importlib
 from decimal import Decimal
 
 import factory
+from django.apps import apps
 
 from apps.masterdata.models import (
     Customer,
@@ -19,6 +21,14 @@ from apps.masterdata.models import (
 def unit(code: str) -> UnitOfMeasure:
     """Migration ile yüklenen standart birim (KG, G, LT, ML, ADET, KOLI, PALET)."""
     return UnitOfMeasure.objects.get(code=code)
+
+
+def ensure_standard_units() -> None:
+    """Göçle gelen standart birimleri yoksa yeniden açar (göçün kendi işleviyle). İşlemli
+    testler (`transaction=True`) veritabanını boşaltır; sonraki işlemli testte birimler
+    olmayabilir."""
+    migration = importlib.import_module("apps.masterdata.migrations.0002_standard_units")
+    migration.create_units(apps, None)
 
 
 class MaterialCategoryFactory(factory.django.DjangoModelFactory):

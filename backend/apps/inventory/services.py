@@ -741,6 +741,32 @@ def lot_payload(lot: Lot, **extra: Any) -> dict[str, Any]:
     }
 
 
+# --- lotu üreten işin bitip bitmediği ------------------------------------------------------------
+
+# Lotu üreten iş (dolum partisi, üretim şarjı) bitmeden lot serbest bırakılamaz, lota son kontrol
+# numunesi açılamaz ve karar verilemez (DECISIONS 2026-11-12). Üreten modüller kendi denetimini
+# `apps.py`'de kaydeder; inventory onları tanımaz (bağımlılık yönü, CLAUDE.md §3).
+_OUTPUT_CHECKS: list[Callable[[Lot], str | None]] = []
+
+
+def register_output_check(check: Callable[[Lot], str | None]) -> None:
+    """Lotu üreten işin bitip bitmediğini söyleyen denetimi kaydeder. Denetim iş bitmediyse okunur
+    bir neden (ör. "D-… lotunun dolum partisi bitmedi (DO-…, 2. parti)"), bittiyse ya da lot o
+    işten gelmiyorsa `None` döner."""
+    if check not in _OUTPUT_CHECKS:
+        _OUTPUT_CHECKS.append(check)
+
+
+def unfinished_output(lot: Lot) -> str | None:
+    """Lotu üreten iş (dolum partisi, üretim şarjı) bitmediyse ya da iptal edildiyse nedeni;
+    bittiyse ya da lot böyle bir işten gelmiyorsa `None`."""
+    for check in _OUTPUT_CHECKS:
+        reason = check(lot)
+        if reason:
+            return reason
+    return None
+
+
 def _set_lot_status(actor: User | None, lot: Lot, to_status: str, note: str) -> Lot:
     actor = _actor(actor)
     lot = Lot.objects.select_for_update(of=("self",)).select_related("material").get(pk=lot.pk)
@@ -790,7 +816,9 @@ def release_lot(
     denetim günlüğüne yazılır.
 
     Lotun karantina lokasyonlarındaki stoku `to_location`'a transfer edilir; karantinada stok
-    varsa hedef lokasyon zorunludur ve karantina türünde olamaz. Olay: `lot.released`.
+    varsa hedef lokasyon zorunludur ve karantina türünde olamaz. Lotu üreten iş (dolum partisi,
+    üretim şarjı) bitmediyse ya da iptal edildiyse reddedilir (`unfinished_output`). Olay:
+    `lot.released`.
     """
     note = note.strip()
     if not quality_decision:
@@ -801,6 +829,11 @@ def release_lot(
             "Lot yalnızca kalite kararıyla serbest bırakılır; elle serbest bırakma yetkiniz yok.",
         )
         note = f"Elle serbest bırakma (D-5): {_require_note(note, 'Elle serbest bırakma')}"
+    reason = unfinished_output(lot)
+    if reason:
+        raise BusinessRuleError(
+            "lot_output_unfinished", f"{reason}; parti bitmeden lot serbest bırakılamaz."
+        )
     lot = _set_lot_status(actor, lot, Lot.Status.RELEASED, note)
     quarantined = list(
         StockBalance.objects.filter(

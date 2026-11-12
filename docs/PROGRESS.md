@@ -1679,3 +1679,14 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   `makemigrations --check` ve şema temiz; ön yüz lint, biçim, tip denetimi ve derleme temiz.
   Bağımsız inceleme (üç inceleyici, her bulguya bir çürütücü) eski ve yeni kodu her yol, her metot
   ve 18 kişi için karşılaştırdı (6.156 durum, 0 karar farkı); tek gerçek bulgu yukarıdaki mesajdı.
+
+## 2026-11-12 — Partisi bitmemiş lot serbest bırakılamaz
+
+- Dolum partisi ya da üretim şarjı bitmeden lotu serbest bırakmak (kalite kararı ve elle serbest
+  bırakma), lota son kontrol numunesi açmak ve lotu değiştiren karar vermek reddedilir
+  (`lot_output_unfinished`); iptal edilen partinin lotu da serbest bırakılamaz. Karar ve gerekçe
+  DECISIONS'ta ("2026-11-12 — Partisi bitmemiş lot serbest bırakılamaz").
+- Testler: `filling/tests/test_output_guard.py` (devam eden ve iptal edilen parti, kuraldan önce
+  açılmış numune, parti bitince akış), `production/tests/test_output_guard.py` (şarj sırasında
+  yalnız ara kontrol numunesi), `inventory/tests/test_services.py` (kayıt noktası ve elle serbest
+  bırakma). Kural kapatılınca yeni testler kırılıyor.
