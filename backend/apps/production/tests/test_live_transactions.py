@@ -14,6 +14,7 @@ from rest_framework.test import APIClient
 from apps.core.models import User
 from apps.inventory.models import Lot
 from apps.inventory.testing import assert_stock_invariants
+from apps.masterdata.tests.factories import ensure_standard_units
 from apps.production.models import ProductionBatch, ProductionOrder
 from apps.production.tests.factories import build_plant, order_data
 
@@ -35,10 +36,11 @@ def ok(response: Any, code: int = 200) -> Any:
     return response.json()
 
 
-@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+@pytest.mark.django_db(transaction=True)
 def test_production_flow_runs_without_a_surrounding_transaction(
     make_user: Callable[..., User],
 ) -> None:
+    ensure_standard_units()
     planner = make_user("planlama", username="planlama")
     depo = make_user("depo", username="depo")
     operator = make_user("uretim", username="uretim")
