@@ -18,6 +18,7 @@ from apps.core.authentication import CsrfFailed
 from apps.core.exceptions import api_exception_handler
 from apps.core.models import AccessOverride, User
 from apps.core.permissions import (
+    DEFAULT_MESSAGE,
     REQUIRED_ATTR,
     AccessMixin,
     AdminOnly,
@@ -236,6 +237,32 @@ def test_access_mixin_method_keys_read_methods_and_other_safe_access(
     assert not either.has_permission(drf_request(make_user()), VIEW_STUB)
 
 
+def test_composed_rule_denial_keeps_the_project_message(make_user: Callable[..., User]) -> None:
+    """DRF'nin `A | B` birleşiminin mesajı yoktur; reddedince 403 yanıtı öteki denetimlerle aynı
+    mesajı ve iki yetkiyi de söyler (DRF'nin varsayılan metni değil)."""
+    viewset = _MethodViewSet("approve", "POST")
+    (either,) = viewset.get_permissions()
+    assert either.message == DEFAULT_MESSAGE
+    (single,) = _MethodViewSet("picks", "POST").get_permissions()
+    assert single.message == DEFAULT_MESSAGE
+
+    request = drf_request(make_user())
+    assert not either.has_permission(request, VIEW_STUB)
+    with pytest.raises(exceptions.PermissionDenied) as caught:
+        APIView().permission_denied(request, message=either.message)
+    response = api_exception_handler(caught.value, {"request": request})
+
+    assert response is not None
+    assert response.data == {
+        "code": "permission_denied",
+        "detail": DEFAULT_MESSAGE,
+        "required": [
+            {"key": "production.orders", "level": APPROVE},
+            {"key": "production.prep", "level": CHANGE},
+        ],
+    }
+
+
 class _TraceViewSet(AccessMixin):
     """Eylemi `trace` adını taşıyan görünüm (lotun soy ağacı gibi): DRF HTTP TRACE isteğini de bu
     işleyiciye gönderir."""
@@ -264,6 +291,33 @@ def test_access_mixin_unhandled_methods_keep_the_write_rule(
     (plain,) = _MethodView("PATCH").get_permissions()
     assert plain.has_permission(drf_request(make_user()), VIEW_STUB)
     assert not plain.has_permission(drf_request(None), VIEW_STUB)
+
+
+class _ActionRouteViewSet(AccessMixin):
+    """Yalnız POST'u olan eylem yolu (ör. `approve`) ve bugün her GET'i okuma sayan görünüm
+    (üretim, dolum): karşılanmayan GET okuma kuralıyla, diğer metotlar yazma kuralıyla."""
+
+    read_access = ReadRule(ORDERS)
+    unhandled_access = HasAccess(ORDERS, CHANGE)
+    unhandled_read_methods = frozenset({"GET"})
+
+    def __init__(self, method: str) -> None:
+        self.action_map = {"post": "approve"}
+        self.action = self.action_map.get(method.lower())
+        self.request = factory.generic(method, "/x/")
+
+
+def test_access_mixin_unhandled_reads_follow_the_read_rule() -> None:
+    def name(method: str) -> str:
+        (permission,) = _ActionRouteViewSet(method).get_permissions()
+        return type(permission).__name__
+
+    assert name("GET") == "ReadRule(production.orders)"
+    # HEAD, GET'i karşılamayan yolda karşılanmaz; bugünkü gibi yazma kuralıyla denetlenir.
+    assert name("HEAD") == "HasAccess(production.orders, change)"
+    assert name("DELETE") == "HasAccess(production.orders, change)"
+    # Karşılanan metot `action_access`'te olmalıdır: listede olmayan eylem reddedilir.
+    assert name("POST") == "DenyUnknownAction"
 
 
 def test_access_mixin_checks_methods_drf_dispatches_by_name() -> None:

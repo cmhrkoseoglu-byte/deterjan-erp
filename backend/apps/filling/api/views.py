@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from typing import Any, ClassVar
+from typing import Any
 
 import django_filters
 from django.db.models import Prefetch, QuerySet
@@ -7,14 +7,14 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from apps.core.access import APPROVE, CHANGE
 from apps.core.exceptions import BusinessRuleError
-from apps.core.permissions import HasRole
-from apps.core.roles import DEPO, DOLUM, PLANLAMA
+from apps.core.permissions import AccessMixin, HasAccess, ReadRule
 from apps.filling import selectors, services
+from apps.filling.access import ORDERS, PREP, RUNS, SPECS
 from apps.filling.api import serializers as s
 from apps.filling.models import (
     FillingOrder,
@@ -28,7 +28,17 @@ from apps.inventory import selectors as inventory_selectors
 from apps.inventory.api.serializers import CancelSerializer, StockBalanceSerializer
 from apps.inventory.models import Lot
 
-READ_ACTIONS = frozenset({"list", "retrieve", "metadata", "pick_suggestions", "report"})
+# Dolum emri ve partisi okuması: üç bölümden birinde okuma yeter (plan §5.1).
+RECORD_READ = ReadRule(ORDERS, PREP, RUNS)
+SPEC_READ = ReadRule(SPECS)
+# Parti ve emir tüketim raporları Dolum hattı bölümünün açık okumasıdır (plan §3.6).
+REPORT_READ = ReadRule(RUNS)
+ORDER_CHANGE = HasAccess(ORDERS, CHANGE)
+ORDER_APPROVE = HasAccess(ORDERS, APPROVE)
+PREP_CHANGE = HasAccess(PREP, CHANGE)
+RUN_CHANGE = HasAccess(RUNS, CHANGE)
+SPEC_CHANGE = HasAccess(SPECS, CHANGE)
+SPEC_APPROVE = HasAccess(SPECS, APPROVE)
 
 
 def _user(request: Request) -> Any:
@@ -51,18 +61,12 @@ def resolve_lot(material_ids: Iterable[int], data: dict[str, Any], what: str) ->
     return lot
 
 
-class RolePermissionMixin:
-    """Okuma giriş yapmış herkese; her yazma eylemi kendi rolüne açık (admin her yere)."""
+class FillingAccessMixin(AccessMixin):
+    """Her yazma eylemi kendi bölümüyle (plan §3.6). Her GET okumadır, karşılanmayan yolda da;
+    karşılanmayan diğer metotlar bugünkü yedek rol gibi görünümün yazma yetkisini ister (sonra
+    DRF 405 döner). Listede olmayan yazma eylemi reddedilir (plan §5.4)."""
 
-    action_roles: ClassVar[dict[str, tuple[str, ...]]] = {}
-    default_roles: ClassVar[tuple[str, ...]] = (PLANLAMA,)
-
-    def get_permissions(self) -> list[BasePermission]:
-        name = getattr(self, "action", None) or ""
-        request = getattr(self, "request", None)
-        if name in READ_ACTIONS or (request is not None and request.method == "GET"):
-            return [IsAuthenticated()]
-        return [HasRole(*self.action_roles.get(name, self.default_roles))()]
+    unhandled_read_methods = frozenset({"GET"})
 
 
 # --- ambalaj reçetesi ------------------------------------------------------------------------
@@ -90,15 +94,21 @@ class PackagingSpecFilter(django_filters.FilterSet):
 
 
 class PackagingSpecViewSet(
-    RolePermissionMixin,
+    FillingAccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Sürümlü ambalaj reçeteleri (planlama yazar). Durum yalnızca `approve` ile değişir; taslak
-    dışındaki sürüm değiştirilmez (`copy` ile yeni taslak açılır)."""
+    """Sürümlü ambalaj reçeteleri (Ambalaj reçeteleri). Durum yalnızca `approve` ile değişir;
+    taslak dışındaki sürüm değiştirilmez (`copy` ile yeni taslak açılır)."""
 
+    read_access = SPEC_READ
+    unhandled_access = SPEC_CHANGE
+    action_access = {
+        **{name: SPEC_CHANGE for name in ("create", "update", "partial_update", "copy", "lines")},
+        "approve": SPEC_APPROVE,
+    }
     filterset_class = PackagingSpecFilter
     search_fields = ["finished_product__code", "finished_product__name", "change_note"]
     ordering_fields = ["version_no", "created_at", "approved_at"]
@@ -168,7 +178,7 @@ class PackagingSpecViewSet(
 
 
 class PackagingSpecLineViewSet(
-    RolePermissionMixin,
+    FillingAccessMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     mixins.DestroyModelMixin,
@@ -176,6 +186,9 @@ class PackagingSpecLineViewSet(
 ):
     """Taslak sürüm satırı: güncelle ve kaldır (onaylı sürümde 400 `packaging_spec_locked`)."""
 
+    read_access = SPEC_READ
+    unhandled_access = SPEC_CHANGE
+    action_access = {name: SPEC_CHANGE for name in ("update", "partial_update", "destroy")}
     queryset = PackagingSpecLine.objects.select_related("material__base_unit", "spec")
     serializer_class = s.PackagingSpecLineSerializer
 
@@ -215,7 +228,7 @@ class FillingOrderFilter(django_filters.FilterSet):
 
 
 class FillingOrderViewSet(
-    RolePermissionMixin,
+    FillingAccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -228,16 +241,23 @@ class FillingOrderViewSet(
     search_fields = ["number", "finished_product__code", "finished_product__name", "notes"]
     ordering_fields = ["planned_date", "number", "created_at"]
     ordering = ["-planned_date", "-id"]
-    action_roles = {
-        "create": (PLANLAMA,),
-        "update": (PLANLAMA,),
-        "partial_update": (PLANLAMA,),
-        "approve": (PLANLAMA,),
-        "cancel": (PLANLAMA,),
-        "start_prep": (DEPO,),
-        "mark_ready": (DEPO,),
-        "picks": (DEPO,),
-        "finish": (DOLUM,),
+    read_access = RECORD_READ
+    unhandled_access = ORDER_CHANGE
+    action_access = {
+        "create": ORDER_CHANGE,
+        "update": ORDER_CHANGE,
+        "partial_update": ORDER_CHANGE,
+        "approve": ORDER_APPROVE,
+        # Uç nokta emrin durumunu bilmeden denetler; servis taslakta Değiştirir, onaylı ya da
+        # hazırlıktaki emirde Onaylar ister.
+        "cancel": ORDER_CHANGE | ORDER_APPROVE,
+        "start_prep": PREP_CHANGE,
+        "mark_ready": PREP_CHANGE,
+        # GET hazırlanan lotları okur, POST okutur; HEAD bugünkü gibi okutma yetkisiyle.
+        "picks:get": RECORD_READ,
+        "picks": PREP_CHANGE,
+        "finish": RUN_CHANGE,
+        "report": REPORT_READ,
     }
 
     def get_queryset(self) -> QuerySet[FillingOrder]:
@@ -276,7 +296,7 @@ class FillingOrderViewSet(
     @extend_schema(request=s.FillingNoteSerializer, responses=s.FillingOrderDetailSerializer)
     @action(detail=True, methods=["post"])
     def approve(self, request: Request, pk: str | None = None) -> Response:
-        """Emri onaylar; ambalaj ihtiyacı hesaplanır (planlama)."""
+        """Emri onaylar; ambalaj ihtiyacı hesaplanır (Dolum emirleri: Onaylar)."""
         body = s.FillingNoteSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         order = services.approve_order(
@@ -287,19 +307,21 @@ class FillingOrderViewSet(
     @extend_schema(request=None, responses=s.FillingOrderDetailSerializer)
     @action(detail=True, methods=["post"], url_path="start-prep")
     def start_prep(self, request: Request, pk: str | None = None) -> Response:
-        """Ambalaj hazırlığını başlatır (depo)."""
+        """Ambalaj hazırlığını başlatır (Ambalaj hazırlama: Değiştirir)."""
         return self._respond(services.start_material_prep(_user(request), self.get_object()))
 
     @extend_schema(request=None, responses=s.FillingOrderDetailSerializer)
     @action(detail=True, methods=["post"], url_path="mark-ready")
     def mark_ready(self, request: Request, pk: str | None = None) -> Response:
-        """Ambalaj hazır (depo); her satır fire payı hariç ihtiyaç kadar hazırlanmış olmalı."""
+        """Ambalaj hazır (Ambalaj hazırlama: Değiştirir); her satır fire payı hariç ihtiyaç kadar
+        hazırlanmış olmalı."""
         return self._respond(services.mark_material_ready(_user(request), self.get_object()))
 
     @extend_schema(request=CancelSerializer, responses=s.FillingOrderDetailSerializer)
     @action(detail=True, methods=["post"])
     def cancel(self, request: Request, pk: str | None = None) -> Response:
-        """Emri iptal eder (planlama); hazırlanan ambalaj geri transfer edilir."""
+        """Emri iptal eder (taslak: Değiştirir, onaylı ya da hazırlıktaki emir: Onaylar);
+        hazırlanan ambalaj geri transfer edilir."""
         body = CancelSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         order = services.cancel_order(
@@ -310,7 +332,8 @@ class FillingOrderViewSet(
     @extend_schema(request=s.FillingNoteSerializer, responses=s.FillingOrderDetailSerializer)
     @action(detail=True, methods=["post"])
     def finish(self, request: Request, pk: str | None = None) -> Response:
-        """Dolumu bitirir (dolum): emir analiz bekler; lotlar serbest kalınca tamamlanır."""
+        """Dolumu bitirir (Dolum hattı: Değiştirir): emir analiz bekler; lotlar serbest kalınca
+        tamamlanır."""
         body = s.FillingNoteSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         order = services.finish_filling(
@@ -326,7 +349,8 @@ class FillingOrderViewSet(
     )
     @action(detail=True, methods=["get", "post"], pagination_class=None, filter_backends=[])
     def picks(self, request: Request, pk: str | None = None) -> Response:
-        """Hazırlanan ambalaj lotları (GET) / lot okutarak hazırla (POST, depo)."""
+        """Hazırlanan ambalaj lotları (GET) / lot okutarak hazırla (POST, Ambalaj hazırlama:
+        Değiştirir)."""
         order = self.get_object()
         if request.method == "GET":
             rows = order.picks.select_related(
@@ -391,7 +415,7 @@ class FillingRunFilter(django_filters.FilterSet):
 
 
 class FillingRunViewSet(
-    RolePermissionMixin,
+    FillingAccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -404,7 +428,15 @@ class FillingRunViewSet(
     search_fields = ["output_lot__lot_no", "order__number", "order__finished_product__code"]
     ordering_fields = ["started_at", "sequence"]
     ordering = ["-started_at", "-id"]
-    default_roles = (DOLUM,)
+    read_access = RECORD_READ
+    unhandled_access = RUN_CHANGE
+    action_access = {
+        **{
+            name: RUN_CHANGE
+            for name in ("create", "consume_bulk", "scan", "scrap", "finish", "cancel")
+        },
+        "report": REPORT_READ,
+    }
 
     def get_queryset(self) -> QuerySet[FillingRun]:
         return FillingRun.objects.select_related(

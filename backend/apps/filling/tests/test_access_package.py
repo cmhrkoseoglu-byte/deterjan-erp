@@ -9,15 +9,19 @@ Satır olmayanlar:
 - Yeni dolum emri sayfası (`/dolum/emirler/yeni`) bugün modülü görenlere açık; plan §8 madde 3 ile
   yalnız emir açabilenlere daralır (bilinen ilk gün farkı).
 - `FillingOrderViewSet`'te listede olmayan yazma eylemi için `default_roles` (planlama) yedeği: her
-  yazma eylemi listede olduğu için bugün hiçbir uç noktada çalışmaz; plan §5.4'te bilinmeyen
-  yazma eylemi reddedilir.
+  yazma eylemi listede olduğu için bugün hiçbir eylemde çalışmaz; plan §5.4'te bilinmeyen
+  yazma eylemi reddedilir. Görünümün karşılamadığı metotta (ör. silme) yedek çalışır; onun
+  satırları aşağıdadır.
+
+3. adımda modül bölüm denetimine geçti: servis satırlarının `live` bağlantısı kaldırıldı (sabitler
+yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar. Ön yüz sabitlerine
+bağlantı 8. adıma kadar kalır.
 """
 
 from apps.core.access import APPROVE, CHANGE, VIEW
 from apps.core.tests.access_helpers import SIGNED_IN, Row, any_of, assert_rows, level, read
 from apps.filling.access import ORDERS, PREP, RUNS, SPECS
 
-SERVICES = "apps.filling.services"
 CONFIG = "frontend:src/modules/filling/config.ts"
 # layout/menu.ts MENU "filling": menü öğesi ve routes.tsx `fillingPage` koruması.
 MENU_ROLES = ("dolum", "planlama", "depo", "yonetim")
@@ -78,132 +82,135 @@ ROWS = [
     Row("views.FillingRunViewSet.scrap (default_roles)", FILLER, level(RUNS, CHANGE)),
     Row("views.FillingRunViewSet.finish (default_roles)", FILLER, level(RUNS, CHANGE)),
     Row("views.FillingRunViewSet.cancel (default_roles)", FILLER, level(RUNS, CHANGE)),
+    # Karşılanmayan metot (ör. silme, onay yolunda HEAD): görünümün bugünkü `default_roles`
+    # yedeği; sonra 405 döner. Her GET okumadır (bugün her GET IsAuthenticated).
+    Row(
+        "views.PackagingSpecViewSet ve PackagingSpecLineViewSet karşılanmayan metot "
+        "(default_roles)",
+        PLANNER,
+        level(SPECS, CHANGE),
+    ),
+    Row(
+        "views.FillingOrderViewSet karşılanmayan metot (default_roles)",
+        PLANNER,
+        level(ORDERS, CHANGE),
+    ),
+    Row("views.FillingRunViewSet karşılanmayan metot (default_roles)", FILLER, level(RUNS, CHANGE)),
+    Row(
+        "views.PackagingSpecViewSet ve PackagingSpecLineViewSet karşılanmayan yoldaki GET",
+        SIGNED_IN,
+        SPEC_READ,
+    ),
+    Row(
+        "views.FillingOrderViewSet ve FillingRunViewSet karşılanmayan yoldaki GET",
+        SIGNED_IN,
+        RECORD_READ,
+    ),
     # --- servis: apps/filling/services.py (_require_role) -------------------------------------
     Row(
         "services.create_spec (SPEC_ROLES; copy_spec da bunu çağırır)",
         PLANNER,
         level(SPECS, CHANGE),
-        live=f"{SERVICES}:SPEC_ROLES",
     ),
     Row(
         "services.update_spec (SPEC_ROLES)",
         PLANNER,
         level(SPECS, CHANGE),
-        live=f"{SERVICES}:SPEC_ROLES",
     ),
     Row(
         "services.add_spec_line (SPEC_ROLES)",
         PLANNER,
         level(SPECS, CHANGE),
-        live=f"{SERVICES}:SPEC_ROLES",
     ),
     Row(
         "services.update_spec_line (SPEC_ROLES)",
         PLANNER,
         level(SPECS, CHANGE),
-        live=f"{SERVICES}:SPEC_ROLES",
     ),
     Row(
         "services.remove_spec_line (SPEC_ROLES)",
         PLANNER,
         level(SPECS, CHANGE),
-        live=f"{SERVICES}:SPEC_ROLES",
     ),
     Row(
         "services.approve_spec (SPEC_ROLES)",
         PLANNER,
         level(SPECS, APPROVE),
-        live=f"{SERVICES}:SPEC_ROLES",
     ),
     Row(
         "services.create_order (ORDER_ROLES)",
         PLANNER,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.update_order (ORDER_ROLES)",
         PLANNER,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.approve_order (ORDER_ROLES)",
         PLANNER,
         level(ORDERS, APPROVE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.cancel_order taslak emir (ORDER_ROLES)",
         PLANNER,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.cancel_order onaylı ya da hazırlıktaki emir (ORDER_ROLES)",
         PLANNER,
         level(ORDERS, APPROVE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.start_material_prep (PREP_ROLES)",
         WAREHOUSE,
         level(PREP, CHANGE),
-        live=f"{SERVICES}:PREP_ROLES",
     ),
     Row(
         "services.pick_packaging (PREP_ROLES)",
         WAREHOUSE,
         level(PREP, CHANGE),
-        live=f"{SERVICES}:PREP_ROLES",
     ),
     Row(
         "services.mark_material_ready (PREP_ROLES)",
         WAREHOUSE,
         level(PREP, CHANGE),
-        live=f"{SERVICES}:PREP_ROLES",
     ),
     Row(
         "services.start_run (FILLING_ROLES)",
         FILLER,
         level(RUNS, CHANGE),
-        live=f"{SERVICES}:FILLING_ROLES",
     ),
     Row(
         "services.consume_bulk (FILLING_ROLES)",
         FILLER,
         level(RUNS, CHANGE),
-        live=f"{SERVICES}:FILLING_ROLES",
     ),
     Row(
         "services.scan_packaging_lot (FILLING_ROLES)",
         FILLER,
         level(RUNS, CHANGE),
-        live=f"{SERVICES}:FILLING_ROLES",
     ),
     Row(
         "services.record_scrap (FILLING_ROLES)",
         FILLER,
         level(RUNS, CHANGE),
-        live=f"{SERVICES}:FILLING_ROLES",
     ),
     Row(
         "services.finish_run (FILLING_ROLES)",
         FILLER,
         level(RUNS, CHANGE),
-        live=f"{SERVICES}:FILLING_ROLES",
     ),
     Row(
         "services.cancel_run (FILLING_ROLES)",
         FILLER,
         level(RUNS, CHANGE),
-        live=f"{SERVICES}:FILLING_ROLES",
     ),
     Row(
         "services.finish_filling (FILLING_ROLES)",
         FILLER,
         level(RUNS, CHANGE),
-        live=f"{SERVICES}:FILLING_ROLES",
     ),
     # --- kayıt türleri: apps/filling/apps.py (register_record_type, rolsüz) -------------------
     Row("records filling.fillingorder (yorum, geçmiş, ek)", SIGNED_IN, RECORD_READ),

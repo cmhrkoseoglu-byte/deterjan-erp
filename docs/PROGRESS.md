@@ -1621,3 +1621,61 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   - laboratuvardan Lot bloke etme kaldırılınca bloke 403 olur, planlamaya eklenince açılır;
   - Ana veriler'in Açık kayıtları kapatılınca sade kart; depoda müşteri kartı tam kalır;
   - Reçeteler'in Açık kayıtları kapatılınca sade reçete listesi; onay yetkisi kaldırılınca onay 403.
+
+## 2026-11-12 — Kişiye özel yetkiler: 3. adım (üretim ve dolum)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-12).
+- **Geçiş:** üretim ve dolum modüllerinin API'si ve servisleri rol denetimini bıraktı; bölüm
+  denetimine geçti: emir açma, değiştirme ve onay; malzeme ve ambalaj hazırlama ve okutma; şarj ve
+  tartım; dolum hattı; ambalaj reçeteleri. Kişiye özel ayar yokken kararlar bugünküyle aynıdır:
+  uç nokta anlık görüntüsü ve sondalar hiç değişmedi (3. adımın izin listesi kaydı yok). Sistem
+  denetimi (E003) bu iki modülün her uç noktasında da bölüm denetimi arar; rol denetimi tarayıcısı
+  bu modülleri de tarar.
+- **İptal:** taslak emri iptal etmek Değiştirir, onaylı ya da hazırlıktaki emri iptal etmek Onaylar
+  ister (servis emrin durumuna göre denetler; uç nokta ikisinden birini arar). Bugün ikisi de
+  planlamada olduğu için fark edilmez.
+- **Giriş noktası kuralı (plan §5.4):** lot serbest kalınca emrin tamamlanması ve şarj ya da parti
+  bitince numune açılması yetki denetimi olmayan sistem adımlarıdır; ardıl yetkisi olmayan kişiyle
+  test edildi. Üretim emrini elle tamamlama uç noktası Üretim emirleri: Değiştirir ister.
+- **Tüketim raporları** (parti ve emir) Dolum hattı bölümünün açık okumasıdır (plan §3.6).
+- **Mesajlar** rol adı yerine yetkiyi söyler (§8 madde 4), ör. "Üretim emrini onaylama yetkiniz
+  yok.", "Bu dolum emrini iptal etme yetkiniz yok.", "Ambalaj lotu okutma yetkiniz yok."
+- **Geçiş notları:**
+  - Üretim ve dolum bugün her GET'i okuma sayıyordu, karşılamadıkları yolda da (ör. yalnız POST'u
+    olan onay yolunda GET). `AccessMixin`'e `unhandled_read_methods` eklendi: bu metotlar
+    karşılanmasa da okuma kuralıyla denetlenir, sonra 405 döner. Karşılanmayan öteki metotlar
+    bugünkü yedek kural gibi görünümün yazma yetkisini ister (şarjlarda da emir yazma yetkisi).
+  - Hazırlanan lotların HEAD isteği bugünkü gibi okutma yetkisiyle denetlenir.
+  - `HasAccess(A) | HasAccess(B)` birleşimi reddedince 403 yanıtı DRF'nin varsayılan metni yerine
+    öteki denetimlerle aynı mesajı taşır (iptal uç noktası; bağımsız incelemenin bulgusu). Bu,
+    5. adımda satın almanın "ya da" denetimleri için de geçerlidir.
+  - Rol denetimi tarayıcısının izin listesi satır numarası yerine satırın metniyle eşlenir ve
+    nedenini taşır; ilk kayıtlar demo komutlarının demo kullanıcısını rol adıyla bulmasıdır (rol
+    denetimi değil). Listede olup koddan kalkan satır testi kırar.
+  - Paket denkliği testlerinin servis satırlarındaki `live` bağlantısı kaldırıldı (sabitler yok);
+    ön yüz sabitlerine bağlantı 8. adıma kadar kalır. Karşılanmayan metotların bugünkü yedek kuralı
+    ve karşılanmayan yoldaki GET de satır olarak eklendi.
+- **Kişiye özel ayar ve bağ testleri** (18; ayrıca çekirdekte 3), örnekler:
+  - depodan Malzeme hazırlama: Değiştirir kaldırılınca hazırlık başlatma, okutma ve hazır bildirme
+    403 olur; emir, hazırlananlar ve öneriler okunur (plan §10'un örneği); dolumda da aynısı;
+  - üretim rolüne Malzeme hazırlama: Değiştirir eklenince hazırlığı başlatır;
+  - Onaylar'ı kaldırılan kişi taslağı iptal eder, onaylı emri iptal edemez ve onaylayamaz;
+    Değiştirir'i kaldırılan kişi onaylı emri iptal eder, emir açamaz, taslağı düzenleyemez ve iptal
+    edemez (üretimde ve dolumda);
+  - üretimden Şarj ve tartım: Değiştirir, dolumdan Dolum hattı: Değiştirir kaldırılınca şarj ve
+    parti işlemleri 403 olur, okuma ve raporlar açık kalır;
+  - Dolum hattı'nın Görür'ü ve Açık kayıtlar kapatılınca emir ve parti okunur, tüketim raporları
+    403 olur;
+  - planlamadan Ambalaj reçeteleri: Onaylar kaldırılınca kopyalama sürer, onay 403 olur;
+  - Açık kayıtlar kapatılınca üretim dışındaki kişiye emir ve şarj okuması kapanır (karşılanmayan
+    yoldaki GET dahil); depo okumaya devam eder;
+  - lot kararı, kararı verenin üretimde ve dolumda yetkisi olmasa da emri kapatır; şarjı ve
+    partiyi bitiren kişi kaliteyi okuyamasa da numune açılır;
+  - her servis (üretimde 13, dolumda 22 denetim) planın tablosundaki bölüm ve düzeyi söyleyen 403
+    ile, işin kurallarından önce reddeder;
+  - karşılanmayan metotlar (silme, POST'u olan yolda HEAD ve PUT, GET'i olmayan yolda GET) bugünkü
+    kararı verir.
+- **Doğrulama:** backend 2292 test, ön yüz 628 test yeşil; mypy, ruff, `manage.py check`,
+  `makemigrations --check` ve şema temiz; ön yüz lint, biçim, tip denetimi ve derleme temiz.
+  Bağımsız inceleme (üç inceleyici, her bulguya bir çürütücü) eski ve yeni kodu her yol, her metot
+  ve 18 kişi için karşılaştırdı (6.156 durum, 0 karar farkı); tek gerçek bulgu yukarıdaki mesajdı.

@@ -1,4 +1,4 @@
-from typing import Any, ClassVar
+from typing import Any
 
 import django_filters
 from django.db.models import QuerySet
@@ -6,21 +6,26 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from apps.core.access import APPROVE, CHANGE
 from apps.core.exceptions import BusinessRuleError
-from apps.core.permissions import HasRole
-from apps.core.roles import DEPO, PLANLAMA, URETIM
+from apps.core.permissions import AccessMixin, HasAccess, ReadRule
 from apps.inventory import selectors as inventory_selectors
 from apps.inventory.api.serializers import CancelSerializer, StockBalanceSerializer
 from apps.inventory.models import Lot
 from apps.production import selectors, services
+from apps.production.access import BATCHES, ORDERS, PREP
 from apps.production.api import serializers as s
 from apps.production.models import ProductionBatch, ProductionOrder, ProductionRequirement
 
-READ_ACTIONS = frozenset({"list", "retrieve", "metadata", "pick_suggestions"})
+# Emir ve şarj okuması: üç bölümden birinde okuma yeter (plan §5.1).
+RECORD_READ = ReadRule(ORDERS, PREP, BATCHES)
+ORDER_CHANGE = HasAccess(ORDERS, CHANGE)
+ORDER_APPROVE = HasAccess(ORDERS, APPROVE)
+PREP_CHANGE = HasAccess(PREP, CHANGE)
+BATCH_CHANGE = HasAccess(BATCHES, CHANGE)
 
 
 def _user(request: Request) -> Any:
@@ -54,20 +59,14 @@ def _requirement(order_id: int, requirement_id: int) -> ProductionRequirement:
     return requirement
 
 
-class RolePermissionMixin:
-    """Okuma giriş yapmış herkese; her yazma eylemi kendi rolüne açık (admin her yere)."""
+class ProductionAccessMixin(AccessMixin):
+    """Emir ve şarj okuması, her yazma eylemi kendi bölümüyle (plan §3.4). Her GET okumadır,
+    karşılanmayan yolda da; karşılanmayan diğer metotlar bugünkü yedek kural gibi emir yazma
+    yetkisi ister (sonra DRF 405 döner). Listede olmayan yazma eylemi reddedilir (plan §5.4)."""
 
-    action_roles: ClassVar[dict[str, tuple[str, ...]]] = {}
-
-    def get_permissions(self) -> list[BasePermission]:
-        name = getattr(self, "action", None) or ""
-        request = getattr(self, "request", None)
-        if name in READ_ACTIONS or (request is not None and request.method == "GET"):
-            return [IsAuthenticated()]
-        roles = self.action_roles.get(name)
-        if roles is None:
-            return [HasRole(PLANLAMA)()]
-        return [HasRole(*roles)()]
+    read_access = RECORD_READ
+    unhandled_access = ORDER_CHANGE
+    unhandled_read_methods = frozenset({"GET"})
 
 
 class ProductionOrderFilter(django_filters.FilterSet):
@@ -81,7 +80,7 @@ class ProductionOrderFilter(django_filters.FilterSet):
 
 
 class ProductionOrderViewSet(
-    RolePermissionMixin,
+    ProductionAccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -94,16 +93,20 @@ class ProductionOrderViewSet(
     search_fields = ["number", "product__code", "product__name", "notes"]
     ordering_fields = ["planned_date", "number", "priority", "created_at"]
     ordering = ["-planned_date", "-id"]
-    action_roles = {
-        "create": (PLANLAMA,),
-        "update": (PLANLAMA,),
-        "partial_update": (PLANLAMA,),
-        "approve": (PLANLAMA,),
-        "cancel": (PLANLAMA,),
-        "complete": (PLANLAMA,),
-        "start_prep": (DEPO,),
-        "mark_ready": (DEPO,),
-        "picks": (DEPO,),
+    action_access = {
+        "create": ORDER_CHANGE,
+        "update": ORDER_CHANGE,
+        "partial_update": ORDER_CHANGE,
+        "complete": ORDER_CHANGE,
+        "approve": ORDER_APPROVE,
+        # Uç nokta emrin durumunu bilmeden denetler; servis taslakta Değiştirir, onaylı ya da
+        # hazırlıktaki emirde Onaylar ister.
+        "cancel": ORDER_CHANGE | ORDER_APPROVE,
+        "start_prep": PREP_CHANGE,
+        "mark_ready": PREP_CHANGE,
+        # GET hazırlanan lotları okur, POST okutur; HEAD bugünkü gibi okutma yetkisiyle.
+        "picks:get": RECORD_READ,
+        "picks": PREP_CHANGE,
     }
 
     def get_queryset(self) -> QuerySet[ProductionOrder]:
@@ -143,7 +146,7 @@ class ProductionOrderViewSet(
     @extend_schema(request=s.NoteSerializer, responses=s.ProductionOrderDetailSerializer)
     @action(detail=True, methods=["post"])
     def approve(self, request: Request, pk: str | None = None) -> Response:
-        """Emri onaylar; reçete ölçeklenir, ihtiyaç listesi oluşur (planlama)."""
+        """Emri onaylar; reçete ölçeklenir, ihtiyaç listesi oluşur (Üretim emirleri: Onaylar)."""
         body = s.NoteSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         order = services.approve_order(
@@ -154,19 +157,21 @@ class ProductionOrderViewSet(
     @extend_schema(request=None, responses=s.ProductionOrderDetailSerializer)
     @action(detail=True, methods=["post"], url_path="start-prep")
     def start_prep(self, request: Request, pk: str | None = None) -> Response:
-        """Malzeme hazırlığını başlatır (depo)."""
+        """Malzeme hazırlığını başlatır (Malzeme hazırlama: Değiştirir)."""
         return self._respond(services.start_material_prep(_user(request), self.get_object()))
 
     @extend_schema(request=None, responses=s.ProductionOrderDetailSerializer)
     @action(detail=True, methods=["post"], url_path="mark-ready")
     def mark_ready(self, request: Request, pk: str | None = None) -> Response:
-        """Malzeme hazır (depo); her ihtiyaç toleransın alt sınırına kadar hazırlanmış olmalı."""
+        """Malzeme hazır (Malzeme hazırlama: Değiştirir); her ihtiyaç toleransın alt sınırına
+        kadar hazırlanmış olmalı."""
         return self._respond(services.mark_material_ready(_user(request), self.get_object()))
 
     @extend_schema(request=CancelSerializer, responses=s.ProductionOrderDetailSerializer)
     @action(detail=True, methods=["post"])
     def cancel(self, request: Request, pk: str | None = None) -> Response:
-        """Emri iptal eder (planlama); hazırlanan malzeme geri transfer edilir."""
+        """Emri iptal eder (taslak: Değiştirir, onaylı ya da hazırlıktaki emir: Onaylar);
+        hazırlanan malzeme geri transfer edilir."""
         body = CancelSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         order = services.cancel_order(
@@ -177,7 +182,8 @@ class ProductionOrderViewSet(
     @extend_schema(request=None, responses=s.ProductionOrderDetailSerializer)
     @action(detail=True, methods=["post"])
     def complete(self, request: Request, pk: str | None = None) -> Response:
-        """Emri tamamlar (planlama). Son çıktı lotu serbest bırakılınca kendiliğinden olur."""
+        """Emri elle tamamlar (Üretim emirleri: Değiştirir). Son çıktı lotu serbest bırakılınca
+        kendiliğinden olur."""
         return self._respond(services.complete_order(_user(request), self.get_object()))
 
     @extend_schema(methods=["GET"], request=None, responses=s.MaterialPickSerializer(many=True))
@@ -186,7 +192,7 @@ class ProductionOrderViewSet(
     )
     @action(detail=True, methods=["get", "post"], pagination_class=None, filter_backends=[])
     def picks(self, request: Request, pk: str | None = None) -> Response:
-        """Hazırlanan lotlar (GET) / lot okutarak hazırla (POST, depo)."""
+        """Hazırlanan lotlar (GET) / lot okutarak hazırla (POST, Malzeme hazırlama: Değiştirir)."""
         order = self.get_object()
         if request.method == "GET":
             rows = order.picks.select_related(
@@ -240,24 +246,20 @@ class ProductionBatchFilter(django_filters.FilterSet):
 
 
 class ProductionBatchViewSet(
-    RolePermissionMixin,
+    ProductionAccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Şarjlar. Oluşturma şarjı başlatır; tartım `consume`, bitiş `finish` (üretim)."""
+    """Şarjlar. Oluşturma şarjı başlatır; tartım `consume`, bitiş `finish` (Şarj ve tartım).
+    Karşılanmayan metot, bugünkü gibi bütün üretim görünümlerinde emir yazma yetkisi ister."""
 
     filterset_class = ProductionBatchFilter
     search_fields = ["batch_no", "order__number", "order__product__code"]
     ordering_fields = ["started_at", "batch_no"]
     ordering = ["-started_at", "-id"]
-    action_roles = {
-        "create": (URETIM,),
-        "consume": (URETIM,),
-        "finish": (URETIM,),
-        "cancel": (URETIM,),
-    }
+    action_access = {name: BATCH_CHANGE for name in ("create", "consume", "finish", "cancel")}
 
     def get_queryset(self) -> QuerySet[ProductionBatch]:
         return ProductionBatch.objects.select_related(

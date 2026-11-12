@@ -244,16 +244,18 @@ class AccessMixin:
 
     Görünümün karşılamadığı metotta (ör. ana verilerde silme) `unhandled_access` denetlenir, sonra
     DRF 405 döner; geçen görünümler bugünkü yazma kuralını verir (yazamayana 403, oturumsuza 401).
-    Verilmezse yalnız oturum aranır. DRF, HEAD isteğini GET'in eylemine, OPTIONS isteğini `metadata`
-    eylemine gönderir; OPTIONS yanıtının yazma alanları için denediği POST ve PUT kopyası da
-    OPTIONS gibi denetlenir. Değerler izin sınıfı ya da `HasAccess(A) | HasAccess(B)` gibi
-    birleşimlerdir.
+    Verilmezse yalnız oturum aranır. Bugün her GET'i okuma sayan görünüm (ör. üretim) karşılanmayan
+    GET'i de okuma kuralıyla denetler: `unhandled_read_methods = frozenset({"GET"})`. DRF, HEAD
+    isteğini GET'in eylemine, OPTIONS isteğini `metadata` eylemine gönderir; OPTIONS yanıtının yazma
+    alanları için denediği POST ve PUT kopyası da OPTIONS gibi denetlenir. Değerler izin sınıfı ya
+    da `HasAccess(A) | HasAccess(B)` gibi birleşimlerdir.
     """
 
     read_access: ClassVar[PermissionClass | None] = None
     read_methods: ClassVar[frozenset[str]] = frozenset(SAFE_METHODS)
     other_safe_access: ClassVar[PermissionClass | None] = None
     unhandled_access: ClassVar[PermissionClass | None] = None
+    unhandled_read_methods: ClassVar[frozenset[str]] = frozenset()
     action_access: ClassVar[Mapping[str, PermissionClass]] = {}
 
     def _handles(self, method: str) -> bool:
@@ -272,24 +274,34 @@ class AccessMixin:
         return name == "head" and "get" in names and callable(getattr(self, "get", None))
 
     def get_permissions(self) -> list[Any]:
+        permission: Any = self._access_rule()()
+        if getattr(permission, "message", None) is None:
+            # DRF'nin `A | B` birleşiminin mesajı yoktur; 403 yanıtı öteki denetimlerle aynı mesajı
+            # taşısın (DRF'nin varsayılan metni değil).
+            permission.message = DEFAULT_MESSAGE
+        return [permission]
+
+    def _access_rule(self) -> PermissionClass:
+        """İsteğin izin kuralı (izin sınıfı ya da birleşim); arama sırası sınıfın açıklamasında."""
         request = getattr(self, "request", None)
         method = str(getattr(request, "method", "") or "").upper()
         action = getattr(self, "action", None)
         if action == "metadata":
             method = "OPTIONS"
         if not self._handles(method):
-            rule = self.unhandled_access
-            return [rule()] if rule is not None else [UNHANDLED_METHOD()]
+            if method in self.unhandled_read_methods and self.read_access is not None:
+                return self.read_access
+            return self.unhandled_access if self.unhandled_access is not None else UNHANDLED_METHOD
         keys = (f"{action}:{method.lower()}", action) if action is not None else (method.lower(),)
         for key in keys:
             if key in self.action_access:
-                return [self.action_access[key]()]
+                return self.action_access[key]
         if method in self.read_methods and self.read_access is not None:
-            return [self.read_access()]
+            return self.read_access
         if (
             method in SAFE_METHODS
             and method not in self.read_methods
             and self.other_safe_access is not None
         ):
-            return [self.other_safe_access()]
-        return [DenyUnknownAction()]
+            return self.other_safe_access
+        return DenyUnknownAction

@@ -5,6 +5,7 @@ göçler dışındaki bütün Python dosyaları (apps.py, raporlar, serializer'l
 """
 
 import re
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from apps.core.checks import APPS_DIR, ENFORCED_APPS
@@ -18,23 +19,37 @@ ROLE_CHECK = re.compile(
     r"|from apps\.core\.roles import|from apps\.core import roles"
 )
 # İzin verilen rol denetimleri (plan §10): iki aşamalı doğrulama, bakımda sorumlu birim, görev
-# yönlendirme ve yetki hesabının kendi rol denetimleri. Geçen modüllerde bugün yok.
-ALLOWED: frozenset[str] = frozenset()
+# yönlendirme ve yetki hesabının kendi rol denetimleri; rol denetimi olmayan rol adı kullanımları da
+# (ör. demo kullanıcısı). Anahtar `<dosya>: <satırın metni>`dir: satır numarası kayınca liste
+# bozulmaz, satır değişince yeniden bakılır. Değer nedeni söyler.
+DEMO_USER = "demo kullanıcısı rolün adıyla bulunur (`create_demo_users`); rol denetimi değil"
+ALLOWED: dict[str, str] = {
+    "production/management/commands/seed_demo.py: from apps.core.roles import PLANLAMA": DEMO_USER,
+    "filling/management/commands/seed_filling_demo.py: "
+    "from apps.core.roles import LABORATUVAR, PLANLAMA": DEMO_USER,
+}
 
 
-def role_checks(apps_dir: Path, apps: frozenset[str]) -> list[str]:
-    """Modüllerde kalan rol denetimleri: `<dosya>:<satır>: <metin>`."""
-    found: list[str] = []
+def _role_lines(apps_dir: Path, apps: Iterable[str]) -> list[tuple[str, str]]:
+    """Rol denetimi satırları: (`<dosya>: <metin>` anahtarı, `<dosya>:<satır>: <metin>`)."""
+    lines: list[tuple[str, str]] = []
     for app in sorted(apps):
         for path in sorted((apps_dir / app).rglob("*.py")):
             relative = path.relative_to(apps_dir)
             if relative.parts[1] in ("tests", "migrations") or relative.name == "access.py":
                 continue
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-                where = f"{relative.as_posix()}:{number}"
-                if ROLE_CHECK.search(line) and where not in ALLOWED:
-                    found.append(f"{where}: {line.strip()}")
-    return found
+                if ROLE_CHECK.search(line):
+                    name, text = relative.as_posix(), line.strip()
+                    lines.append((f"{name}: {text}", f"{name}:{number}: {text}"))
+    return lines
+
+
+def role_checks(
+    apps_dir: Path, apps: frozenset[str], allowed: Mapping[str, str] = ALLOWED
+) -> list[str]:
+    """Modüllerde kalan rol denetimleri (izin listesi dışında): `<dosya>:<satır>: <metin>`."""
+    return [where for key, where in _role_lines(apps_dir, apps) if key not in allowed]
 
 
 def test_converted_modules_have_no_role_checks() -> None:
@@ -70,3 +85,15 @@ def test_scanner_finds_role_checks(tmp_path: Path) -> None:
         "demo/selectors.py:2: User.objects.filter(groups__name=DEPO)",
         "demo/services.py:1: if user.has_role('depo'):",
     ]
+    allowed = {"demo/services.py: if user.has_role('depo'):": "deneme"}
+    assert "demo/services.py:1: if user.has_role('depo'):" not in role_checks(
+        tmp_path, frozenset({"demo"}), allowed
+    )
+
+
+def test_allowed_role_lines_still_exist() -> None:
+    """İzin listesindeki her satır hâlâ koddadır: kaldırılan ya da değişen satırın izni de
+    kaldırılır."""
+    apps = {key.split("/", 1)[0] for key in ALLOWED}
+    present = {key for key, _ in _role_lines(APPS_DIR, apps)}
+    assert not set(ALLOWED) - present

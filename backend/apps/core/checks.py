@@ -21,7 +21,9 @@ from apps.core import access
 APPS_DIR = Path(__file__).resolve().parent.parent
 
 # Yetki denetimine geçmiş modüller (her adım kendi modüllerini ekler).
-ENFORCED_APPS: frozenset[str] = frozenset({"inventory", "masterdata", "recipes"})
+ENFORCED_APPS: frozenset[str] = frozenset(
+    {"filling", "inventory", "masterdata", "production", "recipes"}
+)
 
 # Her modülün bölümüne bakabilen modüller: workflow herkesi dinler (CLAUDE.md §3).
 DEPENDENCY_EXEMPT: frozenset[str] = frozenset({"workflow"})
