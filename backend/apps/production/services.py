@@ -959,7 +959,6 @@ def _maybe_await_qc(actor: User | None, order: ProductionOrder) -> None:
     transition_status(order, Status.QC_PENDING, actor, machine=production_order_states)
 
 
-@transaction.atomic
 def unfinished_batch_reason(lot: Lot) -> str | None:
     """Dökme lotun şarjı bitmediyse (devam ediyor ya da iptal) nedeni. `inventory`'nin serbest
     bırakma, son kontrol ve karar denetimine kaydedilir (`apps.py`)."""
@@ -970,6 +969,7 @@ def unfinished_batch_reason(lot: Lot) -> str | None:
     return f"{lot.lot_no} lotunun şarjı {state} ({batch.order.number}, {batch.sequence}. şarj)"
 
 
+@transaction.atomic
 def finish_batch(
     actor: User | None, batch: ProductionBatch, output_quantity: Decimal, note: str = ""
 ) -> ProductionBatch:
