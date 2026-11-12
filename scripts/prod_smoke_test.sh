@@ -133,10 +133,18 @@ ok "/static/admin/css/base.css nginx'ten"
 
 echo "- bilinmeyen Host başlığı"
 set +e
-curl -sS --cacert "$CA" --http1.1 -o /dev/null -H 'Host: saldirgan.example' "$BASE_URL/" 2>/dev/null
+code="$(curl -sS --cacert "$CA" --http1.1 -o /dev/null -w '%{http_code}' \
+    -H 'Host: saldirgan.example' "$BASE_URL/" 2>"$WORK/err")"
 rc=$?
 set -e
-[ "$rc" = "52" ] || fail "bilinmeyen Host için yanıt gelmemeliydi (curl çıkış kodu $rc, beklenen 52)"
+# nginx 444 bağlantıyı yanıt vermeden kapatır. curl bunu sürümüne göre 52 (boş yanıt) ya da 56
+# (TLS kapanış bildirimi gelmeden kapandı; OpenSSL 3.5 ile) diye bildirir; ikisinde de HTTP kodu 000.
+case "$rc" in
+    52 | 56) ;;
+    *) fail "bilinmeyen Host için yanıt gelmemeliydi (curl çıkış kodu $rc, beklenen 52 ya da 56):" \
+        "$(head -c 200 "$WORK/err")" ;;
+esac
+[ "$code" = "000" ] || fail "bilinmeyen Host için HTTP yanıtı geldi ($code)"
 ok "bilinmeyen Host -> yanıt yok (444)"
 
 echo "- HTTPS üzerinden giriş: csrf -> login -> me -> websocket -> logout"
