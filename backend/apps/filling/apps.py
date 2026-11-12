@@ -14,6 +14,12 @@ class FillingConfig(AppConfig):
         register_record_type("filling.fillingrun")
         register_record_type("filling.packagingspec")
 
+        # Partisi bitmemiş dolum lotu serbest bırakılamaz, son kontrolü yapılamaz (inventory).
+        from apps.filling.services import unfinished_run_reason
+        from apps.inventory.services import register_output_check
+
+        register_output_check(unfinished_run_reason)
+
         # Belge numaraları: biçim Sistem > Kodlama sistematiği ayarından (core.coding).
         from apps.core.coding.registry import register_document_type
 

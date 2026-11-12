@@ -1463,3 +1463,14 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
     `masterdata/tests/test_standard_codes.py`, `masterdata/tests/test_gs1.py`; ön yüz
     `coding.test.tsx`, `MasterDataPage.test.tsx`, `inventory.test.tsx`, `filling.test.tsx`,
     `components.test.tsx`; tam backend (2093) ve ön yüz (603) testleri yeşil.
+
+## 2026-11-12 — Partisi bitmemiş lot serbest bırakılamaz
+
+- Dolum partisi ya da üretim şarjı bitmeden lotu serbest bırakmak (kalite kararı ve elle serbest
+  bırakma), lota son kontrol numunesi açmak ve lotu değiştiren karar vermek reddedilir
+  (`lot_output_unfinished`); iptal edilen partinin lotu da serbest bırakılamaz. Karar ve gerekçe
+  DECISIONS'ta ("2026-11-12 — Partisi bitmemiş lot serbest bırakılamaz").
+- Testler: `filling/tests/test_output_guard.py` (devam eden ve iptal edilen parti, kuraldan önce
+  açılmış numune, parti bitince akış), `production/tests/test_output_guard.py` (şarj sırasında
+  yalnız ara kontrol numunesi), `inventory/tests/test_services.py` (kayıt noktası ve elle serbest
+  bırakma). Kural kapatılınca yeni testler kırılıyor.

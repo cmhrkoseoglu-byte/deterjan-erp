@@ -1187,6 +1187,16 @@ def finish_filling(actor: User | None, order: FillingOrder, note: str = "") -> F
     return order
 
 
+def unfinished_run_reason(lot: Lot) -> str | None:
+    """Dolum lotunun partisi bitmediyse (devam ediyor ya da iptal) nedeni. `inventory`'nin serbest
+    bırakma, son kontrol ve karar denetimine kaydedilir (`apps.py`)."""
+    run = FillingRun.objects.filter(output_lot_id=lot.pk).select_related("order").first()
+    if run is None or run.status == RunStatus.COMPLETED:
+        return None
+    state = "iptal edildi" if run.status == RunStatus.CANCELLED else "bitmedi"
+    return f"{lot.lot_no} lotunun dolum partisi {state} ({run.order.number}, {run.sequence}. parti)"
+
+
 def unreleased_lots(order: FillingOrder) -> list[Lot]:
     """Tamamlanan partilerin serbest bırakılmamış dolum lotları."""
     return [

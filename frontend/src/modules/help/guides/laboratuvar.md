@@ -13,6 +13,10 @@ Numuneler kendiliğinden açılır: mal kabul kaydedilince **Giriş kontrolü**,
 
 > Elle numune açmak için lot sayfasındaki **Kalite kontrol** bölümünde **Numune aç**'a basın.
 
+> Dolum partisi ya da üretim şarjı bitmeden lota yalnız şarj sırası numunesi açılır; son kontrol
+> numunesi parti bitince kendiliğinden açılır. Parti bitmeden lot serbest bırakılamaz, lota karar
+> verilemez.
+
 ## Sonuç girme
 
 1. **Test sonuçları** tablosunda her test için sınırlar görünür. Üstte eksik zorunlu testler yazılıdır.
@@ -46,6 +50,10 @@ Karar seçenekleri:
 ## Lotu bloke etme
 
 Serbest bir lotta sorun fark ederseniz lot sayfasında **Bloke et**'e basın ve nedeni yazın. Bloke lot üretime ve sevkiyata verilemez; siparişlerdeki rezervasyonu bırakılır.
+
+Partisi bitmeden serbest kalmış bir dolum lotu varsa (bu kural gelmeden önce mümkündü) dolum
+partisi bitirilemez. Önce lotu bloke edin; parti bitince son kontrol numunesi açılır ve kararı
+verirsiniz.
 
 ## Spesifikasyonlar
 
