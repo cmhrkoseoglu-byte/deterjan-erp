@@ -1,13 +1,15 @@
-from typing import Any
+from typing import Any, ClassVar
 
 import django_filters
 from django.db.models import Count, Prefetch, QuerySet
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from apps.core.permissions import HasRole
 from apps.core.roles import DEPO, SEVKIYAT
 from apps.inventory.api.serializers import CancelSerializer
 from apps.inventory.api.views import DocumentViewSet
@@ -18,6 +20,20 @@ from apps.returns.models import CustomerReturn, CustomerReturnLine
 
 def _user(request: Request) -> Any:
     return request.user
+
+
+class RolePermissionMixin:
+    """Okuma eylemleri giriş yapmış herkese, diğerleri `write_roles`'a açık. İadeler bölüm
+    denetimine 4. adımda geçer (docs/plan/kisi-yetkileri.md §10); o güne kadar bugünkü kural."""
+
+    write_roles: ClassVar[tuple[str, ...]] = (SEVKIYAT,)
+    action_roles: ClassVar[dict[str, tuple[str, ...]]] = {}
+
+    def get_permissions(self) -> list[BasePermission]:
+        name = getattr(self, "action", None)
+        if name in ("list", "retrieve", "metadata"):
+            return [IsAuthenticated()]
+        return [HasRole(*self.action_roles.get(name or "", self.write_roles))()]
 
 
 class CustomerReturnFilter(django_filters.FilterSet):
@@ -31,7 +47,7 @@ class CustomerReturnFilter(django_filters.FilterSet):
         fields = ["customer", "shipment"]
 
 
-class CustomerReturnViewSet(DocumentViewSet):
+class CustomerReturnViewSet(RolePermissionMixin, DocumentViewSet):
     """Müşteri iadeleri (sevkiyat yazar). Satırlar iç içe yazılır; `receive` iadeyi karantinaya
     alır ve laboratuvara numune açar; `scrap` imha kararı verilen satırı stoktan düşer."""
 

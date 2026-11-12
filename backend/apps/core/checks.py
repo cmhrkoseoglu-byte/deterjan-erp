@@ -21,7 +21,7 @@ from apps.core import access
 APPS_DIR = Path(__file__).resolve().parent.parent
 
 # Yetki denetimine geçmiş modüller (her adım kendi modüllerini ekler).
-ENFORCED_APPS: frozenset[str] = frozenset()
+ENFORCED_APPS: frozenset[str] = frozenset({"inventory", "masterdata", "recipes"})
 
 # Her modülün bölümüne bakabilen modüller: workflow herkesi dinler (CLAUDE.md §3).
 DEPENDENCY_EXEMPT: frozenset[str] = frozenset({"workflow"})
@@ -159,7 +159,10 @@ def permission_errors(
         view.args = ()
         view.kwargs = {}
         view.request = view.initialize_request(factory.generic(method, path))
-        for permission in view.get_permissions():
+        permissions = view.get_permissions()
+        if not permissions:
+            errors.append(f"{method} {path}: izin yok (bölüm denetimi ya da açık işaret gerekir).")
+        for permission in permissions:
             if not _is_access_permission(permission):
                 errors.append(
                     f"{method} {path}: izin bölüm denetimi ya da açık işaret değil "

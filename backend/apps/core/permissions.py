@@ -107,6 +107,20 @@ def require_access(
         raise MissingAccess(message or DEFAULT_MESSAGE, ((target.key, level),))
 
 
+def sees_fields(user: Any, name: str) -> bool:
+    """Alan grubunu (ör. `"masterdata.supplier.contact"`) tam görür mü? Göremeyene sade kart
+    döner (plan §3.1, §5.6)."""
+    active = _active_user(user)
+    return active is not None and active.access.sees_fields(name)
+
+
+def require_admin(actor: Any, message: str) -> None:
+    """Bölümü olmayan, yalnız sistem yöneticisinin işi (ör. GS1 ayarları): değilse 403."""
+    active = _active_user(actor)
+    if active is None or not active.is_admin:
+        raise PermissionDenied(message)
+
+
 def _note_required(request: Request, allowed: bool, required: tuple[tuple[str, str], ...]) -> None:
     """İzin kararını isteğe yazar; hata işleyici reddedilen isteğin 403 yanıtına eksik yetkiyi
     ekler. Geçen izin listeyi temizler: `A | B`'de A reddedip B geçerse istek izinlidir."""
@@ -202,6 +216,10 @@ class AdminOnly(AccessPermission):
         return active is not None and active.is_admin
 
 
+# Görünümün karşılamadığı metot: yalnız oturum aranır, DRF 405 döner.
+UNHANDLED_METHOD = SignedIn("görünümün karşılamadığı metot; DRF 405 döner")
+
+
 class DenyUnknownAction(AccessPermission):
     """`AccessMixin`'de tanımlanmamış yazma eylemi: kapalı varsayılan."""
 
@@ -224,19 +242,44 @@ class AccessMixin:
     5. hiçbiri yoksa reddedilir: listede olmayan yazma eylemi her zaman reddedilir (plan §5.4),
        böylece yeni bir eylem yetkisiz açılamaz.
 
-    DRF, HEAD isteğini GET'in eylemine, OPTIONS isteğini `metadata` eylemine gönderir. Değerler
-    izin sınıfı ya da `HasAccess(A) | HasAccess(B)` gibi birleşimlerdir.
+    Görünümün karşılamadığı metotta (ör. ana verilerde silme) `unhandled_access` denetlenir, sonra
+    DRF 405 döner; geçen görünümler bugünkü yazma kuralını verir (yazamayana 403, oturumsuza 401).
+    Verilmezse yalnız oturum aranır. DRF, HEAD isteğini GET'in eylemine, OPTIONS isteğini `metadata`
+    eylemine gönderir; OPTIONS yanıtının yazma alanları için denediği POST ve PUT kopyası da
+    OPTIONS gibi denetlenir. Değerler izin sınıfı ya da `HasAccess(A) | HasAccess(B)` gibi
+    birleşimlerdir.
     """
 
     read_access: ClassVar[PermissionClass | None] = None
     read_methods: ClassVar[frozenset[str]] = frozenset(SAFE_METHODS)
     other_safe_access: ClassVar[PermissionClass | None] = None
+    unhandled_access: ClassVar[PermissionClass | None] = None
     action_access: ClassVar[Mapping[str, PermissionClass]] = {}
+
+    def _handles(self, method: str) -> bool:
+        """Görünüm bu metodu karşılıyor mu? Yönlendiricinin eylem eşlemesi ya da DRF'nin metodun
+        adıyla bulacağı işleyici belirler (aynı adlı bir eylem de, ör. lotun `trace`'i, işleyicidir
+        ve denetlenir); HEAD, GET'i karşılayan görünümde karşılanır."""
+        name = method.lower()
+        if name == "options":
+            return True
+        action_map = getattr(self, "action_map", None) or {}
+        if name in action_map or (name == "head" and "get" in action_map):
+            return True
+        names = getattr(self, "http_method_names", ())
+        if name in names and callable(getattr(self, name, None)):
+            return True
+        return name == "head" and "get" in names and callable(getattr(self, "get", None))
 
     def get_permissions(self) -> list[Any]:
         request = getattr(self, "request", None)
         method = str(getattr(request, "method", "") or "").upper()
         action = getattr(self, "action", None)
+        if action == "metadata":
+            method = "OPTIONS"
+        if not self._handles(method):
+            rule = self.unhandled_access
+            return [rule()] if rule is not None else [UNHANDLED_METHOD()]
         keys = (f"{action}:{method.lower()}", action) if action is not None else (method.lower(),)
         for key in keys:
             if key in self.action_access:

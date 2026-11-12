@@ -88,8 +88,9 @@ NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 DECIMAL = re.compile(r"-?\d+(?:\.\d+)?")
 MONEY_KEY = re.compile(r"price|cost|amount|total|rate|value|currency|limit")
 
-# Bugün gizli alanı olan kayıt türleri (kayıt defterinden sayılır; bkz. `_registry_cases`).
-HIDDEN_FIELD_TYPES = ["inventory.lot", "purchasing.purchaseorder"]
+# Gizli alanı olan kayıt türleri (kayıt defterinden sayılır; bkz. `_registry_cases`). Mal kabul
+# 2. adımda eklendi (plan §8 madde 7; farkları izin listesindedir).
+HIDDEN_FIELD_TYPES = ["inventory.goodsreceipt", "inventory.lot", "purchasing.purchaseorder"]
 # Bugün raporlardaki hassas sütunlar: (rapor, sütun, hak).
 SENSITIVE_COLUMNS = [
     ("stock-status", "cost_is_estimated", "cost"),

@@ -1573,3 +1573,51 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
     dışında kurulur, `access` ve `is_admin` onda da doldurulmalı.
   - 9. adım: `probe_audit` kişileri `core.update_user(..., roles=...)` ile kuruyor; rol değiştirme
     Yetkiler ekranına taşınınca (§8 madde 13) sonda da değişir.
+
+## 2026-11-12 — Kişiye özel yetkiler: 2. adım (ana veriler, reçeteler, depo)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-11).
+- **Geçiş:** ana veriler, reçeteler ve depo modüllerinin API'si, servisleri, serializer'ları ve kayıt
+  türlerinin gizli alan kuralları rol denetimini bıraktı; bölüm denetimine geçti (`HasAccess`,
+  `ReadRule`, `AccessMixin`, `require_access`). Kayıt panelinin okuması (yorum, geçmiş, ek) bugünkü
+  gibi kalır; bölüme 6. adımda bağlanır (plan §10). Kişiye özel ayar yokken kararlar bugünküyle aynıdır: uç nokta anlık görüntüsü ve
+  sondalar yalnız izin listesinin 2. adım kayıtları kadar değişti. Sistem denetimi (E003) bu üç
+  modülün her uç noktasında, HEAD ve OPTIONS dahil, bölüm denetimi arar; bir test de bu modüllerde
+  `HasRole`, `user_has_role` ve `has_role` kalmadığını tarar.
+- **İlk gün değişikliği (§8 madde 7, mal kabul kısmı):** Fiyatları görür'ü olmayan kişi mal kabul
+  geçmişinde fiyat düzeltmesi ve silinen ek masraf kaydını görmez (ek masraf ekranda da gizlidir);
+  silinen satırın fiyatı gizlenir.
+  Çekirdeğe kayıt geçmişi süzgeci eklendi (iç içe kayıtların içi ve tutar içeren not); yalnız mal
+  kabulde açıktır, satın alma 5. adımda açar. 2. adımın izin listesi hücreleri gözlenen değerlere
+  sabitlendi.
+- **Hassas alanlar:** mal kabul fiyatları Fiyatları görür'le görünür, Mal kabul fiyat ve masrafları:
+  Değiştirir'le girilir (giremeyenin gönderdiği fiyat yok sayılır); lot maliyeti Maliyetleri görür'e
+  bağlandı.
+- **Sade kart:** Ana veriler'in Açık kayıtlar satırı kapatılan kişiye tedarikçi ve müşteri kartının
+  vergi, adres ve iletişim alanları boş döner; arama yalnız kod, eski kod ve adda yapılır. Müşteri
+  kartı Satış siparişleri: Görür'ü olanda tam kalır.
+- **Reçete seçimi:** Reçeteler'i okuyamayan kişiye reçete listesi sade döner (kod, eski kodlar, ad,
+  ürün, onaylı sürüm); reçete sayfası kapanır (plan §5.3).
+- **Kod önerisi:** kodlama kayıt defteri öneriyi bir bölümle açabilir (`write_access`); ana veriler ve
+  reçeteler geçti, öteki modüller geçişe kadar rolle.
+- **Mesajlar** rol adı yerine yetkiyi söyler (§8 madde 4), ör. "Lotu bloke etme yetkiniz yok.",
+  "Reçete sürümünü onaylama yetkiniz yok."
+- **Geçiş notları:**
+  - Kalite modülünün test tanımları ve iadeler, ortak taban görünümleri değiştiği için bugünkü rol
+    kurallarını 4. adıma kadar kendi dosyalarında taşır.
+  - Görünümün karşılamadığı metotta (ör. ana verilerde silme) bugünkü gibi önce modülün yazma
+    yetkisi denetlenir (yazamayana 403, oturumsuza 401), sonra 405 döner. Adı HTTP metoduyla aynı
+    olan eylem (ör. lotun `trace`'i) de denetlenir. OPTIONS yanıtı yazma alanlarını bugünkü gibi
+    gösterir. Sistem denetimi (E003) izni boş uç noktayı da yakalar.
+  - Sözleşme testi aracına gözlem modu eklendi: `ACCESS_SNAPSHOT_OBSERVE=<klasör>` anlık görüntüye
+    dokunmadan bugünkü sonucu yazar; adım açılınca açık değerler bununla sabitlenir.
+- **Kişiye özel ayar testleri** (14; ayrıca rol denetimi tarayıcısının 2 testi), örnekler:
+  - depodan Mal kabul: Değiştirir kaldırılınca kaydetme ve iptal 403 olur; liste ve belge açık kalır;
+  - depodan Sayım düzeltme: Onaylar kaldırılınca hazırlama sürer, kaydedip stoka alma 403 olur;
+  - fiyatı görüp giremeyen kişinin gönderdiği fiyat yok sayılır, fiyat girişi 403 olur;
+  - planlamadan Reçeteler: Değiştirir kaldırılınca düzenleme ve kopyalama 403 olur, onay sürer;
+  - üretimden depo Açık kayıtları kapatılınca mal kabul belgesi 403 olur; lot etiketleri açık kalır;
+  - satın almadan Fiyatları görür kaldırılınca fiyatlar gizlenir, fiyat girişi 403 olur;
+  - laboratuvardan Lot bloke etme kaldırılınca bloke 403 olur, planlamaya eklenince açılır;
+  - Ana veriler'in Açık kayıtları kapatılınca sade kart; depoda müşteri kartı tam kalır;
+  - Reçeteler'in Açık kayıtları kapatılınca sade reçete listesi; onay yetkisi kaldırılınca onay 403.

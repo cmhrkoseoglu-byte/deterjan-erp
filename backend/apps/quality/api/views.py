@@ -53,8 +53,9 @@ class RolePermissionMixin:
 # --- test tanımı -----------------------------------------------------------------------------
 
 
-class TestDefinitionViewSet(MasterDataViewSet):
-    """Test tanımları (laboratuvar yazar, herkes okur). Silinmez; `deactivate` ile pasife alınır."""
+class TestDefinitionViewSet(RolePermissionMixin, MasterDataViewSet):
+    """Test tanımları (laboratuvar yazar, herkes okur). Silinmez; `deactivate` ile pasife alınır.
+    Kalite bölüm denetimine 4. adımda geçer; o güne kadar bugünkü rol kuralı."""
 
     serializer_class = s.TestDefinitionSerializer
     queryset = TestDefinition.objects.all()

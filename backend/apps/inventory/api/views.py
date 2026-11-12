@@ -9,11 +9,11 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.access import APPROVE, CHANGE
 from apps.core.api.labels import (
     LABEL_PARAMETERS,
     LabelOutputSerializer,
@@ -24,9 +24,18 @@ from apps.core.api.labels import (
 from apps.core.exceptions import BusinessRuleError
 from apps.core.labels import Label, render_zpl
 from apps.core.models import DocumentModel
-from apps.core.permissions import HasRole
-from apps.core.roles import ADMIN, DEPO, DOLUM, LABORATUVAR, SEVKIYAT, URETIM
+from apps.core.permissions import AccessMixin, HasAccess, ReadRule
 from apps.inventory import importers, labels, selectors, services
+from apps.inventory.access import (
+    ADJUSTMENTS,
+    LOT_BLOCK,
+    LOTS,
+    MANUAL_RELEASE,
+    PALLETS,
+    RECEIPT_PRICES,
+    RECEIPTS,
+    STOCK,
+)
 from apps.inventory.api import serializers as s
 from apps.inventory.models import (
     GoodsReceipt,
@@ -39,42 +48,25 @@ from apps.inventory.models import (
     StockMovement,
 )
 from apps.masterdata import services as masterdata_services
+from apps.masterdata.access import CARDS
 from apps.masterdata.api.serializers import ImportReportSerializer
 from apps.masterdata.api.views import get_printer
 from apps.masterdata.models import Material, Printer
 
-# Stoka yazan roller (admin her yere erişir); lot bloke laboratuvarındır. Okuma herkese açık.
-# Faz 2: lot serbest bırakma ve ret kalite kararıyladır (`quality`); elle serbest bırakma yalnızca
-# admin (Karar D-5).
-STOCK_WRITE_ROLES = (DEPO,)
-LOT_DECISION_ROLES = (LABORATUVAR,)
-MANUAL_RELEASE_ROLES = (ADMIN,)
-READ_ACTIONS = frozenset(
-    {"list", "retrieve", "metadata", "trace", "label", "labels", "case_label", "available"}
-)
-# Etiketi yazıcıya göndermek giriş yapmış herkese açık (baskı denetim günlüğüne yazılır).
-PRINT_ACTIONS = frozenset({"print_label", "print_labels"})
-# Palet (SSCC) etiketi açabilen roller.
-PALLET_ROLES = (DEPO, DOLUM, SEVKIYAT, URETIM)
+# Bölüm denetimi (docs/plan/kisi-yetkileri.md §3.3). Okuma ve etiket basımı bölümün okumasına
+# bağlıdır: stok, lot ve palet herkese açık; mal kabul ve sayım açık okuma. Mal kabulün lot
+# etiketleri Lotlar okumasıyla açık kalır. Lot serbest bırakma ve ret kalite kararıyladır
+# (`quality`); elle serbest bırakma yalnız admin (Karar D-5).
+STOCK_CHANGE = HasAccess(STOCK, CHANGE)
+RECEIPT_CHANGE = HasAccess(RECEIPTS, CHANGE)
+ADJUSTMENT_CHANGE = HasAccess(ADJUSTMENTS, CHANGE)
+LOT_READ = ReadRule(LOTS)
 PDF = "application/pdf"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _user(request: Request) -> Any:
     return request.user
-
-
-class RolePermissionMixin:
-    """Okuma eylemleri giriş yapmış herkese, diğerleri `write_roles`'a açık."""
-
-    write_roles: ClassVar[tuple[str, ...]] = STOCK_WRITE_ROLES
-    action_roles: ClassVar[dict[str, tuple[str, ...]]] = {}
-
-    def get_permissions(self) -> list[BasePermission]:
-        name = getattr(self, "action", None)
-        if name in READ_ACTIONS or name in PRINT_ACTIONS:
-            return [IsAuthenticated()]
-        return [HasRole(*self.action_roles.get(name or "", self.write_roles))()]
 
 
 def _company() -> str:
@@ -141,7 +133,7 @@ class LotFilter(django_filters.FilterSet):
         return queryset.filter(total_quantity=0)  # type: ignore[misc]
 
 
-class LotViewSet(RolePermissionMixin, viewsets.ReadOnlyModelViewSet):
+class LotViewSet(AccessMixin, viewsets.ReadOnlyModelViewSet):
     """Lotlar. Serbest bırakma ve ret kalite kararıyladır (`/quality/samples/{id}/decide/`);
     burada laboratuvarın `block` işlemi ve admin'in gerekçeli elle serbest bırakması (D-5) var."""
 
@@ -149,8 +141,13 @@ class LotViewSet(RolePermissionMixin, viewsets.ReadOnlyModelViewSet):
     search_fields = ["lot_no", "supplier_lot_no", "material__code", "material__name"]
     ordering_fields = ["lot_no", "expiry_date", "created_at", "total_quantity"]
     ordering = ["-created_at", "-id"]
-    write_roles = LOT_DECISION_ROLES
-    action_roles = {"release": MANUAL_RELEASE_ROLES}
+    read_access = LOT_READ
+    unhandled_access = HasAccess(LOT_BLOCK, APPROVE)
+    action_access = {
+        "print_label": LOT_READ,
+        "block": HasAccess(LOT_BLOCK, APPROVE),
+        "release": HasAccess(MANUAL_RELEASE, APPROVE),
+    }
 
     def get_queryset(self) -> QuerySet[Lot]:
         return selectors.lots_with_stock().select_related("released_by")
@@ -254,9 +251,12 @@ class MovementFilter(django_filters.FilterSet):
         fields = ["material", "lot", "location", "document_number", "transfer_group"]
 
 
-class StockMovementViewSet(RolePermissionMixin, viewsets.ReadOnlyModelViewSet):
+class StockMovementViewSet(AccessMixin, viewsets.ReadOnlyModelViewSet):
     """Stok hareket defteri (salt okunur). Düzeltme `reverse` ile ters kayıttır."""
 
+    read_access = ReadRule(STOCK)
+    unhandled_access = STOCK_CHANGE
+    action_access = {"reverse": STOCK_CHANGE}
     serializer_class = s.StockMovementSerializer
     filterset_class = MovementFilter
     search_fields = ["lot__lot_no", "material__code", "material__name", "document_number"]
@@ -296,9 +296,11 @@ class BalanceFilter(django_filters.FilterSet):
         fields = ["material", "lot", "location"]
 
 
-class StockBalanceViewSet(RolePermissionMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
+class StockBalanceViewSet(AccessMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
     """Stok bakiyeleri (yalnızca sıfırdan büyük). `available`: üretimde kullanılabilir lotlar."""
 
+    read_access = ReadRule(STOCK)
+    unhandled_access = STOCK_CHANGE
     serializer_class = s.StockBalanceSerializer
     filterset_class = BalanceFilter
     search_fields = ["material__code", "material__name", "lot__lot_no", "location__code"]
@@ -335,7 +337,7 @@ class StockBalanceViewSet(RolePermissionMixin, mixins.ListModelMixin, viewsets.G
 class TransferView(APIView):
     """Lotu lokasyonlar arasında taşır (iki hareket, ortak transfer grubu)."""
 
-    permission_classes = [HasRole(*STOCK_WRITE_ROLES)]
+    permission_classes = [STOCK_CHANGE]
 
     @extend_schema(request=s.TransferSerializer, responses=s.StockMovementSerializer(many=True))
     def post(self, request: Request) -> Response:
@@ -359,14 +361,14 @@ class TransferView(APIView):
 
 
 class DocumentViewSet(
-    RolePermissionMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Taslak → kaydet (`post`) | iptal (`cancel`) belgesi. Durum PATCH ile değişmez."""
+    """Taslak → kaydet (`post`) | iptal (`cancel`) belgesi. Durum PATCH ile değişmez. İzni alt
+    sınıf verir (`AccessMixin`)."""
 
     detail_serializer: ClassVar[type[s.DocumentSerializer]]
 
@@ -419,11 +421,23 @@ class GoodsReceiptFilter(django_filters.FilterSet):
         fields = ["supplier"]
 
 
-class GoodsReceiptViewSet(DocumentViewSet):
+class GoodsReceiptViewSet(AccessMixin, DocumentViewSet):
     """Mal kabul. Satırlar iç içe yazılır; `post` lotları açıp stoka alır. Fiyat, kur ve ek
-    masraf yalnızca satin_alma, yonetim ve admin rolüne görünür; `costs` ile girilir."""
+    masraf Fiyatları görür'e görünür; `costs` ile girilir (Mal kabul fiyat ve masrafları:
+    Değiştirir)."""
 
-    action_roles = {"costs": s.RECEIPT_PRICE_ROLES}
+    read_access = ReadRule(RECEIPTS)
+    unhandled_access = RECEIPT_CHANGE
+    action_access = {
+        "labels": LOT_READ,
+        "print_labels": LOT_READ,
+        "create": RECEIPT_CHANGE,
+        "update": RECEIPT_CHANGE,
+        "partial_update": RECEIPT_CHANGE,
+        "post_document": RECEIPT_CHANGE,
+        "cancel": RECEIPT_CHANGE,
+        "costs": HasAccess(RECEIPT_PRICES, CHANGE),
+    }
 
     serializer_class = s.GoodsReceiptSerializer
     detail_serializer = s.GoodsReceiptDetailSerializer
@@ -540,9 +554,18 @@ class StockAdjustmentFilter(django_filters.FilterSet):
         fields: list[str] = []
 
 
-class StockAdjustmentViewSet(DocumentViewSet):
-    """Sayım düzeltme. Depo hazırlar ve kaydeder (Karar D-3)."""
+class StockAdjustmentViewSet(AccessMixin, DocumentViewSet):
+    """Sayım düzeltme. Hazırlamak Değiştirir, kaydedip stoka almak Onaylar'dır (Karar D-3)."""
 
+    read_access = ReadRule(ADJUSTMENTS)
+    unhandled_access = ADJUSTMENT_CHANGE
+    action_access = {
+        "create": ADJUSTMENT_CHANGE,
+        "update": ADJUSTMENT_CHANGE,
+        "partial_update": ADJUSTMENT_CHANGE,
+        "cancel": ADJUSTMENT_CHANGE,
+        "post_document": HasAccess(ADJUSTMENTS, APPROVE),
+    }
     serializer_class = s.StockAdjustmentSerializer
     detail_serializer = s.StockAdjustmentDetailSerializer
     filterset_class = StockAdjustmentFilter
@@ -599,7 +622,7 @@ class OpeningImportView(APIView):
     aktarır. Hatalı satır varsa hiçbir kayıt yazılmaz; 400 yanıtında `report` döner."""
 
     parser_classes = [MultiPartParser, FormParser]
-    permission_classes = [HasRole(*STOCK_WRITE_ROLES)]
+    permission_classes = [STOCK_CHANGE]
 
     @extend_schema(
         request={"multipart/form-data": s.OpeningUploadSerializer},
@@ -630,7 +653,7 @@ class OpeningImportView(APIView):
 class OpeningTemplateView(APIView):
     """Açılış stoku şablonu (.xlsx)."""
 
-    permission_classes = [HasRole(*STOCK_WRITE_ROLES)]
+    permission_classes = [STOCK_CHANGE]
 
     @extend_schema(responses={(200, XLSX): OpenApiTypes.BINARY})
     def get(self, request: Request) -> HttpResponse:
@@ -643,21 +666,23 @@ class OpeningTemplateView(APIView):
 
 
 class PalletLabelViewSet(
-    RolePermissionMixin,
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """SSCC'li palet etiketleri (Karar D-6: GS1 firma öneki tanımlıysa). Oluşturma depo, dolum,
-    sevkiyat ve üretime açık; etiket indirme ve yazdırma herkese."""
+    """SSCC'li palet etiketleri (Karar D-6: GS1 firma öneki tanımlıysa). Oluşturma Palet
+    etiketleri: Değiştirir ister; etiket indirme ve yazdırma herkese açıktır."""
 
     queryset = PalletLabel.objects.select_related("lot__material", "created_by")
     serializer_class = s.PalletLabelSerializer
     filterset_fields = ["lot"]
     search_fields = ["sscc", "lot__lot_no"]
     ordering = ["-created_at", "-id"]
-    write_roles = PALLET_ROLES
+    read_access = ReadRule(PALLETS)
+    unhandled_access = HasAccess(PALLETS, CHANGE)
+    action_access = {"create": HasAccess(PALLETS, CHANGE), "print_label": ReadRule(PALLETS)}
 
     def perform_create(self, serializer: Any) -> None:
         data = serializer.validated_data
@@ -690,7 +715,7 @@ class PalletLabelViewSet(
 class ScanView(APIView):
     """Okutulan barkodu çözer: lot, lokasyon, malzeme ya da palet (`?code=`)."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ReadRule(LOTS, PALLETS, CARDS)]
 
     @extend_schema(
         parameters=[OpenApiParameter("code", OpenApiTypes.STR, required=True)],

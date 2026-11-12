@@ -24,7 +24,7 @@ MISSING = "<yok>"  # durum anlık görüntüde (ya da bugünkü kodda) yok
 ANY = "<her>"  # eski ya da yeni değer ne olursa olsun
 
 # Uygulanan adım (plan §10). Her adım bu sayıyı artırır ve kendi kayıtlarını ekler.
-CURRENT_STEP = 1
+CURRENT_STEP = 2
 
 
 def matches(pattern: str, text: str) -> bool:
@@ -97,6 +97,33 @@ def _cells(
     )
 
 
+# Fiyatları görür'ü olan ve olmayan giriş yapmış personalar (rol paketleri, plan §3.18).
+_PRICE_HOLDERS = ("yonetim", "satin_alma", "admin", "superuser")
+_NO_PRICES = (
+    "no_role",
+    "planlama",
+    "depo",
+    "uretim",
+    "laboratuvar",
+    "dolum",
+    "sevkiyat",
+    "depo+sevkiyat",
+)
+_SIGNED_OUT = ("anonymous", "inactive")
+# Mal kabulün geçmişte gizlenen alanları: satır fiyatı, para birimi, kur, ek masraf tutarı ve
+# silinen ek masraf kaydının kendisi.
+_RECEIPT_PRICE_FIELDS = ("amount", "currency", "exchange_rate", "extra_cost", "unit_price")
+# 2. adımda gözlenen mal kabul geçmişi, fiyatları görmeyen kişide: fiyat düzeltmesi ve silinen ek
+# masraf kaydı yok, silinen satırın içi fiyatsız, notlar aynen.
+_RECEIPT_HISTORY_WITHOUT_PRICES = {
+    "entries": [
+        {"action": "status_change", "money": {}, "note": ""},
+        {"action": "update", "money": {"line": [{}, None]}, "note": "Satır # kaldırıldı (taslak)"},
+        {"action": "create", "money": {}, "note": ""},
+    ],
+    "status": 200,
+}
+
 # İade kayıtları: Değiştirir'i olmayan, giriş yapmış personalar (iadelerin sevkiyat seçimi).
 _RETURNS_DENIED = (
     "no_role",
@@ -165,100 +192,53 @@ ALLOWED: tuple[Allowed, ...] = (
         for persona in ("yonetim", "admin", "superuser")
     ),
     # 2. adım — Mal kabul geçmişinde tutar içeren notlar ve silinen satır ve ek masraf kayıtlarının
-    # içindeki fiyatlar Fiyatları görür'ü olmayana gösterilmez. Gizli alan listesinin ve geçmiş
-    # süzgecinin yeni durumları uygulamaya bağlıdır (gerekli değil).
+    # içindeki fiyatlar Fiyatları görür'ü olmayana gösterilmez (§8 madde 7, plan §5.6): fiyat
+    # düzeltmesi ve silinen ek masraf kaydı listelenmez, silinen satırın fiyatı gizlenir.
     *_cells(
         "§8 madde 7 (mal kabul)",
         "probe_prices",
-        {
-            "goods_receipt.history": (
-                "no_role",
-                "planlama",
-                "depo",
-                "uretim",
-                "laboratuvar",
-                "dolum",
-                "sevkiyat",
-                "depo+sevkiyat",
-            )
-        },
+        {"goods_receipt.history": _NO_PRICES},
         step=2,
+        new=_RECEIPT_HISTORY_WITHOUT_PRICES,
     ),
+    # Mal kabulün gizli alan listesi (yeni durum) ve geçmişte gizlenen alanlar.
     *_cells(
         "§8 madde 7 (mal kabul)",
         "probe_prices",
-        {
-            "record_type.hidden_fields.inventory.goodsreceipt": (
-                "yonetim",
-                "satin_alma",
-                "admin",
-                "superuser",
-            )
-        },
+        {"record_type.hidden_fields.inventory.goodsreceipt": _PRICE_HOLDERS},
         step=2,
         old=MISSING,
         new=[],
-        required=False,
     ),
     *_cells(
         "§8 madde 7 (mal kabul)",
         "probe_prices",
-        {
-            "record_type.hidden_fields.inventory.goodsreceipt": (
-                "anonymous",
-                "inactive",
-                "no_role",
-                "planlama",
-                "depo",
-                "uretim",
-                "laboratuvar",
-                "dolum",
-                "sevkiyat",
-                "depo+sevkiyat",
-            )
-        },
+        {"record_type.hidden_fields.inventory.goodsreceipt": _SIGNED_OUT + _NO_PRICES},
         step=2,
         old=MISSING,
-        required=False,
+        new=list(_RECEIPT_PRICE_FIELDS),
     ),
-    # 2. adım — Mal kabul geçmişinin süzgeci (yeni durumlar uygulamaya bağlıdır, gerekli değil).
     *_cells(
         "§8 madde 7 (mal kabul)",
         "probe_records",
         {
-            "history hides | inventory.goodsreceipt.*": (
-                "yonetim",
-                "satin_alma",
-                "admin",
-                "superuser",
-            )
+            f"history hides | inventory.goodsreceipt.{name}": _PRICE_HOLDERS
+            for name in _RECEIPT_PRICE_FIELDS
         },
         step=2,
         old=MISSING,
         new=False,
-        required=False,
     ),
     *_cells(
         "§8 madde 7 (mal kabul)",
         "probe_records",
         {
-            "history hides | inventory.goodsreceipt.*": (
-                "anonymous",
-                "inactive",
-                "no_role",
-                "planlama",
-                "depo",
-                "uretim",
-                "laboratuvar",
-                "dolum",
-                "sevkiyat",
-                "depo+sevkiyat",
-            )
+            f"history hides | inventory.goodsreceipt.{name}": _SIGNED_OUT + _NO_PRICES
+            for name in _RECEIPT_PRICE_FIELDS
         },
         step=2,
         old=MISSING,
         new=True,
-        required=False,
     ),
     # 4. adım — İade formunun sevk edilmiş sevkiyat seçimi iadelerin kendi uç noktasıdır; "İade
     # kayıtları: Değiştirir" ister (plan §5.4).

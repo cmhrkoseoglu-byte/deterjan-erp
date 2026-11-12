@@ -8,9 +8,10 @@ class RecipesConfig(AppConfig):
 
     def ready(self) -> None:
         # Reçete kodu: biçim Sistem > Kodlama sistematiği ayarından (core.coding).
+        from apps.core.access import CHANGE
         from apps.core.coding.registry import register_master_code
         from apps.masterdata.services import recode_record
-        from apps.recipes.api.views import RECIPE_WRITE_ROLES
+        from apps.recipes.access import RECIPES
 
         register_master_code(
             "recipes.recipe",
@@ -18,7 +19,7 @@ class RecipesConfig(AppConfig):
             model="recipes.recipe",
             default_prefix="REC",
             default_width=7,
-            write_roles=RECIPE_WRITE_ROLES,
+            write_access=(RECIPES.key, CHANGE),
             recode=recode_record,
         )
 

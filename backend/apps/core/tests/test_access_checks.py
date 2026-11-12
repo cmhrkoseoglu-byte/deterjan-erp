@@ -1,11 +1,13 @@
 """Yetki kataloğunun sistem denetimleri (`manage.py check`)."""
 
 from pathlib import Path
+from typing import Any
 
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.core import checks
 from apps.core.access import CHANGE, VIEW, register_module, register_section, temporary_catalog
@@ -124,3 +126,20 @@ def test_endpoint_check_covers_head_and_options() -> None:
         "OPTIONS /api/v1/deneme/: izin bölüm denetimi ya da açık işaret değil (IsAuthenticated).",
     ]
     assert checks.permission_errors(endpoints, {"sales"}) == []
+
+
+class _NoPermissionView(APIView):
+    """İzni boş görünüm: E003 bunu da yakalamalıdır."""
+
+    permission_classes: list[Any] = []
+
+    def get(self, request: Request) -> Response:
+        return Response({})
+
+
+def test_endpoint_check_reports_empty_permissions() -> None:
+    errors = checks.permission_errors(
+        [("/api/v1/deneme/", "GET", _NoPermissionView.as_view())], {"core"}
+    )
+
+    assert errors == ["GET /api/v1/deneme/: izin yok (bölüm denetimi ya da açık işaret gerekir)."]

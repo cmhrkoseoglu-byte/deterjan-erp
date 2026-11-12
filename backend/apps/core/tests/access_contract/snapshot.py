@@ -5,6 +5,10 @@ Bir anlık görüntü iki düzeyli bir eşlemedir: `{durum: {persona: değer}}`.
 
 `ACCESS_SNAPSHOT_UPDATE=1` ile çalışan test dosyayı bugünkü sonuçla yeniden yazar. Bu yalnız 1.
 adımda ya da sahibin onayı ve DECISIONS kaydıyla yapılır (plan §5.5).
+
+`ACCESS_SNAPSHOT_OBSERVE=<klasör>` anlık görüntüye dokunmaz: bugünkü sonucu o klasöre
+`{durum: {persona: değer}}` olarak yazar. Bir adım açılınca izin listesindeki açık değerler bu
+gözlemle sabitlenir.
 """
 
 import json
@@ -17,6 +21,7 @@ from apps.core.tests.access_contract.allowlist import MISSING, Allowed, permitte
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 UPDATE_ENV = "ACCESS_SNAPSHOT_UPDATE"
+OBSERVE_ENV = "ACCESS_SNAPSHOT_OBSERVE"
 
 Cases = Mapping[str, Mapping[str, Any]]
 Encode = Callable[[Cases], dict[str, Any]]
@@ -86,6 +91,12 @@ def check(
     decode: Decode | None = None,
 ) -> None:
     """Bugünkü sonucu dondurulmuş anlık görüntüyle karşılaştırır; izinsiz farkta testi kırar."""
+    observe = os.environ.get(OBSERVE_ENV)
+    if observe:
+        folder = Path(observe)
+        folder.mkdir(parents=True, exist_ok=True)
+        text = json.dumps(_plain(actual), ensure_ascii=False, indent=1, sort_keys=True)
+        (folder / f"{name}.json").write_text(text + "\n", encoding="utf-8")
     if updating():
         save(name, actual, encode)
         return

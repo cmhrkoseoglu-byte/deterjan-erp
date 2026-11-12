@@ -6,6 +6,10 @@ bilgileri bugün giriş yapan herkese açıktır (ortak okuma, kişiden kapatıl
 tedarikçinin vergi, adres ve iletişim alanları açık okumadır (sade kart, §5.6). Lokasyon etiketi ve
 yazıcı deneme baskısı kaydın okumasını izler (§4). GS1 ayarları kodlama sistematiğindedir: yalnız
 admin (§4).
+
+2. adımda modül bölüm denetimine geçti: backend satırlarının `live` bağlantısı kaldırıldı (sabitler
+yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar. Ön yüz sabitlerine bağlantı
+8. adıma kadar kalır.
 """
 
 import re
@@ -27,7 +31,6 @@ from apps.core.tests.access_helpers import (
 )
 from apps.masterdata.access import CARDS, COMPANY, OPEN_RECORDS, REFERENCE
 
-WRITE_ROLES = "apps.masterdata.api.views:MASTERDATA_WRITE_ROLES"
 COMPANY_WRITE_ROLES = "apps.masterdata.services:COMPANY_WRITE_ROLES"
 PLANLAMA = ("planlama",)
 YONETIM = ("yonetim",)
@@ -96,31 +99,26 @@ ROWS: list[Row] = [
         "partial_update, activate, deactivate)",
         PLANLAMA,
         level(CARDS, CHANGE),
-        live=WRITE_ROLES,
     ),
     Row(
         "api.views.MASTERDATA_WRITE_ROLES (MaterialViewSet.case_gtin_suggestion)",
         PLANLAMA,
         level(CARDS, CHANGE),
-        live=WRITE_ROLES,
     ),
     Row(
         "api.views.MASTERDATA_WRITE_ROLES (GtinSuggestionView)",
         PLANLAMA,
         level(CARDS, CHANGE),
-        live=WRITE_ROLES,
     ),
     Row(
         "api.views.MASTERDATA_WRITE_ROLES (ImportView: Excel'den içe aktarma)",
         PLANLAMA,
         level(CARDS, CHANGE),
-        live=WRITE_ROLES,
     ),
     Row(
         "api.views.MASTERDATA_WRITE_ROLES (ImportTemplateView: içe aktarma şablonu)",
         PLANLAMA,
         level(CARDS, CHANGE),
-        live=WRITE_ROLES,
     ),
     Row(
         "api.views.UnitOfMeasureViewSet yazma (write_roles = (ADMIN,))",
@@ -137,13 +135,11 @@ ROWS: list[Row] = [
         "services.COMPANY_WRITE_ROLES (CompanyProfileView PUT)",
         YONETIM,
         level(COMPANY, CHANGE),
-        live=COMPANY_WRITE_ROLES,
     ),
     Row(
         "services.COMPANY_WRITE_ROLES (update_company_profile)",
         YONETIM,
         level(COMPANY, CHANGE),
-        live=COMPANY_WRITE_ROLES,
     ),
     Row("api.views.Gs1SettingsView GET, PATCH (HasRole(ADMIN))", ADMIN_ONLY, admin_only()),
     Row(
@@ -215,10 +211,14 @@ def test_unexported_roles_match_today() -> None:
     for key in CARD_CODE_TYPES:
         item = code_type(key)
         assert item is not None, key
-        assert item.write_roles == PLANLAMA, key
-    for key in REFERENCE_CODE_TYPES:
-        item = code_type(key)
-        assert item is not None, key
-        assert item.write_roles == (), key
+        assert item.write_access == (CARDS.key, CHANGE), key
+    printer = code_type("masterdata.printer")
+    assert printer is not None
+    assert printer.write_access == (REFERENCE.key, CHANGE)
+    # Standart kod (birim) önerilmez; öneri ucu yalnız admine açıktır (yazma rolü yok).
+    unit = code_type("masterdata.unitofmeasure")
+    assert unit is not None
+    assert unit.write_access is None
+    assert unit.write_roles == ()
     assert _private_frontend_roles(ENTITIES, "WRITE") == PLANLAMA
     assert _private_frontend_roles(ENTITIES, "ADMIN_ONLY") == ("admin",)

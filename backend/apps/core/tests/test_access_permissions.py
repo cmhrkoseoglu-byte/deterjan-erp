@@ -138,6 +138,7 @@ class _DemoViewSet(AccessMixin):
 
     def __init__(self, action: str | None, method: str) -> None:
         self.action = action
+        self.action_map = {method.lower(): action}
         self.request = factory.generic(method, "/x/")
 
 
@@ -179,7 +180,26 @@ class _MethodViewSet(AccessMixin):
 
     def __init__(self, action: str | None, method: str) -> None:
         self.action = action
+        self.action_map = {method.lower(): action}
         self.request = factory.generic(method, "/x/")
+
+
+class _MethodView(AccessMixin):
+    """Eylemi olmayan görünüm (APIView): anahtar metodun adıdır; işleyicisi olmayan metotta
+    `unhandled_access` (verilmezse yalnız oturum) aranır, DRF 405 döner."""
+
+    http_method_names = ["get", "post", "put", "patch", "delete", "head", "options", "trace"]
+    read_access = ReadRule(ORDERS)
+    action_access = {"put": HasAccess(ORDERS, CHANGE)}
+
+    def __init__(self, method: str) -> None:
+        self.request = factory.generic(method, "/x/")
+
+    def get(self) -> None: ...
+
+    def put(self) -> None: ...
+
+    def post(self) -> None: ...
 
 
 def test_access_mixin_method_keys_read_methods_and_other_safe_access(
@@ -202,15 +222,67 @@ def test_access_mixin_method_keys_read_methods_and_other_safe_access(
     assert isinstance(close, DenyUnknownAction)
     assert isinstance(delete, DenyUnknownAction)
 
-    # Eylemi olmayan görünümde (APIView) anahtar metodun adıdır.
-    assert name(None, "PUT") == "HasAccess(production.orders, change)"
-    (patch,) = _MethodViewSet(None, "PATCH").get_permissions()
-    assert isinstance(patch, DenyUnknownAction)
+    # Eylemi olmayan görünümde (APIView) anahtar metodun adıdır; HEAD, GET'i izler.
+    (put,) = _MethodView("PUT").get_permissions()
+    (head_view,) = _MethodView("HEAD").get_permissions()
+    (post,) = _MethodView("POST").get_permissions()
+    assert type(put).__name__ == "HasAccess(production.orders, change)"
+    assert type(head_view).__name__ == "ReadRule(production.orders)"
+    assert isinstance(post, DenyUnknownAction)
 
     (either,) = _MethodViewSet("approve", "POST").get_permissions()
     assert either.has_permission(drf_request(make_user(PLANLAMA)), VIEW_STUB)
     assert either.has_permission(drf_request(make_user(DEPO)), VIEW_STUB)
     assert not either.has_permission(drf_request(make_user()), VIEW_STUB)
+
+
+class _TraceViewSet(AccessMixin):
+    """Eylemi `trace` adını taşıyan görünüm (lotun soy ağacı gibi): DRF HTTP TRACE isteğini de bu
+    işleyiciye gönderir."""
+
+    http_method_names = ["get", "post", "put", "patch", "delete", "head", "options", "trace"]
+    read_access = ReadRule(ORDERS)
+    unhandled_access = HasAccess(ORDERS, CHANGE)
+
+    def __init__(self, method: str) -> None:
+        self.action = None
+        self.action_map = {"get": "trace"}
+        self.request = factory.generic(method, "/x/")
+
+    def trace(self) -> None: ...
+
+
+def test_access_mixin_unhandled_methods_keep_the_write_rule(
+    make_user: Callable[..., User],
+) -> None:
+    """Görünümün karşılamadığı metotta `unhandled_access` denetlenir, sonra DRF 405 döner;
+    verilmezse yalnız oturum aranır (oturumsuza 401)."""
+    viewset = _TraceViewSet("PATCH")
+    (patch,) = viewset.get_permissions()
+    assert type(patch).__name__ == "HasAccess(production.orders, change)"
+
+    (plain,) = _MethodView("PATCH").get_permissions()
+    assert plain.has_permission(drf_request(make_user()), VIEW_STUB)
+    assert not plain.has_permission(drf_request(None), VIEW_STUB)
+
+
+def test_access_mixin_checks_methods_drf_dispatches_by_name() -> None:
+    """HTTP TRACE, aynı adlı eylemi çalıştırır: işleyicidir ve denetlenir (açık kalmaz)."""
+    (trace,) = _TraceViewSet("TRACE").get_permissions()
+
+    assert isinstance(trace, DenyUnknownAction)
+
+
+def test_access_mixin_metadata_checks_follow_options(make_user: Callable[..., User]) -> None:
+    """OPTIONS yanıtının yazma alanları için DRF izni POST ve PUT kopyasıyla dener (eylem
+    `metadata`); karar OPTIONS'ınkiyle aynıdır."""
+    viewset = _MethodViewSet("metadata", "OPTIONS")
+    viewset.request = factory.generic("POST", "/x/")
+
+    (permission,) = viewset.get_permissions()
+    assert isinstance(permission, WRITE)
+    (demo,) = _DemoViewSet("metadata", "POST").get_permissions()
+    assert type(demo).__name__ == "ReadRule(production.orders)"
 
 
 def test_require_access(make_user: Callable[..., User]) -> None:

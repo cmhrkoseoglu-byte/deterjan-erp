@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from django.db.models import Prefetch, QuerySet
@@ -9,11 +10,11 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.access import CHANGE
 from apps.core.api.coding import FormerCodeSearchFilter
 from apps.core.api.labels import (
     LABEL_PARAMETERS,
@@ -26,9 +27,16 @@ from apps.core.api.labels import (
 from apps.core.exceptions import BusinessRuleError
 from apps.core.labels import render_zpl
 from apps.core.models import MasterDataModel
-from apps.core.permissions import HasRole
-from apps.core.roles import ADMIN, PLANLAMA
+from apps.core.permissions import (
+    AccessMixin,
+    AdminOnly,
+    HasAccess,
+    PermissionClass,
+    ReadRule,
+    sees_fields,
+)
 from apps.masterdata import importers, labels, services
+from apps.masterdata.access import CARDS, COMPANY, REFERENCE
 from apps.masterdata.api import serializers as s
 from apps.masterdata.models import (
     Customer,
@@ -44,14 +52,19 @@ from apps.masterdata.models import (
     Warehouse,
 )
 
-# Ana verileri yazabilen roller (admin her yere erişir). Okuma tüm giriş yapmış kullanıcılara açık.
-MASTERDATA_WRITE_ROLES = (PLANLAMA,)
-READ_ACTIONS = frozenset({"list", "retrieve", "metadata", "label"})
-# Etiketi yazıcıya göndermek giriş yapmış herkese açıktır (baskı denetim günlüğüne yazılır).
-PRINT_ACTIONS = frozenset({"print_label", "test"})
+# Bölüm denetimi (docs/plan/kisi-yetkileri.md §3.1). Kartlar, birimler ve yazıcılar seçimler ve
+# etiket basımı için herkese açık okunur; lokasyon etiketi ve yazıcı deneme baskısı herkese açıktır.
+CARD_CHANGE = HasAccess(CARDS, CHANGE)
+REFERENCE_CHANGE = HasAccess(REFERENCE, CHANGE)
+
+
+def writes(rule: PermissionClass) -> dict[str, PermissionClass]:
+    """Ana veri uç noktasının yazma eylemleri (oluştur, güncelle, aktif yap, pasife al)."""
+    return {name: rule for name in ("create", "update", "partial_update", "activate", "deactivate")}
 
 
 class MasterDataViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -63,16 +76,13 @@ class MasterDataViewSet(
     Silme yoktur (CLAUDE.md §4.6). Yazma işlemleri `masterdata.services` üzerinden yapılır.
     """
 
-    write_roles: ClassVar[tuple[str, ...]] = MASTERDATA_WRITE_ROLES
+    read_access = ReadRule(CARDS)
+    action_access: ClassVar[Mapping[str, PermissionClass]] = writes(CARD_CHANGE)
+    unhandled_access: ClassVar[PermissionClass | None] = CARD_CHANGE
     # Arama eski kodlarda da yapılır (kodu değişmiş kayıt eski koduyla bulunur).
     filter_backends = [DjangoFilterBackend, FormerCodeSearchFilter, OrderingFilter]
     search_fields = ["code", "name"]
     ordering_fields = ["code", "name", "created_at", "updated_at"]
-
-    def get_permissions(self) -> list[BasePermission]:
-        if self.action in READ_ACTIONS or self.action in PRINT_ACTIONS:
-            return [IsAuthenticated()]
-        return [HasRole(*self.write_roles)()]
 
     @property
     def model(self) -> type[MasterDataModel]:
@@ -118,7 +128,9 @@ class UnitOfMeasureViewSet(MasterDataViewSet):
 
     queryset = UnitOfMeasure.objects.all()
     serializer_class = s.UnitOfMeasureSerializer
-    write_roles = (ADMIN,)
+    read_access = ReadRule(REFERENCE)
+    action_access = writes(REFERENCE_CHANGE)
+    unhandled_access = REFERENCE_CHANGE
     filterset_fields = ["is_active", "kind"]
     ordering = ["kind", "code"]
 
@@ -140,6 +152,7 @@ def retired_gtins(prefix: str = "") -> Prefetch:
 
 class MaterialViewSet(MasterDataViewSet):
     serializer_class = s.MaterialSerializer
+    action_access = {**writes(CARD_CHANGE), "case_gtin_suggestion": CARD_CHANGE}
     filterset_fields = {
         "is_active": ["exact"],
         "material_type": ["exact", "in"],
@@ -209,6 +222,7 @@ class WarehouseViewSet(MasterDataViewSet):
 class LocationViewSet(MasterDataViewSet):
     queryset = Location.objects.select_related("warehouse")
     serializer_class = s.LocationSerializer
+    action_access = {**writes(CARD_CHANGE), "print_label": ReadRule(CARDS)}
     filterset_fields = {
         "is_active": ["exact"],
         "warehouse": ["exact"],
@@ -278,7 +292,9 @@ class PrinterViewSet(MasterDataViewSet):
 
     queryset = Printer.objects.select_related("location")
     serializer_class = s.PrinterSerializer
-    write_roles = (ADMIN,)
+    read_access = ReadRule(REFERENCE)
+    action_access = {**writes(REFERENCE_CHANGE), "test": ReadRule(REFERENCE)}
+    unhandled_access = REFERENCE_CHANGE
     filterset_fields = ["is_active", "printer_type", "location"]
     search_fields = ["code", "name", "host"]
     ordering = ["code"]
@@ -297,13 +313,15 @@ class PrinterViewSet(MasterDataViewSet):
         return Response({"printed": 1, "printer": printer.code})
 
 
-class LabelSettingsView(APIView):
-    """Etiket ayarları (tek kayıt): okuma herkese, değiştirme yalnızca admin."""
+class LabelSettingsView(AccessMixin, APIView):
+    """Etiket ayarları (tek kayıt): okuma herkese, değiştirme yalnız admin. HEAD ve OPTIONS bugünkü
+    gibi değiştirme yetkisiyle denetlenir."""
 
-    def get_permissions(self) -> list[BasePermission]:
-        if self.request.method == "GET":
-            return [IsAuthenticated()]
-        return [HasRole(ADMIN)()]
+    read_access = ReadRule(REFERENCE)
+    read_methods = frozenset({"GET"})
+    other_safe_access = REFERENCE_CHANGE
+    unhandled_access = REFERENCE_CHANGE
+    action_access = {"put": REFERENCE_CHANGE}
 
     @extend_schema(responses=s.LabelSettingsSerializer)
     def get(self, request: Request) -> Response:
@@ -325,7 +343,7 @@ class Gs1SettingsView(APIView):
     """GS1 ayarları (Sistem > Kodlama sistematiği > GS1): firma öneki, SSCC uzantı hanesi,
     sıradaki ürün referansı. Okuma ve değiştirme yalnızca admin; değişiklik notu zorunlu."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
 
     @extend_schema(responses=s.Gs1SettingsSerializer)
     def get(self, request: Request) -> Response:
@@ -344,11 +362,11 @@ class Gs1SettingsView(APIView):
 
 
 class GtinSuggestionView(APIView):
-    """Mamul için sıradaki boş GTIN-13 önerisi (malzeme yazma rolleri). Firma öneki ve sıradaki
-    ürün referansı girilmemişse `active=false`; `?material_type=` verilir ve mamul değilse de
-    kapalıdır."""
+    """Mamul için sıradaki boş GTIN-13 önerisi (Ana veri kartları: Değiştirir). Firma öneki ve
+    sıradaki ürün referansı girilmemişse `active=false`; `?material_type=` verilir ve mamul değilse
+    de kapalıdır."""
 
-    permission_classes = [HasRole(*MASTERDATA_WRITE_ROLES)]
+    permission_classes = [CARD_CHANGE]
 
     @extend_schema(
         parameters=[
@@ -367,14 +385,16 @@ class GtinSuggestionView(APIView):
         return Response(s.GtinSuggestionSerializer(suggestion).data)
 
 
-class CompanyProfileView(APIView):
+class CompanyProfileView(AccessMixin, APIView):
     """Firma ticari bilgileri (tek kayıt): okuma giriş yapmış herkese (bilgiler belgelerde zaten
-    görünür), değiştirme yönetim ve admin."""
+    görünür), değiştirme Firma bilgileri: Değiştirir. HEAD ve OPTIONS bugünkü gibi değiştirme
+    yetkisiyle denetlenir."""
 
-    def get_permissions(self) -> list[BasePermission]:
-        if self.request.method == "GET":
-            return [IsAuthenticated()]
-        return [HasRole(*services.COMPANY_WRITE_ROLES)()]
+    read_access = ReadRule(COMPANY)
+    read_methods = frozenset({"GET"})
+    other_safe_access = HasAccess(COMPANY, CHANGE)
+    unhandled_access = HasAccess(COMPANY, CHANGE)
+    action_access = {"put": HasAccess(COMPANY, CHANGE)}
 
     @extend_schema(responses=s.CompanyProfileSerializer)
     def get(self, request: Request) -> Response:
@@ -393,9 +413,22 @@ class CompanyProfileView(APIView):
         return Response(s.CompanyProfileSerializer(instance).data)
 
 
+class PartnerSearchFilter(FormerCodeSearchFilter):
+    """Tedarikçi ve müşteri araması: iletişim alanlarını tam göremeyen kişi yalnız kodda, eski
+    kodda ve adda arar; vergi numarasında ve yetkili kişide aramaz (sade kart, plan §5.6)."""
+
+    def get_search_fields(self, view: Any, request: Request) -> Any:
+        fields = super().get_search_fields(view, request)
+        if sees_fields(request.user, view.contact_group):
+            return fields
+        return [name for name in fields or () if name in ("code", "name")]
+
+
 class SupplierViewSet(MasterDataViewSet):
     queryset = Supplier.objects.all()
     serializer_class = s.SupplierSerializer
+    contact_group = s.SUPPLIER_CONTACT
+    filter_backends = [DjangoFilterBackend, PartnerSearchFilter, OrderingFilter]
     filterset_fields = ["is_active"]
     search_fields = ["code", "name", "tax_number", "contact_person"]
     ordering = ["name"]
@@ -404,6 +437,8 @@ class SupplierViewSet(MasterDataViewSet):
 class CustomerViewSet(MasterDataViewSet):
     queryset = Customer.objects.all()
     serializer_class = s.CustomerSerializer
+    contact_group = s.CUSTOMER_CONTACT
+    filter_backends = [DjangoFilterBackend, PartnerSearchFilter, OrderingFilter]
     filterset_fields = ["is_active"]
     search_fields = ["code", "name", "tax_number", "contact_person"]
     ordering = ["name"]
@@ -414,7 +449,7 @@ class ImportView(APIView):
     aktarır. Hatalı satır varsa hiçbir kayıt yazılmaz; 400 yanıtında `report` döner."""
 
     parser_classes = [MultiPartParser, FormParser]
-    permission_classes = [HasRole(*MASTERDATA_WRITE_ROLES)]
+    permission_classes = [CARD_CHANGE]
 
     @extend_schema(
         request={"multipart/form-data": s.ImportUploadSerializer},
@@ -451,7 +486,7 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 class ImportTemplateView(APIView):
     """İçe aktarma şablonu (.xlsx)."""
 
-    permission_classes = [HasRole(*MASTERDATA_WRITE_ROLES)]
+    permission_classes = [CARD_CHANGE]
 
     @extend_schema(responses={(200, XLSX): OpenApiTypes.BINARY})
     def get(self, request: Request, kind: str) -> HttpResponse:

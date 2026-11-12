@@ -3,6 +3,10 @@
 Reçeteyi ve sürümlerini bugün planlama ve laboratuvar yazar ve onaylar; plan ikisini ayırır
 (Değiştirir ve Onaylar) ama paketi bugünkü gibi ikisini de verir. Okuma giriş yapan herkese açıktır
 (açık okuma; üretim emri formunun reçete seçimi dahil, §5.3).
+
+2. adımda modül bölüm denetimine geçti: backend satırlarının `live` bağlantısı kaldırıldı (sabitler
+yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar. Ön yüz sabitlerine bağlantı
+8. adıma kadar kalır.
 """
 
 from apps.core.access import APPROVE, CHANGE
@@ -10,7 +14,6 @@ from apps.core.coding.registry import code_type
 from apps.core.tests.access_helpers import SIGNED_IN, Row, assert_rows, level, read
 from apps.recipes.access import RECIPES
 
-WRITE_ROLES = "apps.recipes.api.views:RECIPE_WRITE_ROLES"
 APPROVER_ROLES = "apps.recipes.services:APPROVER_ROLES"
 FRONTEND_WRITE_ROLES = "frontend:src/modules/recipes/config.ts:RECIPE_WRITE_ROLES"
 RECIPE_ROLES = ("planlama", "laboratuvar")
@@ -38,58 +41,49 @@ ROWS: list[Row] = [
         "partial_update, activate, deactivate, versions POST)",
         RECIPE_ROLES,
         level(RECIPES, CHANGE),
-        live=WRITE_ROLES,
     ),
     Row(
         "api.views.RECIPE_WRITE_ROLES (RecipeVersionViewSet update, partial_update, copy, "
         "lines, steps)",
         RECIPE_ROLES,
         level(RECIPES, CHANGE),
-        live=WRITE_ROLES,
     ),
     Row(
         "api.views.RECIPE_WRITE_ROLES (RecipeVersionViewSet.approve)",
         RECIPE_ROLES,
         level(RECIPES, APPROVE),
-        live=WRITE_ROLES,
     ),
     Row(
         "api.views.RECIPE_WRITE_ROLES (RecipeLineViewSet ve RecipeStepViewSet update, "
         "partial_update, destroy)",
         RECIPE_ROLES,
         level(RECIPES, CHANGE),
-        live=WRITE_ROLES,
     ),
     Row(
         "api.views.RECIPE_WRITE_ROLES (RecipeImportView: Excel'den taslak)",
         RECIPE_ROLES,
         level(RECIPES, CHANGE),
-        live=WRITE_ROLES,
     ),
     Row(
         "api.views.RECIPE_WRITE_ROLES (RecipeImportTemplateView: içe aktarma şablonu)",
         RECIPE_ROLES,
         level(RECIPES, CHANGE),
-        live=WRITE_ROLES,
     ),
     Row(
         "api.views.RECIPE_WRITE_ROLES (apps.py recipes.recipe write_roles: kod önerisi)",
         RECIPE_ROLES,
         level(RECIPES, CHANGE),
-        live=WRITE_ROLES,
     ),
     Row(
         "services.APPROVER_ROLES (can_approve, approve_version)",
         RECIPE_ROLES,
         level(RECIPES, APPROVE),
-        live=APPROVER_ROLES,
     ),
     Row(
         "services.APPROVER_ROLES (api.serializers.RecipeVersionDetailSerializer.can_approve: "
         "Onayla düğmesi)",
         RECIPE_ROLES,
         level(RECIPES, APPROVE),
-        live=APPROVER_ROLES,
     ),
     # --- ön yüz ---
     Row(
@@ -124,4 +118,4 @@ def test_code_type_write_roles_match_today() -> None:
     """Kod önerisinin rolleri kod türü kaydından gelir (live= okuyamaz)."""
     item = code_type("recipes.recipe")
     assert item is not None
-    assert set(item.write_roles) == set(RECIPE_ROLES)
+    assert item.write_access == (RECIPES.key, CHANGE)
