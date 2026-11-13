@@ -1,5 +1,6 @@
 """Personel Excel çıktıları (openpyxl): puantaj (aylık tablo ve toplamlar, günlük fazla mesai,
-kodlar) ve ön bordro (bordro, işveren maliyeti, karşılaştırma, eksik gün, parametreler)."""
+günlük çalışma saatleri, kodlar) ve ön bordro (bordro, işveren maliyeti, karşılaştırma, eksik gün,
+parametreler)."""
 
 import io
 from collections.abc import Sequence
@@ -20,6 +21,7 @@ from apps.personnel.models import (
     ATTENDANCE_CODES,
     DEDUCTION_CATEGORIES,
     EXTRA_CATEGORIES,
+    SHORT_DAY_CODE,
     AttendanceStatus,
     PayrollItemCategory,
     PayrollItemKind,
@@ -55,13 +57,34 @@ OVERTIME_HEADERS = (
 
 
 HALF_HOLIDAY_CODE = "Ç½"
+WORKED_HOURS_HEADER = "Çalışılan saat (FM hariç)"
+SHORT_DAY_LEGEND = (
+    "Yarım gün çalıştı (yönetimce yarım gün sayıldı). Ç toplamına girmez; çalışılan gün = Ç + YG. "
+    "ERP ön bordrosunda bu günler için kesinti henüz hesaplanmaz."
+)
+WORKED_HOURS_LEGEND = (
+    "Fazla mesai hariçtir. Saat girilmeyen gün günün çalışma saatiyle, yarım gün tatilde öğleden "
+    "sonra da çalışılan gün günlük çalışma saatinin tamamıyla sayılır."
+)
 
 
 def _cell_code(cell: AttendanceCell, day: AttendanceDay) -> str:
-    """Günün kodu; yarım gün tatilde öğleden sonra da çalışılan gün "Ç½"."""
+    """Günün kodu; yarım gün tatilde öğleden sonra da çalışılan gün "Ç½", yarım gün çalışılan gün
+    "YG" (`cell.code`)."""
     if cell.holiday_half_worked and day.half_day:
         return HALF_HOLIDAY_CODE
     return cell.code
+
+
+def _daily_hours_legend(grid: AttendanceGrid) -> str:
+    """Ayın günlük çalışma saati, "Kodlar" sayfası için: "9 saat (yarım gün tatilde 4,5)"."""
+    daily = grid.daily_hours
+    if daily is None:
+        return "bu ay onaylanırken kayıtlı değildi" if grid.approved else "belirlenmedi"
+    half = selectors.half_holiday_hours(daily)
+    return (
+        f"{selectors.format_hours(daily)} saat (yarım gün tatilde {selectors.format_hours(half)})"
+    )
 
 
 def _title(grid: AttendanceGrid) -> str:
@@ -102,20 +125,26 @@ def _sheet(ws: Worksheet, grid: AttendanceGrid, headers: Sequence[str]) -> None:
 
 
 def attendance_xlsx(grid: AttendanceGrid) -> bytes:
-    """Aylık puantaj: "Puantaj" (günlük kodlar ve toplamlar), "Fazla mesai" (günlük saat) ve
-    "Kodlar" (kod açıklamaları ve ayın tatilleri)."""
+    """Aylık puantaj: "Puantaj" (günlük kodlar ve toplamlar), "Fazla mesai" (günlük saat),
+    "Çalışma saatleri" (günlük çalışılan saat, fazla mesai hariç) ve "Kodlar" (kod açıklamaları,
+    ayın günlük çalışma saati ve tatilleri)."""
     workbook = Workbook()
     ws = workbook.active
     assert ws is not None
     ws.title = "Puantaj"
     statuses = list(AttendanceStatus)
+    # Ç sütunu tam gün çalışılan günleri sayar; yarım gün (YG) hemen ardındaki sütundadır.
+    others = [status for status in statuses if status != AttendanceStatus.WORKED]
     headers = [
         *PERSON_HEADERS,
         *(_day_header(day) for day in grid.days),
-        *(ATTENDANCE_CODES[status] for status in statuses),
+        ATTENDANCE_CODES[AttendanceStatus.WORKED],
+        SHORT_DAY_CODE,
+        *(ATTENDANCE_CODES[status] for status in others),
         "Eksik gün",
         *(label for _, label in OVERTIME_HEADERS),
         "FM toplam",
+        WORKED_HOURS_HEADER,
     ]
     ws.append([_title(grid)])
     ws["A1"].font = Font(bold=True, size=12)
@@ -129,10 +158,13 @@ def attendance_xlsx(grid: AttendanceGrid) -> bytes:
                 person.full_name,
                 person.department,
                 *(_cell_code(cell, day) for cell, day in zip(row.cells, grid.days, strict=True)),
-                *(totals.days[status] for status in statuses),
+                totals.full_days,
+                totals.short_days,
+                *(totals.days[status] for status in others),
                 totals.missing_days,
                 *(totals.overtime[status] for status, _ in OVERTIME_HEADERS),
                 totals.overtime_total,
+                totals.hours,
             ]
         )
     _sheet(ws, grid, headers)
@@ -155,11 +187,32 @@ def attendance_xlsx(grid: AttendanceGrid) -> bytes:
         )
     _sheet(overtime, grid, overtime_headers)
 
+    hours = workbook.create_sheet("Çalışma saatleri")
+    hours_headers = [*PERSON_HEADERS, *(_day_header(day) for day in grid.days), "Toplam"]
+    hours.append([f"Çalışma saatleri (saat, fazla mesai hariç) — {grid.label}"])
+    hours["A1"].font = Font(bold=True, size=12)
+    hours.append(hours_headers)
+    for row in grid.rows:
+        person = row.employee
+        hours.append(
+            [
+                person.employee_no,
+                person.full_name,
+                person.department,
+                *(cell.day_hours for cell in row.cells),
+                row.totals.hours,
+            ]
+        )
+    _sheet(hours, grid, hours_headers)
+
     legend = workbook.create_sheet("Kodlar")
     legend.append(["Kod", "Durum"])
     for status in statuses:
         legend.append([ATTENDANCE_CODES[status], status.label])
     legend.append([HALF_HOLIDAY_CODE, "Yarım gün tatilde öğleden sonra da çalıştı"])
+    legend.append([SHORT_DAY_CODE, SHORT_DAY_LEGEND])
+    legend.append(["Günlük çalışma saati", _daily_hours_legend(grid)])
+    legend.append(["Çalışılan saat", WORKED_HOURS_LEGEND])
     legend.append([])
     legend.append(["Tarih", "Resmi tatil"])
     for cell in legend[legend.max_row]:
@@ -168,7 +221,7 @@ def attendance_xlsx(grid: AttendanceGrid) -> bytes:
         if day.holiday is not None:
             suffix = " (yarım gün)" if day.half_day else ""
             legend.append([f"{day.date:%d.%m.%Y}", f"{day.holiday_name}{suffix}"])
-    legend.column_dimensions["A"].width = 12
+    legend.column_dimensions["A"].width = 22
     legend.column_dimensions["B"].width = 40
     for cell in legend[1]:
         cell.font = Font(bold=True)

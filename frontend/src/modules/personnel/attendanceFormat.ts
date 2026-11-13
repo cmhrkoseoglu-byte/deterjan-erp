@@ -29,6 +29,27 @@ export function formatHours(value: string): string {
   return hours ? String(hours).replace(".", ",") : "";
 }
 
+export type WorkedHours =
+  { kind: "empty" } | { kind: "invalid" } | { kind: "value"; value: string; number: number };
+
+/**
+ * Çalışılan saat ve günlük çalışma saati girişi: "4,5" → value "4.5" (API metni), number 4.5.
+ * Boş giriş `empty` döner (ne anlama geldiğine çağıran karar verir); 0, 24'ten büyük ya da ikiden
+ * çok ondalıklı sayı `invalid`.
+ */
+export function parseWorkedHours(text: string): WorkedHours {
+  const value = text.trim().replace(",", ".");
+  if (!value) return { kind: "empty" };
+  const number = Number(value);
+  const valid = /^\d{1,2}(\.\d{1,2})?$/.test(value) && number > 0 && number <= 24;
+  return valid ? { kind: "value", value, number } : { kind: "invalid" };
+}
+
+/** "4.50" → "4,5", "9.00" → "9"; yoksa boş (`formatHours`'tan farkı: sıfırı gizlemez). */
+export function formatWorkedHours(value: string | null): string {
+  return value ? String(Number(value)).replace(".", ",") : "";
+}
+
 /** Puantaj sayfasının `?ay=` değeri: "2026-10". */
 export function monthParam(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;

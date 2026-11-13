@@ -195,7 +195,7 @@ export const at = {
     holidays: "Tatil takvimi",
   },
   intro:
-    "Ay takvimden dolu açılır: iş günleri “Ç”, hafta tatilleri “HT”, resmi tatiller “RT”. Yalnızca izin, rapor, devamsızlık ve fazla mesaiyi girin. Ay bitince onaylayın; onaylı ay değiştirilemez.",
+    "Ay takvimden dolu açılır: iş günleri “Ç”, hafta tatilleri “HT”, resmi tatiller “RT”. Yalnızca izin, rapor, devamsızlık, fazla mesai ve günlük çalışma saatinden farklı günleri girin. Ay bitince onaylayın; onaylı ay değiştirilemez.",
   previousMonth: "Önceki ay",
   nextMonth: "Sonraki ay",
   statusOpen: "Açık",
@@ -206,8 +206,10 @@ export const at = {
   approve: "Ayı onayla",
   reopen: "Yeniden aç",
   notFinished: "Ay bitmeden onaylanamaz.",
-  confirmApprove: (label: string) =>
-    `${label} puantajı onaylansın mı? Değiştirilmemiş günler takvimdeki haliyle yazılır ve ay kilitlenir; düzeltme için ay gerekçeyle yeniden açılır. Bu ay işten ayrılan varsa önce çıkışını kaydedin.`,
+  // `dailyHours`: ayın günlük çalışma saati ("9"); belirlenmediyse boş.
+  confirmApprove: (label: string, dailyHours: string) =>
+    `${label} puantajı onaylansın mı? Değiştirilmemiş günler takvimdeki haliyle yazılır ve ay kilitlenir; düzeltme için ay gerekçeyle yeniden açılır. Bu ay işten ayrılan varsa önce çıkışını kaydedin.` +
+    (dailyHours ? ` Ay günlük ${dailyHours} saatle onaylanacak.` : ""),
   approved: (label: string) => `${label} puantajı onaylandı.`,
   reopened: (label: string) => `${label} puantajı yeniden açıldı.`,
   reopenTitle: (label: string) => `${label} · yeniden aç`,
@@ -252,17 +254,49 @@ export const at = {
     SICK_LEAVE: "Raporlu",
     ABSENT: "Devamsız",
   } as Record<AttendanceStatus, string>,
+  // Yarım gün çalışılan gün (YG) bir durum değil, çalışılan günün işaretidir: `codes` ve
+  // `labels`'a eklenmez.
+  shortDayCode: "YG",
+  fullDaysHelp: "Tam gün çalışılan gün",
+  shortDaysHelp: "Yarım gün çalışılan gün (Ç ve Eksik toplamına girmez)",
   missing: "Eksik",
   missingHelp: "Eksik gün: ücretsiz izin + rapor + devamsız",
   overtimeShort: "FM",
   overtimeTotalHelp: "Fazla mesai toplamı (saat)",
   halfDay: "yarım gün",
   halfDayLegend: "½ yarım gün tatil",
+  shortDayLegend: "YG yarım gün çalıştı",
+  shortDayTip: "Yarım gün çalıştı",
+  shortDayAria: (label: string) => `${label}, yarım gün`,
+  dailyHoursValue: (hours: string) => `Günlük çalışma saati: ${hours}`,
+  dailyHoursNotSet: "Günlük çalışma saati belirlenmedi",
+  dailyHoursNotRecorded: "Onayda günlük çalışma saati kayıtlı değil",
   dayTitle: (name: string, day: string) => `${name} · ${day}`,
   dayStatus: "Durum",
+  workedHours: "Çalışılan saat",
+  workedHoursHelp: (hours: string) =>
+    `Bu gün için çalışma saati: ${hours}. Boş bırakırsanız tam gün sayılır; fazla mesaiyi buraya yazmayın.`,
+  workedHoursHalfHolidayHelp: (hours: string) =>
+    `Bu gün yarım gün tatil; çalışma saati ${hours}. Boş bırakırsanız tam gün sayılır.`,
+  workedHoursNotSet: "Günlük çalışma saati belirlenmedi (Personel > Tatil takvimi).",
+  workedHoursOnlyWorked: "Çalışılan saat yalnızca çalışılan güne (Ç) girilir.",
+  workedHoursInvalid:
+    "Çalışılan saat 0'dan büyük, en çok 24 olabilir; en çok iki ondalık (ör. 4,5).",
+  workedHoursTooMany: (hours: string) =>
+    `En çok ${hours} yazılabilir; fazlasını fazla mesaiye yazın.`,
+  workedHoursTooManyHalfHoliday: (hours: string) =>
+    `En çok ${hours} yazılabilir; öğleden sonra da çalışıldıysa saati boş bırakıp “Öğleden sonra da çalıştı”yı işaretleyin.`,
+  workedHoursWithHalfHoliday:
+    "“Öğleden sonra da çalıştı” işaretliyken çalışılan saat günün çalışma saatinin altında olamaz.",
+  shortDay: "Yarım gün çalıştı (YG)",
+  shortDayHelp:
+    "Çalışılan saat bu günün çalışma saatinin altındaysa işaretli gelir. Yarım gün saymayacaksanız işareti kaldırın; saat kayıtlı kalır. Şimdilik yalnızca kayıttır: bordroda kesinti yapılmaz.",
+  shortDayOn: "Gün YG (yarım gün) olarak kaydedilecek.",
+  shortDayOff: "Saat kaydedilir, gün Ç kalır.",
   overtime: "Fazla mesai (saat)",
   overtimeHelp: "Yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir.",
   overtimeInvalid: "0 ile 24 arasında bir sayı yazın (ör. 2,5).",
+  overtimeWithShortHours: "Çalışılan saat günün çalışma saatinin altındayken fazla mesai girilmez.",
   halfHolidayWorked: "Öğleden sonra da çalıştı (yarım gün tatil)",
   halfHolidayWorkedHelp:
     "Yalnızca çalışılan güne (Ç) girilir; bordroda yarım günlük ilave ücret ödenir. Tabloda Ç½ görünür.",
@@ -278,7 +312,7 @@ export const at = {
   start: "Başlangıç",
   end: "Bitiş",
   rangeRule:
-    "Yıllık izin, mazeret izni ve devamsızlık hafta tatili ve resmi tatil günlerine yazılmaz; rapor ve ücretsiz izin her güne yazılır. Kişinin işte olmadığı günler atlanır.",
+    "Yıllık izin, mazeret izni ve devamsızlık hafta tatili ve resmi tatil günlerine yazılmaz; rapor ve ücretsiz izin her güne yazılır. Kişinin işte olmadığı günler atlanır. Aralık girişi saat taşımaz; başka duruma geçen günün saati ve yarım gün işareti silinir.",
   rangeApplied: (count: number) => (count === 0 ? "Değişen gün yok." : `${count} gün güncellendi.`),
   apply: "Uygula",
   endBeforeStart: "Bitiş başlangıçtan önce olamaz.",
@@ -307,11 +341,18 @@ export const at = {
   holidayRemoved: "Tatil kaldırıldı.",
   newHolidayTitle: "Tatil ekle",
   editHolidayTitle: "Tatili düzenle",
+  settingsTitle: "Puantaj ayarları",
   restDays: "Varsayılan hafta tatili günleri",
   restDaysHelp:
     "Ay açılırken bu günler “HT” gelir. Açık aylarda değiştirilmemiş günler yeni ayara göre hesaplanır; onaylı aylar değişmez.",
   restDaysInvalid: "En az bir, en çok altı gün seçin.",
-  settingsSaved: "Hafta tatili günleri kaydedildi.",
+  dailyHours: "Günlük çalışma saati",
+  dailyHoursHelp:
+    "Saat girilmeyen çalışılan günler bu saatle sayılır (mola hariç); yarım gün tatilde yarısı beklenir. Değiştirirseniz hiç onaylanmamış ayların saat girilmemiş günleri de yeni değerle sayılır; bir kez onaylanmış ay, yeniden açılsa da onaydaki değeri korur. Önce biten ayı onaylayın, sonra değeri değiştirin.",
+  dailyHoursInvalid:
+    "Günlük çalışma saati 0'dan büyük, en çok 24 olmalı; en çok iki ondalıklı bir sayı yazın (ör. 7,5).",
+  dailyHoursRequired: "Günlük çalışma saati boş bırakılamaz.",
+  settingsSaved: "Puantaj ayarları kaydedildi.",
 };
 
 /** Ücret metinleri (Personel > Ücretler). */

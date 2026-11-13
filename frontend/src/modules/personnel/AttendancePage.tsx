@@ -2,6 +2,7 @@
 import {
   ActionIcon,
   Alert,
+  Anchor,
   Badge,
   Button,
   Group,
@@ -26,7 +27,7 @@ import {
 } from "@tabler/icons-react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type CSSProperties } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   approveAttendanceMonth,
   attendanceExportUrl,
@@ -43,9 +44,9 @@ import { listDepartments } from "../../api/personnel";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { DayModal, RangeModal, ReopenModal } from "./AttendanceModals";
-import { formatHours, monthParam } from "./attendanceFormat";
+import { formatHours, formatWorkedHours, monthParam } from "./attendanceFormat";
 import { PersonnelTabs } from "./PersonnelTabs";
-import { ATTENDANCE_BASE, PERSONNEL_KEY, at, pa, pe } from "./strings";
+import { ATTENDANCE_BASE, HOLIDAYS_BASE, PERSONNEL_KEY, at, pa, pe } from "./strings";
 
 // Hücre renkleri (Mantine "light" tonları; koyu temada da okunur). Çalıştı renksizdir.
 const STATUS_COLORS: Partial<Record<AttendanceStatus, string>> = {
@@ -57,12 +58,20 @@ const STATUS_COLORS: Partial<Record<AttendanceStatus, string>> = {
   SICK_LEAVE: "orange",
   ABSENT: "red",
 };
+// Yarım gün çalışılan gün (YG) bir durum değil, çalışılan günün işaretidir; rengi ayrıdır.
+const SHORT_DAY_COLOR = "grape";
 const STATUSES = Object.keys(at.labels) as AttendanceStatus[];
 const DAY_WIDTH = 34;
 const NAME_WIDTH = 190;
-// Ekranda özet toplamlar; ayrıntı (HT, RT, fazla mesai türleri) Excel'de.
-const TOTALS: { key: AttendanceStatus | "missing" | "overtime"; label: string; help: string }[] = [
-  { key: "WORKED", label: at.codes.WORKED, help: at.labels.WORKED },
+// Ekranda özet toplamlar; ayrıntı (HT, RT, fazla mesai türleri) Excel'de. Ç tam gün çalışılan
+// günlerdir; yarım gün çalışılan günler hemen yanındaki YG sütunundadır.
+const TOTALS: {
+  key: AttendanceStatus | "short" | "missing" | "overtime";
+  label: string;
+  help: string;
+}[] = [
+  { key: "WORKED", label: at.codes.WORKED, help: at.fullDaysHelp },
+  { key: "short", label: at.shortDayCode, help: at.shortDaysHelp },
   { key: "ANNUAL_LEAVE", label: at.codes.ANNUAL_LEAVE, help: at.labels.ANNUAL_LEAVE },
   { key: "PAID_LEAVE", label: at.codes.PAID_LEAVE, help: at.labels.PAID_LEAVE },
   { key: "UNPAID_LEAVE", label: at.codes.UNPAID_LEAVE, help: at.labels.UNPAID_LEAVE },
@@ -95,6 +104,11 @@ function columnTone(column: AttendanceColumn): CSSProperties {
   return column.rest ? tone("gray") : {};
 }
 
+function cellColor(cell: AttendanceCell): string | undefined {
+  if (cell.short_day) return SHORT_DAY_COLOR;
+  return cell.status ? STATUS_COLORS[cell.status] : undefined;
+}
+
 /** `?ay=2026-10`; yoksa ya da geçersizse bu ay. */
 function parseMonth(text: string | null): { year: number; month: number } {
   const match = text?.match(/^(\d{4})-(\d{2})$/);
@@ -105,6 +119,8 @@ function parseMonth(text: string | null): { year: number; month: number } {
 }
 
 function totalValue(row: AttendanceRow, key: (typeof TOTALS)[number]["key"]): string | number {
+  if (key === "WORKED") return row.totals.full_days;
+  if (key === "short") return row.totals.short_days;
   if (key === "missing") return row.totals.missing_days;
   if (key === "overtime") return formatHours(row.totals.overtime_total);
   return row.totals.days[key];
@@ -124,10 +140,33 @@ function Legend() {
           {`${at.codes[status]} ${at.labels[status]}`}
         </Badge>
       ))}
+      <Badge variant="light" color={SHORT_DAY_COLOR} radius="sm" tt="none">
+        {at.shortDayLegend}
+      </Badge>
       <Badge variant="outline" color="gray" radius="sm" tt="none">
         {at.halfDayLegend}
       </Badge>
     </Group>
+  );
+}
+
+/** Ayın günlük çalışma saati; yoksa açık ayda Tatil takvimi'ne bağlantı, onaylı ayda not. */
+function DailyHours({ grid }: { grid: AttendanceGrid | undefined }) {
+  if (!grid) return null;
+  if (grid.daily_hours === null && grid.status !== "APPROVED") {
+    return (
+      <Anchor component={Link} to={HOLIDAYS_BASE} size="sm">
+        {at.dailyHoursNotSet}
+      </Anchor>
+    );
+  }
+  // Onaylı ay, onaylandığı günkü değeri korur; bu özellikten önce onaylanan ayda değer yoktur.
+  return (
+    <Text size="sm" c="dimmed">
+      {grid.daily_hours === null
+        ? at.dailyHoursNotRecorded
+        : at.dailyHoursValue(formatWorkedHours(grid.daily_hours))}
+    </Text>
   );
 }
 
@@ -167,19 +206,24 @@ function DayCell({
   onEdit: () => void;
 }) {
   const hours = formatHours(cell.overtime_hours);
+  const worked = formatWorkedHours(cell.worked_hours);
   const label = cell.status ? at.labels[cell.status] : "";
+  // Düğmenin adı: yarım gün çalışılan günde "Çalıştı, yarım gün", diğer günlerde yalnızca durum.
+  const spoken = cell.short_day ? at.shortDayAria(label) : label;
   // İşaret yalnızca takvimde hâlâ yarım gün tatil olan günde sayılır (bordro ve Excel gibi).
   const halfWorked = cell.holiday_half_worked && column.half_day;
   const title = [
     label,
     halfWorked && at.halfHolidayWorked,
+    cell.short_day && at.shortDayTip,
+    worked && `${at.workedHours}: ${worked}`,
     hours && `${at.overtime}: ${hours}`,
     cell.note,
   ]
     .filter(Boolean)
     .join(" · ");
   const style: CSSProperties = {
-    ...tone(cell.status ? STATUS_COLORS[cell.status] : undefined),
+    ...tone(cellColor(cell)),
     padding: 0,
     minWidth: DAY_WIDTH,
     textAlign: "center",
@@ -189,6 +233,11 @@ function DayCell({
       <Text span size="xs" fw={cell.explicit ? 700 : 400} c="inherit">
         {halfWorked ? `${cell.code}½` : cell.code}
       </Text>
+      {worked && (
+        <Text span size="10px" lh={1} c="inherit" display="block">
+          {worked}
+        </Text>
+      )}
       {hours && (
         <Text span size="10px" lh={1} c="inherit" display="block">
           {`+${hours}`}
@@ -212,7 +261,7 @@ function DayCell({
       <UnstyledButton
         onClick={onEdit}
         title={title || undefined}
-        aria-label={`${name} ${formatDate(cell.date)}: ${label}`}
+        aria-label={`${name} ${formatDate(cell.date)}: ${spoken}`}
         style={{ display: "block", width: "100%", minHeight: 34, color: "inherit" }}
       >
         {content}
@@ -369,6 +418,7 @@ export function AttendancePage() {
             <IconChevronRight size={16} />
           </ActionIcon>
           <MonthStatus grid={data} />
+          <DailyHours grid={data} />
         </Group>
         <Group gap="xs" wrap="wrap">
           <Select
@@ -473,7 +523,7 @@ export function AttendancePage() {
       )}
       <ConfirmModal
         opened={approving}
-        message={at.confirmApprove(label)}
+        message={at.confirmApprove(label, formatWorkedHours(data?.daily_hours ?? null))}
         confirmLabel={at.approve}
         loading={approve.isPending}
         onConfirm={() => approve.mutate()}

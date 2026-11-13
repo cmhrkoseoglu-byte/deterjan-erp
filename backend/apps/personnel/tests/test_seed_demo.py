@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 from io import StringIO
 
 import pytest
@@ -7,7 +8,8 @@ from django.core.management.base import CommandError
 from django.test import override_settings
 from django.utils import timezone
 
-from apps.personnel import selectors
+from apps.core.models import User
+from apps.personnel import selectors, services
 from apps.personnel.models import (
     AttendanceEntry,
     AttendanceMonth,
@@ -51,6 +53,11 @@ def test_seed_personnel_demo(roles: None) -> None:
         "ABSENT",
     }
     assert entries.filter(overtime_hours__gt=0).count() == 3
+    # Günlük çalışma saati 9; ondan türeyen bir yarım gün (YG) ve saati eksik bir gün.
+    assert selectors.daily_hours() == Decimal("9")
+    assert entries.filter(short_day=True).count() == 1
+    hours = entries.filter(worked_hours__isnull=False).values_list("worked_hours", "short_day")
+    assert sorted(hours) == [(Decimal("4.5"), True), (Decimal("8.5"), False)]
     assert not AttendanceMonth.objects.filter(status="APPROVED").exists()
     # Örnek ücretler: her karta bir ücret, bir kişiye geçen aydan zam; tekrar çalıştırmak eklemez.
     assert EmployeeWage.objects.values("employee").distinct().count() == 14
@@ -80,6 +87,20 @@ def test_seed_personnel_demo(roles: None) -> None:
         assert openings.count() == len(expected) > 0
         rows = selectors.payroll_month(last.year, last.month).rows
         assert not any(selectors.OPENING_MISSING in row.warnings for row in rows)
+
+
+@override_settings(DEBUG=True)
+def test_seed_personnel_demo_keeps_daily_hours_already_set(roles: None) -> None:
+    """Belirlenmiş günlük çalışma saati korunur; örnek saatler ondan türetilir."""
+    call_command("create_demo_users", stdout=StringIO())
+    manager = User.objects.get(username="yonetim")
+    services.update_attendance_settings(manager, [6], daily_hours=Decimal("7.5"))
+    call_command("seed_personnel_demo", stdout=StringIO())
+    assert selectors.daily_hours() == Decimal("7.5")
+    last = timezone.localdate().replace(day=1) - timedelta(days=1)
+    entries = AttendanceEntry.objects.filter(date__year=last.year, date__month=last.month)
+    hours = entries.filter(worked_hours__isnull=False).values_list("worked_hours", "short_day")
+    assert sorted(hours) == [(Decimal("3.75"), True), (Decimal("7"), False)]
 
 
 @override_settings(DEBUG=False, TRAINING_MODE=False)

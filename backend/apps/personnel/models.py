@@ -213,6 +213,10 @@ ATTENDANCE_CODES: dict[str, str] = {
     AttendanceStatus.SICK_LEAVE: "R",
     AttendanceStatus.ABSENT: "D",
 }
+# Yarım gün çalışılan günün kodu (`AttendanceEntry.short_day`; docs/DECISIONS.md "Puantajda günlük
+# çalışma saati ve yarım gün"). Durum değildir: gün "Çalıştı" kalır, tablo ve Excel bu kodu
+# gösterir.
+SHORT_DAY_CODE = "YG"
 # Fazla mesai yalnızca bu günlere girilir (tatilde çalışılan saat de fazla mesaidir).
 OVERTIME_STATUSES = (
     AttendanceStatus.WORKED,
@@ -252,13 +256,27 @@ def default_rest_weekdays() -> list[int]:
 
 
 class AttendanceSettings(BaseModel):
-    """Puantaj ayarları (tek kayıt): ay önceden dolu açılırken hafta tatili sayılan günler."""
+    """Puantaj ayarları (tek kayıt): ay önceden dolu açılırken hafta tatili sayılan günler ve
+    günlük çalışma saati."""
 
     rest_weekdays = models.JSONField("hafta tatili günleri", default=default_rest_weekdays)
+    # Herkes ve her iş günü için aynı saat (ör. 9); yarım gün tatilde yarısı beklenir. Boş:
+    # belirlenmedi (güne çalışılan saat yazılamaz). Yalnızca puantajda kullanılır; bordronun saat
+    # kuralları (brüt / 225, 7,5 saat) bundan bağımsızdır.
+    daily_hours = models.DecimalField(
+        "günlük çalışma saati", max_digits=4, decimal_places=2, null=True, blank=True
+    )
 
     class Meta:
         verbose_name = "puantaj ayarları"
         verbose_name_plural = "puantaj ayarları"
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(daily_hours__isnull=True) | Q(daily_hours__gt=0, daily_hours__lte=24),
+                name="personnel_attendance_settings_daily_hours",
+                violation_error_message="Günlük çalışma saati 0'dan büyük, en çok 24 olmalı.",
+            ),
+        ]
 
     def __str__(self) -> str:
         return "Puantaj ayarları"
@@ -274,6 +292,12 @@ class AttendanceMonth(DocumentModel):
 
     year = models.PositiveSmallIntegerField("yıl")
     month = models.PositiveSmallIntegerField("ay")
+    # İlk onayda o anki günlük çalışma saati yazılır; ay yeniden açılınca da korunur (ayar sonradan
+    # değişse de ayın günleri aynı saatle sayılır). Boş: ay hiç onaylanmadı ya da onaylanırken
+    # günlük çalışma saati yoktu (bu alandan önce onaylanan aylar dahil).
+    daily_hours = models.DecimalField(
+        "onaydaki günlük çalışma saati", max_digits=4, decimal_places=2, null=True, blank=True
+    )
     approved_at = models.DateTimeField("onay zamanı", null=True, blank=True)
     approved_by = models.ForeignKey(
         User,
@@ -320,6 +344,14 @@ class AttendanceEntry(BaseModel):
     # Yarım gün tatilde (28 Ekim, arife) öğleden sonra da çalıştı: bordroda yarım günlük ilave
     # ücret (docs/DECISIONS.md "Personel bordrosu"). Yalnızca çalışılan güne girilir.
     holiday_half_worked = models.BooleanField("yarım gün tatilde çalıştı", default=False)
+    # Çalışılan saat (ör. 4,5; fazla mesai hariç): yalnızca günün çalışma saatinin altında kalan
+    # çalışılan güne yazılır. Boş: girilmedi, gün tam çalışılmış sayılır.
+    worked_hours = models.DecimalField(
+        "çalışılan saat", max_digits=4, decimal_places=2, null=True, blank=True
+    )
+    # Yönetim günü yarım gün saydı (kod YG); yalnızca saati kayıtlı güne. Yarım gün tatil
+    # (`PublicHoliday.half_day`) değildir.
+    short_day = models.BooleanField("yarım gün çalıştı", default=False)
     note = models.CharField("not", max_length=200, blank=True)
 
     class Meta:
@@ -348,6 +380,26 @@ class AttendanceEntry(BaseModel):
                 violation_error_message=(
                     "Yarım gün tatil çalışması yalnızca çalışılan güne girilir."
                 ),
+            ),
+            models.CheckConstraint(
+                condition=Q(worked_hours__isnull=True)
+                | Q(worked_hours__gt=0, worked_hours__lte=24),
+                name="personnel_attendance_worked_hours_range",
+                violation_error_message="Çalışılan saat 0'dan büyük, en çok 24 olmalı.",
+            ),
+            models.CheckConstraint(
+                condition=Q(worked_hours__isnull=True)
+                | Q(status=AttendanceStatus.WORKED, overtime_hours=0, holiday_half_worked=False),
+                name="personnel_attendance_worked_hours_day",
+                violation_error_message=(
+                    "Çalışılan saat yalnızca fazla mesaisi ve yarım gün tatil çalışması olmayan "
+                    "çalışılan güne (Ç) girilir."
+                ),
+            ),
+            models.CheckConstraint(
+                condition=Q(short_day=False) | Q(worked_hours__isnull=False),
+                name="personnel_attendance_short_day",
+                violation_error_message="Yarım gün yalnızca çalışılan saati girilmiş güne yazılır.",
             ),
         ]
 

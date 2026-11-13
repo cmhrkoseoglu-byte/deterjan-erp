@@ -101,7 +101,7 @@ Personel maliyeti **Personel > Bordro**'daki ön bordro hesabından gelir: brüt
 - Arama kutusu ad, sicil no, birim ve görevde arar; birim ve **Çalışanlar / Ayrılanlar / Tümü** süzgeçleri vardır. Satıra basınca kart açılır.
 - Kartta **Düzenle** bilgileri değiştirir. **Geçmiş** bölümünde her değişiklik kimin yaptığı, tarihi, eski ve yeni değeriyle yazılıdır. TC kimlik no kartta açık görünür, geçmişte yalnızca son dört hanesiyle yazılır.
 - Kart silinmez. Ayrılan çalışanın kartında **İşten ayrıldı**'ya basıp çıkış tarihini girin; çıkış tarihi son çalışma günüdür ve o gün dahildir. Kart **Ayrılanlar**'a geçer. Yeniden işe başlarsa **Yeniden işe başladı**'ya basın.
-- Puantajda çıkış tarihinden sonra kayıtlı gün varsa (ör. önceden girilmiş izin), pencere bu günleri listeler. **Kaydet ve günleri kaldır**'a basınca ayrılış kaydedilir ve günler puantajdan kaldırılır. Kaldırılan günler tarihi, durumu ve fazla mesaisiyle kartın **Geçmiş** bölümüne yazılır; **Yeniden işe başladı** onları geri getirmez.
+- Puantajda çıkış tarihinden sonra kayıtlı gün varsa (ör. önceden girilmiş izin), pencere bu günleri listeler. **Kaydet ve günleri kaldır**'a basınca ayrılış kaydedilir ve günler puantajdan kaldırılır. Kaldırılan günler tarihi, durumu, çalışılan saati, yarım gün işareti ve fazla mesaisiyle kartın **Geçmiş** bölümüne yazılır; **Yeniden işe başladı** onları geri getirmez.
 - Bu günlerden biri onaylı bir aydaysa ayrılış kaydedilmez, çünkü bordroya giden rakam değişir. O ayın bordrosu da onaylıysa önce **Personel > Bordro**'da bordroyu gerekçeyle yeniden açın (aylar sondan başa açılır; mesaj ayları söyler). Sonra mesajda adı geçen her ayı Puantaj'da açın (**Puantajı aç** bağlantısı ilkini açar, diğerlerine ay oklarıyla geçin), **Yeniden aç**'a basıp gerekçeyi yazın ve ayrılışı kaydedin. Ardından önce puantajı, sonra bordroyu (eskiden yeniye) yeniden onaylayıp yeni Excel'i bordroya verin.
 - Çıkış tarihini düzeltmek için önce **Yeniden işe başladı**'ya, sonra doğru tarihle **İşten ayrıldı**'ya basın. Doğru tarih daha ileriyse ve arada onaylanmış ay varsa, o ayda iki tarih arasındaki günler boş kalır: ayın bordrosu onaylıysa önce **Personel > Bordro**'da bordroyu gerekçeyle yeniden açın; sonra puantajı **Yeniden aç** ile gerekçeyle açıp yeniden onaylayın, ardından bordroyu yeniden onaylayıp yeni Excel'i bordroya verin.
 
@@ -127,22 +127,28 @@ Kimlik fotokopisi, bordro, sözleşme ve diploma kartın **Belgeler** bölümün
 
 ## Puantaj
 
-**Personel > Puantaj** sekmesinde her ayın puantajı tutulur. Ay takvimden dolu açılır: iş günleri **Ç** (çalıştı), hafta tatilleri **HT**, resmi tatiller **RT**. Yalnızca istisnaları girersiniz.
+**Personel > Puantaj** sekmesinde her ayın puantajı tutulur. Ay takvimden dolu açılır: iş günleri **Ç** (çalıştı), hafta tatilleri **HT**, resmi tatiller **RT**. Yalnızca istisnaları girersiniz. Saat girilmeyen çalışılan gün, günlük çalışma saatiyle tam gün sayılır.
 
 1. Ayı oklarla seçin; gerekirse birim süzgecini kullanın.
 2. Bir güne basın. **Durum**'u seçin, varsa **Fazla mesai (saat)** ve not girin, **Kaydet**'e basın. Yarım gün tatilde (28 Ekim, arifeler) öğleden sonra da çalışıldıysa gün **Ç** kalır; **Öğleden sonra da çalıştı (yarım gün tatil)**'ı işaretleyin.
-3. Birkaç günlük izin ya da rapor için **Aralık gir**'e basın: kişiyi, birimi ya da herkesi seçin; başlangıç, bitiş ve durumu girin.
-4. Ay bitince **Ayı onayla**'ya basın. Değiştirilmemiş günler takvimdeki haliyle yazılır ve ay kilitlenir. Bu ay işten ayrılan varsa önce kartında çıkışını kaydedin.
-5. **Excel** aylık tabloyu, toplamları ve günlük fazla mesaiyi indirir; bordroya bu dosyayı verin.
+3. Kişi o gün günlük çalışma saatinden az çalıştıysa **Çalışılan saat**'e çalıştığı saati yazın (ör. 4,5; fazla mesai hariç). Saat günün çalışma saatinin altındaysa **Yarım gün çalıştı (YG)** işaretli gelir. Günü yarım gün saymayacaksanız (ör. yarım saat erken çıkış) işareti kaldırın; saat yine kayıtlı kalır.
+4. Birkaç günlük izin ya da rapor için **Aralık gir**'e basın: kişiyi, birimi ya da herkesi seçin; başlangıç, bitiş ve durumu girin.
+5. Ay bitince **Ayı onayla**'ya basın. Değiştirilmemiş günler takvimdeki haliyle yazılır ve ay kilitlenir. Bu ay işten ayrılan varsa önce kartında çıkışını kaydedin.
+6. **Excel** aylık tabloyu, toplamları, günlük çalışma saatlerini ve günlük fazla mesaiyi indirir; bordroya bu dosyayı verin.
 
 ![Puantaj](/kilavuz/yonetim-puantaj.jpg)
 
-- Kodlar: **Ç** çalıştı, **HT** hafta tatili, **RT** resmi tatil, **Yİ** yıllık izin, **Mİ** mazeret izni (ücretli), **Üİ** ücretsiz izin, **R** raporlu, **D** devamsız, **Ç½** yarım gün tatilde öğleden sonra da çalıştı. Kalın kod elle değiştirilmiş gündür.
-- Aralıkla girişte yıllık izin, mazeret izni ve devamsızlık hafta tatili ve resmi tatil günlerine yazılmaz; rapor ve ücretsiz izin her güne yazılır.
+- Kodlar: **Ç** çalıştı, **YG** yarım gün çalıştı, **HT** hafta tatili, **RT** resmi tatil, **Yİ** yıllık izin, **Mİ** mazeret izni (ücretli), **Üİ** ücretsiz izin, **R** raporlu, **D** devamsız, **Ç½** yarım gün tatilde öğleden sonra da çalıştı. Kalın kod elle değiştirilmiş gündür.
+- Çalışılan saat yalnızca çalışılan güne (**Ç**), bugün ya da geçmiş bir güne yazılır ve en çok günün çalışma saati kadardır; fazlasını **Fazla mesai (saat)**'e yazın. Yarım gün tatilde (28 Ekim, arifeler) günün çalışma saati yarıdır: o gün yalnızca öğlene kadarki saati yazın; öğleden sonra da çalışıldıysa saati boş bırakıp **Öğleden sonra da çalıştı (yarım gün tatil)**'ı işaretleyin. Hiç çalışılmayan günü devamsız, izin ya da rapor olarak girin; 0 saat yazılmaz.
+- Saati eksik güne fazla mesai ve **Öğleden sonra da çalıştı** işareti girilmez. Geç gelip geç çıkan kişinin gününü tam gün bırakın.
+- **YG** şimdilik yalnızca puantaj kaydıdır: **Bordro** ve **Personel maliyeti** bu günü tam gün sayar, ücret kesilmez. Kesinti ayrı bir güncellemeyle gelecek.
+- Yarım gün ücretli izinde saati yazın, **Yarım gün çalıştı (YG)** işaretini kaldırın ve nedenini nota yazın. Kısmi süreli çalışanın saatini her gün yazıp işareti kaldırın; saat yazılmayan gün tam gün sayılır.
+- Tatil takvimi ya da günlük çalışma saati sonradan değişir ve kayıtlı saat artık günün çalışma saatinin altında kalmazsa (ör. arife takvime sonradan eklendi), o gün tam gün sayılır ve tabloda **Ç** görünür. Gün yeniden kaydedilince kayıtlı saat temizlenir.
+- Aralıkla girişte yıllık izin, mazeret izni ve devamsızlık hafta tatili ve resmi tatil günlerine yazılmaz; rapor ve ücretsiz izin her güne yazılır. Aralık girişi saat taşımaz; başka duruma geçen günün saati ve yarım gün işareti silinir.
 - Fazla mesai yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir. Tatilde çalışan kişinin günü HT ya da RT kalır; çalıştığı saat fazla mesai olarak girilir. Yarım gün tatilde öğleden sonraki çalışma fazla mesai olarak değil, **Öğleden sonra da çalıştı** işaretiyle girilir; tatil sonradan kaldırılır ya da tam güne çevrilirse işaret sayılmaz ve tabloda **Ç** görünür.
-- Devamsızlık ve fazla mesai ileri bir güne girilemez; izin ve rapor önceden girilebilir.
-- Toplamlarda **Eksik**, ücretsiz izin, rapor ve devamsızlık günlerinin toplamıdır; **FM** fazla mesai saatidir. Excel'de fazla mesai iş günü, hafta tatili ve resmi tatil olarak ayrı sütunlardadır.
-- Onaylı ayda düzeltme gerekirse **Yeniden aç**'a basıp gerekçeyi yazın. Günler onaydaki haliyle kalır. Çıkış tarihinden sonraki kayıtlı günlerden biri onaylı bir aydaysa ayrılış da ancak o ay yeniden açılınca kaydedilir. Ayın bordrosu onaylıysa **Yeniden aç** kapalıdır: önce **Personel > Bordro**'da bordroyu yeniden açın.
+- Devamsızlık, fazla mesai ve çalışılan saat ileri bir güne girilemez; izin ve rapor önceden girilebilir.
+- Toplamlarda **Ç** tam gün çalışılan günlerdir; **YG** yarım gün çalışılan günlerdir ve Ç ile Eksik toplamına girmez. **Eksik**, ücretsiz izin, rapor ve devamsızlık günlerinin toplamıdır; **FM** fazla mesai saatidir. Excel'de fazla mesai iş günü, hafta tatili ve resmi tatil olarak ayrı sütunlardadır; **Çalışma saatleri** sayfası günlük çalışılan saati verir (saat girilmeyen gün günün çalışma saatiyle, fazla mesai hariç).
+- Onaylı ayda düzeltme gerekirse **Yeniden aç**'a basıp gerekçeyi yazın. Günler onaydaki haliyle kalır; ay, onaylandığı günkü günlük çalışma saatini de korur. Günlük çalışma saati belirlenmeden onaylanmış ayda (bu güncellemeden önceki aylar dahil) saat gösterilmez; böyle bir ay yeniden açılınca güncel değeri kullanır ve yeniden onayda onu alır. Çıkış tarihinden sonraki kayıtlı günlerden biri onaylı bir aydaysa ayrılış da ancak o ay yeniden açılınca kaydedilir. Ayın bordrosu onaylıysa **Yeniden aç** kapalıdır: önce **Personel > Bordro**'da bordroyu yeniden açın.
 - Kişinin işe girişinden önceki ve çıkışından sonraki günleri takvimden doldurulmaz ve değiştirilemez; ayrılışta çıkıştan sonraki kayıtlı günler kaldırılır. İşe giriş tarihi sonradan ileri alınırsa önceden kayıtlı günler tabloda ve Excel'de kalır.
 
 ### Tatil takvimi
@@ -150,9 +156,12 @@ Kimlik fotokopisi, bordro, sözleşme ve diploma kartın **Belgeler** bölümün
 1. **Personel > Tatil takvimi**'nde yılı seçin.
 2. **Yılın sabit tatillerini ekle**'ye basın: 1 Ocak, 23 Nisan, 1 Mayıs, 19 Mayıs, 15 Temmuz, 30 Ağustos, 28 Ekim (yarım gün) ve 29 Ekim eklenir.
 3. Ramazan ve Kurban Bayramı günlerini **Tatil ekle** ile girin; arifelerde **Yarım gün**'ü işaretleyin.
-4. **Varsayılan hafta tatili günleri**'nde hafta tatilini seçin (başlangıçta pazar) ve **Kaydet**'e basın.
+4. **Puantaj ayarları**'nda hafta tatili günlerini seçin (başlangıçta pazar), **Günlük çalışma saati**'ni yazın (ör. 9; mola hariç) ve **Kaydet**'e basın.
 
 ![Tatil takvimi](/kilavuz/yonetim-tatil-takvimi.jpg)
+
+- Günlük çalışma saati herkes ve her iş günü için aynıdır; girilmeden güne saat yazılamaz. Değer boş bırakılamaz, yalnız değiştirilir.
+- Değeri değiştirirseniz hiç onaylanmamış ayların saat girilmemiş günleri de yeni değerle sayılır; bir kez onaylanmış ay, yeniden açılsa da onaydaki değeri korur. Önce biten ayı onaylayın, sonra değeri değiştirin.
 
 > Rapor bilgisi sağlık verisidir; puantajı yalnızca yönetim ve sistem yöneticisi görür. Onaylı aya düşen tatil değiştirilemez; önce ay yeniden açılır (ayın bordrosu onaylıysa önce bordro).
 
