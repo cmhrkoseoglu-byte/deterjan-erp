@@ -1237,7 +1237,7 @@
   "superuser": 1,
   "yonetim": 1
  },
- "trail: personnel.attendanceentry create [date, employee, holiday_half_worked, month, overtime_hours, status]": {
+ "trail: personnel.attendanceentry create [date, employee, holiday_half_worked, month, overtime_hours, short_day, status]": {
   "admin": 1,
   "superuser": 1,
   "yonetim": 1
