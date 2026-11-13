@@ -88,6 +88,7 @@ function Breakdown({ payroll, row }: { payroll: PayrollMonth; row: PayrollRow })
       true,
     ],
     [pn.workedDays, String(line.worked_days)],
+    ...(line.short_days ? ([[pn.shortDays, String(line.short_days)]] as Line[]) : []),
     ...(line.sick_days ? ([[pn.sickDays, String(line.sick_days)]] as Line[]) : []),
     ...(line.unpaid_leave_days
       ? ([[pn.unpaidLeaveDays, String(line.unpaid_leave_days)]] as Line[])
@@ -97,6 +98,9 @@ function Breakdown({ payroll, row }: { payroll: PayrollMonth; row: PayrollRow })
   const earnings: Line[] = [
     [pn.monthlyWage, money(line.monthly_wage)],
     [pn.normalSalary, money(line.salary)],
+    ...(positive(line.short_day_deduction)
+      ? ([[pn.shortDayDeduction(line.short_days), minus(line.short_day_deduction)]] as Line[])
+      : []),
     ...(positive(line.overtime_worked_pay)
       ? ([
           [

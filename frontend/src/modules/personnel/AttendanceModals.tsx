@@ -166,7 +166,12 @@ export function DayModal({
               autoComplete="off"
             />
             <Text size="sm" aria-live="polite">
-              {short && (shortDay ? at.shortDayOn : at.shortDayOff)}
+              {short &&
+                (!shortDay
+                  ? at.shortDayOff
+                  : calendarStatus(column) === "WORKED"
+                    ? at.shortDayOn
+                    : at.shortDayOnRestDay)}
             </Text>
           </Stack>
           {status === "WORKED" && (

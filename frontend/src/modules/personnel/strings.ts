@@ -290,9 +290,11 @@ export const at = {
     "“Öğleden sonra da çalıştı” işaretliyken çalışılan saat günün çalışma saatinin altında olamaz.",
   shortDay: "Yarım gün çalıştı (YG)",
   shortDayHelp:
-    "Çalışılan saat bu günün çalışma saatinin altındaysa işaretli gelir. Yarım gün saymayacaksanız işareti kaldırın; saat kayıtlı kalır. Şimdilik yalnızca kayıttır: bordroda kesinti yapılmaz.",
-  shortDayOn: "Gün YG (yarım gün) olarak kaydedilecek.",
-  shortDayOff: "Saat kaydedilir, gün Ç kalır.",
+    "Çalışılan saat bu günün çalışma saatinin altındaysa işaretli gelir. Yarım gün saymayacaksanız işareti kaldırın; saat kayıtlı kalır. Bordroda yarım gün çalışılan her gün için günlük ücretin yarısı kesilir (hafta tatili ya da tam gün tatile Ç yazılan günde kesilmez).",
+  shortDayOn: "Gün YG olarak kaydedilecek; bordroda yarım günlük ücret kesilir.",
+  shortDayOff: "Saat kaydedilir, gün Ç kalır; ücret kesilmez.",
+  shortDayOnRestDay:
+    "Gün YG olarak kaydedilecek; takvimde tatil olduğu için bordroda ücret kesilmez.",
   overtime: "Fazla mesai (saat)",
   overtimeHelp: "Yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir.",
   overtimeInvalid: "0 ile 24 arasında bir sayı yazın (ör. 2,5).",
@@ -564,6 +566,7 @@ export const pn = {
     department: "Birim",
     sgkDays: "SGK gün",
     salary: "Normal ücret",
+    shortDay: "YG kesintisi",
     overtime: "Fazla mesai ve tatil",
     extras: "Ek ödeme",
     gross: "Brüt toplam",
@@ -626,11 +629,13 @@ export const pn = {
   sgkDaysPartial: (employed: number, unpaid: number) =>
     `SGK gün (${employed} işte olunan − ${unpaid} eksik, en çok 30)`,
   workedDays: "Fiilen çalışılan gün",
+  shortDays: "Yarım gün çalışılan (YG)",
   sickDays: "Rapor",
   unpaidLeaveDays: "Ücretsiz izin",
   absentDays: "Devamsızlık",
   monthlyWage: "Aylık brüt ücret",
   normalSalary: "Normal ücret",
+  shortDayDeduction: (n: number) => `Yarım gün kesintisi (${n} gün × günlük ücretin yarısı)`,
   overtimeWorked: (hours: string) => `Fazla mesai iş günü (${hours} sa × saat ücreti × 1,5)`,
   overtimeRest: (hours: string) => `Fazla mesai hafta tatili (${hours} sa × 1,5)`,
   holidayPay: (days: number, half: number, extra: string) =>

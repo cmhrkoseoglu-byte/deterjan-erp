@@ -134,6 +134,9 @@ describe("bordro: brütten nete", () => {
     expect(tr(within(drawer).getByText("Devir (Ekim 2026 öncesi)"))).toHaveTextContent(
       "382.500,00",
     );
+    // YG yoksa yarım gün satırları yok.
+    expect(within(drawer).queryByText("Yarım gün çalışılan (YG)")).not.toBeInTheDocument();
+    expect(within(drawer).queryByText(/Yarım gün kesintisi/)).not.toBeInTheDocument();
     expect(within(drawer).getByRole("button", { name: "Önceki kişi" })).toBeDisabled();
     // Sıra tablodaki gibi: mali müşavirdeki kişi atlanır.
     await user.click(within(drawer).getByRole("button", { name: "Sonraki kişi" }));
@@ -142,6 +145,44 @@ describe("bordro: brütten nete", () => {
     expect(
       await screen.findByRole("dialog", { name: "Ayşe Demir · Ekim 2026" }),
     ).toBeInTheDocument();
+  });
+
+  it("yarım gün (YG) kesintisi: tabloda sütun ve toplam, dökümde gün ve kesinti satırı", async () => {
+    const user = userEvent.setup();
+    const short: PayrollRow = {
+      ...AYSE_NET,
+      line: line({ short_days: 2, short_day_deduction: "1500.00", gross_total: "43500.00" }),
+      gross_total: "43500.00",
+    };
+    const payroll = month({ rows: [short, CAN, ECE_NEEDS] });
+    vi.mocked(payrollApi.getPayrollMonth).mockResolvedValue({
+      ...payroll,
+      totals: { ...payroll.totals, short_day_deduction: "1500.00" },
+    });
+    renderApp("/personel/bordro?ay=2026-10");
+    const table = await screen.findByTestId("payroll-net");
+    // Sütun normal ücretten hemen sonra; kesinti eksi gösterilir, YG'siz kişide 0,00.
+    const headers = within(table)
+      .getAllByRole("columnheader")
+      .map((header) => header.textContent);
+    expect(headers.indexOf("YG kesintisi")).toBe(headers.indexOf("Normal ücret") + 1);
+    const column = headers.indexOf("YG kesintisi");
+    const cell = (row: HTMLElement) => row.querySelectorAll("td")[column];
+    expect(cell(tr(within(table).getByText("Ayşe Demir")))).toHaveTextContent("−1.500,00");
+    expect(cell(tr(within(table).getByText("Ece Ak")))).toHaveTextContent(/^0,00$/);
+    expect(cell(tr(within(table).getByText("Toplam (ERP)")))).toHaveTextContent("−1.500,00");
+
+    await user.click(screen.getByRole("button", { name: "Döküm: Ayşe Demir" }));
+    const drawer = await screen.findByRole("dialog", { name: "Ayşe Demir · Ekim 2026" });
+    const count = tr(within(drawer).getByText("Yarım gün çalışılan (YG)"));
+    expect(count).toHaveTextContent("2");
+    expect(tr(within(drawer).getByText("Fiilen çalışılan gün")).nextElementSibling).toBe(count);
+    const deduction = tr(
+      within(drawer).getByText("Yarım gün kesintisi (2 gün × günlük ücretin yarısı)"),
+    );
+    expect(deduction).toHaveTextContent("−1.500,00");
+    expect(tr(within(drawer).getByText("Normal ücret")).nextElementSibling).toBe(deduction);
+    expect(tr(within(drawer).getByText("Brüt toplam"))).toHaveTextContent("43.500,00");
   });
 
   it("dökümde kalem düzeltilir ve gerekçeyle kaldırılır", async () => {

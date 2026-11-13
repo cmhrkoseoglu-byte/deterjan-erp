@@ -396,8 +396,9 @@ class PersonnelCostRow:
     """Kişinin ay maliyeti. `gross_monthly` ayın son çalışılan günündeki brüt ücret (yoksa None);
     `missing_wage`: işte olduğu bir gün için geçerli ücret yok (o günler sıfır sayıldı) ya da
     bordrosu mali müşavirde olan kişinin (`payroll_external`) o ayın rakamları girilmedi.
-    `gross_salary` normal ücret (30 gün usulü); fazla mesai ve resmî tatil ile ek ödemeler (prim,
-    ikramiye, nakit yol ve yemek) ayrıdır. Mali müşavirdeki kişide brüt toplamın tamamıdır.
+    `gross_salary` normal ücret (30 gün usulü), yarım gün kesintisi düşülmüş; fazla mesai ve resmî
+    tatil ile ek ödemeler (prim, ikramiye, nakit yol ve yemek) ayrıdır. Mali müşavirdeki kişide brüt
+    toplamın tamamıdır.
     `employee` kişinin bordrodaki bilgisidir (onaylı bordroda onay anındaki ad ve birim)."""
 
     employee: personnel.PersonView
@@ -592,7 +593,7 @@ def _cost_row(row: personnel.PayrollRow, stage: str) -> PersonnelCostRow:
         unpaid_days=line.unpaid_days,
         paid_days=line.paid_days,
         overtime_hours=line.overtime_worked_hours + line.overtime_rest_hours + line.holiday_hours,
-        gross_salary=line.salary,
+        gross_salary=line.salary - line.short_day_deduction,
         overtime_pay=line.overtime_pay,
         employer_share=line.employer_share,
         total_cost=line.employer_cost,

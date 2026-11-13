@@ -30,22 +30,27 @@ def month(
     statuses: dict[int, str] | None = None,
     hours: dict[int, Any] | None = None,
     half: tuple[int, ...] = (),
+    short: tuple[int, ...] = (),
+    wages: dict[int, str] | None = None,
     **extra: Any,
 ) -> payroll.MonthInput:
-    """Ayın işte olunan günleri (varsayılan hepsi Ç), sabit ücretle."""
+    """Ayın işte olunan günleri (varsayılan hepsi Ç), sabit ücretle (`wages`: güne göre farklı
+    ücret); `short` yarım gün çalışılan (YG) günler."""
     last = calendar.monthrange(year, number)[1]
     days = []
     for day_number in range(1, last + 1):
         day = date(year, number, day_number)
         if start and day < start:
             continue
+        day_wage = (wages or {}).get(day_number, wage)
         days.append(
             payroll.Day(
                 date=day,
                 status=(statuses or {}).get(day_number, payroll.WORKED),
                 overtime_hours=D((hours or {}).get(day_number, 0)),
-                wage=D(wage) if wage is not None else None,
+                wage=D(day_wage) if day_wage is not None else None,
                 half_holiday_worked=day_number in half,
+                short_day=day_number in short,
             )
         )
     return payroll.MonthInput(days=tuple(days), days_in_month=last, **extra)
@@ -176,6 +181,12 @@ def test_result_round_trips_through_json() -> None:
         stored = json.loads(json.dumps(payroll.result_to_dict(result)))
         assert payroll.result_from_dict(stored) == result
     assert payroll.result_to_dict(result)["monthly_wage"] is None
+    # Yarım gün (2026.3): gün sayısı tam sayı, kesinti tutar olarak saklanır.
+    short = compute(month(2026, 10, "45000", short=(5, 6)))
+    stored = json.loads(json.dumps(payroll.result_to_dict(short)))
+    assert (stored["short_days"], stored["short_day_deduction"]) == (2, "1500.00")
+    line = payroll.result_from_dict(stored)
+    assert line == short and type(line.short_days) is int
 
 
 # Motorun 2026.2 sürümünün saklanan satırı: Ekim 2026, tam ay 50.000 TL + 5.000 TL prim, kümülatif
@@ -248,6 +259,8 @@ def test_stored_line_of_an_older_engine_is_read() -> None:
         D("65312.50"),
     )
     assert line.extras == (payroll.Item("PREMIUM", "Prim", D("5000")),)
+    # 2026.2 yarım gün kesintisini bilmez: saklı satırda yok, 0 okunur.
+    assert (line.short_days, line.short_day_deduction) == (0, D(0))
     trimmed = {key: value for key, value in STORED_2026_2.items() if key != "meal_exemption"}
     trimmed["future_field"] = "1"
     older = payroll.result_from_dict(trimmed)
@@ -335,6 +348,106 @@ def test_public_holiday_work_pays_a_day() -> None:
     half = compute(month(2026, 10, "33030", half=(28,)))
     assert (half.holiday_pay, half.holiday_half_days) == (D("550.50"), 1)
     assert compute(month(2026, 10, "50000", statuses=holiday)).holiday_pay == D("0.00")
+
+
+def test_short_day_deducts_half_a_day() -> None:
+    """Yarım gün çalışılan (YG) her gün için yarım günlük ücret: 3,75 sa × brüt / 225 = brüt / 60
+    (yarım gün tatil ilavesinin aynası: 33.030'da 550,50). Ücretli gün, SGK günü ve fiilen çalışılan
+    gün değişmez; kesinti brütten düşer, gerisi düşük brütten akar."""
+    for wage, deduction in (("45000", "750.00"), ("33030", "550.50"), ("50000", "833.33")):
+        full = compute(month(2026, 10, wage))
+        line = compute(month(2026, 10, wage, short=(5,)))
+        assert (line.short_days, line.short_day_deduction) == (1, D(deduction))
+        assert line.salary == full.salary == D(wage)
+        assert line.gross_total == full.gross_total - D(deduction)
+        assert (line.paid_days, line.sgk_days, line.worked_days, line.unpaid_days) == (
+            full.paid_days,
+            full.sgk_days,
+            full.worked_days,
+            0,
+        )
+        assert full.short_days == 0 and full.short_day_deduction == D(0)
+    line = compute(month(2026, 10, "45000", short=(5,)))
+    assert (line.sgk_base, line.net_pay, line.employer_cost) == (
+        D("44250.00"),
+        D("36096.79"),
+        D("52546.88"),
+    )
+
+
+def test_short_day_on_minimum_wage_falls_under_the_floor() -> None:
+    """Asgari ücretli, 1 YG: brüt 32.479,50 alt sınırın altında; matrah alt sınırda, işçi payları
+    ücretten, farkın (82,57) primini işveren öder. Net 467,93 düşer, maliyet de 467,93 (550,50 −
+    82,57) düşer; BES alt sınırdan."""
+    full = compute(month(2026, 10, "33030"))
+    line = compute(month(2026, 10, "33030", short=(5,)))
+    assert (line.gross_total, line.sgk_base, line.sgk_days) == (D("32479.50"), D("33030.00"), 30)
+    assert line.floor_applied and line.floor_gap == D("82.57")
+    assert (line.income_tax, line.stamp_tax) == (D("0.00"), D("0.00"))
+    assert full.net_pay - line.net_pay == D("467.93")
+    assert full.employer_cost - line.employer_cost == D("467.93")
+    bes = compute(month(2026, 10, "33030", short=(5,), bes=True))
+    assert bes.bes_deduction == D("990.90")
+
+
+def test_short_days_are_summed_and_rounded_once() -> None:
+    """Kesinti o günkü ücretle, ayın toplamında tek yuvarlama: 50.000'de iki YG 1.666,67 (iki ayrı
+    yuvarlama 1.666,66 verirdi); ay içi zamda her gün kendi ücretiyle (750,00 + 833,33)."""
+    assert compute(month(2026, 10, "50000", short=(5, 6))).short_day_deduction == D("1666.67")
+    raised = dict.fromkeys(range(16, 32), "50000")
+    line = compute(month(2026, 10, "45000", wages=raised, short=(5, 20)))
+    assert (line.short_days, line.short_day_deduction) == (2, D("1583.33"))
+
+
+@pytest.mark.parametrize(
+    ("number", "start"),
+    [(10, None), (2, None), (10, date(2026, 10, 16))],
+    ids=["31-gun", "subat", "ay-ici-giris"],
+)
+def test_short_day_is_half_an_unpaid_day(number: int, start: date | None) -> None:
+    """Tam ayda (31 ve 28 gün) ve kıst ayda YG kesintisi ücretsiz günün (brüt / 30) tam
+    yarısıdır."""
+    full = compute(month(2026, number, "45000", start=start))
+    absent = compute(month(2026, number, "45000", start=start, statuses={20: payroll.ABSENT}))
+    short = compute(month(2026, number, "45000", start=start, short=(20,)))
+    assert full.salary - absent.salary == 2 * short.short_day_deduction == D("1500.00")
+    assert (short.salary, short.paid_days, short.sgk_days) == (
+        full.salary,
+        full.paid_days,
+        full.sgk_days,
+    )
+
+
+def test_short_day_deduction_never_exceeds_the_salary() -> None:
+    """31 gün, 29 devamsızlık + 2 YG, 45.000: normal ücret 1.500,00, kesinti 1.500,00, brüt 0; SGK
+    günü 2, matrah alt sınırda, farkın tamamını işveren öder (330,30); istisna sayacı ilerlemez. Tek
+    ücretle kesinti normal ücrete eşitlenir, aşmaz. Ay içi zamda (YG günleri 45.000, zamdan sonraki
+    devamsız günler 46.000) kesinti normal ücretle sınırlanır."""
+    absent = dict.fromkeys(range(1, 30), payroll.ABSENT)
+    line = compute(month(2026, 10, "45000", statuses=absent, short=(30, 31)))
+    assert (line.salary, line.short_day_deduction, line.gross_total) == (
+        D("1500.00"),
+        D("1500.00"),
+        D("0.00"),
+    )
+    assert (line.sgk_days, line.floor_gap, line.exemption_base_added) == (2, D("330.30"), D(0))
+    later = dict.fromkeys(range(3, 32), payroll.ABSENT)
+    raised = dict.fromkeys(range(3, 32), "46000")
+    capped = compute(month(2026, 10, "45000", statuses=later, short=(1, 2), wages=raised))
+    assert capped.salary == D("1468.82") < D("1500.00")
+    assert (capped.short_day_deduction, capped.gross_total) == (D("1468.82"), D("0.00"))
+
+
+def test_short_day_without_wage_or_off_a_worked_day() -> None:
+    """Ücreti girilmemiş günde YG sayılır ama tutar doğmaz (satır "ücret eksik" uyarısı taşır);
+    "Çalıştı" dışındaki günde işaret yok sayılır."""
+    line = compute(month(2026, 10, None, short=(5,)))
+    assert (line.short_days, line.short_day_deduction) == (1, D(0))
+    assert line.missing_wage
+    rest = compute(month(2026, 10, "45000", statuses={4: payroll.WEEKLY_REST}, short=(4,)))
+    unpaid = compute(month(2026, 10, "45000", statuses={5: payroll.ABSENT}, short=(5,)))
+    assert (rest.short_days, rest.short_day_deduction) == (0, D(0))
+    assert (unpaid.short_days, unpaid.short_day_deduction) == (0, D(0))
 
 
 def test_overtime_and_february_rules() -> None:

@@ -564,7 +564,14 @@ class PayrollLineSerializer(serializers.Serializer):
     sgk_days = serializers.IntegerField()
     monthly_wage = _money(allow_null=True, help_text="ayın son işte olunan günündeki brüt ücret")
     missing_wage = serializers.BooleanField()
-    salary = _money()
+    salary = _money(help_text="normal ücret (30 gün usulü), yarım gün kesintisi düşülmeden")
+    short_days = serializers.IntegerField(
+        help_text="kesintiye giren yarım gün çalışılan gün (YG; takvimde iş günü olan Ç günü)"
+    )
+    short_day_deduction = _money(
+        help_text="yarım gün kesintisi: yarım gün çalışılan her gün için günlük ücretin yarısı "
+        "(aylık brüt / 60); brütten düşülür"
+    )
     overtime_worked_hours = _hours()
     overtime_worked_pay = _money()
     overtime_rest_hours = _hours()
@@ -931,6 +938,7 @@ def parameters_info(settings: PayrollSettings) -> dict[str, Any]:
 
 TOTAL_FIELDS = (
     "salary",
+    "short_day_deduction",
     "overtime_worked_pay",
     "overtime_rest_pay",
     "holiday_pay",
@@ -974,6 +982,7 @@ class PayrollTotalsSerializer(serializers.Serializer):
     computed_gross_total = _money(help_text="ERP'de hesaplanan satırların brüt toplamı")
     computed_employer_cost = _money(help_text="ERP'de hesaplanan satırların işverene maliyeti")
     salary = _money()
+    short_day_deduction = _money(help_text="yarım gün kesintisi toplamı (brütten düşülür)")
     overtime_worked_pay = _money()
     overtime_rest_pay = _money()
     holiday_pay = _money()
