@@ -30,6 +30,7 @@ class PersonnelConfig(AppConfig):
                 formats=formats,
                 suggested_code=code,
                 # Puantaj çizelgesi şablonu sürüm 2: YG sütunu, "Çalışma saatleri" sayfası ve kod
-                # açıklamaları (2026-11-12).
-                template_version=2 if key == pdf.ATTENDANCE_OUTPUT else 1,
+                # açıklamaları (2026-11-12). Ön bordro ve pusula sürüm 2: yarım gün kesintisi
+                # satırları ve Excel sütunları (2026-11-13).
+                template_version=1 if key == pdf.EMPLOYER_COST_OUTPUT else 2,
             )

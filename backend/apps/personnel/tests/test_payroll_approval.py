@@ -169,7 +169,7 @@ def test_approval_stores_the_month(manager: User, approved: tuple[Employee, Payr
     assert approval is not None and approval.sequence == 1
     assert (approval.approved_by, approval.payment_date) == (manager, date(2026, 11, 10))
     assert approval.attendance_number.startswith("PU-2026-")
-    assert approval.engine_version == "2026.2"
+    assert approval.engine_version == "2026.3"
     assert approval.parameters["origin"] == "saved"
     assert approval.parameters["values"]["minimum_wage"] == "33030.00"
     assert (approval.employee_count, approval.external_count) == (1, 0)
@@ -1319,10 +1319,19 @@ def test_output_names_tell_the_state(
 
 
 def test_heavy_payslip_stays_on_one_page(manager: User, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fazla mesai, tatil çalışması, çok sayıda ek ödeme ve kesintisi olan kişinin pusulası da tek
-    sayfadır: sığmazsa bütünüyle küçültülür ve ortalanır (tablolar ile notlar aynı hizada)."""
+    """Fazla mesai, tatil çalışması, yarım gün (YG) kesintisi, BES, çok sayıda ek ödeme ve
+    kesintisi olan kişinin pusulası da tek sayfadır: sığmazsa bütünüyle küçültülür ve ortalanır
+    (tablolar ile notlar aynı hizada)."""
     parameter_set(manager)
-    person = _person(manager, employee_no="S-1")
+    person = _person(manager, employee_no="S-1", bes_enrolled=True)
+    services.update_attendance_settings(manager, [6], daily_hours=D("9"))
+    services.add_holiday(manager, {"date": date(2026, 10, 29), "name": "Cumhuriyet Bayramı"})
+    services.set_attendance_day(
+        manager, person, date(2026, 10, 29), status=S.PUBLIC_HOLIDAY, overtime_hours=D("8")
+    )
+    services.set_attendance_day(
+        manager, person, date(2026, 10, 7), status=S.WORKED, worked_hours=D("4.5"), short_day=True
+    )
     for day, hours in ((5, "3"), (6, "2"), (12, "4")):
         services.set_attendance_day(
             manager, person, date(2026, 10, day), status=S.WORKED, overtime_hours=D(hours)
@@ -1349,6 +1358,10 @@ def test_heavy_payslip_stays_on_one_page(manager: User, monkeypatch: pytest.Monk
                 },
             )
     _approve(manager)
+    row = selectors.payroll_month(2026, 10).rows[0]
+    labels = [label for label, _, _ in pdf.payslip_lines(row)["earnings"]]
+    assert labels[:3] == ["Normal ücret", "Yarım gün kesintisi", "Fazla mesai (iş günü, %50 zamlı)"]
+    assert "Resmî tatil çalışması" in labels and row.line.bes_deduction > 0
     blocks: list[Any] = []
     real = pdf._payslip_block
 

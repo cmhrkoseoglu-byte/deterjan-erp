@@ -1020,8 +1020,16 @@ def _month_input(
 ) -> payroll.MonthInput:
     """Puantaj satırından hesap girdisi: yalnızca kişinin işte olduğu (durumu olan) günler, her gün
     o gün geçerli ücretle; yarım gün tatil çalışması yalnızca takvimde yarım gün tatil olan güne
-    sayılır. Ayın ek ödemeleri brüte, kesintileri netten. BES verilmezse kartın işareti."""
+    sayılır. Yarım gün çalışılan gün (YG; `cell.short_day` sayılan değerdir) yarım günlük ücret
+    kesintisine yalnızca takvimde iş günü olan "Çalıştı" gününde girer (yarım gün tatil dahil);
+    hafta tatiline ya da tam gün tatile "Çalıştı" yazılmış günde YG yalnızca kayıttır. Ayın ek
+    ödemeleri brüte, kesintileri netten. BES verilmezse kartın işareti.
+
+    Bu ayın, kümülatif zincirdeki açık önceki ayların ve personel maliyetinin (bordro başlangıcından
+    önceki aylar dahil) ortak girdisidir."""
     half_days = {day.date for day in days if day.half_day}
+    # Takvimde iş günü (`default_status` "Çalıştı"): hafta tatili ve tam gün tatil değil.
+    work_days = {day.date for day in days if not day.rest and (day.holiday is None or day.half_day)}
     selected = tuple(
         payroll.Day(
             date=cell.date,
@@ -1029,6 +1037,9 @@ def _month_input(
             overtime_hours=cell.overtime_hours,
             wage=wage_on(wages, cell.date),
             half_holiday_worked=cell.holiday_half_worked and cell.date in half_days,
+            short_day=(
+                cell.short_day and cell.status == AttendanceStatus.WORKED and cell.date in work_days
+            ),
         )
         for cell in row.cells
         if cell.status and employed_on(row.employee, cell.date)

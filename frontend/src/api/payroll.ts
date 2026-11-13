@@ -136,6 +136,11 @@ export interface PayrollLine {
   monthly_wage: string | null;
   missing_wage: boolean;
   salary: string;
+  /** Kesintiye giren yarım gün çalışılan (YG) gün; hafta tatili ya da tam gün tatile Ç yazılan
+   * günün YG'si sayılmaz. */
+  short_days: number;
+  /** Yarım gün kesintisi: yarım gün çalışılan her gün için günlük ücretin yarısı (aylık brüt / 60). */
+  short_day_deduction: string;
   overtime_worked_hours: string;
   overtime_worked_pay: string;
   overtime_rest_hours: string;
@@ -264,6 +269,7 @@ export interface PayrollTotals {
   computed_gross_total: string;
   computed_employer_cost: string;
   salary: string;
+  short_day_deduction: string;
   overtime_worked_pay: string;
   overtime_rest_pay: string;
   holiday_pay: string;

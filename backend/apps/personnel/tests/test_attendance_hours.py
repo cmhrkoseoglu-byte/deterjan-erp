@@ -1,7 +1,8 @@
 """Puantajda günlük çalışma saati ve yarım gün (docs/DECISIONS.md "Puantajda günlük çalışma saati
 ve yarım gün"): ayar, güne çalışılan saat ve yarım gün işareti (YG), sayılma kuralı, ayın onaydaki
-değeri, aralık girişi, toplamlar, Excel, ayrılış özeti ve API. Bu adımda yalnızca kayıttır: bordro
-ve personel maliyeti günü tam gün sayar."""
+değeri, aralık girişi, toplamlar, Excel, ayrılış özeti ve API. Çalışılan saat yalnızca kayıttır;
+sayılan YG günü bordroda ve personel maliyetinde yarım günlük ücret (brüt / 60) keser (2. adım;
+ayrıntısı test_payroll_short_day.py)."""
 
 from collections.abc import Callable
 from datetime import date, timedelta
@@ -41,7 +42,10 @@ S = AttendanceStatus
 INVALID_DAILY_HOURS = "Günlük çalışma saati 0'dan büyük, en çok 24 olmalı."
 SHORT_DAY_LEGEND = (
     "Yarım gün çalıştı (yönetimce yarım gün sayıldı). Ç toplamına girmez; çalışılan gün = Ç + YG. "
-    "ERP ön bordrosunda bu günler için kesinti henüz hesaplanmaz."
+    "Bordrosu onaylanmamış ayların ERP ön bordrosunda yarım gün çalışılan her gün için günlük "
+    "ücretin yarısı (aylık brüt / 60) kesilir; hafta tatili ya da tam gün tatile Ç yazılan günde "
+    "kesilmez; SGK günü değişmez. Bordrosu mali müşavirde olan kişide kesintiyi mali müşavir "
+    "uygular."
 )
 WORKED_HOURS_LEGEND = (
     "Fazla mesai hariçtir. Saat girilmeyen gün günün çalışma saatiyle, yarım gün tatilde öğleden "
@@ -767,20 +771,27 @@ def test_excel_without_daily_hours_and_for_month_approved_without_them(manager: 
     assert _daily_hours_legend(book) == "7,5 saat (yarım gün tatilde 3,75)"
 
 
-def test_attendance_sheet_template_version() -> None:
-    """Şablon değişti: "Puantaj çizelgesi" sürüm 2 (revizyon girilmişse ekran yenisini ister);
-    öteki personel çıktıları değişmedi."""
-    sheet = registry.output_type(pdf.ATTENDANCE_OUTPUT)
-    assert sheet is not None
-    assert (sheet.suggested_code, sheet.template_version) == ("FR-IK-001", 2)
-    for key in (pdf.PAYROLL_OUTPUT, pdf.EMPLOYER_COST_OUTPUT, pdf.PAYSLIP_OUTPUT):
-        other = registry.output_type(key)
-        assert other is not None and other.template_version == 1
+def test_personnel_output_template_versions() -> None:
+    """Şablon sürümleri (revizyon girilmişse ekran yenisini ister): "Puantaj çizelgesi" (FR-IK-001)
+    2 (YG sütunu, 1. adım; Kodlar açıklaması 2. adımda yalnız metin), ön bordro (FR-IK-002) ve
+    ücret hesap pusulası (FR-IK-004) 2 (yarım gün kesintisi satırları ve sütunları); işveren
+    maliyeti tablosu (FR-IK-003) değişmedi, 1."""
+    for key, code, version in (
+        (pdf.ATTENDANCE_OUTPUT, "FR-IK-001", 2),
+        (pdf.PAYROLL_OUTPUT, "FR-IK-002", 2),
+        (pdf.EMPLOYER_COST_OUTPUT, "FR-IK-003", 1),
+        (pdf.PAYSLIP_OUTPUT, "FR-IK-004", 2),
+    ):
+        output = registry.output_type(key)
+        assert output is not None
+        assert (output.suggested_code, output.template_version) == (code, version)
 
 
-def test_short_day_is_still_a_full_paid_day_in_payroll(manager: User, nine: Decimal) -> None:
-    """Bu adımda yarım gün yalnızca kayıttır: ön bordro (Ekim 2026, brütten nete) ve işverene
-    maliyet değişmez. Kesinti ayrı adımda gelince bu test bilerek değiştirilir."""
+def test_short_day_deducts_half_a_day_in_payroll(manager: User, nine: Decimal) -> None:
+    """2. adım: sayılan YG günü ön bordroda (Ekim 2026, brütten nete) ve personel maliyetinde
+    yarım günlük ücret keser (45.000 / 60 = 750,00); normal ücret, SGK günü, ücretli ve fiilen
+    çalışılan gün aynı kalır. İşaretsiz kısa gün ve artık sayılmayan YG kesmez. (1. adımda bu test
+    "bordro değişmez" diyordu; bilerek tersine çevrildi.)"""
     parameter_set(manager)
     person = employee(manager, hire_date=date(2020, 1, 1))
     services.add_wage(
@@ -788,20 +799,36 @@ def test_short_day_is_still_a_full_paid_day_in_payroll(manager: User, nine: Deci
         {"employee": person, "gross_monthly": D("45000"), "valid_from": date(2020, 1, 1)},
     )
 
-    def figures() -> tuple[dict[str, Any], Decimal, Decimal]:
+    def figures() -> tuple[payroll.Result, Decimal, Decimal]:
         month = selectors.payroll_month(2026, 10)
         cost = selectors.payroll_month(2026, 10, net=False)  # personel maliyetinin okuduğu hesap
-        return payroll.result_to_dict(month.rows[0].line), cost.gross_total, cost.employer_cost
+        return month.rows[0].line, cost.gross_total, cost.employer_cost
 
-    before = figures()
-    services.set_attendance_day(
-        manager, person, date(2026, 10, 5), status=S.WORKED, worked_hours=D("4.5"), short_day=True
-    )
+    before, gross, cost = figures()
+    # İşaretsiz kısa gün yalnızca saattir: kesinti yok.
     services.set_attendance_day(
         manager, person, date(2026, 10, 6), status=S.WORKED, worked_hours=D("8.5")
     )
+    assert figures() == (before, gross, cost)
+
+    services.set_attendance_day(
+        manager, person, date(2026, 10, 5), status=S.WORKED, worked_hours=D("4.5"), short_day=True
+    )
     assert _cells(selectors.attendance_grid(2026, 10), person)[date(2026, 10, 5)].code == "YG"
-    assert figures() == before
+    line, short_gross, short_cost = figures()
+    assert (line.short_days, line.short_day_deduction) == (1, D("750.00"))
+    assert line.gross_total == before.gross_total - D("750.00")
+    assert (line.salary, line.sgk_days, line.paid_days, line.worked_days) == (
+        before.salary,
+        before.sgk_days,
+        before.paid_days,
+        before.worked_days,
+    )
+    assert short_gross == gross - D("750.00") and short_cost < cost
+
+    # Günlük çalışma saati düşünce 4,5 saat artık eksik değil: YG sayılmaz, kesinti kalkar.
+    services.update_attendance_settings(manager, [6], daily_hours=D("4.5"))
+    assert figures() == (before, gross, cost)
 
 
 # --- ayrılış özeti --------------------------------------------------------------------------------

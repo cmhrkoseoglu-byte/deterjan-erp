@@ -296,6 +296,7 @@ export interface PersonnelCostRow {
    * ücretsiz günde ücretli takvim günü); ay içinde giren ya da ayrılanda ücretli takvim günü. */
   paid_days: number;
   overtime_hours: string;
+  /** Normal ücret, yarım gün kesintisi düşülmüş. */
   gross_salary: string;
   overtime_pay: string;
   /** Ek ödemeler (prim, ikramiye, nakit yol ve yemek). */
@@ -344,6 +345,7 @@ export interface PersonnelCostReport {
   parameters_origin: "saved" | "legal_default" | "fallback";
   parameters_year: number;
   missing_wage_count: number;
+  /** Normal ücret, yarım gün kesintisi düşülmüş. */
   gross_salary: string;
   overtime_pay: string;
   /** Ek ödemeler (prim, ikramiye, nakit yol ve yemek). */

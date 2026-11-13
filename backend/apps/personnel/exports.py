@@ -60,7 +60,10 @@ HALF_HOLIDAY_CODE = "Ç½"
 WORKED_HOURS_HEADER = "Çalışılan saat (FM hariç)"
 SHORT_DAY_LEGEND = (
     "Yarım gün çalıştı (yönetimce yarım gün sayıldı). Ç toplamına girmez; çalışılan gün = Ç + YG. "
-    "ERP ön bordrosunda bu günler için kesinti henüz hesaplanmaz."
+    "Bordrosu onaylanmamış ayların ERP ön bordrosunda yarım gün çalışılan her gün için günlük "
+    "ücretin yarısı (aylık brüt / 60) kesilir; hafta tatili ya da tam gün tatile Ç yazılan günde "
+    "kesilmez; SGK günü değişmez. Bordrosu mali müşavirde olan kişide kesintiyi mali müşavir "
+    "uygular."
 )
 WORKED_HOURS_LEGEND = (
     "Fazla mesai hariçtir. Saat girilmeyen gün günün çalışma saatiyle, yarım gün tatilde öğleden "
@@ -473,8 +476,41 @@ PAYROLL_EMPLOYER_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 
 
-def payroll_columns() -> list[str]:
-    """Bordro sayfasının sütunları (ek ödeme ve kesinti kategorileri ayrı sütunlarda)."""
+# Yarım gün kesintisi bu motor sürümünden beri hesaplanır (docs/DECISIONS.md "Puantajda günlük
+# çalışma saati ve yarım gün").
+SHORT_DAY_ENGINE = (2026, 3)
+SHORT_DAYS_HEADER = "Yarım gün çalışılan (YG)"
+SHORT_DAY_DEDUCTION_HEADER = "Yarım gün kesintisi (TL)"
+
+
+def _engine_version(value: str) -> tuple[int, ...]:
+    """Motor sürümü sayısal demet olarak ("2026.10" > "2026.3"); okunamazsa boş demet."""
+    try:
+        return tuple(int(part) for part in value.split("."))
+    except ValueError:
+        return ()
+
+
+def shows_short_days(month: PayrollMonth) -> bool:
+    """Bordro sayfasında yarım gün sütunları var mı: canlı hesaplanan ayda ve yarım gün kesintisini
+    hesaplayan motorla onaylanmış ayda. Eski motorla onaylanmış ayın yeniden basımı eski sütunlarla
+    aynı kalır."""
+    if month.approval is None:
+        return True
+    return _engine_version(month.approval.engine_version) >= SHORT_DAY_ENGINE
+
+
+def _line_columns(short: bool) -> list[str]:
+    labels = [label for _, label in PAYROLL_LINE_COLUMNS]
+    if short:
+        labels.insert(1, SHORT_DAY_DEDUCTION_HEADER)
+    return labels
+
+
+def payroll_columns(*, short: bool = True) -> list[str]:
+    """Bordro sayfasının sütunları (ek ödeme ve kesinti kategorileri ayrı sütunlarda). `short`:
+    yarım gün sütunları (`shows_short_days`); kesinti normal ücretin ardından eksi yazılır ki
+    kazanç sütunlarının toplamı brüt toplama eşit olsun."""
     return [
         "Sicil no",
         "Ad soyad",
@@ -483,8 +519,9 @@ def payroll_columns() -> list[str]:
         "SGK gün",
         "Ücretli gün",
         "Fiilen çalışılan gün",
+        *([SHORT_DAYS_HEADER] if short else []),
         "Aylık brüt ücret (TL)",
-        *(label for _, label in PAYROLL_LINE_COLUMNS),
+        *_line_columns(short),
         *(f"{CATEGORY_LABELS[code]} (TL)" for code in EXTRA_CATEGORIES),
         *(label for _, label in PAYROLL_TAX_COLUMNS),
         *(f"{CATEGORY_LABELS[code]} (TL)" for code in DEDUCTION_CATEGORIES),
@@ -496,9 +533,16 @@ def payroll_columns() -> list[str]:
     ]
 
 
-def _payroll_values(rows: Sequence[PayrollRow], person: Any = None) -> list[Any]:
+def _payroll_values(
+    rows: Sequence[PayrollRow], person: Any = None, *, short: bool = True
+) -> list[Any]:
     def total(name: str) -> Decimal:
         return sum((getattr(row.line, name) for row in rows), Decimal(0))
+
+    earnings = [total(name) for name, _ in PAYROLL_LINE_COLUMNS]
+    if short:
+        deduction = total("short_day_deduction")
+        earnings.insert(1, -deduction if deduction else deduction)
 
     def categories(kind: str, codes: Sequence[str]) -> list[Decimal]:
         found: dict[str, Decimal] = {}
@@ -515,8 +559,9 @@ def _payroll_values(rows: Sequence[PayrollRow], person: Any = None) -> list[Any]
         sum(row.line.sgk_days for row in rows),
         line.paid_days if line else None,
         line.worked_days if line else None,
+        *([sum(row.line.short_days for row in rows)] if short else []),
         line.monthly_wage if line else None,
-        *(total(name) for name, _ in PAYROLL_LINE_COLUMNS),
+        *earnings,
         *categories(PayrollItemKind.EXTRA, EXTRA_CATEGORIES),
         *(total(name) for name, _ in PAYROLL_TAX_COLUMNS),
         *categories(PayrollItemKind.DEDUCTION, DEDUCTION_CATEGORIES),
@@ -530,7 +575,8 @@ def _payroll_values(rows: Sequence[PayrollRow], person: Any = None) -> list[Any]
 
 def _payroll_sheet(ws: Worksheet, month: PayrollMonth, notes: Sequence[str], *, stamp: str) -> None:
     ws.title = "Bordro"
-    columns = payroll_columns()
+    short = shows_short_days(month)
+    columns = payroll_columns(short=short)
     external = sum(1 for row in month.rows if row.external)
     lines = [
         *_stamp_notes(stamp),
@@ -563,10 +609,11 @@ def _payroll_sheet(ws: Worksheet, month: PayrollMonth, notes: Sequence[str], *, 
                     person.department,
                     person.masked_national_id,
                 ],
+                short=short,
             )
         )
     if rows:
-        ws.append(_payroll_values(rows))
+        ws.append(_payroll_values(rows, short=short))
         for cell in ws[ws.max_row]:
             cell.font = Font(bold=True)
     money_first = columns.index("Aylık brüt ücret (TL)") + 1

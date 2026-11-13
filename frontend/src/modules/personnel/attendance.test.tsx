@@ -426,6 +426,12 @@ describe("çalışılan saat ve yarım gün", () => {
         "Bu gün için çalışma saati: 9. Boş bırakırsanız tam gün sayılır; fazla mesaiyi buraya yazmayın.",
       ),
     ).toBeInTheDocument();
+    // Açıklama bordro etkisini söyler.
+    expect(
+      within(dialog).getByText(
+        "Çalışılan saat bu günün çalışma saatinin altındaysa işaretli gelir. Yarım gün saymayacaksanız işareti kaldırın; saat kayıtlı kalır. Bordroda yarım gün çalışılan her gün için günlük ücretin yarısı kesilir (hafta tatili ya da tam gün tatile Ç yazılan günde kesilmez).",
+      ),
+    ).toBeInTheDocument();
     // Saat yazılmadan kutu görünür ama kapalıdır.
     expect(short).toBeDisabled();
     expect(short).not.toBeChecked();
@@ -433,7 +439,9 @@ describe("çalışılan saat ve yarım gün", () => {
     await user.type(hours, "4,5");
     expect(short).toBeEnabled();
     expect(short).toBeChecked();
-    const live = within(dialog).getByText("Gün YG (yarım gün) olarak kaydedilecek.");
+    const live = within(dialog).getByText(
+      "Gün YG olarak kaydedilecek; bordroda yarım günlük ücret kesilir.",
+    );
     expect(live).toBeVisible();
     expect(live).toHaveAttribute("aria-live", "polite");
     await user.click(within(dialog).getByRole("button", { name: "Kaydet" }));
@@ -452,6 +460,26 @@ describe("çalışılan saat ve yarım gün", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
+  it("hafta tatiline Ç yazılmış günde YG ücret kesmez; pencere bunu söyler", async () => {
+    const user = userEvent.setup();
+    vi.mocked(attendanceApi.getAttendanceGrid).mockResolvedValue(gridWithDay({}, { rest: true }));
+    renderApp("/personel/puantaj?ay=2026-09");
+    const dialog = await openDay(user);
+    const short = within(dialog).getByLabelText(/Yarım gün çalıştı/);
+    await user.type(within(dialog).getByLabelText("Çalışılan saat"), "4,5");
+    expect(short).toBeChecked();
+    expect(
+      within(dialog).getByText(
+        "Gün YG olarak kaydedilecek; takvimde tatil olduğu için bordroda ücret kesilmez.",
+      ),
+    ).toBeVisible();
+    expect(
+      within(dialog).queryByText(
+        "Gün YG olarak kaydedilecek; bordroda yarım günlük ücret kesilir.",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
   it("işaret kaldırılırsa gün Ç kalır; saat düzeltilince işaret geri gelmez", async () => {
     const user = userEvent.setup();
     renderApp("/personel/puantaj?ay=2026-09");
@@ -462,7 +490,7 @@ describe("çalışılan saat ve yarım gün", () => {
     expect(short).toBeChecked();
     await user.click(short);
     expect(short).not.toBeChecked();
-    expect(within(dialog).getByText("Saat kaydedilir, gün Ç kalır.")).toBeVisible();
+    expect(within(dialog).getByText("Saat kaydedilir, gün Ç kalır; ücret kesilmez.")).toBeVisible();
     // Kullanıcının seçimi pencere kapanana kadar geçerlidir: saat düzeltilince öneri geri gelmez.
     await user.clear(hours);
     await user.type(hours, "8");
@@ -495,7 +523,7 @@ describe("çalışılan saat ve yarım gün", () => {
     const short = within(dialog).getByLabelText(/Yarım gün çalıştı/);
     expect(short).toBeEnabled();
     expect(short).not.toBeChecked();
-    expect(within(dialog).getByText("Saat kaydedilir, gün Ç kalır.")).toBeVisible();
+    expect(within(dialog).getByText("Saat kaydedilir, gün Ç kalır; ücret kesilmez.")).toBeVisible();
     await user.type(within(dialog).getByLabelText(/Not/), "Erken çıktı");
     expect(short).not.toBeChecked();
     await user.click(within(dialog).getByRole("button", { name: "Kaydet" }));

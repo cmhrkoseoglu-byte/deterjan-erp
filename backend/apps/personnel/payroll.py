@@ -11,6 +11,9 @@ durumudur, çıktı bordronun bütün kalemleridir. Her kalem kuruşa yarım yuk
 - Saat ücreti brüt / 225. Fazla mesai iş günü ve hafta tatilinde 1,5 kat. Resmî tatilde çalışana bir
   günlük ilave ücret (brüt / 30), 7,5 saati aşan saatler 1,5 kat; yarım gün tatilde öğleden sonra
   çalışana yarım günlük ilave.
+- Yarım gün çalışılan (YG) her gün için yarım günlük ücret (3,75 saat × brüt / 225 = brüt / 60, o
+  günkü ücretle; tek bölme) ayrı kalem olarak kesilir; kesinti normal ücreti aşmaz. Ücretli gün, SGK
+  günü ve fiilen çalışılan gün değişmez.
 - SGK günü: tam ayda 30; eksik gün varsa ayın takvim günü eksi eksik gün (en çok 30); ay içinde
   giriş ya da çıkışta işte olunan takvim günü eksi eksik gün.
 - SGK matrahı günlük alt sınır (asgari ücret / 30) ile üst sınır (alt sınır × çarpan) arasındadır.
@@ -31,7 +34,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-ENGINE_VERSION = "2026.2"
+ENGINE_VERSION = "2026.3"
 
 ZERO = Decimal(0)
 CENT = Decimal("0.01")
@@ -129,13 +132,15 @@ class Parameters:
 @dataclass(frozen=True)
 class Day:
     """Kişinin işte olduğu bir gün: puantaj durumu, fazla mesai saati, o gün geçerli brüt aylık
-    ücret (yoksa None) ve yarım gün tatilde öğleden sonra çalışıp çalışmadığı."""
+    ücret (yoksa None), yarım gün tatilde öğleden sonra çalışıp çalışmadığı ve yarım gün çalışılıp
+    yarım günlük ücretin kesilip kesilmeyeceği (`short_day`, YG; yalnızca Ç gününde geçerli)."""
 
     date: date
     status: str
     overtime_hours: Decimal = ZERO
     wage: Decimal | None = None
     half_holiday_worked: bool = False
+    short_day: bool = False
 
 
 @dataclass(frozen=True)
@@ -186,6 +191,8 @@ class Result:
     missing_wage: bool
     # Kazançlar
     salary: Decimal
+    short_days: int
+    short_day_deduction: Decimal
     overtime_worked_hours: Decimal
     overtime_worked_pay: Decimal
     overtime_rest_hours: Decimal
@@ -276,7 +283,8 @@ def compute(month: MonthInput, params: Parameters) -> Result:
     salary, paid_days = _salary(days, month.days_in_month)
     worked_hours = rest_hours = holiday_hours = holiday_extra = ZERO
     worked_raw = rest_raw = holiday_raw = ZERO
-    holiday_days = holiday_half_days = 0
+    holiday_days = holiday_half_days = short_days = 0
+    short_raw = ZERO
     for day in days:
         hours = Decimal(day.overtime_hours or 0)
         wage = day.wage
@@ -288,6 +296,12 @@ def compute(month: MonthInput, params: Parameters) -> Result:
                     holiday_raw += HALF_DAY_HOURS * wage
             if day.half_holiday_worked:
                 holiday_half_days += 1
+            if day.short_day:
+                # Yarım gün çalışılan gün: yarım günlük ücret kesilir (yarım gün tatil ilavesinin
+                # aynası).
+                short_days += 1
+                if wage is not None:
+                    short_raw += HALF_DAY_HOURS * wage
         elif day.status == WEEKLY_REST:
             rest_hours += hours
             if wage is not None:
@@ -303,8 +317,11 @@ def compute(month: MonthInput, params: Parameters) -> Result:
     overtime_worked = money(worked_raw / MONTHLY_HOURS)
     overtime_rest = money(rest_raw / MONTHLY_HOURS)
     holiday_pay = money(holiday_raw / MONTHLY_HOURS)
+    short_day_deduction = min(salary, money(short_raw / MONTHLY_HOURS))
     extras_total = sum((item.amount for item in month.extras), ZERO)
-    gross = salary + overtime_worked + overtime_rest + holiday_pay + extras_total
+    gross = (
+        salary - short_day_deduction + overtime_worked + overtime_rest + holiday_pay + extras_total
+    )
 
     # Nakit yemek: fiilen çalışılan gün × günlük sınıra kadarki kısmı SGK matrahına girmez (gelir
     # ve damga vergisine tabi kalır). Fiilen çalışılan gün: Ç, fazla mesaili hafta tatili ve
@@ -382,6 +399,8 @@ def compute(month: MonthInput, params: Parameters) -> Result:
         monthly_wage=wages[-1] if wages else None,
         missing_wage=missing_wage,
         salary=salary,
+        short_days=short_days,
+        short_day_deduction=short_day_deduction,
         overtime_worked_hours=worked_hours,
         overtime_worked_pay=overtime_worked,
         overtime_rest_hours=rest_hours,
@@ -447,6 +466,7 @@ _INT_FIELDS = frozenset(
         "sgk_days",
         "holiday_days",
         "holiday_half_days",
+        "short_days",
     }
 )
 _BOOL_FIELDS = frozenset({"missing_wage", "floor_applied", "ceiling_applied"})

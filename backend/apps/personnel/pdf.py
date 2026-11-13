@@ -509,6 +509,9 @@ def _register_cells(rows: Sequence[PayrollRow], person: str, marks: str) -> list
         return _sum(rows, name)
 
     earnings = [f"Normal {_money(total('salary'))}"]
+    if total("short_day_deduction"):
+        # Kısa biçim: hücre 29 mm (açıklaması işaretler satırında).
+        earnings.append(f"YG −{_money(total('short_day_deduction'))}")
     overtime = total("overtime_worked_pay") + total("overtime_rest_pay") + total("holiday_pay")
     if overtime:
         earnings.append(f"FM ve tatil {_money(overtime)}")
@@ -559,7 +562,8 @@ def register_rows(month: PayrollMonth) -> list[tuple[str, list[str]]]:
 def external_rows(month: PayrollMonth) -> list[list[str]]:
     """Bordrosu mali müşavirde olan kişiler (bu listede hesaplanmadı; toplamlara katılmaz). Kişiye
     ERP'de girilmiş ek ödeme ve kesintiler hesaplanmaz; notta kalem toplamlarıyla (açıklamasız)
-    yazılır, mali müşavire iletilsin."""
+    yazılır, mali müşavire iletilsin. Puantajdaki yarım gün (YG) sayısı da notta yazılır; tutarı
+    ERP'de hesaplanmaz."""
     found = []
     for row in sorted((item for item in month.rows if item.external), key=row_order):
         figure = row.figure
@@ -571,6 +575,10 @@ def external_rows(month: PayrollMonth) -> list[list[str]]:
         if totals:
             listed = "; ".join(f"{label} {_money(amount)}" for label, amount in totals.items())
             notes.append(f"ERP'de girilen kalemler hesaplanmadı: {listed}")
+        if row.line.short_days:
+            notes.append(
+                f"Puantajda {row.line.short_days} YG günü (yarım gün kesintisi mali müşavirce)"
+            )
         found.append(
             [
                 _person_cell(row),
@@ -596,10 +604,17 @@ def summary_rows(month: PayrollMonth) -> list[tuple[str, list[tuple[str, str]]]]
                 label = item.get_category_display()
                 extras[label] = extras.get(label, Decimal(0)) + item.amount
     external = [row for row in month.rows if row.external]
+    # Yarım gün satırları yalnızca kesinti varsa (eski motorla onaylı ayın icmali değişmez).
+    short_count = sum(row.line.short_days for row in rows)
+    short_days = [("Yarım gün çalışılan (YG) toplamı", str(short_count))] if short_count else []
+    short_total = _sum(rows, "short_day_deduction")
+    short_deduction = [("Yarım gün kesintisi", f"−{_money(short_total)}")] if short_total else []
     employee_side = [
         ("Kişi (ERP / mali müşavirde)", f"{len(rows)} / {len(external)}"),
         ("SGK gün toplamı", str(sum(row.line.sgk_days for row in rows))),
+        *short_days,
         ("Normal ücret", total("salary")),
+        *short_deduction,
         ("Fazla mesai (iş günü)", total("overtime_worked_pay")),
         ("Fazla mesai (hafta tatili)", total("overtime_rest_pay")),
         ("Resmî tatil", total("holiday_pay")),
@@ -709,6 +724,8 @@ def register_pdf(month: PayrollMonth, *, stamp: str = DRAFT) -> bytes:
         table,
     ]
     legend = [f"{mark}: {text}" for _, mark, text in REGISTER_MARKS if mark in used]
+    if _sum(month.computed, "short_day_deduction"):
+        legend.append("YG: yarım gün kesintisi")
     if legend:
         story += [Spacer(1, 2 * mm), para("İşaretler — " + "; ".join(legend) + ".", small)]
     externals = external_rows(month)
@@ -845,13 +862,16 @@ def payslip_person(month: PayrollMonth, row: PayrollRow) -> list[tuple[str, str]
 
 
 def payslip_days(row: PayrollRow) -> list[tuple[str, str]]:
-    """Günler: SGK günü, ücretli ve fiilen çalışılan gün, ücretsiz günler nedeniyle."""
+    """Günler: SGK günü, ücretli ve fiilen çalışılan gün, yarım gün çalışılan gün (varsa), ücretsiz
+    günler nedeniyle."""
     line = row.line
     found = [
         ("SGK gün", str(line.sgk_days)),
         ("Ücretli gün (30 gün usulü)", str(line.paid_days)),
         ("Fiilen çalışılan gün", str(line.worked_days)),
     ]
+    if line.short_days:
+        found.append(("Yarım gün çalışılan (YG)", f"{line.short_days} gün"))
     for label, count in (
         ("Ücretsiz izin", line.unpaid_leave_days),
         ("İstirahat (rapor)", line.sick_days),
@@ -867,6 +887,14 @@ def payslip_lines(row: PayrollRow) -> dict[str, list[tuple[str, str, str]]]:
     (kişinin kendi pusulası)."""
     line = row.line
     earnings = [("Normal ücret", f"{line.paid_days} gün", _money(line.salary))]
+    if line.short_day_deduction:
+        earnings.append(
+            (
+                "Yarım gün kesintisi",
+                f"{line.short_days} gün",
+                f"−{_money(line.short_day_deduction)}",
+            )
+        )
     if line.overtime_worked_pay:
         earnings.append(
             (

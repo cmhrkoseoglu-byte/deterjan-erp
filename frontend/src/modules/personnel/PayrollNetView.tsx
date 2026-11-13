@@ -62,6 +62,8 @@ const STICKY: CSSProperties = {
 };
 
 const money = (value: string | number | null) => formatMoney(value);
+const minus = (value: string | number | null) =>
+  Number(value) ? `−${formatMoney(value)}` : money(0);
 const sum = (...values: (string | null)[]) =>
   values.reduce((total, value) => total + Number(value ?? 0), 0);
 
@@ -373,6 +375,7 @@ export function PayrollNetView({
     pn.col.department,
     pn.col.sgkDays,
     pn.col.salary,
+    pn.col.shortDay,
     pn.col.overtime,
     pn.col.extras,
     pn.col.gross,
@@ -405,7 +408,7 @@ export function PayrollNetView({
       {!computed.length ? (
         <Text c="dimmed">{pn.emptyComputed}</Text>
       ) : (
-        <Table.ScrollContainer minWidth={1500}>
+        <Table.ScrollContainer minWidth={1600}>
           <Table
             striped
             highlightOnHover
@@ -463,6 +466,9 @@ export function PayrollNetView({
                       {money(line.salary)}
                     </Table.Td>
                     <Table.Td ta="right" style={NO_WRAP}>
+                      {minus(line.short_day_deduction)}
+                    </Table.Td>
+                    <Table.Td ta="right" style={NO_WRAP}>
                       {money(overtime)}
                     </Table.Td>
                     <Table.Td ta="right" style={NO_WRAP}>
@@ -514,6 +520,9 @@ export function PayrollNetView({
                 <Table.Td />
                 <Table.Td ta="right" style={NO_WRAP}>
                   {money(totals.salary)}
+                </Table.Td>
+                <Table.Td ta="right" style={NO_WRAP}>
+                  {minus(totals.short_day_deduction)}
                 </Table.Td>
                 <Table.Td ta="right" style={NO_WRAP}>
                   {money(

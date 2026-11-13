@@ -2,7 +2,7 @@
 servis kendi işlemini açmalıdır. Testler normalde bir işlemin içinde koştuğu için eksik işlem fark
 edilmez (bkz. `production/tests/test_live_transactions.py`). Buradaki test, canlı gibi dış işlem
 olmadan puantaj akışını uç noktalardan yürütür: günlük çalışma saati ayarı, saatli gün, aralık ve
-ay onayı."""
+ay onayı; ikincisi yarım gün (YG) kesintili ayın bordro onayını."""
 
 from collections.abc import Callable
 from datetime import date, timedelta
@@ -14,9 +14,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.core.models import User
-from apps.personnel import selectors
-from apps.personnel.models import AttendanceEntry, AttendanceMonth, AttendanceStatus
-from apps.personnel.tests.factories import employee
+from apps.personnel import selectors, services
+from apps.personnel.models import AttendanceEntry, AttendanceMonth, AttendanceStatus, PayrollSlip
+from apps.personnel.tests.factories import employee, parameter_set
 
 BASE = "/api/v1/personnel/attendance"
 D = Decimal
@@ -82,3 +82,39 @@ def test_attendance_flow_runs_without_a_surrounding_transaction(
     totals = grid["rows"][0]["totals"]
     assert (totals["short_days"], totals["days"]["ANNUAL_LEAVE"]) == (1, 1)
     assert totals["full_days"] == totals["days"]["WORKED"] - 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_payroll_with_a_short_day_is_approved_without_a_surrounding_transaction(
+    make_user: Callable[..., User],
+) -> None:
+    """Ekim 2026: YG'li gün, puantaj ve bordro onayı uç noktalardan; saklı satır kesintiyi taşır."""
+    manager = make_user("yonetim", username="yonetim")
+    client = APIClient()
+    client.force_authenticate(manager)
+    parameter_set(manager)
+    card = employee(manager, hire_date=date(2020, 1, 1))
+    services.add_wage(
+        manager, {"employee": card, "gross_monthly": D("45000"), "valid_from": date(2020, 1, 1)}
+    )
+    services.set_opening_balance(manager, card, 2026, 10, tax_base=D("382500"), exemption_months=9)
+    body = {"rest_weekdays": [6], "daily_hours": "9"}
+    ok(client.patch(f"{BASE}/settings/", body, format="json"))
+    day = {
+        "employee": card.pk,
+        "date": "2026-10-05",
+        "status": "WORKED",
+        "worked_hours": "4.5",
+        "short_day": True,
+    }
+    assert ok(client.post(f"{BASE}/days/", day, format="json"))["code"] == "YG"
+    ok(client.post(f"{BASE}/2026/10/approve/"))
+    payroll = ok(client.get("/api/v1/personnel/payroll/2026/10/"))
+    assert payroll["totals"]["short_day_deduction"] == "750.00"
+    approval = {"payment_date": "2026-11-10", "fingerprint": payroll["payroll"]["fingerprint"]}
+    run = ok(client.post("/api/v1/personnel/payroll/2026/10/approve/", approval, format="json"))
+    assert run["status"] == "APPROVED"
+    slip = PayrollSlip.objects.get(employee=card)
+    assert (slip.line["short_days"], slip.line["short_day_deduction"]) == (1, "750.00")
+    assert slip.approval.engine_version == "2026.3"
+    assert slip.gross_total == D("44250.00")
