@@ -7,19 +7,33 @@ class PurchasingConfig(AppConfig):
     verbose_name = "Satın alma"
 
     def ready(self) -> None:
+        import re
+
+        from apps.core.access import PRICES
         from apps.core.models import User
-        from apps.core.permissions import user_has_role
+        from apps.core.permissions import has_access
         from apps.core.records import register_record_type
-        from apps.purchasing import services
+        from apps.purchasing.access import ORDERS
         from apps.purchasing.api.serializers import PRICE_FIELDS
-        from apps.purchasing.api.views import ORDER_READ_ROLES
+
+        # Eski onaya gönderme ve onay notları tutar taşır ("Tutar 12.345,60 TL", "Onay: tutar …
+        # TL (kur …), limit …"); yenilerde tutar, kur ve limit alan satırlarıdır (plan §8 madde 7).
+        amount_note = re.compile(r"Tutar [\d.]+,\d{2} TL|Onay: tutar [\d.]+,\d{2} TL \(kur .*")
 
         def price_fields(user: User) -> frozenset[str]:
-            # Siparişi görüp fiyatı göremeyen (depo) geçmişte de tutarları görmez.
-            return frozenset() if user_has_role(user, services.ORDER_ROLES) else PRICE_FIELDS
+            # Siparişi görüp Fiyatları görür'ü olmayan geçmişte de tutarları görmez; silinen satırın
+            # içindeki fiyatlar dahil (plan §5.6).
+            return frozenset() if has_access(user, PRICES) else PRICE_FIELDS
+
+        def price_note(user: User, note: str) -> bool:
+            return amount_note.fullmatch(note) is not None and not has_access(user, PRICES)
 
         register_record_type(
-            "purchasing.purchaseorder", roles=ORDER_READ_ROLES, hidden_fields=price_fields
+            "purchasing.purchaseorder",
+            readers=(ORDERS,),
+            hidden_fields=price_fields,
+            nested_hidden=True,
+            hidden_note=price_note,
         )
 
         # Belge numaraları: biçim Sistem > Kodlama sistematiği ayarından (core.coding).

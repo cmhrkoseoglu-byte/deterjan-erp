@@ -24,7 +24,7 @@ MISSING = "<yok>"  # durum anlık görüntüde (ya da bugünkü kodda) yok
 ANY = "<her>"  # eski ya da yeni değer ne olursa olsun
 
 # Uygulanan adım (plan §10). Her adım bu sayıyı artırır ve kendi kayıtlarını ekler.
-CURRENT_STEP = 4
+CURRENT_STEP = 5
 
 
 def matches(pattern: str, text: str) -> bool:
@@ -335,6 +335,7 @@ ALLOWED: tuple[Allowed, ...] = (
         },
         step=5,
         old=MISSING,
+        new=2,
     ),
     *_cells(
         "§8 madde 7 (satın alma)",
@@ -348,6 +349,10 @@ ALLOWED: tuple[Allowed, ...] = (
         },
         step=5,
         old="purchasing.purchaseorder status_change [status] note$",
+        new=(
+            "purchasing.purchaseorder status_change [approval_limit_try, approval_total_try$, "
+            "exchange_rate$, status]"
+        ),
     ),
     *_cells(
         "§8 madde 7 (satın alma)",
@@ -395,6 +400,28 @@ ALLOWED: tuple[Allowed, ...] = (
             )
         },
         step=5,
+        new=[
+            "costing.costrate rate_per_kg",
+            "costing.lotcost finished_scrap_cost",
+            "costing.lotcost note",
+            "costing.lotcost total_cost",
+            "costing.lotcost unit_cost",
+            "inventory.goodsreceipt extra_cost.amount",
+            "inventory.goodsreceiptextracost amount",
+            "inventory.goodsreceiptline currency",
+            "inventory.goodsreceiptline exchange_rate",
+            "inventory.goodsreceiptline unit_price",
+            "inventory.lot cost_is_estimated",
+            "inventory.lot unit_cost",
+            "personnel.employeewage gross_monthly",
+            "personnel.payrollitem amount",
+            "purchasing.purchaseorder approval_total_try",
+            "purchasing.purchaseorder currency",
+            "purchasing.purchaseorder exchange_rate",
+            "purchasing.purchaseorder line.unit_price",
+            "purchasing.purchaseorderline unit_price",
+            "workflow.task description",
+        ],
         required=False,
     ),
     # 5. adım — İşçilik oranı notunda tutar yerine bordro numarası (denetim günlüğü; gerekli değil).
@@ -455,6 +482,20 @@ ALLOWED: tuple[Allowed, ...] = (
             )
         },
         step=5,
+        new={
+            "entries": [
+                {"action": "status_change", "money": {}, "note": ""},
+                {"action": "status_change", "money": {}, "note": ""},
+                {
+                    "action": "update",
+                    "money": {"line": [{}, None]},
+                    "note": "Satır # kaldırıldı (taslak)",
+                },
+                {"action": "update", "money": {}, "note": ""},
+                {"action": "create", "money": {"currency": [None, "EUR"]}, "note": ""},
+            ],
+            "status": 200,
+        },
     ),
     *_cells(
         "§8 madde 7 (satın alma)",
@@ -468,6 +509,49 @@ ALLOWED: tuple[Allowed, ...] = (
             )
         },
         step=5,
+        new={
+            "entries": [
+                {
+                    "action": "status_change",
+                    "money": {
+                        "approval_limit_try": [None, None],
+                        "approval_total_try": ["36000.00", "36000.00"],
+                        "exchange_rate": ["36.000000", "36.000000"],
+                    },
+                    "note": "",
+                },
+                {
+                    "action": "status_change",
+                    "money": {
+                        "approval_limit_try": [None, None],
+                        "approval_total_try": [None, "36000.00"],
+                        "exchange_rate": ["36.000000", "36.000000"],
+                    },
+                    "note": "",
+                },
+                {
+                    "action": "update",
+                    "money": {"line": [{"unit_price": "20.0000"}, None]},
+                    "note": "Satır # kaldırıldı (taslak)",
+                },
+                {
+                    "action": "update",
+                    "money": {"exchange_rate": ["35.000000", "36.000000"]},
+                    "note": "",
+                },
+                {
+                    "action": "update",
+                    "money": {"exchange_rate": ["34.000000", "35.000000"]},
+                    "note": "",
+                },
+                {
+                    "action": "create",
+                    "money": {"currency": [None, "EUR"], "exchange_rate": [None, "34.000000"]},
+                    "note": "",
+                },
+            ],
+            "status": 200,
+        },
     ),
     # 5. adım — Personel maliyetinden açılan yeni gider oranının notunda tutar yerine bordro
     # numarası yazar.
@@ -482,6 +566,7 @@ ALLOWED: tuple[Allowed, ...] = (
             )
         },
         step=5,
+        new={"labor_rate": {"note": "Personel maliyetinden", "rate_per_kg": "<n>"}, "status": 200},
     ),
     *_cells(
         "§8 madde 8",
@@ -494,6 +579,10 @@ ALLOWED: tuple[Allowed, ...] = (
             )
         },
         step=5,
+        new={
+            "labor_rate": [{"note": "Personel maliyetinden", "rate_per_kg": "<n>"}],
+            "status": 200,
+        },
     ),
     # 6. adım — Kişiye özel ayarlar ve paket sürümleri denetim günlüğünde yalnız admine görünür
     # (plan §5.6); yönetimin 1. adımdaki kaydı 5. adımda biter.

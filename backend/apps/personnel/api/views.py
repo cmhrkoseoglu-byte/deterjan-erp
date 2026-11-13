@@ -1,4 +1,7 @@
-"""Personel API'si: yalnızca admin ve yönetim (kişisel veri, docs/KVKK.md). Silme yoktur; ayrılış
+"""Personel API'si (kişisel veri, docs/KVKK.md). Her uç nokta Personel bölümlerinden birini
+ister (docs/plan/kisi-yetkileri.md §3.14); bölümler yalnız yönetim rolündekilere verilebilir.
+Bugünkü gibi her metot (HEAD, OPTIONS ve görünümün karşılamadığı metotlar dahil) denetlenir;
+karşılanmayan metot yazma yetkisiyle denetlenir, sonra 405 döner. Silme yoktur; ayrılış
 `terminate`, yeniden işe başlama `reinstate` ile kaydedilir, belge ve ücret `remove` ile
 kaldırılır."""
 
@@ -21,10 +24,12 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.access import APPROVE, CHANGE, VIEW
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import User
-from apps.core.permissions import HasRole
+from apps.core.permissions import AccessMixin, HasAccess, ReadRule
 from apps.personnel import exports, pdf, selectors, services
+from apps.personnel.access import ATTENDANCE, CARDS, PAYROLL, SETTINGS, WAGES
 from apps.personnel.api import serializers as s
 from apps.personnel.models import (
     Employee,
@@ -39,6 +44,20 @@ from apps.personnel.models import (
 )
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+CARDS_VIEW = HasAccess(CARDS, VIEW)
+CARDS_CHANGE = HasAccess(CARDS, CHANGE)
+ATTENDANCE_VIEW = HasAccess(ATTENDANCE, VIEW)
+ATTENDANCE_CHANGE = HasAccess(ATTENDANCE, CHANGE)
+ATTENDANCE_APPROVE = HasAccess(ATTENDANCE, APPROVE)
+WAGES_VIEW = HasAccess(WAGES, VIEW)
+WAGES_CHANGE = HasAccess(WAGES, CHANGE)
+PAYROLL_VIEW = HasAccess(PAYROLL, VIEW)
+PAYROLL_CHANGE = HasAccess(PAYROLL, CHANGE)
+PAYROLL_APPROVE = HasAccess(PAYROLL, APPROVE)
+# Hafta tatili günleri, günlük çalışma saati ve bordro parametreleri.
+SETTINGS_VIEW = HasAccess(SETTINGS, VIEW)
+SETTINGS_CHANGE = HasAccess(SETTINGS, CHANGE)
 
 
 def _user(request: Request) -> Any:
@@ -55,6 +74,7 @@ class EmployeeFilter(django_filters.FilterSet):
 
 
 class EmployeeViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -68,7 +88,15 @@ class EmployeeViewSet(
     search_fields = ["full_name", "employee_no", "department", "title", "phone"]
     ordering_fields = ["full_name", "employee_no", "department", "hire_date"]
     ordering = ["full_name", "id"]
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    read_access = CARDS_VIEW
+    unhandled_access = CARDS_CHANGE
+    action_access = {
+        "create": CARDS_CHANGE,
+        "update": CARDS_CHANGE,
+        "partial_update": CARDS_CHANGE,
+        "terminate": CARDS_CHANGE,
+        "reinstate": CARDS_CHANGE,
+    }
     queryset = Employee.objects.select_related("user")
     http_method_names = ["get", "post", "patch", "head", "options"]
 
@@ -153,6 +181,7 @@ class EmployeeViewSet(
 
 
 class EmployeeDocumentViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -166,7 +195,12 @@ class EmployeeDocumentViewSet(
     """
 
     serializer_class = s.EmployeeDocumentSerializer
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    read_access = CARDS_VIEW
+    unhandled_access = CARDS_CHANGE
+    action_access = {
+        "create": CARDS_CHANGE,
+        "remove": CARDS_CHANGE,
+    }
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     pagination_class = None
     queryset = EmployeeDocument.objects.filter(is_active=True).select_related(
@@ -232,7 +266,7 @@ class EmployeeDocumentViewSet(
 class DepartmentListView(APIView):
     """Kayıtlı birimler (birim süzgeci ve yeni kartta öneri için)."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [ReadRule(CARDS, ATTENDANCE)]
 
     @extend_schema(responses=serializers.ListSerializer(child=serializers.CharField()))
     def get(self, request: Request) -> Response:
@@ -242,7 +276,7 @@ class DepartmentListView(APIView):
 class LinkableUserListView(APIView):
     """Karta bağlanabilecek sistem kullanıcıları (`?employee=` düzenlenen kart)."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [CARDS_CHANGE]
 
     @extend_schema(
         parameters=[OpenApiParameter("employee", int, required=False)],
@@ -275,7 +309,7 @@ DEPARTMENT_PARAM = OpenApiParameter("department", str, required=False, descripti
 class AttendanceGridView(APIView):
     """Aylık puantaj tablosu: günler, kişiler, hücreler ve kişi başına toplamlar."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [ATTENDANCE_VIEW]
 
     @extend_schema(parameters=[DEPARTMENT_PARAM], responses=s.AttendanceGridSerializer)
     def get(self, request: Request, year: int, month: int) -> Response:
@@ -288,7 +322,7 @@ class AttendanceGridView(APIView):
 class AttendanceApproveView(APIView):
     """Ayı onaylar ve kilitler (ay bitmeden onaylanamaz)."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [ATTENDANCE_APPROVE]
 
     @extend_schema(request=None, responses=s.AttendanceMonthSerializer)
     def post(self, request: Request, year: int, month: int) -> Response:
@@ -300,7 +334,7 @@ class AttendanceApproveView(APIView):
 class AttendanceReopenView(APIView):
     """Onaylı ayı gerekçeyle yeniden açar."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [ATTENDANCE_APPROVE]
 
     @extend_schema(request=s.AttendanceReopenSerializer, responses=s.AttendanceMonthSerializer)
     def post(self, request: Request, year: int, month: int) -> Response:
@@ -319,7 +353,7 @@ class AttendanceReopenView(APIView):
 class AttendanceExportView(APIView):
     """Aylık puantajın Excel çıktısı (tablo, fazla mesai, çalışma saatleri, kodlar)."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [ATTENDANCE_VIEW]
 
     @extend_schema(parameters=[DEPARTMENT_PARAM], responses={(200, XLSX): OpenApiTypes.BINARY})
     def get(self, request: Request, year: int, month: int) -> HttpResponse:
@@ -334,7 +368,7 @@ class AttendanceDayView(APIView):
     """Kişinin bir gününü yazar (durum, çalışılan saat, yarım gün, fazla mesai, not). Gün tam
     değiştirilir: gönderilmeyen çalışılan saat silinir, yarım gün işareti kalkar."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [ATTENDANCE_CHANGE]
 
     @extend_schema(request=s.AttendanceDayInputSerializer, responses=s.AttendanceEntrySerializer)
     def post(self, request: Request) -> Response:
@@ -358,7 +392,7 @@ class AttendanceDayView(APIView):
 class AttendanceRangeView(APIView):
     """Bir aralığa aynı durumu yazar (kişi, birim ya da herkes)."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [ATTENDANCE_CHANGE]
 
     @extend_schema(request=s.AttendanceRangeSerializer, responses=s.AttendanceRangeResultSerializer)
     def post(self, request: Request) -> Response:
@@ -369,6 +403,7 @@ class AttendanceRangeView(APIView):
 
 
 class PublicHolidayViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -379,7 +414,15 @@ class PublicHolidayViewSet(
     takvimden kaldırılır. `fixed` yılın sabit tatillerini ekler."""
 
     serializer_class = s.PublicHolidaySerializer
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    read_access = ATTENDANCE_VIEW
+    unhandled_access = ATTENDANCE_CHANGE
+    action_access = {
+        "create": ATTENDANCE_CHANGE,
+        "update": ATTENDANCE_CHANGE,
+        "partial_update": ATTENDANCE_CHANGE,
+        "remove": ATTENDANCE_CHANGE,
+        "fixed": ATTENDANCE_CHANGE,
+    }
     pagination_class = None
     queryset = PublicHoliday.objects.filter(is_active=True)
     http_method_names = ["get", "post", "patch", "head", "options"]
@@ -427,11 +470,13 @@ class PublicHolidayViewSet(
         )
 
 
-class AttendanceSettingsView(APIView):
+class AttendanceSettingsView(AccessMixin, APIView):
     """Puantaj ayarları: varsayılan hafta tatili günleri ve günlük çalışma saati. Güncellemede
     `daily_hours` gönderilmezse günlük çalışma saati değişmez."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    read_access = SETTINGS_VIEW
+    unhandled_access = SETTINGS_CHANGE
+    action_access = {"patch": SETTINGS_CHANGE}
 
     @extend_schema(responses=s.AttendanceSettingsSerializer)
     def get(self, request: Request) -> Response:
@@ -452,6 +497,7 @@ class AttendanceSettingsView(APIView):
 
 
 class EmployeeWageViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -462,7 +508,12 @@ class EmployeeWageViewSet(
     verir."""
 
     serializer_class = s.EmployeeWageSerializer
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    read_access = WAGES_VIEW
+    unhandled_access = WAGES_CHANGE
+    action_access = {
+        "create": WAGES_CHANGE,
+        "remove": WAGES_CHANGE,
+    }
     queryset = EmployeeWage.objects.select_related("employee", "created_by")
     filterset_fields = ["employee", "is_active"]
     ordering = ["employee", "-valid_from", "-id"]
@@ -581,7 +632,7 @@ class PayrollMonthView(APIView):
     """Ayın ön bordrosu: açık ayda canlı hesap, onaylı ayda onayda saklanan satırlar; kişi
     satırları, toplamlar, parametreler, uyarılar ve bordro durumu (onay denetimleri)."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [PAYROLL_VIEW]
 
     @extend_schema(parameters=[DEPARTMENT_PARAM], responses=s.PayrollMonthSerializer)
     def get(self, request: Request, year: int, month: int) -> Response:
@@ -594,7 +645,7 @@ class PayrollApproveView(APIView):
     """Ayın bordrosunu onaylar: satırlar saklanır, ay kilitlenir. Engelleyen denetim ya da
     okunmamış uyarı varsa 400 ve denetimler (`gates`)."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [PAYROLL_APPROVE]
 
     @extend_schema(
         request=s.PayrollApproveSerializer,
@@ -635,7 +686,7 @@ class PayrollApproveView(APIView):
 class PayrollReopenView(APIView):
     """Onaylı bordroyu gerekçeyle yeniden açar (yalnızca en son onaylı ay)."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [PAYROLL_APPROVE]
 
     @extend_schema(request=s.ReasonSerializer, responses=s.PayrollRunSerializer)
     def post(self, request: Request, year: int, month: int) -> Response:
@@ -649,7 +700,7 @@ class PayrollReopenView(APIView):
 class PayrollPaymentDateView(APIView):
     """Onaylı bordronun ödeme tarihini gerekçeyle düzeltir (tutarlar değişmez)."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [PAYROLL_APPROVE]
 
     @extend_schema(request=s.PaymentDateSerializer, responses=s.PayrollRunSerializer)
     def post(self, request: Request, year: int, month: int) -> Response:
@@ -666,7 +717,7 @@ class PayrollPaymentDateView(APIView):
 class PayrollFollowCardView(APIView):
     """Yeniden açılan ayda kişiyi kartın bugünkü işaretlerine geçirir ya da onaydakine döndürür."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [PAYROLL_CHANGE]
 
     @extend_schema(request=s.FollowCardSerializer, responses=s.PayrollRunSerializer)
     def post(self, request: Request, year: int, month: int) -> Response:
@@ -685,7 +736,7 @@ class PayrollPayslipsPdfView(APIView):
     (ya da `approval` ile eski bir onayda, "GEÇERSİZ" damgalı); `employee` ile tek kişi. Açılış
     denetim günlüğüne (tek kişide kartın geçmişine de) yazılır."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [PAYROLL_VIEW]
 
     @extend_schema(
         parameters=[
@@ -728,7 +779,7 @@ class PayrollPayslipsPdfView(APIView):
 class PayrollEmployerCostPdfView(APIView):
     """İşveren maliyeti tablosu (PDF, A4 yatay); açılış denetim günlüğüne yazılır."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [PAYROLL_VIEW]
 
     @extend_schema(
         parameters=[DEPARTMENT_PARAM, APPROVAL_PARAM], responses={(200, PDF): OpenApiTypes.BINARY}
@@ -747,7 +798,7 @@ class PayrollRegisterPdfView(APIView):
     """Bordro listesi (PDF, A4 yatay): kişi başına brütten nete kalemler, birim ara toplamları
     ve icmal sayfası; açılış denetim günlüğüne yazılır. Başlangıç ayından önce verilmez."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [PAYROLL_VIEW]
 
     @extend_schema(
         parameters=[DEPARTMENT_PARAM, APPROVAL_PARAM], responses={(200, PDF): OpenApiTypes.BINARY}
@@ -774,7 +825,7 @@ class PayrollExcelView(APIView):
     """Ön bordro Excel'i (bordro, işveren maliyeti, karşılaştırma, eksik gün, parametreler);
     açılış denetim günlüğüne yazılır."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [PAYROLL_VIEW]
 
     @extend_schema(
         parameters=[DEPARTMENT_PARAM, APPROVAL_PARAM],
@@ -792,7 +843,7 @@ class PayrollExcelView(APIView):
 class ExternalPayrollView(APIView):
     """Bordrosu mali müşavirde olan kişinin ay rakamlarını yazar (brüt toplam, işverene maliyet)."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [PAYROLL_CHANGE]
 
     @extend_schema(request=s.ExternalFigureInputSerializer, responses=s.ExternalFigureSerializer)
     def post(self, request: Request, year: int, month: int) -> Response:
@@ -813,6 +864,7 @@ class ExternalPayrollView(APIView):
 
 
 class PayrollParameterSetViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -824,7 +876,14 @@ class PayrollParameterSetViewSet(
     için)."""
 
     serializer_class = s.PayrollParameterSetSerializer
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    read_access = SETTINGS_VIEW
+    unhandled_access = SETTINGS_CHANGE
+    action_access = {
+        "create": SETTINGS_CHANGE,
+        "update": SETTINGS_CHANGE,
+        "partial_update": SETTINGS_CHANGE,
+        "remove": SETTINGS_CHANGE,
+    }
     pagination_class = None
     queryset = PayrollParameterSet.objects.filter(is_active=True).select_related("updated_by")
     http_method_names = ["get", "post", "patch", "head", "options"]
@@ -879,7 +938,7 @@ def _parameter_values(body: serializers.BaseSerializer) -> dict[str, Any]:
 class ExternalPayrollRemoveView(APIView):
     """Yanlış girilen mali müşavir rakamını kaldırır (neden zorunlu; silinmez)."""
 
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    permission_classes = [PAYROLL_CHANGE]
 
     @extend_schema(request=s.ReasonSerializer, responses=s.ExternalFigureSerializer)
     def post(self, request: Request, pk: int) -> Response:
@@ -903,14 +962,23 @@ def _batch_rejected(exc: services.PayrollBatchError) -> Response:
 ITEM_EDITABLE = ("category", "description", "amount")
 
 
-class PayrollItemViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+class PayrollItemViewSet(
+    AccessMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+):
     """Ek ödeme ve kesinti kalemleri. Liste ay (`year` ve `month`) ya da kişi (`employee`) ister;
     kaldırılanlar `is_active=false` ile. Silinmez: yanlış kalem `remove` ile gerekçeyle kaldırılır.
     Düzeltmede yalnızca tutar, kategori (aynı tür) ve açıklama değişir. `batch` toplu ekler (hepsi
     ya da hiçbiri)."""
 
     serializer_class = s.PayrollItemRecordSerializer
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    read_access = PAYROLL_VIEW
+    unhandled_access = PAYROLL_CHANGE
+    action_access = {
+        "create": PAYROLL_CHANGE,
+        "partial_update": PAYROLL_CHANGE,
+        "remove": PAYROLL_CHANGE,
+        "batch": PAYROLL_CHANGE,
+    }
     queryset = PayrollItem.objects.select_related(
         "employee", "created_by", "updated_by", "removed_by"
     )
@@ -985,14 +1053,20 @@ class PayrollItemViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
 
 
 class PayrollOpeningViewSet(
-    mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+    AccessMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
 ):
     """Devirler (kaldırılanlar `is_active=false` ile). POST devri girer ya da düzeltir; `batch` ayın
     devirlerini toplu girer (hepsi ya da hiçbiri); yanlış devir `remove` ile gerekçeyle
     kaldırılır."""
 
     serializer_class = s.PayrollOpeningSerializer
-    permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
+    read_access = PAYROLL_VIEW
+    unhandled_access = PAYROLL_CHANGE
+    action_access = {
+        "create": PAYROLL_CHANGE,
+        "remove": PAYROLL_CHANGE,
+        "batch": PAYROLL_CHANGE,
+    }
     queryset = PayrollOpeningBalance.objects.select_related(
         "employee", "created_by", "updated_by", "removed_by"
     )

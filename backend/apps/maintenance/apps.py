@@ -9,12 +9,12 @@ class MaintenanceConfig(AppConfig):
     def ready(self) -> None:
         from apps.core.attachments import register_attachment_target
         from apps.core.records import register_record_type
-        from apps.maintenance import services
+        from apps.maintenance.access import WORK_ORDERS
 
-        # Servis raporu, fotoğraf, kalibrasyon sertifikası.
+        # Servis raporu, fotoğraf, kalibrasyon sertifikası. Eki, kaydı görebilen ekler.
         register_attachment_target("maintenance.maintenanceworkorder")
-        # Yorum, geçmiş, ek: iş emrini bakım ekranlarını açabilen roller okur.
-        register_record_type("maintenance.maintenanceworkorder", roles=services.READ_ROLES)
+        # Yorum, geçmiş, ek: iş emrini "Bakım iş emirleri" okuması olan görür.
+        register_record_type("maintenance.maintenanceworkorder", readers=(WORK_ORDERS,))
 
         # Belge numaraları: biçim Sistem > Kodlama sistematiği ayarından (core.coding).
         from apps.core.coding.registry import register_document_type

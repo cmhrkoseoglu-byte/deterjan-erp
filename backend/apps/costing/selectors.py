@@ -8,7 +8,7 @@ Raporlama modülü (Adım 4.3) lot maliyeti ve stok değeri için bu fonksiyonla
 - `cost_trend`, `batch_variance`, `scrap_cost`, `top_materials`: maliyet raporları.
 - `personnel_cost_report(year, month)`: aylık personel maliyeti ve işçilik oranı önerisi.
 
-Tutarlar yalnızca yonetim ve admin rolüne gösterilir; bu kontrol API katmanındadır.
+Tutarlar Maliyet bölümlerinin yetkisiyle gösterilir; bu kontrol API katmanındadır.
 """
 
 from collections import defaultdict

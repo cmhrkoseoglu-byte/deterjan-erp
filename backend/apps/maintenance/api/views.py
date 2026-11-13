@@ -1,4 +1,6 @@
+import operator
 from datetime import date, timedelta
+from functools import reduce
 from typing import Any
 
 import django_filters
@@ -8,15 +10,24 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import HasRole
-from apps.core.roles import ALL_ROLES
+from apps.core.access import CHANGE, VIEW
+from apps.core.permissions import AccessMixin, HasAccess, ReadRule
 from apps.inventory.api.serializers import CancelSerializer
 from apps.maintenance import selectors, services
+from apps.maintenance.access import (
+    BREAKDOWNS,
+    CALIBRATION,
+    CLEANINGS,
+    DOWNTIMES,
+    PLANS,
+    SETTINGS,
+    UNCLEANED,
+    WORK_ORDERS,
+)
 from apps.maintenance.api import serializers as s
 from apps.maintenance.models import (
     ChangeoverRule,
@@ -26,6 +37,28 @@ from apps.maintenance.models import (
     MaintenanceWorkOrder,
 )
 from apps.masterdata.models import Equipment, Material
+from apps.production.access import BATCHES
+
+# Bölüm denetimleri (docs/plan/kisi-yetkileri.md §3.12). Bugün yalnız GET'i okuma sayan görünümler
+# HEAD ve OPTIONS'ı yazma kuralıyla denetler (`read_methods = GET_ONLY`, `other_safe_access`).
+GET_ONLY = frozenset({"GET"})
+PLAN_CHANGE = HasAccess(PLANS, CHANGE)
+WORK_ORDER_CHANGE = HasAccess(WORK_ORDERS, CHANGE)
+DOWNTIME_CHANGE = HasAccess(DOWNTIMES, CHANGE)
+UNCLEANED_CHANGE = HasAccess(UNCLEANED, CHANGE)
+SETTINGS_CHANGE = HasAccess(SETTINGS, CHANGE)
+# Şarj başlatma ve tartım, kalibrasyon ve tank temizliği durumunu "Kalibrasyon: Görür" ya da
+# "Şarj ve tartım: Değiştirir" ile okur (plan §5.4).
+EQUIPMENT_STATUS = HasAccess(CALIBRATION, VIEW) | HasAccess(BATCHES, CHANGE)
+# Bakım'ı gören herkes: Görür'ü olan bölümlerden biri (bakım ayarlarının değerleri, plan §3.12).
+# Duruşların "rolü olan herkes" okuması buraya girmez.
+MODULE_VIEW = reduce(
+    operator.or_,
+    (
+        HasAccess(item, VIEW)
+        for item in (WORK_ORDERS, PLANS, DOWNTIMES, CLEANINGS, CALIBRATION, UNCLEANED, SETTINGS)
+    ),
+)
 
 
 def _user(request: Request) -> Any:
@@ -68,25 +101,33 @@ class PlanFilter(django_filters.FilterSet):
 
 
 class MaintenancePlanViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Bakım planları. Okuma bakımla ilgili birimlere, yazma üretim, dolum, laboratuvar ve
-    yönetime. Planlar silinmez, pasife alınır."""
+    """Bakım planları. Okuma (GET) "Bakım planları ve iş emri açma" okumasıyla; yazma, HEAD,
+    OPTIONS ve karşılanmayan metotlar Değiştirir ile. Planlar silinmez, pasife alınır."""
 
     serializer_class = s.MaintenancePlanSerializer
     filterset_class = PlanFilter
     search_fields = ["title", "equipment__code", "equipment__name"]
     ordering_fields = ["next_due_date", "equipment__code", "title"]
     ordering = ["equipment__code", "kind", "id"]
-
-    def get_permissions(self) -> list[BasePermission]:
-        if self.request.method == "GET":
-            return [HasRole(*services.READ_ROLES)()]
-        return [HasRole(*services.PLAN_ROLES)()]
+    read_access = ReadRule(PLANS)
+    read_methods = GET_ONLY
+    other_safe_access = PLAN_CHANGE
+    unhandled_access = PLAN_CHANGE
+    unhandled_read_methods = GET_ONLY
+    action_access = {
+        "create": PLAN_CHANGE,
+        "update": PLAN_CHANGE,
+        "partial_update": PLAN_CHANGE,
+        "activate": PLAN_CHANGE,
+        "deactivate": PLAN_CHANGE,
+    }
 
     def get_queryset(self) -> QuerySet[MaintenancePlan]:
         return MaintenancePlan.objects.select_related("equipment")
@@ -140,26 +181,31 @@ class WorkOrderFilter(django_filters.FilterSet):
 
 
 class WorkOrderViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Bakım iş emirleri (`BK-`). Okuma bakımla ilgili birimlere; iş emrini sorumlu birim ya da
-    yönetim yürütür (servis denetler)."""
+    """Bakım iş emirleri (`BK-`). Okuma "Bakım iş emirleri" okumasıyla; elle iş emri açma "Bakım
+    planları ve iş emri açma: Değiştirir" ile; işe başlama, tamamlama, iptal ve parça "Bakım iş
+    emirleri: Değiştirir" ile, ardından iş emrini sorumlu birim yürütür (servis denetler)."""
 
     serializer_class = s.WorkOrderSerializer
     filterset_class = WorkOrderFilter
     search_fields = ["number", "title", "equipment__code", "equipment__name", "description"]
     ordering_fields = ["created_at", "due_date", "number", "completed_at"]
     ordering = ["-created_at", "-id"]
-
-    def get_permissions(self) -> list[BasePermission]:
-        if self.request.method == "GET":
-            return [HasRole(*services.READ_ROLES)()]
-        if self.action == "create":
-            return [HasRole(*services.PLAN_ROLES)()]
-        return [HasRole(*services.READ_ROLES)()]
+    read_access = ReadRule(WORK_ORDERS)
+    unhandled_access = WORK_ORDER_CHANGE
+    unhandled_read_methods = GET_ONLY
+    action_access = {
+        "create": PLAN_CHANGE,
+        "start": WORK_ORDER_CHANGE,
+        "complete": WORK_ORDER_CHANGE,
+        "cancel": WORK_ORDER_CHANGE,
+        "parts": WORK_ORDER_CHANGE,
+    }
 
     def get_queryset(self) -> QuerySet[MaintenanceWorkOrder]:
         return MaintenanceWorkOrder.objects.select_related(
@@ -241,9 +287,9 @@ class WorkOrderViewSet(
 
 
 class BreakdownView(APIView):
-    """Arıza bildirimi (her rol): onarım iş emri açar, istenirse duruşu başlatır."""
+    """Arıza bildirimi (rolü olan herkes): onarım iş emri açar, istenirse duruşu başlatır."""
 
-    permission_classes = [HasRole(*ALL_ROLES)]
+    permission_classes = [HasAccess(BREAKDOWNS, CHANGE)]
 
     @extend_schema(request=s.BreakdownSerializer, responses={201: s.WorkOrderSerializer})
     def post(self, request: Request) -> Response:
@@ -260,9 +306,10 @@ class BreakdownView(APIView):
 
 
 class CleaningView(APIView):
-    """Tank temizliği kaydı (üretim): ürün değişimi temizliği kuralını karşılar."""
+    """Tank temizliği kaydı: ürün değişimi temizliği kuralını karşılar. Uç nokta "Tank
+    temizliği: Görür" ister, kaydı Değiştirir ile servis denetler."""
 
-    permission_classes = [HasRole(*services.READ_ROLES)]
+    permission_classes = [HasAccess(CLEANINGS, VIEW)]
 
     @extend_schema(request=s.CleaningSerializer, responses={201: s.WorkOrderSerializer})
     def post(self, request: Request) -> Response:
@@ -279,10 +326,11 @@ class CleaningView(APIView):
         return Response(s.WorkOrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
 
-class CleaningCheckView(APIView):
+class CleaningCheckView(AccessMixin, APIView):
     """Şarj başlatma ekranı için: bu ürüne geçmeden tank temizliği gerekiyor mu, tank duruşta mı."""
 
-    permission_classes = [HasRole(*services.READ_ROLES)]
+    read_access = EQUIPMENT_STATUS
+    unhandled_access = EQUIPMENT_STATUS
 
     @extend_schema(
         parameters=[
@@ -327,23 +375,27 @@ class DowntimeFilter(django_filters.FilterSet):
 
 
 class DowntimeViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Ekipman duruşları. Açık duruştaki ekipman emre atanamaz ve çalıştırılamaz."""
+    """Ekipman duruşları. Açık duruştaki ekipman emre atanamaz ve çalıştırılamaz. Okumayı (GET)
+    rolü olan herkes yapar; yazma, HEAD, OPTIONS ve karşılanmayan metotlar "Duruşlar: Değiştirir"
+    ister."""
 
     serializer_class = s.DowntimeSerializer
     filterset_class = DowntimeFilter
     search_fields = ["equipment__code", "equipment__name", "note"]
     ordering_fields = ["started_at", "ended_at"]
     ordering = ["-started_at", "-id"]
-
-    def get_permissions(self) -> list[BasePermission]:
-        if self.request.method == "GET":
-            return [HasRole(*ALL_ROLES)()]
-        return [HasRole(*services.DOWNTIME_ROLES)()]
+    read_access = ReadRule(DOWNTIMES)
+    read_methods = GET_ONLY
+    other_safe_access = DOWNTIME_CHANGE
+    unhandled_access = DOWNTIME_CHANGE
+    unhandled_read_methods = GET_ONLY
+    action_access = {"create": DOWNTIME_CHANGE, "end": DOWNTIME_CHANGE}
 
     def get_queryset(self) -> QuerySet[Downtime]:
         return Downtime.objects.select_related("equipment", "work_order", "created_by", "ended_by")
@@ -381,9 +433,10 @@ class DowntimeViewSet(
 
 
 class DowntimeSummaryView(APIView):
-    """Duruş özeti: ekipman ve nedene göre dakika (varsayılan son 30 gün)."""
+    """Duruş özeti: ekipman ve nedene göre dakika (varsayılan son 30 gün). "Duruşlar: Görür"
+    ister; duruş kayıtlarının "rolü olan herkes" okuması özeti açmaz."""
 
-    permission_classes = [HasRole(*services.READ_ROLES)]
+    permission_classes = [HasAccess(DOWNTIMES, VIEW)]
 
     @extend_schema(
         parameters=[
@@ -406,10 +459,11 @@ class DowntimeSummaryView(APIView):
 # --- kalibrasyon, geçiş kuralları, ayarlar -------------------------------------------------------
 
 
-class CalibrationStatusView(APIView):
+class CalibrationStatusView(AccessMixin, APIView):
     """Terazilerin kalibrasyon durumu (tartım ekranı uyarısı)."""
 
-    permission_classes = [HasRole(*services.READ_ROLES)]
+    read_access = EQUIPMENT_STATUS
+    unhandled_access = EQUIPMENT_STATUS
 
     @extend_schema(responses=s.CalibrationStatusSerializer(many=True))
     def get(self, request: Request) -> Response:
@@ -419,22 +473,29 @@ class CalibrationStatusView(APIView):
 
 
 class ChangeoverRuleViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Temizliksiz ürün geçişleri (Karar D-14). Yazma laboratuvara."""
+    """Temizliksiz ürün geçişleri (Karar D-14). Okuma (GET) "Temizliksiz geçişler" okumasıyla;
+    yazma, HEAD, OPTIONS ve karşılanmayan metotlar Değiştirir ile."""
 
     serializer_class = s.ChangeoverRuleSerializer
     filterset_fields = ["is_active", "from_product", "to_product"]
     search_fields = ["from_product__code", "to_product__code", "note"]
     ordering = ["from_product__code", "to_product__code"]
-
-    def get_permissions(self) -> list[BasePermission]:
-        if self.request.method == "GET":
-            return [HasRole(*services.READ_ROLES)()]
-        return [HasRole(*services.CHANGEOVER_ROLES)()]
+    read_access = ReadRule(UNCLEANED)
+    read_methods = GET_ONLY
+    other_safe_access = UNCLEANED_CHANGE
+    unhandled_access = UNCLEANED_CHANGE
+    unhandled_read_methods = GET_ONLY
+    action_access = {
+        "create": UNCLEANED_CHANGE,
+        "activate": UNCLEANED_CHANGE,
+        "deactivate": UNCLEANED_CHANGE,
+    }
 
     def get_queryset(self) -> QuerySet[ChangeoverRule]:
         return ChangeoverRule.objects.select_related("from_product", "to_product")
@@ -470,14 +531,15 @@ class ChangeoverRuleViewSet(
         )
 
 
-class MaintenanceSettingsView(APIView):
-    """Kalibrasyon uyarı süresi ve iş emri açma süresi. Okuma bakım birimlerine, değiştirme
-    yönetime."""
+class MaintenanceSettingsView(AccessMixin, APIView):
+    """Kalibrasyon uyarı süresi ve iş emri açma süresi. Değerleri (GET) Bakım'ı gören herkes
+    okur; değiştirme, HEAD, OPTIONS ve karşılanmayan metotlar "Bakım ayarları: Değiştirir" ister."""
 
-    def get_permissions(self) -> list[BasePermission]:
-        if self.request.method == "GET":
-            return [HasRole(*services.READ_ROLES)()]
-        return [HasRole(*services.SETTINGS_ROLES)()]
+    read_access = MODULE_VIEW
+    read_methods = GET_ONLY
+    other_safe_access = SETTINGS_CHANGE
+    unhandled_access = SETTINGS_CHANGE
+    action_access = {"patch": SETTINGS_CHANGE}
 
     @extend_schema(responses=s.MaintenanceSettingsSerializer)
     def get(self, request: Request) -> Response:

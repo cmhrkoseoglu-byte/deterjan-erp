@@ -10,18 +10,20 @@ class HseConfig(AppConfig):
         from apps.core.attachments import register_attachment_target
         from apps.core.records import register_record_type
         from apps.hse import services  # stok hareketi kancasını kaydeder
+        from apps.hse.access import INCIDENT_REPORT, INCIDENTS, SDS, WASTE
 
         # GBF PDF'i, atık taşıma formu, olay fotoğrafı.
         register_attachment_target("hse.safetydatasheet", can_add=services.can_attach_sds)
         register_attachment_target("hse.wasterecord", can_add=services.can_attach_waste)
         register_attachment_target("hse.incident", can_add=services.can_attach_incident)
-        # Yorum, geçmiş, ek: ekranlarıyla aynı kural. Olay sağlık verisi içerir: yönetim hepsini,
-        # diğer roller yalnızca kendi bildirdiklerini görür (docs/KVKK.md).
-        register_record_type("hse.safetydatasheet", roles=services.SDS_READ_ROLES)
-        register_record_type("hse.wasterecord", roles=services.HSE_ROLES)
+        # Yorum, geçmiş, ek: ekranlarıyla aynı kural (GBF arşivi, Atık okuması). Olay sağlık verisi
+        # içerir: Olaylar ve kazalar: Görür'ü olan hepsini, öteki kişi yalnızca kendi
+        # bildirdiklerini görür; rolsüz kullanıcı hiçbirini (docs/KVKK.md).
+        register_record_type("hse.safetydatasheet", readers=(SDS,))
+        register_record_type("hse.wasterecord", readers=(WASTE,))
         register_record_type(
             "hse.incident",
-            roles=services.INCIDENT_REPORT_ROLES,
+            readers=(INCIDENTS, INCIDENT_REPORT),
             visible=services.incidents_visible_to,
         )
 

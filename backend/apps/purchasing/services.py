@@ -5,9 +5,12 @@ Kurallar:
   bağlanınca `ORDERED` olur; sipariş iptal edilir ya da satır kaldırılırsa yeniden `OPEN` olur.
 - Sabah kontrolünde (07:00) `selectors.purchase_suggestions` önerileri otomatik talep olarak açılır.
 - Sipariş (`SA-`) satırları yalnızca taslakta değişir. Onay (Karar D-13): TL tutar = toplam × kur;
-  limit girilmiş ve tutar limit içindeyse satin_alma onaylar, değilse yalnızca yonetim.
-  satin_alma "Yönetim onayına gönder" der (`PENDING_APPROVAL`); yonetim onaylar ya da gerekçeyle
-  taslağa geri gönderir. Her onay denetim günlüğüne tutar ve limitle yazılır.
+  limit girilmiş ve tutar limit içindeyse "Satın alma siparişleri: Onaylar" onaylar, değilse
+  yalnızca "Limit üstü sipariş onayı: Onaylar". Sipariş yazan "Yönetim onayına gönder" der
+  (`PENDING_APPROVAL`); limit üstü onaylayan onaylar ya da gerekçeyle taslağa geri gönderir.
+  Onaya gönderme ve onay kayıtlarında tutar, kur ve limit denetim günlüğüne notta değil ayrı alan
+  satırlarında yazılır (docs/plan/kisi-yetkileri.md §8 madde 7).
+- Yetki: servisler bölüm ve düzeyle denetler (`apps.purchasing.access`, plan §3.10, §5.4).
 - Siparişten mal kabul: satırlar sipariş satırının birimi ve fiyatıyla açılır, bağ
   `ReceiptLineLink` ile tutulur. Mal kabul kaydedilirken (inventory kancası) fazla teslim toleransı
   ve sipariş durumu denetlenir; sipariş kısmen teslim alındı / teslim alındı olur.
@@ -19,19 +22,19 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.core.exceptions import PermissionDenied
 from django.core.mail import EmailMessage
 from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
+from apps.core.access import APPROVE, CHANGE, SectionRef
+from apps.core.access import section as access_section
 from apps.core.audit import log_change, snapshot
 from apps.core.exceptions import BusinessRuleError
 from apps.core.formatting import format_money
 from apps.core.models import AuditLog, User
-from apps.core.permissions import user_has_role
-from apps.core.roles import DEPO, PLANLAMA, SATIN_ALMA, URETIM, YONETIM
+from apps.core.permissions import MissingAccess, has_access, require_access
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
 from apps.inventory import services as inventory
 from apps.inventory.models import GoodsReceipt, GoodsReceiptLine
@@ -39,6 +42,7 @@ from apps.inventory.services import format_quantity, quantize
 from apps.masterdata import services as masterdata
 from apps.masterdata.models import Material
 from apps.purchasing import selectors
+from apps.purchasing.access import DELIVERIES, ORDERS, OVER_LIMIT, REQUESTS, SETTINGS
 from apps.purchasing.models import (
     PurchaseOrder,
     PurchaseOrderLine,
@@ -49,12 +53,6 @@ from apps.purchasing.models import (
 from apps.purchasing.state import purchase_order_states, purchase_request_states
 
 logger = logging.getLogger(__name__)
-
-ORDER_ROLES = (SATIN_ALMA, YONETIM)
-APPROVER_ROLES = (YONETIM,)
-REQUEST_ROLES = (PLANLAMA, DEPO, URETIM, SATIN_ALMA, YONETIM)
-# Siparişten mal kabulü depo yapar; satın alma da açabilir.
-RECEIPT_ROLES = (DEPO, SATIN_ALMA, YONETIM)
 
 Status = PurchaseOrder.Status
 RequestStatus = PurchaseRequest.Status
@@ -87,9 +85,14 @@ def _actor(actor: User | None) -> User | None:
     return actor if actor is not None and actor.is_authenticated else None
 
 
-def _require_role(actor: User | None, roles: tuple[str, ...], message: str) -> None:
-    if not user_has_role(actor, roles):
-        raise PermissionDenied(message)
+def _require_any(actor: User | None, message: str, *needs: tuple[SectionRef, str]) -> None:
+    """Yetkilerden biri yeter (ör. "Satın alma siparişleri: Onaylar ya da Limit üstü sipariş
+    onayı: Onaylar", plan §5.4); hiçbiri yoksa `MissingAccess` hepsini söyler."""
+    if any(has_access(actor, section, level) for section, level in needs):
+        return
+    raise MissingAccess(
+        message, tuple((access_section(section).key, level) for section, level in needs)
+    )
 
 
 def _pick(data: Mapping[str, Any], allowed: Sequence[str]) -> dict[str, Any]:
@@ -138,8 +141,9 @@ def get_settings() -> PurchasingSettings:
 
 @transaction.atomic
 def update_settings(actor: User, data: Mapping[str, Any]) -> PurchasingSettings:
-    """Onay limitini ve fazla teslim toleransını günceller. Yalnızca yönetim (denetim kaydıyla)."""
-    _require_role(actor, APPROVER_ROLES, "Satın alma ayarlarını yalnızca yönetim değiştirir.")
+    """Onay limitini ve fazla teslim toleransını günceller (Satın alma ayarları: Değiştirir;
+    denetim kaydıyla)."""
+    require_access(actor, SETTINGS, CHANGE, "Satın alma ayarlarını değiştirme yetkiniz yok.")
     instance = PurchasingSettings.objects.select_for_update().get(pk=get_settings().pk)
     for name, value in _pick(data, SETTINGS_FIELDS).items():
         setattr(instance, name, value)
@@ -177,11 +181,11 @@ def create_request(
     *,
     source: str = PurchaseRequest.Source.MANUAL,
 ) -> PurchaseRequest:
-    """Satın alma talebi açar (`ST-`, miktar malzemenin temel biriminde). Manuel talebi planlama,
-    depo, üretim, satın alma ve yönetim açar; otomatik talebi sabah kontrolü açar (actor yok).
+    """Satın alma talebi açar (`ST-`, miktar malzemenin temel biriminde). Manuel talebi "Satın
+    alma talepleri: Değiştirir" açar; otomatik talebi sabah kontrolü açar (actor yok, denetimsiz).
     Olay: `purchase_request.created` → satin_alma görevi."""
     if source == PurchaseRequest.Source.MANUAL:
-        _require_role(actor, REQUEST_ROLES, "Satın alma talebi açma yetkiniz yok.")
+        require_access(actor, REQUESTS, CHANGE, "Satın alma talebi açma yetkiniz yok.")
     request = PurchaseRequest(**_pick(data, REQUEST_FIELDS), source=source)
     _validate_request(request)
     return create_document(
@@ -202,19 +206,25 @@ def _lock_request(request: PurchaseRequest) -> PurchaseRequest:
 
 
 def _can_edit_request(actor: User | None, request: PurchaseRequest) -> bool:
-    if user_has_role(actor, ORDER_ROLES):
+    """Satır kuralı (plan §4): kişi kendi talebini, "Satın alma siparişleri: Değiştirir"
+    başkasının talebini de düzenler ve iptal eder."""
+    if has_access(actor, ORDERS, CHANGE):
         return True
     return actor is not None and request.created_by_id == actor.pk
+
+
+def _require_edit_request(actor: User | None, request: PurchaseRequest, message: str) -> None:
+    if not _can_edit_request(actor, request):
+        raise MissingAccess(message, ((ORDERS.key, CHANGE),))
 
 
 @transaction.atomic
 def update_request(
     actor: User | None, request: PurchaseRequest, data: Mapping[str, Any]
 ) -> PurchaseRequest:
-    """Açık talebi günceller (talebi açan ya da satın alma / yönetim)."""
+    """Açık talebi günceller (talebi açan ya da "Satın alma siparişleri: Değiştirir")."""
     request = _lock_request(request)
-    if not _can_edit_request(actor, request):
-        raise PermissionDenied("Bu talebi yalnızca açan kişi ya da satın alma değiştirebilir.")
+    _require_edit_request(actor, request, "Başkasının talebini değiştirme yetkiniz yok.")
     if request.status != RequestStatus.OPEN:
         raise BusinessRuleError(
             "document_locked",
@@ -229,10 +239,10 @@ def update_request(
 
 @transaction.atomic
 def cancel_request(actor: User | None, request: PurchaseRequest, reason: str) -> PurchaseRequest:
-    """Açık talebi gerekçeyle iptal eder (talebi açan ya da satın alma / yönetim)."""
+    """Açık talebi gerekçeyle iptal eder (talebi açan ya da "Satın alma siparişleri:
+    Değiştirir")."""
     request = _lock_request(request)
-    if not _can_edit_request(actor, request):
-        raise PermissionDenied("Bu talebi yalnızca açan kişi ya da satın alma iptal edebilir.")
+    _require_edit_request(actor, request, "Başkasının talebini iptal etme yetkiniz yok.")
     return cancel_document(request, actor, reason=reason, machine=purchase_request_states)
 
 
@@ -416,7 +426,7 @@ def create_order(
     actor: User | None, data: Mapping[str, Any], lines: Iterable[Mapping[str, Any]] = ()
 ) -> PurchaseOrder:
     """Taslak satın alma siparişi açar (`SA-`). Satırlar talep bağlayabilir (`requests`)."""
-    _require_role(actor, ORDER_ROLES, "Satın alma siparişi açma yetkiniz yok.")
+    require_access(actor, ORDERS, CHANGE, "Satın alma siparişi açma yetkiniz yok.")
     order = PurchaseOrder(**_pick(data, ORDER_FIELDS))
     _validate_order(order)
     create_document(order, actor, prefix="SA", machine=purchase_order_states)
@@ -432,7 +442,7 @@ def update_order(
     lines: Iterable[Mapping[str, Any]] | None = None,
 ) -> PurchaseOrder:
     """Taslak siparişi günceller; `lines` verilirse satırları onunla eşitler."""
-    _require_role(actor, ORDER_ROLES, "Satın alma siparişini değiştirme yetkiniz yok.")
+    require_access(actor, ORDERS, CHANGE, "Satın alma siparişini değiştirme yetkiniz yok.")
     order = _lock_order(order)
     _require_status(order, (Status.DRAFT,), "document_locked", "yalnızca taslak değiştirilebilir")
     for name, value in _pick(data, ORDER_FIELDS).items():
@@ -448,11 +458,11 @@ def update_order(
 
 
 def can_approve(actor: User | None, order: PurchaseOrder) -> bool:
-    """Karar D-13: yönetim her siparişi onaylar; satın alma yalnızca limit girilmiş ve TL tutar
-    limit içindeyse."""
-    if user_has_role(actor, APPROVER_ROLES):
+    """Karar D-13: "Limit üstü sipariş onayı: Onaylar" her siparişi onaylar; "Satın alma
+    siparişleri: Onaylar" yalnızca limit girilmiş ve TL tutar limit içindeyse (plan §5.4)."""
+    if has_access(actor, OVER_LIMIT, APPROVE):
         return True
-    if not user_has_role(actor, (SATIN_ALMA,)):
+    if not has_access(actor, ORDERS, APPROVE):
         return False
     limit = get_settings().approval_limit_try
     return limit is not None and selectors.order_totals(order).total_try <= limit
@@ -461,6 +471,22 @@ def can_approve(actor: User | None, order: PurchaseOrder) -> bool:
 def _require_lines(order: PurchaseOrder) -> None:
     if not order.lines.exists():
         raise BusinessRuleError("document_empty", "Satırı olmayan sipariş onaylanamaz.")
+
+
+def _approval_changes(
+    order: PurchaseOrder, total_try: Decimal, limit: Decimal | None
+) -> dict[str, list[Any]]:
+    """Onay tutarını ve limitini siparişe yazar; denetim kaydının alan satırlarını döner (tutar,
+    kur ve limit; plan §8 madde 7): `{alan: [eski, yeni]}`. Kur geçişte değişmez, değeriyle
+    yazılır."""
+    changes: dict[str, list[Any]] = {
+        "approval_total_try": [order.approval_total_try, total_try],
+        "approval_limit_try": [order.approval_limit_try, limit],
+        "exchange_rate": [order.exchange_rate, order.exchange_rate],
+    }
+    order.approval_total_try = total_try
+    order.approval_limit_try = limit
+    return changes
 
 
 def _order_payload(order: PurchaseOrder) -> dict[str, Any]:
@@ -487,30 +513,31 @@ def _order_payload(order: PurchaseOrder) -> dict[str, Any]:
 
 @transaction.atomic
 def submit_for_approval(actor: User | None, order: PurchaseOrder) -> PurchaseOrder:
-    """Taslağı yönetim onayına gönderir (`PENDING_APPROVAL`). Olay: yönetime görev."""
-    _require_role(actor, ORDER_ROLES, "Siparişi onaya gönderme yetkiniz yok.")
+    """Taslağı yönetim onayına gönderir (`PENDING_APPROVAL`). Tutar, kur ve limit denetim
+    kaydında ayrı alan satırlarıdır (notta değil). Olay: yönetime görev."""
+    require_access(actor, ORDERS, CHANGE, "Siparişi onaya gönderme yetkiniz yok.")
     order = _lock_order(order)
     _require_lines(order)
     totals = selectors.order_totals(order)
-    order.approval_total_try = totals.total_try
-    order.approval_limit_try = get_settings().approval_limit_try
+    changes = _approval_changes(order, totals.total_try, get_settings().approval_limit_try)
     order.save(update_fields=["approval_total_try", "approval_limit_try", "updated_at"])
     return transition_status(
         order,
         Status.PENDING_APPROVAL,
         actor,
         machine=purchase_order_states,
-        note=f"Tutar {format_money(totals.total_try)} TL",
         event_payload=_order_payload(order),
+        changes=changes,
     )
 
 
 @transaction.atomic
 def approve_order(actor: User | None, order: PurchaseOrder) -> PurchaseOrder:
-    """Siparişi onaylar (taslak ya da yönetim onayındaki). Yetki D-13'e göre `can_approve`.
-    Onay notunda TL tutar ve geçerli limit denetim günlüğüne yazılır. Olay:
+    """Siparişi onaylar (taslak ya da yönetim onayındaki). İlk denetim "Satın alma siparişleri:
+    Onaylar ya da Limit üstü sipariş onayı: Onaylar"; ardından D-13 (`can_approve`). TL tutar, kur
+    ve geçerli limit denetim kaydında ayrı alan satırlarıdır (notta değil). Olay:
     `purchase_order.approved` → depoya "beklenen teslimat" bildirimi."""
-    _require_role(actor, ORDER_ROLES, "Siparişi onaylama yetkiniz yok.")
+    _require_any(actor, "Siparişi onaylama yetkiniz yok.", (ORDERS, APPROVE), (OVER_LIMIT, APPROVE))
     order = _lock_order(order)
     _require_status(
         order, (Status.DRAFT, Status.PENDING_APPROVAL), "invalid_transition", "onaylanamaz"
@@ -528,8 +555,7 @@ def approve_order(actor: User | None, order: PurchaseOrder) -> PurchaseOrder:
                 "siparişi yönetim onaylar."
             )
         raise BusinessRuleError("approval_limit_exceeded", message)
-    order.approval_total_try = totals.total_try
-    order.approval_limit_try = limit
+    changes = _approval_changes(order, totals.total_try, limit)
     order.approved_by = _actor(actor)
     order.approved_at = timezone.now()
     order.save(
@@ -541,24 +567,21 @@ def approve_order(actor: User | None, order: PurchaseOrder) -> PurchaseOrder:
             "updated_at",
         ]
     )
-    limit_text = f"{format_money(limit)} TL" if limit is not None else "girilmemiş"
     return transition_status(
         order,
         Status.APPROVED,
         actor,
         machine=purchase_order_states,
-        note=(
-            f"Onay: tutar {format_money(totals.total_try)} TL (kur {order.exchange_rate}), "
-            f"limit {limit_text}"
-        ),
         event_payload=_order_payload(order),
+        changes=changes,
     )
 
 
 @transaction.atomic
 def return_to_draft(actor: User | None, order: PurchaseOrder, note: str) -> PurchaseOrder:
-    """Yönetim onayındaki siparişi gerekçeyle taslağa geri gönderir (yalnızca yönetim)."""
-    _require_role(actor, APPROVER_ROLES, "Siparişi taslağa yalnızca yönetim geri gönderir.")
+    """Yönetim onayındaki siparişi gerekçeyle taslağa geri gönderir (Limit üstü sipariş onayı:
+    Onaylar; uç nokta "ya da" denetimiyle siparişi onaylayanı da geçirir, plan §5.4)."""
+    require_access(actor, OVER_LIMIT, APPROVE, "Siparişi taslağa geri gönderme yetkiniz yok.")
     note = _require_note(note, "note_required", "Geri gönderme gerekçesi girilmelidir.")
     order = _lock_order(order)
     return transition_status(
@@ -600,7 +623,7 @@ def mark_sent(
     adrese gönderilir (kullanıcı ekranda adresi görüp onaylar); verilmezse yalnızca işaretlenir."""
     from apps.purchasing.pdf import purchase_order_pdf
 
-    _require_role(actor, ORDER_ROLES, "Siparişi gönderme yetkiniz yok.")
+    require_access(actor, ORDERS, CHANGE, "Siparişi gönderme yetkiniz yok.")
     order = _lock_order(order)
     purchase_order_states.assert_can_transition(order.status, Status.SENT)
     to = (email or "").strip()
@@ -630,9 +653,18 @@ def mark_sent(
 @transaction.atomic
 def cancel_order(actor: User | None, order: PurchaseOrder, reason: str) -> PurchaseOrder:
     """Mal kabul gelmemiş siparişi iptal eder; bağlı talepler yeniden açılır. Siparişe bağlı
-    taslak mal kabul varsa önce o iptal edilmelidir."""
-    _require_role(actor, ORDER_ROLES, "Siparişi iptal etme yetkiniz yok.")
+    taslak mal kabul varsa önce o iptal edilmelidir. Taslak ya da onay bekleyen sipariş "Satın
+    alma siparişleri: Değiştirir", onaylı ya da gönderilmiş sipariş "Onaylar" ister (plan §3.10);
+    yetki denetimi durum denetiminden önce gelir."""
     order = _lock_order(order)
+    message = "Siparişi iptal etme yetkiniz yok."
+    if order.status in (Status.DRAFT, Status.PENDING_APPROVAL):
+        require_access(actor, ORDERS, CHANGE, message)
+    elif order.status in (Status.APPROVED, Status.SENT):
+        require_access(actor, ORDERS, APPROVE, message)
+    else:
+        # İptal edilemeyen durum: uç noktadaki gibi ikisinden biri yeter, sonra durum hatası.
+        _require_any(actor, message, (ORDERS, CHANGE), (ORDERS, APPROVE))
     _require_status(order, CANCELLABLE_STATUSES, "invalid_transition", "iptal edilemez")
     links = ReceiptLineLink.objects.filter(order_line__order=order).exclude(
         receipt_line__receipt__status=GoodsReceipt.Status.CANCELLED
@@ -651,7 +683,7 @@ def cancel_order(actor: User | None, order: PurchaseOrder, reason: str) -> Purch
 @transaction.atomic
 def close_order(actor: User | None, order: PurchaseOrder, note: str) -> PurchaseOrder:
     """Kısmen teslim alınmış siparişin kalanını gerekçeyle kapatır (`RECEIVED`)."""
-    _require_role(actor, ORDER_ROLES, "Siparişi kapatma yetkiniz yok.")
+    require_access(actor, ORDERS, CHANGE, "Siparişi kapatma yetkiniz yok.")
     note = _require_note(note, "note_required", "Kapanış gerekçesi girilmelidir.")
     order = _lock_order(order)
     _require_status(order, (Status.PARTIALLY_RECEIVED,), "invalid_transition", "kalanı kapatılamaz")
@@ -702,7 +734,7 @@ def create_receipt_from_order(
 ) -> GoodsReceipt:
     """Siparişten taslak mal kabul açar. Satır birimi ve fiyatı sipariş satırından gelir; miktar
     satırın kalanını tolerans kadar aşabilir. Mal kabul inventory ekranında kaydedilir."""
-    _require_role(actor, RECEIPT_ROLES, "Siparişten mal kabul açma yetkiniz yok.")
+    require_access(actor, DELIVERIES, CHANGE, "Siparişten mal kabul açma yetkiniz yok.")
     order = _lock_order(order)
     _require_status(
         order,

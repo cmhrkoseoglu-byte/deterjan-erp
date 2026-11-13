@@ -18,29 +18,31 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.utils import timezone
 
 from apps.core import event_names as ev
 from apps.core import events
+from apps.core.access import CHANGE
 from apps.core.audit import log_change
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
-from apps.core.permissions import user_has_role
-from apps.core.roles import (
-    ALL_ROLES,
-    DOLUM,
-    LABORATUVAR,
-    PLANLAMA,
-    URETIM,
-    YONETIM,
-)
+from apps.core.permissions import MissingAccess, has_access, require_access
+from apps.core.roles import DOLUM, LABORATUVAR, URETIM
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
 from apps.inventory import services as inventory
 from apps.inventory.models import Lot, StockMovement
 from apps.inventory.services import quantize
 from apps.maintenance import selectors
+from apps.maintenance.access import (
+    ANY_UNIT,
+    BREAKDOWNS,
+    CLEANINGS,
+    DOWNTIMES,
+    PLANS,
+    SETTINGS,
+    UNCLEANED,
+)
 from apps.maintenance.models import (
     ChangeoverRule,
     Downtime,
@@ -56,18 +58,6 @@ from apps.masterdata.models import Equipment, Location, Material
 
 Status = MaintenanceWorkOrder.Status
 Source = MaintenanceWorkOrder.Source
-
-# Planları sorumlu birimler ve yönetim yönetir.
-PLAN_ROLES = (URETIM, DOLUM, LABORATUVAR, YONETIM)
-# Duruşu üretim, dolum, laboratuvar (terazi), planlama ve yönetim girer.
-DOWNTIME_ROLES = (URETIM, DOLUM, LABORATUVAR, PLANLAMA, YONETIM)
-# Arızayı herkes bildirir.
-BREAKDOWN_ROLES = ALL_ROLES
-# Temizliksiz geçiş kurallarını kalite birimi tanımlar (Karar D-14).
-CHANGEOVER_ROLES = (LABORATUVAR,)
-SETTINGS_ROLES = (YONETIM,)
-# Okuma: bakımla ilgili tüm birimler.
-READ_ROLES = (URETIM, DOLUM, LABORATUVAR, PLANLAMA, YONETIM)
 
 PLAN_FIELDS = (
     "equipment",
@@ -95,11 +85,6 @@ SETTINGS_FIELDS = ("calibration_warning_days", "plan_lead_days")
 
 def _actor(actor: User | None) -> User | None:
     return actor if actor is not None and actor.is_authenticated else None
-
-
-def _require_role(actor: User | None, roles: Sequence[str], message: str) -> None:
-    if not user_has_role(actor, tuple(roles)):
-        raise PermissionDenied(message)
 
 
 def _pick(data: Mapping[str, Any], allowed: Sequence[str]) -> dict[str, Any]:
@@ -137,8 +122,9 @@ def _checklist_rows(items: list[str]) -> list[dict[str, Any]]:
 
 @transaction.atomic
 def update_settings(actor: User, data: Mapping[str, Any]) -> MaintenanceSettings:
-    """Kalibrasyon uyarı süresini ve iş emri açma süresini günceller (rol: yonetim)."""
-    _require_role(actor, SETTINGS_ROLES, "Bakım ayarlarını yalnızca yönetim değiştirir.")
+    """Kalibrasyon uyarı süresini ve iş emri açma süresini günceller (Bakım ayarları:
+    Değiştirir)."""
+    require_access(actor, SETTINGS, CHANGE, "Bakım ayarlarını değiştirme yetkiniz yok.")
     instance = MaintenanceSettings.objects.select_for_update().get(pk=selectors.get_settings().pk)
     for name, value in _pick(data, SETTINGS_FIELDS).items():
         setattr(instance, name, value)
@@ -192,9 +178,9 @@ def _validate_plan(plan: MaintenancePlan) -> None:
 
 @transaction.atomic
 def create_plan(actor: User, data: Mapping[str, Any]) -> MaintenancePlan:
-    """Bakım planı açar (rol: üretim, dolum, laboratuvar, yönetim). Sorumlu rol verilmezse ekipman
-    türünden seçilir; gün bazlı planda sıradaki tarih verilmezse bugün + periyottur."""
-    _require_role(actor, PLAN_ROLES, "Bakım planını yalnızca bakımdan sorumlu birimler açar.")
+    """Bakım planı açar (Bakım planları ve iş emri açma: Değiştirir). Sorumlu rol verilmezse
+    ekipman türünden seçilir; gün bazlı planda sıradaki tarih verilmezse bugün + periyottur."""
+    require_access(actor, PLANS, CHANGE, "Bakım planı açma yetkiniz yok.")
     values = _pick(data, PLAN_FIELDS)
     plan = MaintenancePlan(**values)
     if not plan.responsible_role:
@@ -206,7 +192,7 @@ def create_plan(actor: User, data: Mapping[str, Any]) -> MaintenancePlan:
 @transaction.atomic
 def update_plan(actor: User, plan: MaintenancePlan, data: Mapping[str, Any]) -> MaintenancePlan:
     """Planı günceller (eski → yeni değerler denetim günlüğüne)."""
-    _require_role(actor, PLAN_ROLES, "Bakım planını yalnızca bakımdan sorumlu birimler değiştirir.")
+    require_access(actor, PLANS, CHANGE, "Bakım planını değiştirme yetkiniz yok.")
     values = _pick(data, PLAN_FIELDS)
     locked = MaintenancePlan.objects.select_for_update().get(pk=plan.pk)
     for name, value in values.items():
@@ -220,7 +206,7 @@ def set_plan_active(
     actor: User, plan: MaintenancePlan, active: bool, note: str = ""
 ) -> MaintenancePlan:
     """Planı aktif / pasif yapar (planlar silinmez)."""
-    _require_role(actor, PLAN_ROLES, "Bakım planını yalnızca bakımdan sorumlu birimler değiştirir.")
+    require_access(actor, PLANS, CHANGE, "Bakım planını değiştirme yetkiniz yok.")
     return masterdata.set_active(actor, plan, active, note=note)
 
 
@@ -242,11 +228,22 @@ def _work_order_payload(order: MaintenanceWorkOrder, *, open_task: bool = True) 
     }
 
 
+def _in_responsible_unit(actor: User | None, order: MaintenanceWorkOrder) -> bool:
+    """Kişi iş emrinin sorumlu biriminde mi? Sorumlu birim iş emrinin verisidir (görevi de o role
+    gider) ve rol denetimi olarak kalır (plan §4 satır kuralları, §10)."""
+    if not isinstance(actor, User) or not actor.is_authenticated or not actor.is_active:
+        return False
+    return actor.has_role(order.responsible_role)
+
+
 def _can_work(actor: User | None, order: MaintenanceWorkOrder) -> None:
-    _require_role(
-        actor,
-        (order.responsible_role, YONETIM),
-        "Bu iş emrini yalnızca sorumlu birim ya da yönetim yürütür.",
+    """İş emrini sorumlu birim yürütür; öteki birimlerin iş emirlerini "Tüm birimlerin iş
+    emirlerini yürütme: Değiştirir" olan kişi (ve admin) yürütür."""
+    if has_access(actor, ANY_UNIT, CHANGE) or _in_responsible_unit(actor, order):
+        return
+    raise MissingAccess(
+        "Bu iş emrini yürütme yetkiniz yok; iş emrini sorumlu birim yürütür.",
+        ((ANY_UNIT.key, CHANGE),),
     )
 
 
@@ -301,8 +298,8 @@ def _new_work_order(
 
 @transaction.atomic
 def create_work_order(actor: User, data: Mapping[str, Any]) -> MaintenanceWorkOrder:
-    """Elle bakım iş emri açar (rol: planları yöneten birimler)."""
-    _require_role(actor, PLAN_ROLES, "Bakım iş emrini yalnızca bakımdan sorumlu birimler açar.")
+    """Elle bakım iş emri açar (Bakım planları ve iş emri açma: Değiştirir)."""
+    require_access(actor, PLANS, CHANGE, "Bakım iş emri açma yetkiniz yok.")
     values = _pick(data, WORK_ORDER_FIELDS)
     return _new_work_order(
         _actor(actor),
@@ -325,9 +322,10 @@ def report_breakdown(
     *,
     stop_equipment: bool = True,
 ) -> MaintenanceWorkOrder:
-    """Arıza bildirir (her rol): onarım iş emri açılır; `stop_equipment` ise ekipmanda arıza
-    duruşu başlar (açık duruş varsa yenisi açılmaz, iş emrine bağlanır)."""
-    _require_role(actor, BREAKDOWN_ROLES, "Arıza bildirmek için bir rolünüz olmalı.")
+    """Arıza bildirir (Arıza bildirimi: Değiştirir; rolü olan herkes): onarım iş emri açılır;
+    `stop_equipment` ise ekipmanda arıza duruşu başlar (açık duruş varsa yenisi açılmaz, iş emrine
+    bağlanır)."""
+    require_access(actor, BREAKDOWNS, CHANGE, "Arıza bildirme yetkiniz yok.")
     real = _actor(actor)
     description = (description or "").strip()
     if not description:
@@ -359,7 +357,7 @@ def report_breakdown(
 
 @transaction.atomic
 def start_work_order(actor: User, order: MaintenanceWorkOrder) -> MaintenanceWorkOrder:
-    """İşe başlar (sorumlu rol ya da yönetim)."""
+    """İşe başlar (sorumlu birim ya da Tüm birimlerin iş emirlerini yürütme)."""
     _can_work(actor, order)
     actor_ = _actor(actor)
     order = _lock(order)
@@ -428,10 +426,34 @@ def complete_work_order(
     calibration_result: str = "",
     certificate_no: str = "",
 ) -> MaintenanceWorkOrder:
-    """İş emrini tamamlar (sorumlu rol ya da yönetim): yapılan iş zorunlu, kontrol listesi tam
-    olmalı. Kalibrasyonda sonuç zorunludur; "Uygun değil" teraziye kalibrasyon duruşu açar ve plan
-    ileri atmaz. Plan kaynaklı iş emri planı ileri atar; iş emrine bağlı açık duruşlar kapanır."""
+    """İş emrini tamamlar (sorumlu birim ya da Tüm birimlerin iş emirlerini yürütme): yapılan iş
+    zorunlu, kontrol listesi tam olmalı. Kalibrasyonda sonuç zorunludur; "Uygun değil" teraziye
+    kalibrasyon duruşu açar ve plan ileri atmaz. Plan kaynaklı iş emri planı ileri atar; iş emrine
+    bağlı açık duruşlar kapanır."""
     _can_work(actor, order)
+    return _complete_work_order(
+        actor,
+        order,
+        work_done=work_done,
+        duration_minutes=duration_minutes,
+        checklist=checklist,
+        calibration_result=calibration_result,
+        certificate_no=certificate_no,
+    )
+
+
+def _complete_work_order(
+    actor: User | None,
+    order: MaintenanceWorkOrder,
+    *,
+    work_done: str,
+    duration_minutes: int | None = None,
+    checklist: Any = None,
+    calibration_result: str = "",
+    certificate_no: str = "",
+) -> MaintenanceWorkOrder:
+    """Tamamlamanın kendisi, yetki denetimi olmadan: kişinin işlemi `complete_work_order`; tank
+    temizliği kaydında açılan iş emrinin tamamlanması ise ardıl adımdır (plan §5.4)."""
     actor_ = _actor(actor)
     order = _lock(order)
     work_order_states.assert_can_transition(order.status, Status.COMPLETED)
@@ -521,9 +543,11 @@ def record_cleaning(
     checklist: list[str] | None = None,
     duration_minutes: int | None = None,
 ) -> MaintenanceWorkOrder:
-    """Tank temizliği kaydı (rol: üretim, yönetim): tek adımda tamamlanmış temizlik iş emri.
-    Kayıt, tankta ürün değişimi temizliği kuralını (Karar D-14) karşılar. Görev açılmaz."""
-    _require_role(actor, (URETIM, YONETIM), "Temizlik kaydını üretim girer.")
+    """Tank temizliği kaydı (Tank temizliği: Değiştirir): tek adımda tamamlanmış temizlik iş
+    emri. Kayıt, tankta ürün değişimi temizliği kuralını (Karar D-14) karşılar. Görev açılmaz.
+    Açılan iş emrinin tamamlanması ardıl adımdır; sorumlu birim kuralıyla denetlenmez (plan §5.4
+    giriş noktası kuralı)."""
+    require_access(actor, CLEANINGS, CHANGE, "Tank temizliği kaydı girme yetkiniz yok.")
     if not equipment.is_tank:
         raise BusinessRuleError("cleaning_tank_only", "Temizlik kaydı tanklar için girilir.")
     last = selectors.last_tank_batch(equipment)
@@ -540,7 +564,7 @@ def record_cleaning(
         previous_product=previous,
         open_task=False,
     )
-    return complete_work_order(
+    return _complete_work_order(
         actor,
         order,
         work_done=work_done,
@@ -699,7 +723,7 @@ def start_downtime(
     note: str = "",
 ) -> Downtime:
     """Ekipman duruşu başlatır. Açık duruşta ekipman emre atanamaz ve çalıştırılamaz."""
-    _require_role(actor, DOWNTIME_ROLES, "Duruşu yalnızca ilgili birimler girer.")
+    require_access(actor, DOWNTIMES, CHANGE, "Duruş başlatma yetkiniz yok.")
     if not equipment.is_active:
         raise BusinessRuleError("inactive_reference", f"Pasif ekipman seçilemez: {equipment}.")
     return _start_downtime(_actor(actor), equipment, reason, started_at=started_at, note=note)
@@ -710,7 +734,7 @@ def end_downtime(
     actor: User, downtime: Downtime, *, ended_at: datetime | None = None, note: str = ""
 ) -> Downtime:
     """Açık duruşu bitirir. Açık arıza iş emrine bağlı duruş da elle bitirilebilir."""
-    _require_role(actor, DOWNTIME_ROLES, "Duruşu yalnızca ilgili birimler bitirir.")
+    require_access(actor, DOWNTIMES, CHANGE, "Duruş bitirme yetkiniz yok.")
     locked = Downtime.objects.select_for_update().select_related("equipment").get(pk=downtime.pk)
     if locked.ended_at is not None:
         raise BusinessRuleError("downtime_closed", "Bu duruş zaten bitmiş.")
@@ -737,8 +761,8 @@ def _validate_changeover(rule: ChangeoverRule) -> None:
 
 @transaction.atomic
 def create_changeover_rule(actor: User, data: Mapping[str, Any]) -> ChangeoverRule:
-    """Temizliksiz geçiş çifti tanımlar (rol: laboratuvar)."""
-    _require_role(actor, CHANGEOVER_ROLES, "Temizliksiz geçişleri kalite birimi tanımlar.")
+    """Temizliksiz geçiş çifti tanımlar (Temizliksiz geçişler: Değiştirir)."""
+    require_access(actor, UNCLEANED, CHANGE, "Temizliksiz geçiş tanımlama yetkiniz yok.")
     rule = ChangeoverRule(**_pick(data, ("from_product", "to_product", "note")))
     _validate_changeover(rule)
     return save_with_audit(rule, actor)
@@ -749,7 +773,7 @@ def set_changeover_active(
     actor: User, rule: ChangeoverRule, active: bool, note: str = ""
 ) -> ChangeoverRule:
     """Kuralı aktif / pasif yapar (silinmez)."""
-    _require_role(actor, CHANGEOVER_ROLES, "Temizliksiz geçişleri kalite birimi değiştirir.")
+    require_access(actor, UNCLEANED, CHANGE, "Temizliksiz geçişi değiştirme yetkiniz yok.")
     return masterdata.set_active(actor, rule, active, note=note)
 
 

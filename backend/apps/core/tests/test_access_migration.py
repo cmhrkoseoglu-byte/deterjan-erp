@@ -30,6 +30,31 @@ ALLOWED: dict[str, str] = {
     "quality/management/commands/seed_quality_demo.py: from apps.core.roles import LABORATUVAR": (
         DEMO_USER
     ),
+    "sales/management/commands/seed_sales_demo.py: from apps.core.roles import DEPO, SEVKIYAT": (
+        DEMO_USER
+    ),
+    "hse/management/commands/seed_hse_demo.py: "
+    "from apps.core.roles import DEPO, LABORATUVAR, YONETIM": DEMO_USER,
+    "golive/management/commands/seed_golive_demo.py: from apps.core.roles import DEPO": DEMO_USER,
+    "personnel/management/commands/seed_personnel_demo.py: from apps.core.roles import (": (
+        DEMO_USER
+    ),
+    "maintenance/management/commands/seed_maintenance_demo.py: "
+    "from apps.core.roles import LABORATUVAR, URETIM": DEMO_USER,
+    "costing/management/commands/seed_costing_demo.py: from apps.core.roles import YONETIM": (
+        DEMO_USER
+    ),
+    "golive/selectors.py: from apps.core.roles import ADMIN, ALL_ROLES, ROLE_LABELS": (
+        "hazırlık listesi her rolün kullanıcı sayısını gösterir (veri); rol denetimi değil"
+    ),
+    "maintenance/models.py: from apps.core.roles import DOLUM, LABORATUVAR, PLANLAMA, URETIM, "
+    "YONETIM": "bakımda sorumlu birim seçenekleri (iş verisi); rol denetimi değil",
+    "maintenance/services.py: from apps.core.roles import DOLUM, LABORATUVAR, URETIM": (
+        "bakımda sorumlu birim: varsayılan birim ve temizlik iş emrinin birimi (plan §10)"
+    ),
+    "maintenance/services.py: return actor.has_role(order.responsible_role)": (
+        "bakımda sorumlu birim kuralı (plan §4 satır kuralı, §10 izin listesi)"
+    ),
 }
 
 

@@ -31,18 +31,17 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Max, Sum
 from django.utils import timezone
 
 from apps.core import event_names as ev
 from apps.core import events
+from apps.core.access import APPROVE, CHANGE
 from apps.core.audit import log_change, snapshot
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
-from apps.core.permissions import user_has_role
-from apps.core.roles import DEPO, SEVKIYAT, YONETIM
+from apps.core.permissions import require_access
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
 from apps.inventory import selectors as inventory_selectors
 from apps.inventory import services as inventory
@@ -51,13 +50,9 @@ from apps.inventory.picking import picked_total
 from apps.inventory.services import format_quantity, quantize
 from apps.masterdata import services as masterdata
 from apps.masterdata.models import Customer, Location, Material
+from apps.sales.access import ORDERS, PICKING, SHIPMENTS
 from apps.sales.models import SalesOrder, SalesOrderLine, Shipment, ShipmentLine, ShipmentPick
 from apps.sales.state import sales_order_states, shipment_states
-
-ORDER_ROLES = (SEVKIYAT, YONETIM)
-# Sevkiyat planlama, iptal ve sevk onayı; toplama ve yükleme (Adım 3.2).
-SHIPMENT_ROLES = (SEVKIYAT,)
-PICK_ROLES = (DEPO,)
 
 Status = SalesOrder.Status
 ReservationStatus = StockReservation.Status
@@ -97,11 +92,6 @@ DRIVER_ID_RE = re.compile(r"^\d{11}$")
 
 def _actor(actor: User | None) -> User | None:
     return actor if actor is not None and actor.is_authenticated else None
-
-
-def _require_role(actor: User | None, message: str) -> None:
-    if not user_has_role(actor, ORDER_ROLES):
-        raise PermissionDenied(message)
 
 
 def _pick_fields(data: Mapping[str, Any], allowed: Sequence[str]) -> dict[str, Any]:
@@ -208,9 +198,9 @@ def _sync_lines(actor: User | None, order: SalesOrder, items: Iterable[Mapping[s
 def create_order(
     actor: User | None, data: Mapping[str, Any], lines: Iterable[Mapping[str, Any]] = ()
 ) -> SalesOrder:
-    """Taslak satış siparişi açar (`SS-`, rol: sevkiyat ya da yonetim); satırlar birlikte
+    """Taslak satış siparişi açar (`SS-`, Satış siparişleri: Değiştirir); satırlar birlikte
     verilebilir. Teslim adresi boşsa müşterinin adresi alınır."""
-    _require_role(actor, "Satış siparişini yalnızca sevkiyat ve yönetim açar.")
+    require_access(actor, ORDERS, CHANGE, "Satış siparişi açma yetkiniz yok.")
     order = SalesOrder(**_pick_fields(data, ORDER_FIELDS))
     if not order.delivery_address:
         order.delivery_address = order.customer.address
@@ -229,7 +219,7 @@ def update_order(
 ) -> SalesOrder:
     """Taslak siparişin başlığını günceller; `lines` verilirse satırları onunla eşitler.
     Onaylanan sipariş değiştirilmez."""
-    _require_role(actor, "Satış siparişini yalnızca sevkiyat ve yönetim değiştirir.")
+    require_access(actor, ORDERS, CHANGE, "Satış siparişini değiştirme yetkiniz yok.")
     values = _pick_fields(data, ORDER_FIELDS)
     order = _lock_order(order)
     _require_status(order, (Status.DRAFT,), "document_locked", "değiştirilemez")
@@ -246,7 +236,7 @@ def update_order(
 def confirm_order(actor: User | None, order: SalesOrder, note: str = "") -> SalesOrder:
     """Siparişi onaylar ve FEFO ile rezervasyon yapar. Olay `sales_order.confirmed` sevkiyata
     "Sevkiyat planla" görevi açar; eksik varsa `sales_order.shortage` planlamaya görev açar."""
-    _require_role(actor, "Satış siparişini yalnızca sevkiyat ve yönetim onaylar.")
+    require_access(actor, ORDERS, APPROVE, "Satış siparişini onaylama yetkiniz yok.")
     actor = _actor(actor)
     order = _lock_order(order)
     sales_order_states.assert_can_transition(order.status, Status.CONFIRMED)
@@ -273,10 +263,12 @@ def confirm_order(actor: User | None, order: SalesOrder, note: str = "") -> Sale
 
 @transaction.atomic
 def cancel_order(actor: User | None, order: SalesOrder, reason: str) -> SalesOrder:
-    """Taslak ya da onaylı (henüz sevk edilmemiş) siparişi iptal eder; aktif rezervasyonlar
+    """Taslak ya da onaylı (henüz sevk edilmemiş) siparişi iptal eder: taslağı iptal etmek Satış
+    siparişleri: Değiştirir, onaylı siparişi iptal etmek Onaylar ister. Aktif rezervasyonlar
     bırakılır. Olay `sales_order.cancelled` siparişe bağlı açık görevleri iptal eder."""
-    _require_role(actor, "Satış siparişini yalnızca sevkiyat ve yönetim iptal eder.")
     order = _lock_order(order)
+    level = CHANGE if order.status == Status.DRAFT else APPROVE
+    require_access(actor, ORDERS, level, "Bu satış siparişini iptal etme yetkiniz yok.")
     sales_order_states.assert_can_transition(order.status, Status.CANCELLED)
     _require_no_open_shipments(order)
     if not reason.strip():
@@ -289,7 +281,7 @@ def cancel_order(actor: User | None, order: SalesOrder, reason: str) -> SalesOrd
 def close_order(actor: User | None, order: SalesOrder, note: str = "") -> SalesOrder:
     """Sevk edilmiş ya da kısmen sevk edilmiş siparişi kapatır; kalan aktif rezervasyonlar
     bırakılır (kalan miktar sevk edilmeyecek)."""
-    _require_role(actor, "Satış siparişini yalnızca sevkiyat ve yönetim kapatır.")
+    require_access(actor, ORDERS, CHANGE, "Satış siparişini kapatma yetkiniz yok.")
     order = _lock_order(order)
     sales_order_states.assert_can_transition(order.status, Status.CLOSED)
     _require_no_open_shipments(order)
@@ -450,7 +442,7 @@ def reserve_shortages(actor: User | None, order: SalesOrder) -> list[LineShortag
     """Onaylı siparişin eksik miktarlarını yeni serbest stoktan FEFO ile rezerve eder. Eksik
     kalmazsa `sales_order.fully_reserved` (planlama görevi kapanır), kalırsa
     `sales_order.shortage` yeniden yayınlanır (açık görev varsa yenisi açılmaz)."""
-    _require_role(actor, "Rezervasyonu yalnızca sevkiyat ve yönetim yapar.")
+    require_access(actor, ORDERS, CHANGE, "Rezervasyon yapma yetkiniz yok.")
     order = _lock_order(order)
     _require_status(order, RESERVABLE_STATUSES, "order_not_reservable", "rezervasyon yapılamaz")
     return _reserve_order(_actor(actor), order, publish_complete=True)
@@ -468,7 +460,7 @@ def reserve_lot(
 ) -> StockReservation:
     """Satıra elle lot rezerve eder (ör. FEFO önerisi yerine başka lot). Miktar satırın eksik
     miktarını aşamaz; lot müşterinin raf ömrü şartını karşılamalıdır."""
-    _require_role(actor, "Rezervasyonu yalnızca sevkiyat ve yönetim yapar.")
+    require_access(actor, ORDERS, CHANGE, "Rezervasyon yapma yetkiniz yok.")
     order = _lock_order(line.order)
     _require_status(order, RESERVABLE_STATUSES, "order_not_reservable", "rezervasyon yapılamaz")
     line = SalesOrderLine.objects.select_related("product__base_unit").get(pk=line.pk)
@@ -514,7 +506,7 @@ def release_line_reservation(
 ) -> StockReservation:
     """Satırdaki rezervasyonu elle bırakır (ör. başka lot seçmek için). Eksik olay olarak
     yayınlanmaz; gerekirse "Eksikleri rezerve et" ile tamamlanır."""
-    _require_role(actor, "Rezervasyonu yalnızca sevkiyat ve yönetim bırakır.")
+    require_access(actor, ORDERS, CHANGE, "Rezervasyonu bırakma yetkiniz yok.")
     line = order_line_of(reservation)
     if line is None:
         raise BusinessRuleError(
@@ -543,7 +535,8 @@ def order_line_of(reservation: StockReservation) -> SalesOrderLine | None:
 def release_unusable_lot(actor: User | None, lot: Lot, reason: str) -> list[SalesOrder]:
     """Lot serbest durumdan çıktığında (bloke, red, karantina) siparişlerdeki aktif
     rezervasyonlarını bırakır ve etkilenen siparişler için eksik yeniden yayınlanır. Etkilenen
-    siparişleri döner."""
+    siparişleri döner. Yetki denetlenmez: lot kararının sistem adımıdır (plan §5.4 giriş noktası
+    kuralı); kararı veren kişinin sevkiyatta yetkisi olmayabilir."""
     reservations = StockReservation.objects.filter(
         lot=lot, status=ReservationStatus.ACTIVE, sales_order_line__isnull=False
     ).distinct()
@@ -607,11 +600,6 @@ def publish_shortage(
 
 
 # --- sevkiyat (Adım 3.2) ---------------------------------------------------------------------
-
-
-def _require_roles(actor: User | None, roles: tuple[str, ...], message: str) -> None:
-    if not user_has_role(actor, roles):
-        raise PermissionDenied(message)
 
 
 def _shipment_fields(data: Mapping[str, Any]) -> dict[str, Any]:
@@ -752,13 +740,13 @@ def plan_shipment(
     data: Mapping[str, Any],
     lines: Iterable[Mapping[str, Any]] | None = None,
 ) -> Shipment:
-    """Onaylı (ya da kısmen sevk edilmiş) sipariş için sevkiyat planlar (`SV-`, rol: sevkiyat).
+    """Onaylı (ya da kısmen sevk edilmiş) sipariş için sevkiyat planlar (`SV-`).
 
     `lines` verilmezse her sipariş satırının kalan miktarı gelir; verilirse
     `[{"order_line", "quantity"}]` (temel birimde, kalanı aşamaz). Sevk alanı verilmezse
     varsayılan `SHIPPING` lokasyonu. Olay `shipment.planned` depoya "Toplama yap" görevi açar;
     siparişin tamamı planlandıysa "Sevkiyat planla" görevi kapanır."""
-    _require_roles(actor, SHIPMENT_ROLES, "Sevkiyatı yalnızca sevkiyat planlar.")
+    require_access(actor, SHIPMENTS, CHANGE, "Sevkiyat planlama yetkiniz yok.")
     order = _lock_order(order)
     _require_status(order, RESERVABLE_STATUSES, "order_not_shippable", "sevkiyat planlanamaz")
     shipment = Shipment(sales_order=order, **_shipment_fields(data))
@@ -786,7 +774,7 @@ def plan_shipment(
 def update_shipment(actor: User | None, shipment: Shipment, data: Mapping[str, Any]) -> Shipment:
     """Sevk edilmemiş sevkiyatın başlığını (tarih, araç, şoför, taşıyıcı, not) günceller. Sevk
     alanı yalnızca toplama başlamadan değişir."""
-    _require_roles(actor, SHIPMENT_ROLES, "Sevkiyatı yalnızca sevkiyat değiştirir.")
+    require_access(actor, SHIPMENTS, CHANGE, "Sevkiyatı değiştirme yetkiniz yok.")
     values = _shipment_fields(data)
     shipment = _lock_shipment(shipment)
     _require_shipment_status(shipment, OPEN_SHIPMENT_STATUSES, "document_locked", "değiştirilemez")
@@ -923,7 +911,7 @@ def pick_lot(
     quantity: Decimal | None = None,
     reason: str = "",
 ) -> list[ShipmentPick]:
-    """Okutulan lotu sevkiyata toplar (rol: depo) ve sevk alanına taşır.
+    """Okutulan lotu sevkiyata toplar (Toplama ve yükleme: Değiştirir) ve sevk alanına taşır.
 
     Lot serbest, SKT'si geçmemiş ve müşterinin asgari kalan raf ömrünü karşılamalıdır.
     `quantity` verilmezse satırın kalan miktarı (satıra bu lottan rezervasyon varsa en çok o
@@ -931,7 +919,7 @@ def pick_lot(
     rezervesiz stoktan gelir. Satırın başka lotlarda rezervasyonu varken rezervesiz lot okutmak
     gerekçe ister (`lot_not_reserved`); satır taahhüdünü aşan rezervasyon bırakılır. İlk okutma
     sevkiyatı "Toplanıyor" yapar. Kaynak lokasyon başına bir toplama kaydı döner."""
-    _require_roles(actor, PICK_ROLES, "Toplamayı yalnızca depo yapar.")
+    require_access(actor, PICKING, CHANGE, "Lot okutma yetkiniz yok.")
     actor = _actor(actor)
     shipment = _lock_shipment(shipment)
     _require_shipment_status(
@@ -1067,9 +1055,9 @@ def _lock_lots(lot_ids: Iterable[int]) -> None:
 
 @transaction.atomic
 def undo_pick(actor: User | None, pick: ShipmentPick, note: str = "") -> ShipmentPick:
-    """Yanlış okutmayı geri alır (rol: depo; toplama sürerken ya da yüklemeden sonra, sevkten
-    önce): lot geldiği yere döner. Yüklenmiş sevkiyatta durum Yüklendi kalır."""
-    _require_roles(actor, PICK_ROLES, "Toplamayı yalnızca depo geri alır.")
+    """Yanlış okutmayı geri alır (toplama sürerken ya da yüklemeden sonra, sevkten önce): lot
+    geldiği yere döner. Yüklenmiş sevkiyatta durum Yüklendi kalır."""
+    require_access(actor, PICKING, CHANGE, "Okutmayı geri alma yetkiniz yok.")
     shipment = _lock_shipment(pick.line.shipment)
     _require_shipment_status(
         shipment,
@@ -1130,9 +1118,9 @@ def _assert_picks_shippable(shipment: Shipment, picks: Sequence[ShipmentPick], h
 
 @transaction.atomic
 def mark_loaded(actor: User | None, shipment: Shipment, note: str = "") -> Shipment:
-    """Toplama bitti, araç yüklendi (rol: depo): `LOADED`. Olay `shipment.loaded` sevkiyata
+    """Toplama bitti, araç yüklendi: `LOADED`. Olay `shipment.loaded` sevkiyata
     "Sevki onayla / irsaliye kes" görevi açar. Planlanandan az toplanan satır eksik sevk edilir."""
-    _require_roles(actor, PICK_ROLES, "Yüklemeyi yalnızca depo onaylar.")
+    require_access(actor, PICKING, CHANGE, "Yüklemeyi tamamlama yetkiniz yok.")
     actor = _actor(actor)
     shipment = _lock_shipment(shipment)
     shipment_states.assert_can_transition(shipment.status, ShipmentStatus.LOADED)
@@ -1168,10 +1156,10 @@ def _update_order_shipping_status(actor: User | None, order: SalesOrder) -> None
 
 @transaction.atomic
 def dispatch_shipment(actor: User | None, shipment: Shipment, note: str = "") -> Shipment:
-    """Sevki onaylar (rol: sevkiyat): plaka ve şoför adı zorunlu; her toplanan lot için sevk
-    alanındaki rezervasyon kullanılır (`CONSUMED`) ve `SHIPMENT` hareketi yazılır. Sipariş
-    kısmen sevk edildi / sevk edildi olur. Olay `shipment.dispatched`."""
-    _require_roles(actor, SHIPMENT_ROLES, "Sevki yalnızca sevkiyat onaylar.")
+    """Sevki onaylar (Sevkiyatlar ve irsaliye: Onaylar): plaka ve şoför adı zorunlu; her toplanan
+    lot için sevk alanındaki rezervasyon kullanılır (`CONSUMED`) ve `SHIPMENT` hareketi yazılır.
+    Sipariş kısmen sevk edildi / sevk edildi olur. Olay `shipment.dispatched`."""
+    require_access(actor, SHIPMENTS, APPROVE, "Sevki onaylama yetkiniz yok.")
     actor = _actor(actor)
     shipment = _lock_shipment(shipment)
     shipment_states.assert_can_transition(shipment.status, ShipmentStatus.DISPATCHED)
@@ -1235,9 +1223,9 @@ def dispatch_shipment(actor: User | None, shipment: Shipment, note: str = "") ->
 
 @transaction.atomic
 def cancel_shipment(actor: User | None, shipment: Shipment, reason: str) -> Shipment:
-    """Sevk edilmemiş sevkiyatı iptal eder (rol: sevkiyat, gerekçe zorunlu); toplanan lotlar
+    """Sevk edilmemiş sevkiyatı iptal eder (gerekçe zorunlu); toplanan lotlar
     geldikleri yere döner ve satıra yeniden rezerve edilir."""
-    _require_roles(actor, SHIPMENT_ROLES, "Sevkiyatı yalnızca sevkiyat iptal eder.")
+    require_access(actor, SHIPMENTS, CHANGE, "Sevkiyatı iptal etme yetkiniz yok.")
     shipment = _lock_shipment(shipment)
     shipment_states.assert_can_transition(shipment.status, ShipmentStatus.CANCELLED)
     if not reason.strip():

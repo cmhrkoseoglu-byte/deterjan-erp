@@ -1085,7 +1085,8 @@ Kural 12'ye 1. adımda bir geçiş cümlesi eklenir ve 8. adımın commit'inde s
 - **Bordrosu olmayan ayın işçilik oranı notu** (5. adımdan önce; §8 madde 8). Personel
   maliyetinden açılan gider oranının notunda tutar yerine bordro numarası yazar; canlı
   başlangıcından önceki aylarda onaylı bordro olmadığından numara yoktur. Not o zaman ne yazsın
-  (ör. yalnız "Personel maliyetinden")?
+  (ör. yalnız "Personel maliyetinden")? **Cevaplandı (2026-11-13):** yalnız "Personel
+  maliyetinden" (DECISIONS).
 - **İrsaliyedeki şoför kimlik numarası** (10. adımdan önce): irsaliye PDF'inde tam numarayı
   kimlerin göreceği KVKK.md ile birlikte netleşir; belge mi düzeltilsin, ayrı bir hak mı olsun?
   Bugünkü durum size ayrıca sunulur.

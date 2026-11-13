@@ -1,7 +1,11 @@
+import re
+from collections.abc import Mapping
 from typing import Any
 
 from rest_framework import serializers
 
+from apps.core.permissions import has_access
+from apps.costing.access import PERSONNEL_COST
 from apps.costing.models import (
     CostRate,
     CostStage,
@@ -13,6 +17,21 @@ from apps.inventory.api.serializers import UserNameField
 from apps.masterdata.models import Material
 
 MATERIAL_TYPES = Material.Type.choices
+# Eski işçilik oranı notu tutar taşır: "Personel maliyeti Eylül 2026 (BR-…): 53.437,50 TL / 980,00
+# kg". Personel maliyeti: Görür'ü olmayana tutarsız kaynağı gösterilir (plan §5.6).
+OLD_LABOR_RATE_NOTE = re.compile(r"(Personel maliyeti [^:]*): \S+ TL / ")
+
+
+def labor_rate_note(note: str, context: Mapping[str, Any]) -> str:
+    """Oranın notu; eski işçilik notundaki tutar Personel maliyeti: Görür'ü olmayana (istek
+    yoksa da) gösterilmez."""
+    match = OLD_LABOR_RATE_NOTE.match(note or "")
+    if match is None:
+        return note
+    request = context.get("request")
+    if request is not None and has_access(request.user, PERSONNEL_COST):
+        return note
+    return match.group(1)
 
 
 class LotCostLineSerializer(serializers.ModelSerializer):
@@ -115,6 +134,11 @@ class CostRateSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at"]
         # Benzersizlik servis katmanında Türkçe mesajla denetlenir.
         validators: list = []
+
+    def to_representation(self, instance: Any) -> Any:
+        data = super().to_representation(instance)
+        data["note"] = labor_rate_note(data["note"], self.context)
+        return data
 
 
 class StandardCostSerializer(serializers.ModelSerializer):

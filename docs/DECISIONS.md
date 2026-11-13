@@ -2537,3 +2537,13 @@ değiştirme zorunlu, yalnızca admin):
 - **Kapsam dışı:** giriş-çıkış saati, kişiye ya da güne göre standart, toplu saat girişi, yarım gün
   ücretli izin.
 - **CLAUDE.md:** değişiklik gerekmedi.
+
+## 2026-11-13 — Kişiye özel yetkiler: bordrosu olmayan ayın işçilik oranı notu
+
+- **Soru (plan §12, 5. adımdan önce; §8 madde 8):** personel maliyetinden açılan yeni gider oranının
+  notunda tutar yerine bordro numarası yazar. Canlı başlangıcından önceki aylarda onaylı bordro
+  olmadığından numara yoktur; not o zaman ne yazsın?
+- **Karar (CUMHUR, 2026-11-13):** yalnız "Personel maliyetinden" yazar (ay ya da "bordro yok" eki
+  yok).
+- **Gerekçe:** not tutar içermemeli (Fiyatları görür'ü olmayan kişi de görebilir); kaynağı söylemek
+  yeter.

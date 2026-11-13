@@ -84,7 +84,11 @@ def test_buyer_approves_within_limit_and_not_above(buyer: User, manager: User) -
     assert "10.010,00 TL" in exc.value.message
     log = AuditLog.objects.filter(object_id=str(within.pk), action="status_change").last()
     assert log is not None
-    assert "tutar 10.000,00 TL" in log.note and "limit 10.000,00 TL" in log.note
+    # Tutar, kur ve limit notta değil alan satırlarında (plan §8 madde 7).
+    assert log.note == ""
+    assert log.changes["approval_total_try"] == [None, "10000.00"]
+    assert log.changes["approval_limit_try"] == [None, "10000.00"]
+    assert log.changes["exchange_rate"] == ["1.000000", "1.000000"]
 
 
 def test_foreign_currency_is_compared_in_try_at_order_rate(buyer: User, manager: User) -> None:

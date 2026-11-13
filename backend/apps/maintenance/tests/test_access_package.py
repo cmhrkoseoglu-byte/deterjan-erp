@@ -14,13 +14,16 @@ Satır olmayanlar (rolle kalır, iş verisi):
 - `models.ROLE_CHOICES` ve `MaintenancePage`'deki `ROLE_OPTIONS`: sorumlu birim seçenekleri.
 - Tank temizliği kaydında açılan iş emrinin tamamlanması (`record_cleaning` içinden
   `complete_work_order`): ardıl adım, plan §5.4 giriş noktası kuralıyla denetlenmez.
+
+5. adımda modül bölüm denetimine geçti: API, servis ve kayıt türü satırlarının `live` bağlantısı
+kaldırıldı (`services`'teki rol sabitleri yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt
+olarak tutar. Ön yüz sabitlerine bağlantı 8. adıma kadar kalır.
 """
 
 from dataclasses import replace
 
 from apps.core import access
 from apps.core.access import CHANGE
-from apps.core.roles import ALL_ROLES
 from apps.core.tests.access_helpers import (
     ANY_ROLE,
     SIGNED_IN,
@@ -32,7 +35,6 @@ from apps.core.tests.access_helpers import (
     read,
     row_errors,
 )
-from apps.maintenance import services
 from apps.maintenance.access import (
     ANY_UNIT,
     BREAKDOWNS,
@@ -46,7 +48,6 @@ from apps.maintenance.access import (
 )
 from apps.production.access import BATCHES
 
-SERVICES = "apps.maintenance.services"
 CONFIG = "frontend:src/modules/maintenance/config.ts"
 # READ_ROLES ve DOWNTIME_ROLES; layout/menu.ts MENU "maintenance" de aynı birimlerdir.
 UNITS = ("uretim", "dolum", "laboratuvar", "planlama", "yonetim")
@@ -67,118 +68,150 @@ ROWS = [
         "views.MaintenancePlanViewSet GET (READ_ROLES)",
         UNITS,
         read(PLANS),
-        live=f"{SERVICES}:READ_ROLES",
     ),
     Row(
         "views.MaintenancePlanViewSet create, update, activate, deactivate (PLAN_ROLES)",
         PLANNERS,
         level(PLANS, CHANGE),
-        live=f"{SERVICES}:PLAN_ROLES",
     ),
     Row(
         "views.WorkOrderViewSet GET (READ_ROLES)",
         UNITS,
         read(WORK_ORDERS),
-        live=f"{SERVICES}:READ_ROLES",
     ),
     Row(
         "views.WorkOrderViewSet.create elle iş emri (PLAN_ROLES)",
         PLANNERS,
         level(PLANS, CHANGE),
-        live=f"{SERVICES}:PLAN_ROLES",
     ),
     Row(
         "views.WorkOrderViewSet start, complete, cancel, parts (READ_ROLES)",
         UNITS,
         level(WORK_ORDERS, CHANGE),
-        live=f"{SERVICES}:READ_ROLES",
     ),
     Row("views.BreakdownView POST (HasRole(*ALL_ROLES))", ANY_ROLE, level(BREAKDOWNS, CHANGE)),
     Row(
         "views.CleaningView POST (READ_ROLES)",
         UNITS,
         level(CLEANINGS),
-        live=f"{SERVICES}:READ_ROLES",
     ),
     Row(
         "views.CleaningCheckView GET (READ_ROLES)",
         UNITS,
         EQUIPMENT_STATUS,
-        live=f"{SERVICES}:READ_ROLES",
     ),
     Row("views.DowntimeViewSet GET (HasRole(*ALL_ROLES))", ANY_ROLE, read(DOWNTIMES)),
     Row(
         "views.DowntimeViewSet create, end (DOWNTIME_ROLES)",
         UNITS,
         level(DOWNTIMES, CHANGE),
-        live=f"{SERVICES}:DOWNTIME_ROLES",
     ),
     Row(
         "views.DowntimeSummaryView GET (READ_ROLES)",
         UNITS,
         level(DOWNTIMES),
-        live=f"{SERVICES}:READ_ROLES",
     ),
     Row(
         "views.CalibrationStatusView GET (READ_ROLES)",
         UNITS,
         EQUIPMENT_STATUS,
-        live=f"{SERVICES}:READ_ROLES",
     ),
     Row(
         "views.ChangeoverRuleViewSet GET (READ_ROLES)",
         UNITS,
         read(UNCLEANED),
-        live=f"{SERVICES}:READ_ROLES",
     ),
     Row(
         "views.ChangeoverRuleViewSet create, activate, deactivate (CHANGEOVER_ROLES)",
         LAB,
         level(UNCLEANED, CHANGE),
-        live=f"{SERVICES}:CHANGEOVER_ROLES",
     ),
     Row(
         "views.MaintenanceSettingsView GET (READ_ROLES)",
         UNITS,
         MODULE_VIEW,
-        live=f"{SERVICES}:READ_ROLES",
     ),
     Row(
         "views.MaintenanceSettingsView PATCH (SETTINGS_ROLES)",
         MANAGEMENT,
         level(SETTINGS, CHANGE),
-        live=f"{SERVICES}:SETTINGS_ROLES",
+    ),
+    # Bugün `get_permissions` yalnız GET'i okuma sayar: HEAD, OPTIONS ve karşılanmayan metotlar (ör.
+    # planda silme, ayarlarda POST) yazma rolüyle denetlenir, sonra DRF 405 döner. Karşılanmayan
+    # yoldaki GET (ör. `plans/{pk}/activate/`) okuma rolüyle. İş emirlerinde yalnız `create` yazma
+    # rolündedir; HEAD, OPTIONS ve öteki metotlar okuma rollerindedir (READ_ROLES). Tek kurallı
+    # APIView'larda (arıza, temizlik, temizlik kontrolü, kalibrasyon, duruş özeti) her metot aynı
+    # kuraldadır.
+    Row(
+        "views.MaintenancePlanViewSet HEAD, OPTIONS, karşılanmayan metot (PLAN_ROLES)",
+        PLANNERS,
+        level(PLANS, CHANGE),
+    ),
+    Row(
+        "views.MaintenancePlanViewSet karşılanmayan yoldaki GET (READ_ROLES)",
+        UNITS,
+        read(PLANS),
+    ),
+    Row(
+        "views.WorkOrderViewSet HEAD, OPTIONS, karşılanmayan yoldaki GET (READ_ROLES)",
+        UNITS,
+        read(WORK_ORDERS),
+    ),
+    Row(
+        "views.WorkOrderViewSet karşılanmayan metot (READ_ROLES)",
+        UNITS,
+        level(WORK_ORDERS, CHANGE),
+    ),
+    Row(
+        "views.DowntimeViewSet HEAD, OPTIONS, karşılanmayan metot (DOWNTIME_ROLES)",
+        UNITS,
+        level(DOWNTIMES, CHANGE),
+    ),
+    Row(
+        "views.DowntimeViewSet karşılanmayan yoldaki GET (HasRole(*ALL_ROLES))",
+        ANY_ROLE,
+        read(DOWNTIMES),
+    ),
+    Row(
+        "views.ChangeoverRuleViewSet HEAD, OPTIONS, karşılanmayan metot (CHANGEOVER_ROLES)",
+        LAB,
+        level(UNCLEANED, CHANGE),
+    ),
+    Row(
+        "views.ChangeoverRuleViewSet karşılanmayan yoldaki GET (READ_ROLES)",
+        UNITS,
+        read(UNCLEANED),
+    ),
+    Row(
+        "views.MaintenanceSettingsView HEAD, OPTIONS, karşılanmayan metot (SETTINGS_ROLES)",
+        MANAGEMENT,
+        level(SETTINGS, CHANGE),
     ),
     # --- servis: apps/maintenance/services.py (_require_role) -----------------------------------
     Row(
         "services.update_settings (SETTINGS_ROLES)",
         MANAGEMENT,
         level(SETTINGS, CHANGE),
-        live=f"{SERVICES}:SETTINGS_ROLES",
     ),
     Row(
         "services.create_plan (PLAN_ROLES)",
         PLANNERS,
         level(PLANS, CHANGE),
-        live=f"{SERVICES}:PLAN_ROLES",
     ),
     Row(
         "services.update_plan (PLAN_ROLES)",
         PLANNERS,
         level(PLANS, CHANGE),
-        live=f"{SERVICES}:PLAN_ROLES",
     ),
     Row(
         "services.set_plan_active (PLAN_ROLES)",
         PLANNERS,
         level(PLANS, CHANGE),
-        live=f"{SERVICES}:PLAN_ROLES",
     ),
     Row(
         "services.create_work_order (PLAN_ROLES)",
         PLANNERS,
         level(PLANS, CHANGE),
-        live=f"{SERVICES}:PLAN_ROLES",
     ),
     Row(
         "services.report_breakdown (BREAKDOWN_ROLES = ALL_ROLES)",
@@ -200,32 +233,27 @@ ROWS = [
         "services.start_downtime (DOWNTIME_ROLES)",
         UNITS,
         level(DOWNTIMES, CHANGE),
-        live=f"{SERVICES}:DOWNTIME_ROLES",
     ),
     Row(
         "services.end_downtime (DOWNTIME_ROLES)",
         UNITS,
         level(DOWNTIMES, CHANGE),
-        live=f"{SERVICES}:DOWNTIME_ROLES",
     ),
     Row(
         "services.create_changeover_rule (CHANGEOVER_ROLES)",
         LAB,
         level(UNCLEANED, CHANGE),
-        live=f"{SERVICES}:CHANGEOVER_ROLES",
     ),
     Row(
         "services.set_changeover_active (CHANGEOVER_ROLES)",
         LAB,
         level(UNCLEANED, CHANGE),
-        live=f"{SERVICES}:CHANGEOVER_ROLES",
     ),
     # --- kayıt türü: apps/maintenance/apps.py (register_record_type) ---------------------------
     Row(
         "records maintenance.maintenanceworkorder (yorum, geçmiş, ek; READ_ROLES)",
         UNITS,
         read(WORK_ORDERS),
-        live=f"{SERVICES}:READ_ROLES",
     ),
     # --- ön yüz: menü ve rotalar ----------------------------------------------------------------
     Row("layout/menu.ts MENU maintenance", UNITS, MODULE_VIEW),
@@ -330,8 +358,3 @@ def test_roleless_day_one_change() -> None:
         assert row.roles == SIGNED_IN, row.source
         assert row_errors([row]), f"{row.source}: fark kalmadı; satırı ROWS'a taşıyın."
     assert_rows([replace(row, roles=ANY_ROLE) for row in ROLELESS_CHANGES])
-
-
-def test_all_roles_constants() -> None:
-    """`ANY_ROLE` satırları `live` taşıyamaz; bugünkü sabit burada sabitlenir."""
-    assert services.BREAKDOWN_ROLES == ALL_ROLES

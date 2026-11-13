@@ -8,11 +8,11 @@ class SalesConfig(AppConfig):
 
     def ready(self) -> None:
         from apps.core.records import register_record_type
-        from apps.sales.api.views import READ_ROLES
+        from apps.sales.access import ORDERS, PICKING, SHIPMENTS
 
-        # Yorum ve geçmiş: sipariş ve sevkiyatı ekranlarını açabilen roller okur.
-        register_record_type("sales.salesorder", roles=READ_ROLES)
-        register_record_type("sales.shipment", roles=READ_ROLES)
+        # Yorum ve geçmiş: sipariş ve sevkiyatı kendi ekranında okuyabilen okur (plan §5.8).
+        register_record_type("sales.salesorder", readers=(ORDERS,))
+        register_record_type("sales.shipment", readers=(SHIPMENTS, PICKING))
 
         # Belge numaraları: biçim Sistem > Kodlama sistematiği ayarından (core.coding).
         from apps.core.coding.registry import register_document_type

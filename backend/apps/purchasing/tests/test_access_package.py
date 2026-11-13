@@ -3,7 +3,8 @@
 Bugünkü her rol denetimi (API, servis, fiyat görünürlüğü, kayıt türü, ön yüz) planın §3.10
 tablosundaki yetkiye eşlenir; onay ve D-13 §5.4'teki gibi çevrilir. Kişiye özel ayar yokken eski
 ve yeni denetim, admin dışındaki 8 rolün bütün bileşimlerinde aynı kararı verir. `live=`
-satırları koddaki rol sabitine de bağlıdır.
+satırları koddaki rol sabitine de bağlıdır; 5. adımda backend sabitleri kalktı, satırlar
+dondurulmuş rol listeleriyle kalır (ön yüz sabitleri 8. adıma kadar `live=`).
 
 Satır olmayanlar:
 - `PurchasingPage` varsayılan sekme sırası (siparişler, teslimatlar, talepler) rol görünümüdür
@@ -26,18 +27,19 @@ from apps.purchasing.access import (
     SUGGESTIONS,
 )
 
-VIEWS = "apps.purchasing.api.views"
-SERVICES = "apps.purchasing.services"
 CONFIG = "frontend:src/modules/purchasing/config.ts"
 # layout/menu.ts MENU "purchasing" ve routes.tsx `satin-alma/:tab?` koruması.
 MENU_ROLES = ("satin_alma", "yonetim", "depo", "planlama", "uretim")
-ORDER_WRITERS = ("satin_alma", "yonetim")  # services.ORDER_ROLES
-ORDER_READERS = ("satin_alma", "yonetim", "depo")  # api/views.py ORDER_READ_ROLES
-APPROVERS = ("yonetim",)  # services.APPROVER_ROLES
-REQUESTERS = ("planlama", "depo", "uretim", "satin_alma", "yonetim")  # services.REQUEST_ROLES
-RECEIVERS = ("depo", "satin_alma", "yonetim")  # services.RECEIPT_ROLES
-SUGGESTION_READERS = ("satin_alma", "yonetim", "planlama")  # api/views.py SUGGESTION_ROLES
-PERFORMANCE_READERS = ("satin_alma", "yonetim")  # api/views.py PERFORMANCE_ROLES
+# 4. adım sonundaki backend sabitleri (5. adımda kaldırıldı): services.ORDER_ROLES,
+# api/views.py ORDER_READ_ROLES, services.APPROVER_ROLES, REQUEST_ROLES, RECEIPT_ROLES,
+# api/views.py SUGGESTION_ROLES ve PERFORMANCE_ROLES.
+ORDER_WRITERS = ("satin_alma", "yonetim")
+ORDER_READERS = ("satin_alma", "yonetim", "depo")
+APPROVERS = ("yonetim",)
+REQUESTERS = ("planlama", "depo", "uretim", "satin_alma", "yonetim")
+RECEIVERS = ("depo", "satin_alma", "yonetim")
+SUGGESTION_READERS = ("satin_alma", "yonetim", "planlama")
+PERFORMANCE_READERS = ("satin_alma", "yonetim")
 
 # Modül sayfaları ve menü: Görür'ü olan bölümlerin birleşimi (plan §2, §5.9).
 MODULE_VIEW = any_of(
@@ -63,100 +65,101 @@ ROWS = [
         "views.PurchaseRequestViewSet okuma (list, retrieve)",
         REQUESTERS,
         level(REQUESTS, VIEW),
-        live=f"{SERVICES}:REQUEST_ROLES",
     ),
     Row(
         "views.PurchaseRequestViewSet.create, update/partial_update, cancel",
         REQUESTERS,
         level(REQUESTS, CHANGE),
-        live=f"{SERVICES}:REQUEST_ROLES",
     ),
     # --- API: PurchaseOrderViewSet.get_permissions -------------------------------------------
     Row(
         "views.PurchaseOrderViewSet okuma (list, retrieve)",
         ORDER_READERS,
         read(ORDERS),
-        live=f"{VIEWS}:ORDER_READ_ROLES",
     ),
-    Row("views.PurchaseOrderViewSet.pdf", ORDER_WRITERS, ORDER_PDF, live=f"{SERVICES}:ORDER_ROLES"),
+    Row("views.PurchaseOrderViewSet.pdf", ORDER_WRITERS, ORDER_PDF),
     Row(
         "views.PurchaseOrderViewSet.create",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "views.PurchaseOrderViewSet.update/partial_update",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "views.PurchaseOrderViewSet.submit (yönetim onayına gönder)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "views.PurchaseOrderViewSet.approve",
         ORDER_WRITERS,
         APPROVES,
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "views.PurchaseOrderViewSet.return_to_draft",
         ORDER_WRITERS,
         APPROVES,
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "views.PurchaseOrderViewSet.send (tedarikçiye gönder)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "views.PurchaseOrderViewSet.cancel",
         ORDER_WRITERS,
         ORDER_CANCEL,
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "views.PurchaseOrderViewSet.close (kalanı kapat)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "views.PurchaseOrderViewSet.receive (siparişten mal kabul)",
         RECEIVERS,
         level(DELIVERIES, CHANGE),
-        live=f"{SERVICES}:RECEIPT_ROLES",
+    ),
+    # Bugün yalnız GET okumadır: HEAD ve OPTIONS (PDF ve mal kabul yolunda da) ile karşılanmayan
+    # metotlar ORDER_ROLES'u ister; karşılanmayan yoldaki GET (ör. approve/) ORDER_READ_ROLES'u.
+    Row(
+        "views.PurchaseOrderViewSet HEAD, OPTIONS ve karşılanmayan metot (ORDER_ROLES)",
+        ORDER_WRITERS,
+        level(ORDERS, CHANGE),
+    ),
+    Row(
+        "views.PurchaseOrderViewSet karşılanmayan yoldaki GET (ORDER_READ_ROLES)",
+        ORDER_READERS,
+        read(ORDERS),
+    ),
+    Row(
+        "views.PurchaseRequestViewSet karşılanmayan metot (REQUEST_ROLES)",
+        REQUESTERS,
+        level(REQUESTS, CHANGE),
     ),
     # --- API: okuma uç noktaları ve ayarlar ----------------------------------------------------
     Row(
         "views.ExpectedDeliveriesView",
         ORDER_READERS,
         level(DELIVERIES, VIEW),
-        live=f"{VIEWS}:ORDER_READ_ROLES",
     ),
     Row(
         "views.ReceiptLinksView (mal kabulün sipariş bağlantıları)",
         ORDER_READERS,
         level(DELIVERIES, VIEW),
-        live=f"{VIEWS}:ORDER_READ_ROLES",
     ),
     Row(
         "views.SuggestionsView",
         SUGGESTION_READERS,
         level(SUGGESTIONS, VIEW),
-        live=f"{VIEWS}:SUGGESTION_ROLES",
     ),
     Row(
         "views.SupplierPerformanceView",
         PERFORMANCE_READERS,
         level(PERFORMANCE, VIEW),
-        live=f"{VIEWS}:PERFORMANCE_ROLES",
     ),
     # Ayar değerlerini sipariş yazan kişi de okur (plan §3.10, sekmeyi görmez).
     Row(
@@ -168,58 +171,69 @@ ROWS = [
         "views.PurchasingSettingsView PATCH (APPROVER_ROLES)",
         APPROVERS,
         level(SETTINGS, CHANGE),
-        live=f"{SERVICES}:APPROVER_ROLES",
+    ),
+    Row(
+        "views.PurchasingSettingsView HEAD, OPTIONS ve karşılanmayan metot (APPROVER_ROLES)",
+        APPROVERS,
+        level(SETTINGS, CHANGE),
+    ),
+    Row(
+        "views.ExpectedDeliveriesView, ReceiptLinksView karşılanmayan metot (ORDER_READ_ROLES)",
+        ORDER_READERS,
+        level(DELIVERIES, VIEW),
+    ),
+    Row(
+        "views.SuggestionsView karşılanmayan metot (SUGGESTION_ROLES)",
+        SUGGESTION_READERS,
+        level(SUGGESTIONS, VIEW),
+    ),
+    Row(
+        "views.SupplierPerformanceView karşılanmayan metot (PERFORMANCE_ROLES)",
+        PERFORMANCE_READERS,
+        level(PERFORMANCE, VIEW),
     ),
     # --- servis: apps/purchasing/services.py ---------------------------------------------------
     Row(
         "services.update_settings (APPROVER_ROLES)",
         APPROVERS,
         level(SETTINGS, CHANGE),
-        live=f"{SERVICES}:APPROVER_ROLES",
     ),
     Row(
         "services.create_request elle talep (REQUEST_ROLES)",
         REQUESTERS,
         level(REQUESTS, CHANGE),
-        live=f"{SERVICES}:REQUEST_ROLES",
     ),
     Row(
         "services._can_edit_request başkasının talebi: update_request, cancel_request "
         "(ORDER_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.create_order (ORDER_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.update_order (ORDER_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.submit_for_approval (ORDER_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.approve_order ilk denetim (ORDER_ROLES)",
         ORDER_WRITERS,
         APPROVES,
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     # D-13: yönetim her tutarı, satın alma yalnız limit girilmiş ve tutar limit içindeyse onaylar.
     Row(
         "services.can_approve limit üstü ya da limit girilmemiş (APPROVER_ROLES)",
         APPROVERS,
         level(OVER_LIMIT, APPROVE),
-        live=f"{SERVICES}:APPROVER_ROLES",
     ),
     Row(
         "services.can_approve limit içinde (APPROVER_ROLES ya da SATIN_ALMA)",
@@ -230,56 +244,47 @@ ROWS = [
         "services.return_to_draft (APPROVER_ROLES)",
         APPROVERS,
         level(OVER_LIMIT, APPROVE),
-        live=f"{SERVICES}:APPROVER_ROLES",
     ),
     Row(
         "services.mark_sent (ORDER_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.cancel_order taslak ya da onay bekleyen sipariş (ORDER_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.cancel_order onaylı ya da gönderilmiş sipariş (ORDER_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, APPROVE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.close_order (ORDER_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "services.create_receipt_from_order (RECEIPT_ROLES)",
         RECEIVERS,
         level(DELIVERIES, CHANGE),
-        live=f"{SERVICES}:RECEIPT_ROLES",
     ),
     # --- fiyat görünürlüğü ve kayıt türü -------------------------------------------------------
     Row(
         "api/serializers.py can_see_prices: PriceHidingMixin fiyat alanları (ORDER_ROLES)",
         ORDER_WRITERS,
         SEES_PRICES,
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "apps.py price_fields: geçmişte gizli fiyat alanları (ORDER_ROLES)",
         ORDER_WRITERS,
         SEES_PRICES,
-        live=f"{SERVICES}:ORDER_ROLES",
     ),
     Row(
         "records purchasing.purchaseorder (yorum, geçmiş, ek; ORDER_READ_ROLES)",
         ORDER_READERS,
         read(ORDERS),
-        live=f"{VIEWS}:ORDER_READ_ROLES",
     ),
     # --- ön yüz: menü, rotalar ve arama -------------------------------------------------------
     Row("layout/menu.ts MENU purchasing", MENU_ROLES, MODULE_VIEW),

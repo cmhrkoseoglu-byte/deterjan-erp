@@ -1833,7 +1833,7 @@ def carry_snapshot(row: PayrollRow) -> dict[str, Any]:
 
 
 def item_snapshot(item: PayrollItem) -> dict[str, Any]:
-    """Onayda saklanan kalem (açıklama dahil; yalnızca yönetim ve admin görür)."""
+    """Onayda saklanan kalem (açıklama dahil; Bordro: Görür ile görülür)."""
     return {
         "id": item.pk,
         "kind": item.kind,

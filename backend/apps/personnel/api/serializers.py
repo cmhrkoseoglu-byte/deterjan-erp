@@ -181,7 +181,7 @@ class DocumentRemoveSerializer(serializers.Serializer):
 
 
 class EmployeeHistorySerializer(AuditLogSerializer):
-    """Kartın değişiklik geçmişi (yalnızca admin ve yönetim; IP adresi gösterilmez)."""
+    """Kartın değişiklik geçmişi (Personel kartları: Görür; IP adresi gösterilmez)."""
 
     action_label = serializers.CharField(source="get_action_display", read_only=True)
 

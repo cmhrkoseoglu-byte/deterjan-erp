@@ -23,13 +23,20 @@ APPS_DIR = Path(__file__).resolve().parent.parent
 # Yetki denetimine geçmiş modüller (her adım kendi modüllerini ekler).
 ENFORCED_APPS: frozenset[str] = frozenset(
     {
+        "costing",
         "filling",
+        "golive",
+        "hse",
         "inventory",
+        "maintenance",
         "masterdata",
+        "personnel",
         "production",
+        "purchasing",
         "quality",
         "recipes",
         "returns",
+        "sales",
         "traceability",
     }
 )

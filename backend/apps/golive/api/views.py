@@ -1,9 +1,12 @@
 """Canlıya geçiş API'si (Faz 5, Adım 5.6).
 
-- Hazırlık listesi ve canlı başlangıç tarihi: admin, yönetim, planlama ve depo görür; tarihi
-  admin ve yönetim girer.
-- Stok karşılaştırması: depo ve yönetim açar; planlama da görür.
-- Sorun bildirimi: herkes açar; kişi kendi bildirimlerini, admin hepsini görür.
+- Hazırlık listesi: Hazırlık listesi: Görür.
+- Canlı başlangıç tarihi: okuma Canlıya geçiş ayarları: Görür, tarih girme Değiştirir.
+- Stok karşılaştırması: okuma Stok karşılaştırma: Görür, yeni karşılaştırma Değiştirir.
+- Sorun bildirimi: giriş yapan herkes açar; kişi kendi bildirimlerini, admin hepsini görür
+  (Sorun bildirimleri listesi; plan §4).
+
+Yetki bölümleri `apps.golive.access`'tedir (docs/plan/kisi-yetkileri.md §3.16).
 """
 
 from typing import Any
@@ -16,22 +19,19 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import HasRole
-from apps.core.roles import DEPO, PLANLAMA, YONETIM
+from apps.core.access import CHANGE
+from apps.core.permissions import AccessMixin, HasAccess, SignedIn
 from apps.golive import exports, selectors, services
+from apps.golive.access import COMPARISONS, READINESS, SETTINGS
 from apps.golive.api import serializers as s
 from apps.golive.models import ProblemReport, StockComparison
 from apps.inventory import services as inventory
 from apps.masterdata.importers import ImportHasErrors
 
-READ_ROLES = (YONETIM, PLANLAMA, DEPO)
-GO_LIVE_ROLES = (YONETIM,)
-COMPARISON_WRITE_ROLES = (DEPO, YONETIM)
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
@@ -44,19 +44,22 @@ def _xlsx(content: bytes, filename: str) -> HttpResponse:
 class ReadinessView(APIView):
     """Canlıya geçiş hazırlık kontrol listesi."""
 
-    permission_classes = [HasRole(*READ_ROLES)]
+    permission_classes = [HasAccess(READINESS)]
 
     @extend_schema(responses=s.CheckSerializer(many=True))
     def get(self, request: Request) -> Response:
         return Response(s.CheckSerializer(selectors.readiness(), many=True).data)
 
 
-class GoLiveView(APIView):
-    """Canlı başlangıç tarihi: okuma hazırlık rollerine, değiştirme yönetim ve admin'e."""
+class GoLiveView(AccessMixin, APIView):
+    """Canlı başlangıç tarihi: okuma (yalnız GET) Canlıya geçiş ayarları: Görür; HEAD, OPTIONS,
+    kaydetme ve karşılanmayan metotlar Değiştirir ister (bugünkü gibi)."""
 
-    def get_permissions(self) -> list[BasePermission]:
-        roles = READ_ROLES if self.request.method == "GET" else GO_LIVE_ROLES
-        return [HasRole(*roles)()]
+    read_access = HasAccess(SETTINGS)
+    read_methods = frozenset({"GET"})
+    other_safe_access = HasAccess(SETTINGS, CHANGE)
+    unhandled_access = HasAccess(SETTINGS, CHANGE)
+    action_access = {"put": HasAccess(SETTINGS, CHANGE)}
 
     def _body(self) -> dict[str, Any]:
         settings = inventory.get_inventory_settings()
@@ -78,20 +81,21 @@ class GoLiveView(APIView):
 
 
 class StockComparisonViewSet(
-    mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+    AccessMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
 ):
-    """Paralel çalışma stok karşılaştırmaları (`SK-`). Kayıtlar değişmez ve silinmez."""
+    """Paralel çalışma stok karşılaştırmaları (`SK-`). Kayıtlar değişmez ve silinmez. Yeni
+    karşılaştırma Stok karşılaştırma: Değiştirir, öteki her şey (karşılanmayan metotlar dahil)
+    Görür ister."""
+
+    read_access = HasAccess(COMPARISONS)
+    unhandled_access = HasAccess(COMPARISONS)
+    action_access = {"create": HasAccess(COMPARISONS, CHANGE)}
 
     queryset = StockComparison.objects.select_related("created_by")
     serializer_class = s.StockComparisonSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filterset_fields = ["level", "as_of_date"]
     ordering = ["-created_at", "-id"]
-
-    def get_permissions(self) -> list[BasePermission]:
-        if self.action == "create":
-            return [HasRole(*COMPARISON_WRITE_ROLES)()]
-        return [HasRole(*READ_ROLES)()]
 
     @extend_schema(
         request={"multipart/form-data": s.StockComparisonCreateSerializer},
@@ -170,7 +174,7 @@ class ProblemReportViewSet(
     """ "Sorun bildir": herkes açar; kişi kendi bildirimlerini, admin hepsini görür."""
 
     serializer_class = s.ProblemReportSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SignedIn("sorun bildirmek ve kişinin kendi bildirdikleri herkese açık")]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     ordering = ["-created_at", "-id"]
 

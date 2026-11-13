@@ -199,12 +199,15 @@ def transition_status[D: DocumentModel](
     machine: StateMachine,
     note: str = "",
     event_payload: dict[str, Any] | None = None,
+    changes: dict[str, Any] | None = None,
 ) -> D:
     """Belgeyi durum makinesine göre yeni duruma geçirir.
 
     İzinsiz geçişte `BusinessRuleError("invalid_transition")`. Başarılı geçişte denetim kaydı
     (`status_change`) yazılır ve commit sonrası `<makine_adı>.<yeni_durum>` olayı yayınlanır.
     `event_payload` olayın standart alanlarına eklenir (ör. mal kabulde oluşan lotlar).
+    `changes` aynı denetim kaydına eklenen alan satırlarıdır (`{alan: [eski, yeni]}`; ör. satın
+    alma onayında tutar, kur ve limit, docs/plan/kisi-yetkileri.md §8 madde 7).
     İptal için `cancel_document` kullanılır.
     """
     if to_status == CANCELLED:
@@ -217,6 +220,7 @@ def transition_status[D: DocumentModel](
         note=note,
         action=AuditLog.Action.STATUS_CHANGE,
         event_payload=event_payload,
+        changes=changes,
     )
 
 
@@ -252,6 +256,7 @@ def _apply_transition[D: DocumentModel](
     action: str,
     extra: dict[str, Any] | None = None,
     event_payload: dict[str, Any] | None = None,
+    changes: dict[str, Any] | None = None,
 ) -> D:
     actor = _real_actor(actor)
     extra = extra or {}
@@ -265,10 +270,11 @@ def _apply_transition[D: DocumentModel](
         for name, value in extra.items():
             setattr(instance, name, value)
         instance.save(update_fields=["status", "updated_by", "updated_at", *extra])
-        changes: dict[str, Any] = {"status": [from_status, to_status]}
+        logged: dict[str, Any] = {"status": [from_status, to_status]}
         if "cancel_reason" in extra:
-            changes["cancel_reason"] = [current.cancel_reason, extra["cancel_reason"]]
-        log_change(actor, instance, action, changes, note)
+            logged["cancel_reason"] = [current.cancel_reason, extra["cancel_reason"]]
+        logged.update(changes or {})
+        log_change(actor, instance, action, logged, note)
         _remember_state(instance)
         events.publish(
             machine.event_name(to_status),

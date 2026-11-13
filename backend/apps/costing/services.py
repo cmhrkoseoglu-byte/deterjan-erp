@@ -28,17 +28,16 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from django.db.models import Max, Sum
 from django.utils import timezone
 
+from apps.core.access import CHANGE
 from apps.core.exceptions import BusinessRuleError
-from apps.core.formatting import format_money
 from apps.core.models import User
-from apps.core.permissions import user_has_role
-from apps.core.roles import YONETIM
+from apps.core.permissions import require_access
 from apps.core.services import save_with_audit
+from apps.costing.access import PERSONNEL_COST, RATES
 from apps.costing.models import (
     CostRate,
     CostStage,
@@ -78,8 +77,9 @@ OVERHEAD_CATEGORIES = tuple(RATE_CATEGORY.values())
 ESTIMATED_INBOUND_TYPES = (Movement.Type.RECEIPT, Movement.Type.OPENING, Movement.Type.RETURN)
 
 RATE_FIELDS = ("stage", "kind", "rate_per_kg", "valid_from", "note")
-# Personel maliyeti kişisel veridir: yalnızca yönetim (ve admin) görür ve yazar.
-PERSONNEL_COST_ROLES = (YONETIM,)
+# Personel maliyetinden açılan işçilik oranının notu: tutar yazılmaz, onaylı bordro varsa
+# numarası eklenir (plan §5.6, §8 madde 8; docs/DECISIONS.md 2026-11-13).
+LABOR_RATE_NOTE = "Personel maliyetinden"
 STANDARD_COST_FIELDS = ("material", "unit_cost", "note", "is_active")
 
 
@@ -630,8 +630,9 @@ def _validate_rate(rate: CostRate) -> None:
 
 @transaction.atomic
 def create_rate(actor: User | None, data: Mapping[str, Any]) -> CostRate:
-    """Gider oranı ekler (Karar D-15, rol: yonetim). Oran değişince eskisi silinmez; yeni tarihle
-    yeni oran girilir. Hesaplanmış lot maliyetleri değişmez."""
+    """Gider oranı ekler (Karar D-15; yetkiyi API denetler: Gider oranları: Değiştirir). Oran
+    değişince eskisi silinmez; yeni tarihle yeni oran girilir. Hesaplanmış lot maliyetleri
+    değişmez."""
     rate = CostRate(**_pick(data, RATE_FIELDS))
     _validate_rate(rate)
     return save_with_audit(rate, actor)
@@ -660,7 +661,8 @@ def _validate_standard_cost(cost: StandardCost) -> None:
 
 @transaction.atomic
 def create_standard_cost(actor: User | None, data: Mapping[str, Any]) -> StandardCost:
-    """Malzemeye standart birim maliyet (TL / temel birim) girer (rol: yonetim)."""
+    """Malzemeye standart birim maliyet (TL / temel birim) girer (yetkiyi API denetler: Gider
+    oranları ve standart maliyetler: Değiştirir)."""
     cost = StandardCost(**_pick(data, STANDARD_COST_FIELDS))
     _validate_standard_cost(cost)
     return save_with_audit(cost, actor)
@@ -683,11 +685,6 @@ def update_standard_cost(
 # --- personel maliyeti (docs/DECISIONS.md "Personel maliyeti") ----------------------------------
 
 
-def _require_personnel_cost_role(actor: User | None) -> None:
-    if not user_has_role(actor, PERSONNEL_COST_ROLES):
-        raise PermissionDenied("Personel maliyetini yalnızca yönetim ve sistem yöneticisi görür.")
-
-
 def _clean_text(value: Any) -> str:
     return " ".join(str(value or "").split())
 
@@ -695,10 +692,13 @@ def _clean_text(value: Any) -> str:
 @transaction.atomic
 def set_department_cost_center(actor: User, department: str, stage: str) -> DepartmentCostCenter:
     """Personel biriminin maliyet aşamasını yazar: PRODUCTION (bulk), FILLING (mamul) ya da boş
-    (genel gider). Birim adı büyük/küçük harf farkı gözetmeden eşleşir."""
+    (genel gider). Birim adı büyük/küçük harf farkı gözetmeden eşleşir. Personel maliyeti:
+    Değiştirir ister."""
     from apps.personnel.selectors import fold
 
-    _require_personnel_cost_role(actor)
+    require_access(
+        actor, PERSONNEL_COST, CHANGE, "Birimlerin maliyet aşamasını değiştirme yetkiniz yok."
+    )
     name = _clean_text(department)[:64]
     if not name:
         raise BusinessRuleError("department_required", "Birim girilmelidir.")
@@ -725,12 +725,16 @@ def add_labor_rate_from_personnel_cost(
 ) -> CostRate:
     """Ayın gerçekleşen personel maliyetinden (aşamaya bağlı birimlerin toplam maliyeti ÷ o ay
     üretilen kg) yeni işçilik oranı açar. Yalnızca puantajı onaylı ayda; Ekim 2026 ve sonrasında
-    bordrosu da onaylı olmalı (oranın notuna BR numarası yazılır; docs/DECISIONS.md "4. adım
-    kararları"). Oran sunucuda yeniden hesaplanır. Eski oranlar ve hesaplanmış lot maliyetleri
-    değişmez; aynı tarihte oran varsa reddedilir (`duplicate_rate`)."""
+    bordrosu da onaylı olmalı. Oranın notu tutar taşımaz: "Personel maliyetinden", onaylı bordro
+    varsa numarasıyla (plan §8 madde 8; docs/DECISIONS.md 2026-11-13). Oran sunucuda yeniden
+    hesaplanır. Eski oranlar ve hesaplanmış lot maliyetleri değişmez; aynı tarihte oran varsa
+    reddedilir (`duplicate_rate`). Personel maliyeti: Değiştirir ve Gider oranları: Değiştirir
+    ister (plan §3.11)."""
     from apps.costing.selectors import personnel_cost_report
 
-    _require_personnel_cost_role(actor)
+    message = "Personel maliyetinden işçilik oranı ekleme yetkiniz yok."
+    require_access(actor, PERSONNEL_COST, CHANGE, message)
+    require_access(actor, RATES, CHANGE, message)
     if stage not in CostStage.values:
         raise BusinessRuleError("invalid_stage", "Geçersiz aşama.")
     report = personnel_cost_report(year, month)
@@ -752,10 +756,8 @@ def add_labor_rate_from_personnel_cost(
             f"{report.label} için bu aşamada personel maliyeti ya da üretilen kg yok; oran "
             "hesaplanamaz.",
         )
-    source = f"{report.label} ({report.payroll_number})" if report.payroll_number else report.label
     note = (
-        f"Personel maliyeti {source}: {format_money(summary.cost)} TL / "
-        f"{format_money(summary.kg)} kg"
+        f"{LABOR_RATE_NOTE} ({report.payroll_number})" if report.payroll_number else LABOR_RATE_NOTE
     )
     return create_rate(
         actor,
