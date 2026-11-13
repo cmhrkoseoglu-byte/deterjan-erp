@@ -1,21 +1,45 @@
-"""Rol bazlı API izinleri.
+"""API ve servis izinleri.
 
-Kullanım:
+Rol bazlı (bugünkü):
 
     class StockView(APIView):
         permission_classes = [HasRole("depo", "planlama")]
 
-`admin` rolündeki kullanıcılar ve superuser'lar rol korumalı her uç noktaya erişir.
-Giriş yapılmamışsa 401, rol yetkisi yoksa 403 döner.
+Bölüm ve düzey bazlı (docs/plan/kisi-yetkileri.md §5.4; modüller adım adım geçer):
+
+    class ProductionOrderViewSet(AccessMixin, viewsets.ModelViewSet):
+        read_access = ReadRule(ORDERS, PREP, BATCHES)
+        action_access = {"create": HasAccess(ORDERS, CHANGE), "approve": HasAccess(ORDERS, APPROVE)}
+
+    # services.py
+    require_access(actor, ORDERS, APPROVE, "Üretim emrini onaylama yetkiniz yok.")
+
+`admin` rolündeki kullanıcılar ve superuser'lar her uç noktaya erişir. Giriş yapılmamışsa 401,
+yetki yoksa 403 döner; 403 yanıtı bölüm denetiminde eksik yetkiyi `required` listesinde söyler.
 """
 
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, ClassVar
 
-from rest_framework.permissions import BasePermission
+from django.core.exceptions import PermissionDenied
+from rest_framework.permissions import (
+    SAFE_METHODS,
+    BasePermission,
+    OperandHolder,
+    SingleOperandHolder,
+)
 from rest_framework.request import Request
 
+from apps.core import access
+from apps.core.access import READ, VIEW, ReadScope, SectionRef
 from apps.core.models import User
 from apps.core.roles import ALL_ROLES
+
+DEFAULT_MESSAGE = "Bu işlem için yetkiniz yok."
+REQUIRED_ATTR = "_access_required"
+
+# DRF izin sınıfı ya da `A | B`, `A & B`, `~A` birleşimi.
+PermissionClass = type[BasePermission] | OperandHolder | SingleOperandHolder
 
 
 def user_has_role(user: Any, roles: tuple[str, ...]) -> bool:
@@ -34,7 +58,7 @@ def HasRole(*roles: str) -> type[BasePermission]:  # noqa: N802 - sınıf gibi k
         raise ValueError("En az bir rol verilmelidir.")
 
     class _HasRole(BasePermission):
-        message = "Bu işlem için yetkiniz yok."
+        message = DEFAULT_MESSAGE
         required_roles = roles
 
         def has_permission(self, request: Request, view: Any) -> bool:
@@ -42,3 +66,242 @@ def HasRole(*roles: str) -> type[BasePermission]:  # noqa: N802 - sınıf gibi k
 
     _HasRole.__name__ = _HasRole.__qualname__ = f"HasRole({', '.join(roles)})"
     return _HasRole
+
+
+# --- bölüm ve düzey bazlı yetki -------------------------------------------------------------------
+
+
+def _active_user(user: Any) -> User | None:
+    if not isinstance(user, User) or not user.is_authenticated or not user.is_active:
+        return None
+    return user
+
+
+def has_access(user: Any, section: SectionRef, level: str = VIEW) -> bool:
+    """Kullanıcı aktif, giriş yapmış ve bölümün bu düzeyine sahip mi (admin her zaman)?"""
+    active = _active_user(user)
+    return active is not None and active.access.allows(section, level)
+
+
+def can_read(user: Any, *sections: SectionRef) -> bool:
+    """Bölümlerden birinin kayıtlarını okuyabilir mi (Görür ya da okuma kapsamı)?"""
+    active = _active_user(user)
+    return active is not None and active.access.can_read(*sections)
+
+
+class MissingAccess(PermissionDenied):
+    """Servis denetiminde eksik yetki. API 403 döner; `required` eksik yetkiyi söyler."""
+
+    def __init__(self, message: str, required: tuple[tuple[str, str], ...]) -> None:
+        super().__init__(message)
+        self.required = required
+
+
+def require_access(
+    actor: Any, section: SectionRef, level: str = VIEW, message: str | None = None
+) -> None:
+    """Servis denetimi: yetki yoksa `MissingAccess` fırlatır. Mesaj rol adı değil işi söyler
+    (ör. "Üretim emrini onaylama yetkiniz yok.")."""
+    if not has_access(actor, section, level):
+        target = access.section(section)
+        raise MissingAccess(message or DEFAULT_MESSAGE, ((target.key, level),))
+
+
+def sees_fields(user: Any, name: str) -> bool:
+    """Alan grubunu (ör. `"masterdata.supplier.contact"`) tam görür mü? Göremeyene sade kart
+    döner (plan §3.1, §5.6)."""
+    active = _active_user(user)
+    return active is not None and active.access.sees_fields(name)
+
+
+def require_admin(actor: Any, message: str) -> None:
+    """Bölümü olmayan, yalnız sistem yöneticisinin işi (ör. GS1 ayarları): değilse 403."""
+    active = _active_user(actor)
+    if active is None or not active.is_admin:
+        raise PermissionDenied(message)
+
+
+def _note_required(request: Request, allowed: bool, required: tuple[tuple[str, str], ...]) -> None:
+    """İzin kararını isteğe yazar; hata işleyici reddedilen isteğin 403 yanıtına eksik yetkiyi
+    ekler. Geçen izin listeyi temizler: `A | B`'de A reddedip B geçerse istek izinlidir."""
+    if allowed:
+        setattr(request, REQUIRED_ATTR, [])
+        return
+    noted: list[tuple[str, str]] = getattr(request, REQUIRED_ATTR, None) or []
+    noted.extend(item for item in required if item not in noted)
+    setattr(request, REQUIRED_ATTR, noted)
+
+
+class AccessPermission(BasePermission):
+    """Bölüm denetimi yapan izin sınıflarının ortak atası (sistem denetimi bunu tanır)."""
+
+    message = DEFAULT_MESSAGE
+    required_access: ClassVar[tuple[tuple[str, str], ...]] = ()
+
+
+def HasAccess(section: SectionRef, level: str = VIEW) -> type[BasePermission]:  # noqa: N802
+    """Bölümün bu düzeyine sahip kullanıcılara izin veren DRF izin sınıfı üretir."""
+    target = access.section(section)
+    if level not in target.levels:
+        raise ValueError(f"{target.key}: düzey bölümde yok ({level}).")
+    required = ((target.key, level),)
+
+    class _HasAccess(AccessPermission):
+        required_access = required
+
+        def has_permission(self, request: Request, view: Any) -> bool:
+            allowed = has_access(request.user, target, level)
+            if _active_user(request.user) is not None:
+                _note_required(request, allowed, required)
+            return allowed
+
+    _HasAccess.__name__ = _HasAccess.__qualname__ = f"HasAccess({target.key}, {level})"
+    return _HasAccess
+
+
+def ReadRule(*sections: SectionRef) -> type[BasePermission]:  # noqa: N802
+    """Okuma izni: bölümlerden herhangi birinde okuma yeter (ör. emir okuması Üretim emirleri,
+    Malzeme hazırlama ya da Şarj ve tartım ile)."""
+    if not sections:
+        raise ValueError("En az bir bölüm verilmelidir.")
+    targets = tuple(access.section(item) for item in sections)
+    # Eksik yetki ipucu verilebilecek yetkiyi söyler: bölümde Görür, açık okumalı bölümde ayrıca
+    # modülün "Açık kayıtlar" satırı.
+    hints: list[tuple[str, str]] = []
+    for target in targets:
+        hints.append((target.key, VIEW))
+        records = access.open_records_section(target.module)
+        if target.read is ReadScope.OPEN and records is not None:
+            hints.append((records.key, READ))
+    required = tuple(dict.fromkeys(hints))
+
+    class _ReadRule(AccessPermission):
+        required_access = required
+
+        def has_permission(self, request: Request, view: Any) -> bool:
+            allowed = can_read(request.user, *targets)
+            if _active_user(request.user) is not None:
+                _note_required(request, allowed, required)
+            return allowed
+
+    names = ", ".join(target.key for target in targets)
+    _ReadRule.__name__ = _ReadRule.__qualname__ = f"ReadRule({names})"
+    return _ReadRule
+
+
+def SignedIn(reason: str) -> type[BasePermission]:  # noqa: N802
+    """Giriş yapan herkese açık uç noktanın açık işareti (bugünkü `IsAuthenticated` ile aynı).
+
+    `reason` neden herkese açık olduğunu söyler (ör. "kişinin kendi hesabı"); sistem denetimi
+    işaretsiz uç noktayı yakalar.
+    """
+    if not reason.strip():
+        raise ValueError("Herkese açık uç noktanın nedeni yazılmalıdır.")
+
+    class _SignedIn(AccessPermission):
+        signed_in_reason = reason
+
+        def has_permission(self, request: Request, view: Any) -> bool:
+            return bool(request.user and request.user.is_authenticated)
+
+    _SignedIn.__name__ = _SignedIn.__qualname__ = f"SignedIn({reason})"
+    return _SignedIn
+
+
+class AdminOnly(AccessPermission):
+    """Yalnız sistem yöneticisi (admin rolü ya da süper kullanıcı)."""
+
+    def has_permission(self, request: Request, view: Any) -> bool:
+        active = _active_user(request.user)
+        return active is not None and active.is_admin
+
+
+# Görünümün karşılamadığı metot: yalnız oturum aranır, DRF 405 döner.
+UNHANDLED_METHOD = SignedIn("görünümün karşılamadığı metot; DRF 405 döner")
+
+
+class DenyUnknownAction(AccessPermission):
+    """`AccessMixin`'de tanımlanmamış yazma eylemi: kapalı varsayılan."""
+
+    def has_permission(self, request: Request, view: Any) -> bool:
+        return False
+
+
+class AccessMixin:
+    """ViewSet'lerde eylem ve metot bazında bölüm denetimi; bugünkü kararlar birebir çevrilir.
+
+    İzin şu sırayla aranır:
+
+    1. `action_access["<eylem>:<metot>"]`, ör. `"picks:post"`: aynı eylemde GET ve POST ayrıdır;
+    2. `action_access["<eylem>"]`, ör. `"approve"`; eylemi olmayan görünümde (APIView) anahtar
+       metodun adıdır, ör. `"put"`;
+    3. metot `read_methods` içindeyse `read_access` (varsayılan GET, HEAD, OPTIONS; bugün yalnız
+       GET'i okuma sayan görünüm `frozenset({"GET"})` verir);
+    4. `read_methods` dışında kalan güvenli metotlar (HEAD, OPTIONS) için `other_safe_access`
+       (bugün bunları yazma rolüyle denetleyen görünümler);
+    5. hiçbiri yoksa reddedilir: listede olmayan yazma eylemi her zaman reddedilir (plan §5.4),
+       böylece yeni bir eylem yetkisiz açılamaz.
+
+    Görünümün karşılamadığı metotta (ör. ana verilerde silme) `unhandled_access` denetlenir, sonra
+    DRF 405 döner; geçen görünümler bugünkü yazma kuralını verir (yazamayana 403, oturumsuza 401).
+    Verilmezse yalnız oturum aranır. Bugün her GET'i okuma sayan görünüm (ör. üretim) karşılanmayan
+    GET'i de okuma kuralıyla denetler: `unhandled_read_methods = frozenset({"GET"})`. DRF, HEAD
+    isteğini GET'in eylemine, OPTIONS isteğini `metadata` eylemine gönderir; OPTIONS yanıtının yazma
+    alanları için denediği POST ve PUT kopyası da OPTIONS gibi denetlenir. Değerler izin sınıfı ya
+    da `HasAccess(A) | HasAccess(B)` gibi birleşimlerdir.
+    """
+
+    read_access: ClassVar[PermissionClass | None] = None
+    read_methods: ClassVar[frozenset[str]] = frozenset(SAFE_METHODS)
+    other_safe_access: ClassVar[PermissionClass | None] = None
+    unhandled_access: ClassVar[PermissionClass | None] = None
+    unhandled_read_methods: ClassVar[frozenset[str]] = frozenset()
+    action_access: ClassVar[Mapping[str, PermissionClass]] = {}
+
+    def _handles(self, method: str) -> bool:
+        """Görünüm bu metodu karşılıyor mu? Yönlendiricinin eylem eşlemesi ya da DRF'nin metodun
+        adıyla bulacağı işleyici belirler (aynı adlı bir eylem de, ör. lotun `trace`'i, işleyicidir
+        ve denetlenir); HEAD, GET'i karşılayan görünümde karşılanır."""
+        name = method.lower()
+        if name == "options":
+            return True
+        action_map = getattr(self, "action_map", None) or {}
+        if name in action_map or (name == "head" and "get" in action_map):
+            return True
+        names = getattr(self, "http_method_names", ())
+        if name in names and callable(getattr(self, name, None)):
+            return True
+        return name == "head" and "get" in names and callable(getattr(self, "get", None))
+
+    def get_permissions(self) -> list[Any]:
+        permission: Any = self._access_rule()()
+        if getattr(permission, "message", None) is None:
+            # DRF'nin `A | B` birleşiminin mesajı yoktur; 403 yanıtı öteki denetimlerle aynı mesajı
+            # taşısın (DRF'nin varsayılan metni değil).
+            permission.message = DEFAULT_MESSAGE
+        return [permission]
+
+    def _access_rule(self) -> PermissionClass:
+        """İsteğin izin kuralı (izin sınıfı ya da birleşim); arama sırası sınıfın açıklamasında."""
+        request = getattr(self, "request", None)
+        method = str(getattr(request, "method", "") or "").upper()
+        action = getattr(self, "action", None)
+        if action == "metadata":
+            method = "OPTIONS"
+        if not self._handles(method):
+            if method in self.unhandled_read_methods and self.read_access is not None:
+                return self.read_access
+            return self.unhandled_access if self.unhandled_access is not None else UNHANDLED_METHOD
+        keys = (f"{action}:{method.lower()}", action) if action is not None else (method.lower(),)
+        for key in keys:
+            if key in self.action_access:
+                return self.action_access[key]
+        if method in self.read_methods and self.read_access is not None:
+            return self.read_access
+        if (
+            method in SAFE_METHODS
+            and method not in self.read_methods
+            and self.other_safe_access is not None
+        ):
+            return self.other_safe_access
+        return DenyUnknownAction

@@ -31,7 +31,7 @@ from apps.core.coding.registry import (
 )
 from apps.core.models import CodeHistory, CodeMigrationRun, CodeSchemeRevision, User
 from apps.core.pagination import StandardPagination
-from apps.core.permissions import HasRole, user_has_role
+from apps.core.permissions import HasRole, require_access, user_has_role
 from apps.core.roles import ADMIN
 
 CODE_KINDS = [(kind, kind) for kind in KINDS]
@@ -307,7 +307,10 @@ class CodeSuggestView(APIView):
     )
     def get(self, request: Request, key: str) -> Response:
         item = _type_or_404(key)
-        if not user_has_role(request.user, item.write_roles or (ADMIN,)):
+        if item.write_access is not None:
+            section, level = item.write_access
+            require_access(request.user, section, level, "Bu kayıt türünü yazma yetkiniz yok.")
+        elif not user_has_role(request.user, item.write_roles or (ADMIN,)):
             raise PermissionDenied("Bu kayıt türünü yazma yetkiniz yok.")
         type_value = request.query_params.get("type") or None
         fmt = selectors.effective_format(item)

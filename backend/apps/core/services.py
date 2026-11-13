@@ -16,18 +16,25 @@ from django.contrib.auth.models import Group
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.uploadedfile import UploadedFile
-from django.db import models, transaction
+from django.db import connection, models, transaction
 from django.db.models import F, Q, QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 
-from apps.core import attachments, events, records, security
+from apps.core import access, attachments, events, records, security
 from apps.core.audit import EXCLUDED_FIELDS, diff, log_change
 from apps.core.coding import formats as coding_formats
 from apps.core.coding import registry as coding_registry
 from apps.core.coding import selectors as coding_selectors
 from apps.core.exceptions import BusinessRuleError
-from apps.core.models import Attachment, AuditLog, DocumentModel, DocumentSequence, User
+from apps.core.models import (
+    AccessCatalogSnapshot,
+    Attachment,
+    AuditLog,
+    DocumentModel,
+    DocumentSequence,
+    User,
+)
 from apps.core.roles import ADMIN, ALL_ROLES
 from apps.core.state import StateMachine
 
@@ -673,3 +680,37 @@ def purge_expired_personal_data(now: Any = None) -> dict[str, int]:
         .delete()
     )
     return {"audit_ips": ips, "sessions": sessions, "lockouts": lockouts}
+
+
+# --- yetki kataloğu (docs/plan/kisi-yetkileri.md §5.2) -----------------------------------------
+
+# pg_advisory_xact_lock anahtarı: yetki kataloğu kopyası.
+ACCESS_SYNC_LOCK_ID = 7_302_011
+
+
+@transaction.atomic
+def sync_access_catalog() -> tuple[AccessCatalogSnapshot, bool]:
+    """Yetki kataloğu son sürüm kopyasından farklıysa yeni kopyayı saklar.
+
+    Bölümler ya da rol paketleri yeni bir sürümle değişince bir kopya ve denetim günlüğüne
+    "Yetki paketleri değişti." kaydı yazılır; değişmediyse hiçbir şey yazılmaz. Böylece geçmiş
+    bir tarihteki yetkiler yeniden kurulabilir. `sync_access_catalog` komutu her kurulumda
+    (canlıdaki göç servisi) çağırır. Döner: (son kopya, yeni yazıldı mı).
+    """
+    digest = access.catalog_hash()
+    # Tablo boşken de çalışan işlem kilidi: aynı anda çalışan iki kurulum çift kopya yazmaz.
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock(%s)", [ACCESS_SYNC_LOCK_ID])
+    latest = AccessCatalogSnapshot.objects.order_by("-id").first()
+    if latest is not None and latest.catalog_hash == digest:
+        return latest, False
+    snapshot = AccessCatalogSnapshot.objects.create(catalog_hash=digest, catalog=access.catalog())
+    previous = latest.catalog_hash if latest is not None else None
+    log_change(
+        None,
+        snapshot,
+        AuditLog.Action.CUSTOM,
+        {"catalog_hash": [previous, digest]},
+        note="Yetki paketleri değişti.",
+    )
+    return snapshot, True

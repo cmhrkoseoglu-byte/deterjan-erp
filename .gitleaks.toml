@@ -10,3 +10,9 @@ paths = [
     '''^backend/apps/[^/]+/tests/''',
     '''^frontend/src/.*\.test\.tsx?$''',
 ]
+
+[[allowlists]]
+description = "Üretilen yetki kataloğu: katalog özeti ve bölüm anahtarları (gizli bilgi değil)"
+paths = [
+    '''^frontend/src/auth/access\.gen\.ts$''',
+]

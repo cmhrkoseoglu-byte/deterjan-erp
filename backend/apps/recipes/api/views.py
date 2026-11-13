@@ -7,38 +7,41 @@ from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_sche
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import HasRole
-from apps.core.roles import LABORATUVAR, PLANLAMA
+from apps.core.access import APPROVE, CHANGE
+from apps.core.permissions import AccessMixin, HasAccess, ReadRule, SignedIn, can_read
 from apps.masterdata.api import serializers as md
-from apps.masterdata.api.views import READ_ACTIONS, MasterDataViewSet
+from apps.masterdata.api.views import MasterDataViewSet, writes
 from apps.masterdata.importers import ImportHasErrors
 from apps.recipes import importers, services
+from apps.recipes.access import RECIPES
 from apps.recipes.api import serializers as s
 from apps.recipes.models import Recipe, RecipeLine, RecipeStep, RecipeVersion
 
-# Reçeteyi yazabilen ve sürüm onaylayabilen roller (admin her yere erişir).
-RECIPE_WRITE_ROLES = (PLANLAMA, LABORATUVAR)
-# Okuma (ölçekleme dahil) tüm giriş yapmış kullanıcılara açık.
-RECIPE_READ_ACTIONS = READ_ACTIONS | {"scale"}
-
-
-class RecipeWritePermissionMixin:
-    def get_permissions(self) -> list[BasePermission]:
-        if getattr(self, "action", None) in RECIPE_READ_ACTIONS:
-            return [IsAuthenticated()]
-        return [HasRole(*RECIPE_WRITE_ROLES)()]
+# Bölüm denetimi (docs/plan/kisi-yetkileri.md §3.2). Okuma (ölçekleme dahil) açık okumadır.
+RECIPE_CHANGE = HasAccess(RECIPES, CHANGE)
+RECIPE_READ = ReadRule(RECIPES)
 
 
 class RecipeViewSet(MasterDataViewSet):
-    """Reçeteler. `versions` alt uç noktası sürümleri listeler ve yeni taslak sürüm açar."""
+    """Reçeteler. `versions` alt uç noktası sürümleri listeler ve yeni taslak sürüm açar.
+
+    Liste, üretim emri formundaki reçete seçimi için Reçeteler'i okuyamayana da açıktır; ona yalnız
+    kod, eski kodlar, ad, ürün ve onaylı sürüm döner (plan §5.3). `versions` için HEAD bugünkü gibi
+    yazma yetkisiyle denetlenir."""
 
     serializer_class = s.RecipeSerializer
-    write_roles = RECIPE_WRITE_ROLES
+    read_access = RECIPE_READ
+    unhandled_access = RECIPE_CHANGE
+    action_access = {
+        **writes(RECIPE_CHANGE),
+        "list": SignedIn("üretim emri formundaki reçete seçimi; okuyamayana sade liste (§5.3)"),
+        "versions:get": RECIPE_READ,
+        "versions": RECIPE_CHANGE,
+    }
     filterset_fields = ["is_active", "product"]
     search_fields = ["code", "name", "product__code", "product__name"]
     ordering = ["code"]
@@ -108,10 +111,13 @@ class RecipeViewSet(MasterDataViewSet):
         )
         return Response(_version_detail(version, request), status=status.HTTP_201_CREATED)
 
-    def get_permissions(self) -> list[BasePermission]:
-        if self.action == "versions" and self.request.method == "GET":
-            return [IsAuthenticated()]
-        return super().get_permissions()
+    def get_serializer_class(self) -> Any:
+        # Şema üretiminde istek anonimdir; şema tam listeyi gösterir.
+        if getattr(self, "swagger_fake_view", False):
+            return super().get_serializer_class()
+        if self.action == "list" and not can_read(self.request.user, RECIPES):
+            return s.RecipeChoiceSerializer
+        return super().get_serializer_class()
 
 
 VERSION_RELATED = ("recipe", "batch_unit", "copied_from", "approved_by", "created_by")
@@ -130,7 +136,7 @@ def _version_queryset() -> QuerySet[RecipeVersion]:
 
 
 class RecipeVersionViewSet(
-    RecipeWritePermissionMixin,
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
@@ -147,6 +153,16 @@ class RecipeVersionViewSet(
     search_fields = ["recipe__code", "recipe__name", "change_note"]
     ordering_fields = ["version_no", "created_at", "approved_at"]
     ordering = ["recipe__code", "-version_no"]
+    read_access = RECIPE_READ
+    unhandled_access = RECIPE_CHANGE
+    action_access = {
+        "update": RECIPE_CHANGE,
+        "partial_update": RECIPE_CHANGE,
+        "copy": RECIPE_CHANGE,
+        "lines": RECIPE_CHANGE,
+        "steps": RECIPE_CHANGE,
+        "approve": HasAccess(RECIPES, APPROVE),
+    }
 
     def get_queryset(self) -> QuerySet[RecipeVersion]:
         if self.action == "list":
@@ -244,7 +260,7 @@ class RecipeVersionViewSet(
 
 
 class _DraftItemViewSet(
-    RecipeWritePermissionMixin,
+    AccessMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     mixins.DestroyModelMixin,
@@ -252,6 +268,14 @@ class _DraftItemViewSet(
 ):
     """Taslak sürüm satırı / adımı: güncelle ve kaldır. Kaldırma yalnızca taslakta yapılır ve
     silinen kayıt sürümün denetim geçmişine yazılır (onaylı sürümde 400 `version_locked`)."""
+
+    read_access = RECIPE_READ
+    unhandled_access = RECIPE_CHANGE
+    action_access = {
+        "update": RECIPE_CHANGE,
+        "partial_update": RECIPE_CHANGE,
+        "destroy": RECIPE_CHANGE,
+    }
 
     def perform_update(self, serializer: Any) -> None:
         raise NotImplementedError
@@ -298,7 +322,7 @@ class RecipeImportView(APIView):
     reçeteye yeni taslak sürüm açılır. Hatalı satır varsa hiçbir reçete yazılmaz."""
 
     parser_classes = [MultiPartParser, FormParser]
-    permission_classes = [HasRole(*RECIPE_WRITE_ROLES)]
+    permission_classes = [RECIPE_CHANGE]
 
     @extend_schema(
         request={"multipart/form-data": md.ImportUploadSerializer},
@@ -330,7 +354,7 @@ class RecipeImportView(APIView):
 class RecipeImportTemplateView(APIView):
     """Reçete içe aktarma şablonu (.xlsx)."""
 
-    permission_classes = [HasRole(*RECIPE_WRITE_ROLES)]
+    permission_classes = [RECIPE_CHANGE]
 
     @extend_schema(responses={(200, XLSX): OpenApiTypes.BINARY})
     def get(self, request: Request) -> HttpResponse:

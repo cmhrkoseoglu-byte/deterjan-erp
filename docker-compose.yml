@@ -6,6 +6,8 @@ x-backend: &backend
   env_file: .env
   volumes:
     - ./backend:/app
+    # Yetki testleri ön yüzün rol sabitlerini okur (docs/plan/kisi-yetkileri.md §5.5).
+    - ./frontend/src:/frontend/src:ro
   depends_on:
     db:
       condition: service_healthy

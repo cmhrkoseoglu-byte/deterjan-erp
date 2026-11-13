@@ -13,23 +13,23 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
 from apps.core import events
+from apps.core.access import APPROVE
 from apps.core.audit import log_change, snapshot
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
-from apps.core.roles import LABORATUVAR, PLANLAMA
+from apps.core.permissions import has_access, require_access
 from apps.core.services import save_with_audit
 from apps.masterdata import services as masterdata
 from apps.masterdata.models import Material, UnitOfMeasure
+from apps.recipes.access import RECIPES
 from apps.recipes.models import Recipe, RecipeLine, RecipeStep, RecipeVersion
 from apps.recipes.state import recipe_version_states
 
-APPROVER_ROLES = (PLANLAMA, LABORATUVAR)
 INGREDIENT_TYPES = (Material.Type.RAW, Material.Type.BULK)
 QUANTITY_STEP = Decimal("0.0001")
 
@@ -200,13 +200,8 @@ def copy_version(
 
 
 def can_approve(actor: User | None) -> bool:
-    """Reçete sürümü onaylama yetkisi: planlama, laboratuvar (ve admin)."""
-    actor = _actor(actor)
-    return (
-        actor is not None
-        and actor.is_active
-        and (actor.is_admin or actor.has_role(*APPROVER_ROLES))
-    )
+    """Reçete sürümü onaylama yetkisi (Reçeteler ve sürümler: Onaylar)."""
+    return has_access(_actor(actor), RECIPES, APPROVE)
 
 
 def _set_status(
@@ -247,8 +242,7 @@ def approve_version(actor: User | None, version: RecipeVersion, note: str = "") 
     `recipe_version.obsolete` (önceki), `recipe_version.approved`.
     """
     actor = _actor(actor)
-    if not can_approve(actor):
-        raise PermissionDenied("Reçete sürümünü yalnızca planlama ya da laboratuvar onaylar.")
+    require_access(actor, RECIPES, APPROVE, "Reçete sürümünü onaylama yetkiniz yok.")
     # Aynı reçetede eşzamanlı iki onayı sıraya sokmak için önce reçete kilitlenir.
     recipe = (
         Recipe.objects.select_for_update(of=("self",))

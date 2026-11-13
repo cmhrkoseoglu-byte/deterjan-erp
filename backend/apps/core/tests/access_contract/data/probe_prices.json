@@ -1,0 +1,3426 @@
+{
+ "costing.labor_rate.detail": {
+  "admin": {
+   "labor_rate": {
+    "note": "Personel maliyeti Eylül #: # TL / # kg",
+    "rate_per_kg": "<n>"
+   },
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "status": 403
+  },
+  "depo+sevkiyat": {
+   "status": 403
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "status": 403
+  },
+  "satin_alma": {
+   "status": 403
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "labor_rate": {
+    "note": "Personel maliyeti Eylül #: # TL / # kg",
+    "rate_per_kg": "<n>"
+   },
+   "status": 200
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "labor_rate": {
+    "note": "Personel maliyeti Eylül #: # TL / # kg",
+    "rate_per_kg": "<n>"
+   },
+   "status": 200
+  }
+ },
+ "costing.labor_rate.list": {
+  "admin": {
+   "labor_rate": [
+    {
+     "note": "Personel maliyeti Eylül #: # TL / # kg",
+     "rate_per_kg": "<n>"
+    }
+   ],
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "status": 403
+  },
+  "depo+sevkiyat": {
+   "status": 403
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "status": 403
+  },
+  "satin_alma": {
+   "status": 403
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "labor_rate": [
+    {
+     "note": "Personel maliyeti Eylül #: # TL / # kg",
+     "rate_per_kg": "<n>"
+    }
+   ],
+   "status": 200
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "labor_rate": [
+    {
+     "note": "Personel maliyeti Eylül #: # TL / # kg",
+     "rate_per_kg": "<n>"
+    }
+   ],
+   "status": 200
+  }
+ },
+ "costing.personnel_cost": {
+  "admin": {
+   "rows": [
+    {
+     "employer_share": "<n>",
+     "gross_monthly": "<n>",
+     "gross_salary": "<n>",
+     "gross_total": "<n>",
+     "total_cost": "<n>"
+    }
+   ],
+   "stages": [
+    {
+     "cost": "<n>",
+     "current_rate": null,
+     "stage": "",
+     "suggested_rate": null
+    },
+    {
+     "cost": "<n>",
+     "current_rate": null,
+     "stage": "FILLING",
+     "suggested_rate": null
+    },
+    {
+     "cost": "<n>",
+     "current_rate": "<n>",
+     "stage": "PRODUCTION",
+     "suggested_rate": "<n>"
+    }
+   ],
+   "status": 200,
+   "totals": {
+    "employer_share": "<n>",
+    "extras_total": "<n>",
+    "gross_salary": "<n>",
+    "overtime_pay": "<n>",
+    "total_cost": "<n>"
+   }
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "status": 403
+  },
+  "depo+sevkiyat": {
+   "status": 403
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "status": 403
+  },
+  "satin_alma": {
+   "status": 403
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "rows": [
+    {
+     "employer_share": "<n>",
+     "gross_monthly": "<n>",
+     "gross_salary": "<n>",
+     "gross_total": "<n>",
+     "total_cost": "<n>"
+    }
+   ],
+   "stages": [
+    {
+     "cost": "<n>",
+     "current_rate": null,
+     "stage": "",
+     "suggested_rate": null
+    },
+    {
+     "cost": "<n>",
+     "current_rate": null,
+     "stage": "FILLING",
+     "suggested_rate": null
+    },
+    {
+     "cost": "<n>",
+     "current_rate": "<n>",
+     "stage": "PRODUCTION",
+     "suggested_rate": "<n>"
+    }
+   ],
+   "status": 200,
+   "totals": {
+    "employer_share": "<n>",
+    "extras_total": "<n>",
+    "gross_salary": "<n>",
+    "overtime_pay": "<n>",
+    "total_cost": "<n>"
+   }
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "rows": [
+    {
+     "employer_share": "<n>",
+     "gross_monthly": "<n>",
+     "gross_salary": "<n>",
+     "gross_total": "<n>",
+     "total_cost": "<n>"
+    }
+   ],
+   "stages": [
+    {
+     "cost": "<n>",
+     "current_rate": null,
+     "stage": "",
+     "suggested_rate": null
+    },
+    {
+     "cost": "<n>",
+     "current_rate": null,
+     "stage": "FILLING",
+     "suggested_rate": null
+    },
+    {
+     "cost": "<n>",
+     "current_rate": "<n>",
+     "stage": "PRODUCTION",
+     "suggested_rate": "<n>"
+    }
+   ],
+   "status": 200,
+   "totals": {
+    "employer_share": "<n>",
+    "extras_total": "<n>",
+    "gross_salary": "<n>",
+    "overtime_pay": "<n>",
+    "total_cost": "<n>"
+   }
+  }
+ },
+ "goods_receipt.detail": {
+  "admin": {
+   "lines": [
+    {
+     "currency": "EUR",
+     "exchange_rate": "35.000000",
+     "unit_price": "7.0000"
+    }
+   ],
+   "money": {
+    "extra_costs": [
+     {
+      "amount": "100.00"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "lines": [
+    {}
+   ],
+   "money": {
+    "extra_costs": null
+   },
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "lines": [
+    {}
+   ],
+   "money": {
+    "extra_costs": null
+   },
+   "status": 200
+  },
+  "dolum": {
+   "lines": [
+    {}
+   ],
+   "money": {
+    "extra_costs": null
+   },
+   "status": 200
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "lines": [
+    {}
+   ],
+   "money": {
+    "extra_costs": null
+   },
+   "status": 200
+  },
+  "no_role": {
+   "lines": [
+    {}
+   ],
+   "money": {
+    "extra_costs": null
+   },
+   "status": 200
+  },
+  "planlama": {
+   "lines": [
+    {}
+   ],
+   "money": {
+    "extra_costs": null
+   },
+   "status": 200
+  },
+  "satin_alma": {
+   "lines": [
+    {
+     "currency": "EUR",
+     "exchange_rate": "35.000000",
+     "unit_price": "7.0000"
+    }
+   ],
+   "money": {
+    "extra_costs": [
+     {
+      "amount": "100.00"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "sevkiyat": {
+   "lines": [
+    {}
+   ],
+   "money": {
+    "extra_costs": null
+   },
+   "status": 200
+  },
+  "superuser": {
+   "lines": [
+    {
+     "currency": "EUR",
+     "exchange_rate": "35.000000",
+     "unit_price": "7.0000"
+    }
+   ],
+   "money": {
+    "extra_costs": [
+     {
+      "amount": "100.00"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "uretim": {
+   "lines": [
+    {}
+   ],
+   "money": {
+    "extra_costs": null
+   },
+   "status": 200
+  },
+  "yonetim": {
+   "lines": [
+    {
+     "currency": "EUR",
+     "exchange_rate": "35.000000",
+     "unit_price": "7.0000"
+    }
+   ],
+   "money": {
+    "extra_costs": [
+     {
+      "amount": "100.00"
+     }
+    ]
+   },
+   "status": 200
+  }
+ },
+ "goods_receipt.history": {
+  "admin": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {},
+     "note": "Fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "extra_cost": [
+       {
+        "amount": "50.00"
+       },
+       null
+      ]
+     },
+     "note": "Ek masraf kaldırıldı"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "exchange_rate": null,
+        "unit_price": "0.0200"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {},
+     "note": "Fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "extra_cost": [
+       {
+        "amount": "50.00"
+       },
+       null
+      ]
+     },
+     "note": "Ek masraf kaldırıldı"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "exchange_rate": null,
+        "unit_price": "0.0200"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {},
+     "note": "Fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "extra_cost": [
+       {
+        "amount": "50.00"
+       },
+       null
+      ]
+     },
+     "note": "Ek masraf kaldırıldı"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "exchange_rate": null,
+        "unit_price": "0.0200"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "dolum": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {},
+     "note": "Fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "extra_cost": [
+       {
+        "amount": "50.00"
+       },
+       null
+      ]
+     },
+     "note": "Ek masraf kaldırıldı"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "exchange_rate": null,
+        "unit_price": "0.0200"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {},
+     "note": "Fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "extra_cost": [
+       {
+        "amount": "50.00"
+       },
+       null
+      ]
+     },
+     "note": "Ek masraf kaldırıldı"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "exchange_rate": null,
+        "unit_price": "0.0200"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "no_role": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {},
+     "note": "Fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "extra_cost": [
+       {
+        "amount": "50.00"
+       },
+       null
+      ]
+     },
+     "note": "Ek masraf kaldırıldı"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "exchange_rate": null,
+        "unit_price": "0.0200"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "planlama": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {},
+     "note": "Fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "extra_cost": [
+       {
+        "amount": "50.00"
+       },
+       null
+      ]
+     },
+     "note": "Ek masraf kaldırıldı"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "exchange_rate": null,
+        "unit_price": "0.0200"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "satin_alma": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {},
+     "note": "Fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "extra_cost": [
+       {
+        "amount": "50.00"
+       },
+       null
+      ]
+     },
+     "note": "Ek masraf kaldırıldı"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "exchange_rate": null,
+        "unit_price": "0.0200"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "sevkiyat": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {},
+     "note": "Fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "extra_cost": [
+       {
+        "amount": "50.00"
+       },
+       null
+      ]
+     },
+     "note": "Ek masraf kaldırıldı"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "exchange_rate": null,
+        "unit_price": "0.0200"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "superuser": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {},
+     "note": "Fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "extra_cost": [
+       {
+        "amount": "50.00"
+       },
+       null
+      ]
+     },
+     "note": "Ek masraf kaldırıldı"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "exchange_rate": null,
+        "unit_price": "0.0200"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "uretim": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {},
+     "note": "Fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "extra_cost": [
+       {
+        "amount": "50.00"
+       },
+       null
+      ]
+     },
+     "note": "Ek masraf kaldırıldı"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "exchange_rate": null,
+        "unit_price": "0.0200"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "yonetim": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {},
+     "note": "Fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "extra_cost": [
+       {
+        "amount": "50.00"
+       },
+       null
+      ]
+     },
+     "note": "Ek masraf kaldırıldı"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "exchange_rate": null,
+        "unit_price": "0.0200"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  }
+ },
+ "goods_receipt.list": {
+  "admin": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "dolum": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "no_role": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "planlama": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "satin_alma": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "sevkiyat": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "superuser": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "uretim": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "yonetim": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  }
+ },
+ "goods_receipt.write.costs": {
+  "admin": {
+   "extra_costs": [
+    "9.00"
+   ],
+   "status": 200,
+   "stored": {
+    "currency": "USD",
+    "exchange_rate": "40.000000",
+    "quantity": "10.0000",
+    "unit_price": "4.0000"
+   }
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "status": 403
+  },
+  "depo+sevkiyat": {
+   "status": 403
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "status": 403
+  },
+  "satin_alma": {
+   "extra_costs": [
+    "9.00"
+   ],
+   "status": 200,
+   "stored": {
+    "currency": "USD",
+    "exchange_rate": "40.000000",
+    "quantity": "10.0000",
+    "unit_price": "4.0000"
+   }
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "extra_costs": [
+    "9.00"
+   ],
+   "status": 200,
+   "stored": {
+    "currency": "USD",
+    "exchange_rate": "40.000000",
+    "quantity": "10.0000",
+    "unit_price": "4.0000"
+   }
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "extra_costs": [
+    "9.00"
+   ],
+   "status": 200,
+   "stored": {
+    "currency": "USD",
+    "exchange_rate": "40.000000",
+    "quantity": "10.0000",
+    "unit_price": "4.0000"
+   }
+  }
+ },
+ "goods_receipt.write.create": {
+  "admin": {
+   "extra_costs": 0,
+   "status": 201,
+   "stored": {
+    "currency": "EUR",
+    "exchange_rate": "35.000000",
+    "quantity": "5.0000",
+    "unit_price": "3.5000"
+   }
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "extra_costs": 0,
+   "status": 201,
+   "stored": {
+    "currency": "TRY",
+    "exchange_rate": null,
+    "quantity": "5.0000",
+    "unit_price": null
+   }
+  },
+  "depo+sevkiyat": {
+   "extra_costs": 0,
+   "status": 201,
+   "stored": {
+    "currency": "TRY",
+    "exchange_rate": null,
+    "quantity": "5.0000",
+    "unit_price": null
+   }
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "status": 403
+  },
+  "satin_alma": {
+   "status": 403
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "extra_costs": 0,
+   "status": 201,
+   "stored": {
+    "currency": "EUR",
+    "exchange_rate": "35.000000",
+    "quantity": "5.0000",
+    "unit_price": "3.5000"
+   }
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "status": 403
+  }
+ },
+ "goods_receipt.write.update": {
+  "admin": {
+   "status": 200,
+   "stored": {
+    "currency": "USD",
+    "exchange_rate": "40.000000",
+    "quantity": "12.0000",
+    "unit_price": "999.0000"
+   }
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "status": 200,
+   "stored": {
+    "currency": "TRY",
+    "exchange_rate": null,
+    "quantity": "12.0000",
+    "unit_price": "5.0000"
+   }
+  },
+  "depo+sevkiyat": {
+   "status": 200,
+   "stored": {
+    "currency": "TRY",
+    "exchange_rate": null,
+    "quantity": "12.0000",
+    "unit_price": "5.0000"
+   }
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "status": 403
+  },
+  "satin_alma": {
+   "status": 403
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "status": 200,
+   "stored": {
+    "currency": "USD",
+    "exchange_rate": "40.000000",
+    "quantity": "12.0000",
+    "unit_price": "999.0000"
+   }
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "status": 403
+  }
+ },
+ "lot.cost_history": {
+  "admin": {
+   "status": 200,
+   "versions": [
+    {
+     "money": {
+      "finished_scrap_cost": "<n>",
+      "total_cost": "<n>",
+      "unit_cost": "<n>"
+     },
+     "note": "MK-#-# fiyat düzeltmesi: Fiyat # EUR yerine # EUR",
+     "version": 2
+    },
+    {
+     "money": {
+      "finished_scrap_cost": "<n>",
+      "total_cost": "<n>",
+      "unit_cost": "<n>"
+     },
+     "note": "",
+     "version": 1
+    }
+   ]
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "status": 403
+  },
+  "depo+sevkiyat": {
+   "status": 403
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "status": 403
+  },
+  "satin_alma": {
+   "status": 403
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "status": 200,
+   "versions": [
+    {
+     "money": {
+      "finished_scrap_cost": "<n>",
+      "total_cost": "<n>",
+      "unit_cost": "<n>"
+     },
+     "note": "MK-#-# fiyat düzeltmesi: Fiyat # EUR yerine # EUR",
+     "version": 2
+    },
+    {
+     "money": {
+      "finished_scrap_cost": "<n>",
+      "total_cost": "<n>",
+      "unit_cost": "<n>"
+     },
+     "note": "",
+     "version": 1
+    }
+   ]
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "status": 200,
+   "versions": [
+    {
+     "money": {
+      "finished_scrap_cost": "<n>",
+      "total_cost": "<n>",
+      "unit_cost": "<n>"
+     },
+     "note": "MK-#-# fiyat düzeltmesi: Fiyat # EUR yerine # EUR",
+     "version": 2
+    },
+    {
+     "money": {
+      "finished_scrap_cost": "<n>",
+      "total_cost": "<n>",
+      "unit_cost": "<n>"
+     },
+     "note": "",
+     "version": 1
+    }
+   ]
+  }
+ },
+ "lot.detail": {
+  "admin": {
+   "lines": [],
+   "money": {},
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "lines": [],
+   "money": {},
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "lines": [],
+   "money": {},
+   "status": 200
+  },
+  "dolum": {
+   "lines": [],
+   "money": {},
+   "status": 200
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "lines": [],
+   "money": {},
+   "status": 200
+  },
+  "no_role": {
+   "lines": [],
+   "money": {},
+   "status": 200
+  },
+  "planlama": {
+   "lines": [],
+   "money": {},
+   "status": 200
+  },
+  "satin_alma": {
+   "lines": [],
+   "money": {},
+   "status": 200
+  },
+  "sevkiyat": {
+   "lines": [],
+   "money": {},
+   "status": 200
+  },
+  "superuser": {
+   "lines": [],
+   "money": {},
+   "status": 200
+  },
+  "uretim": {
+   "lines": [],
+   "money": {},
+   "status": 200
+  },
+  "yonetim": {
+   "lines": [],
+   "money": {},
+   "status": 200
+  }
+ },
+ "lot.history": {
+  "admin": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {
+      "unit_cost": [
+       "<n>",
+       "<n>"
+      ]
+     },
+     "note": "Maliyet sürüm #: MK-#-# fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "update",
+     "money": {
+      "unit_cost": [
+       null,
+       "<n>"
+      ]
+     },
+     "note": "Maliyet sürüm #"
+    },
+    {
+     "action": "create",
+     "money": {
+      "cost_is_estimated": [
+       null,
+       false
+      ]
+     },
+     "note": "Mal kabul MK-#-#"
+    }
+   ],
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "entries": [
+    {
+     "action": "create",
+     "money": {},
+     "note": "Mal kabul MK-#-#"
+    }
+   ],
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "entries": [
+    {
+     "action": "create",
+     "money": {},
+     "note": "Mal kabul MK-#-#"
+    }
+   ],
+   "status": 200
+  },
+  "dolum": {
+   "entries": [
+    {
+     "action": "create",
+     "money": {},
+     "note": "Mal kabul MK-#-#"
+    }
+   ],
+   "status": 200
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "entries": [
+    {
+     "action": "create",
+     "money": {},
+     "note": "Mal kabul MK-#-#"
+    }
+   ],
+   "status": 200
+  },
+  "no_role": {
+   "entries": [
+    {
+     "action": "create",
+     "money": {},
+     "note": "Mal kabul MK-#-#"
+    }
+   ],
+   "status": 200
+  },
+  "planlama": {
+   "entries": [
+    {
+     "action": "create",
+     "money": {},
+     "note": "Mal kabul MK-#-#"
+    }
+   ],
+   "status": 200
+  },
+  "satin_alma": {
+   "entries": [
+    {
+     "action": "create",
+     "money": {},
+     "note": "Mal kabul MK-#-#"
+    }
+   ],
+   "status": 200
+  },
+  "sevkiyat": {
+   "entries": [
+    {
+     "action": "create",
+     "money": {},
+     "note": "Mal kabul MK-#-#"
+    }
+   ],
+   "status": 200
+  },
+  "superuser": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {
+      "unit_cost": [
+       "<n>",
+       "<n>"
+      ]
+     },
+     "note": "Maliyet sürüm #: MK-#-# fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "update",
+     "money": {
+      "unit_cost": [
+       null,
+       "<n>"
+      ]
+     },
+     "note": "Maliyet sürüm #"
+    },
+    {
+     "action": "create",
+     "money": {
+      "cost_is_estimated": [
+       null,
+       false
+      ]
+     },
+     "note": "Mal kabul MK-#-#"
+    }
+   ],
+   "status": 200
+  },
+  "uretim": {
+   "entries": [
+    {
+     "action": "create",
+     "money": {},
+     "note": "Mal kabul MK-#-#"
+    }
+   ],
+   "status": 200
+  },
+  "yonetim": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {
+      "unit_cost": [
+       "<n>",
+       "<n>"
+      ]
+     },
+     "note": "Maliyet sürüm #: MK-#-# fiyat düzeltmesi: Fiyat # EUR yerine # EUR"
+    },
+    {
+     "action": "update",
+     "money": {
+      "unit_cost": [
+       null,
+       "<n>"
+      ]
+     },
+     "note": "Maliyet sürüm #"
+    },
+    {
+     "action": "create",
+     "money": {
+      "cost_is_estimated": [
+       null,
+       false
+      ]
+     },
+     "note": "Mal kabul MK-#-#"
+    }
+   ],
+   "status": 200
+  }
+ },
+ "lot.list": {
+  "admin": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "dolum": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "no_role": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "planlama": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "satin_alma": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "sevkiyat": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "superuser": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "uretim": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "yonetim": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  }
+ },
+ "purchase_order.approval_task": {
+  "admin": {
+   "descriptions": [
+    "Sonda Tedarik A.Ş., tutar # EUR (# TL)."
+   ],
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "descriptions": [],
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "descriptions": [],
+   "status": 200
+  },
+  "dolum": {
+   "descriptions": [],
+   "status": 200
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "descriptions": [],
+   "status": 200
+  },
+  "no_role": {
+   "descriptions": [],
+   "status": 200
+  },
+  "planlama": {
+   "descriptions": [],
+   "status": 200
+  },
+  "satin_alma": {
+   "descriptions": [],
+   "status": 200
+  },
+  "sevkiyat": {
+   "descriptions": [],
+   "status": 200
+  },
+  "superuser": {
+   "descriptions": [
+    "Sonda Tedarik A.Ş., tutar # EUR (# TL)."
+   ],
+   "status": 200
+  },
+  "uretim": {
+   "descriptions": [],
+   "status": 200
+  },
+  "yonetim": {
+   "descriptions": [
+    "Sonda Tedarik A.Ş., tutar # EUR (# TL)."
+   ],
+   "status": 200
+  }
+ },
+ "purchase_order.detail": {
+  "admin": {
+   "lines": [
+    {
+     "line_total": "1000.00",
+     "unit_price": "10.0000"
+    }
+   ],
+   "money": {
+    "approval_limit_try": null,
+    "approval_total_try": "36000.00",
+    "currency": "EUR",
+    "exchange_rate": "36.000000",
+    "total": "1000.00",
+    "total_try": "36000.00"
+   },
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "lines": [
+    {}
+   ],
+   "money": {
+    "currency": "EUR"
+   },
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "lines": [
+    {}
+   ],
+   "money": {
+    "currency": "EUR"
+   },
+   "status": 200
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "status": 403
+  },
+  "satin_alma": {
+   "lines": [
+    {
+     "line_total": "1000.00",
+     "unit_price": "10.0000"
+    }
+   ],
+   "money": {
+    "approval_limit_try": null,
+    "approval_total_try": "36000.00",
+    "currency": "EUR",
+    "exchange_rate": "36.000000",
+    "total": "1000.00",
+    "total_try": "36000.00"
+   },
+   "status": 200
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "lines": [
+    {
+     "line_total": "1000.00",
+     "unit_price": "10.0000"
+    }
+   ],
+   "money": {
+    "approval_limit_try": null,
+    "approval_total_try": "36000.00",
+    "currency": "EUR",
+    "exchange_rate": "36.000000",
+    "total": "1000.00",
+    "total_try": "36000.00"
+   },
+   "status": 200
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "lines": [
+    {
+     "line_total": "1000.00",
+     "unit_price": "10.0000"
+    }
+   ],
+   "money": {
+    "approval_limit_try": null,
+    "approval_total_try": "36000.00",
+    "currency": "EUR",
+    "exchange_rate": "36.000000",
+    "total": "1000.00",
+    "total_try": "36000.00"
+   },
+   "status": 200
+  }
+ },
+ "purchase_order.expected_deliveries": {
+  "admin": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "status": 403
+  },
+  "satin_alma": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  }
+ },
+ "purchase_order.history": {
+  "admin": {
+   "entries": [
+    {
+     "action": "status_change",
+     "money": {},
+     "note": "Onay: tutar # TL (kur #), limit girilmemiş"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": "Tutar # TL"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "unit_price": "20.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "update",
+     "money": {
+      "exchange_rate": [
+       "35.000000",
+       "36.000000"
+      ]
+     },
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "exchange_rate": [
+       "34.000000",
+       "35.000000"
+      ]
+     },
+     "note": ""
+    },
+    {
+     "action": "create",
+     "money": {
+      "currency": [
+       null,
+       "EUR"
+      ],
+      "exchange_rate": [
+       null,
+       "34.000000"
+      ]
+     },
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "entries": [
+    {
+     "action": "status_change",
+     "money": {},
+     "note": "Onay: tutar # TL (kur #), limit girilmemiş"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": "Tutar # TL"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "unit_price": "20.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "update",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "create",
+     "money": {
+      "currency": [
+       null,
+       "EUR"
+      ]
+     },
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "entries": [
+    {
+     "action": "status_change",
+     "money": {},
+     "note": "Onay: tutar # TL (kur #), limit girilmemiş"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": "Tutar # TL"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "unit_price": "20.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "update",
+     "money": {},
+     "note": ""
+    },
+    {
+     "action": "create",
+     "money": {
+      "currency": [
+       null,
+       "EUR"
+      ]
+     },
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "dolum": {
+   "code": "record_not_found",
+   "status": 400
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "code": "record_not_found",
+   "status": 400
+  },
+  "no_role": {
+   "code": "record_not_found",
+   "status": 400
+  },
+  "planlama": {
+   "code": "record_not_found",
+   "status": 400
+  },
+  "satin_alma": {
+   "entries": [
+    {
+     "action": "status_change",
+     "money": {},
+     "note": "Onay: tutar # TL (kur #), limit girilmemiş"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": "Tutar # TL"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "unit_price": "20.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "update",
+     "money": {
+      "exchange_rate": [
+       "35.000000",
+       "36.000000"
+      ]
+     },
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "exchange_rate": [
+       "34.000000",
+       "35.000000"
+      ]
+     },
+     "note": ""
+    },
+    {
+     "action": "create",
+     "money": {
+      "currency": [
+       null,
+       "EUR"
+      ],
+      "exchange_rate": [
+       null,
+       "34.000000"
+      ]
+     },
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "sevkiyat": {
+   "code": "record_not_found",
+   "status": 400
+  },
+  "superuser": {
+   "entries": [
+    {
+     "action": "status_change",
+     "money": {},
+     "note": "Onay: tutar # TL (kur #), limit girilmemiş"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": "Tutar # TL"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "unit_price": "20.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "update",
+     "money": {
+      "exchange_rate": [
+       "35.000000",
+       "36.000000"
+      ]
+     },
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "exchange_rate": [
+       "34.000000",
+       "35.000000"
+      ]
+     },
+     "note": ""
+    },
+    {
+     "action": "create",
+     "money": {
+      "currency": [
+       null,
+       "EUR"
+      ],
+      "exchange_rate": [
+       null,
+       "34.000000"
+      ]
+     },
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "uretim": {
+   "code": "record_not_found",
+   "status": 400
+  },
+  "yonetim": {
+   "entries": [
+    {
+     "action": "status_change",
+     "money": {},
+     "note": "Onay: tutar # TL (kur #), limit girilmemiş"
+    },
+    {
+     "action": "status_change",
+     "money": {},
+     "note": "Tutar # TL"
+    },
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "unit_price": "20.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "update",
+     "money": {
+      "exchange_rate": [
+       "35.000000",
+       "36.000000"
+      ]
+     },
+     "note": ""
+    },
+    {
+     "action": "update",
+     "money": {
+      "exchange_rate": [
+       "34.000000",
+       "35.000000"
+      ]
+     },
+     "note": ""
+    },
+    {
+     "action": "create",
+     "money": {
+      "currency": [
+       null,
+       "EUR"
+      ],
+      "exchange_rate": [
+       null,
+       "34.000000"
+      ]
+     },
+     "note": ""
+    }
+   ],
+   "status": 200
+  }
+ },
+ "purchase_order.list": {
+  "admin": {
+   "rows": [
+    {
+     "approval_limit_try": null,
+     "approval_total_try": "36000.00",
+     "currency": "EUR",
+     "exchange_rate": "36.000000",
+     "total": "1000.00",
+     "total_try": "36000.00"
+    }
+   ],
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "rows": [
+    {
+     "currency": "EUR"
+    }
+   ],
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "rows": [
+    {
+     "currency": "EUR"
+    }
+   ],
+   "status": 200
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "status": 403
+  },
+  "satin_alma": {
+   "rows": [
+    {
+     "approval_limit_try": null,
+     "approval_total_try": "36000.00",
+     "currency": "EUR",
+     "exchange_rate": "36.000000",
+     "total": "1000.00",
+     "total_try": "36000.00"
+    }
+   ],
+   "status": 200
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "rows": [
+    {
+     "approval_limit_try": null,
+     "approval_total_try": "36000.00",
+     "currency": "EUR",
+     "exchange_rate": "36.000000",
+     "total": "1000.00",
+     "total_try": "36000.00"
+    }
+   ],
+   "status": 200
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "rows": [
+    {
+     "approval_limit_try": null,
+     "approval_total_try": "36000.00",
+     "currency": "EUR",
+     "exchange_rate": "36.000000",
+     "total": "1000.00",
+     "total_try": "36000.00"
+    }
+   ],
+   "status": 200
+  }
+ },
+ "purchase_order.pdf": {
+  "admin": {
+   "content_type": "application/pdf",
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "status": 403
+  },
+  "depo+sevkiyat": {
+   "status": 403
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "status": 403
+  },
+  "satin_alma": {
+   "content_type": "application/pdf",
+   "status": 200
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "content_type": "application/pdf",
+   "status": 200
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "content_type": "application/pdf",
+   "status": 200
+  }
+ },
+ "purchase_order.write.receive": {
+  "admin": {
+   "status": 201,
+   "stored": {
+    "currency": "EUR",
+    "exchange_rate": "35.000000",
+    "quantity": "1.0000",
+    "unit_price": "8.0000"
+   }
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "status": 201,
+   "stored": {
+    "currency": "EUR",
+    "exchange_rate": "35.000000",
+    "quantity": "1.0000",
+    "unit_price": "8.0000"
+   }
+  },
+  "depo+sevkiyat": {
+   "status": 201,
+   "stored": {
+    "currency": "EUR",
+    "exchange_rate": "35.000000",
+    "quantity": "1.0000",
+    "unit_price": "8.0000"
+   }
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "status": 403
+  },
+  "satin_alma": {
+   "status": 201,
+   "stored": {
+    "currency": "EUR",
+    "exchange_rate": "35.000000",
+    "quantity": "1.0000",
+    "unit_price": "8.0000"
+   }
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "status": 201,
+   "stored": {
+    "currency": "EUR",
+    "exchange_rate": "35.000000",
+    "quantity": "1.0000",
+    "unit_price": "8.0000"
+   }
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "status": 201,
+   "stored": {
+    "currency": "EUR",
+    "exchange_rate": "35.000000",
+    "quantity": "1.0000",
+    "unit_price": "8.0000"
+   }
+  }
+ },
+ "record_type.hidden_fields.inventory.lot": {
+  "admin": [],
+  "anonymous": [
+   "cost_is_estimated",
+   "unit_cost"
+  ],
+  "depo": [
+   "cost_is_estimated",
+   "unit_cost"
+  ],
+  "depo+sevkiyat": [
+   "cost_is_estimated",
+   "unit_cost"
+  ],
+  "dolum": [
+   "cost_is_estimated",
+   "unit_cost"
+  ],
+  "inactive": [
+   "cost_is_estimated",
+   "unit_cost"
+  ],
+  "laboratuvar": [
+   "cost_is_estimated",
+   "unit_cost"
+  ],
+  "no_role": [
+   "cost_is_estimated",
+   "unit_cost"
+  ],
+  "planlama": [
+   "cost_is_estimated",
+   "unit_cost"
+  ],
+  "satin_alma": [
+   "cost_is_estimated",
+   "unit_cost"
+  ],
+  "sevkiyat": [
+   "cost_is_estimated",
+   "unit_cost"
+  ],
+  "superuser": [],
+  "uretim": [
+   "cost_is_estimated",
+   "unit_cost"
+  ],
+  "yonetim": []
+ },
+ "record_type.hidden_fields.purchasing.purchaseorder": {
+  "admin": [],
+  "anonymous": [
+   "approval_limit_try",
+   "approval_total_try",
+   "exchange_rate",
+   "line_total",
+   "total",
+   "total_try",
+   "unit_price"
+  ],
+  "depo": [
+   "approval_limit_try",
+   "approval_total_try",
+   "exchange_rate",
+   "line_total",
+   "total",
+   "total_try",
+   "unit_price"
+  ],
+  "depo+sevkiyat": [
+   "approval_limit_try",
+   "approval_total_try",
+   "exchange_rate",
+   "line_total",
+   "total",
+   "total_try",
+   "unit_price"
+  ],
+  "dolum": [
+   "approval_limit_try",
+   "approval_total_try",
+   "exchange_rate",
+   "line_total",
+   "total",
+   "total_try",
+   "unit_price"
+  ],
+  "inactive": [
+   "approval_limit_try",
+   "approval_total_try",
+   "exchange_rate",
+   "line_total",
+   "total",
+   "total_try",
+   "unit_price"
+  ],
+  "laboratuvar": [
+   "approval_limit_try",
+   "approval_total_try",
+   "exchange_rate",
+   "line_total",
+   "total",
+   "total_try",
+   "unit_price"
+  ],
+  "no_role": [
+   "approval_limit_try",
+   "approval_total_try",
+   "exchange_rate",
+   "line_total",
+   "total",
+   "total_try",
+   "unit_price"
+  ],
+  "planlama": [
+   "approval_limit_try",
+   "approval_total_try",
+   "exchange_rate",
+   "line_total",
+   "total",
+   "total_try",
+   "unit_price"
+  ],
+  "satin_alma": [],
+  "sevkiyat": [
+   "approval_limit_try",
+   "approval_total_try",
+   "exchange_rate",
+   "line_total",
+   "total",
+   "total_try",
+   "unit_price"
+  ],
+  "superuser": [],
+  "uretim": [
+   "approval_limit_try",
+   "approval_total_try",
+   "exchange_rate",
+   "line_total",
+   "total",
+   "total_try",
+   "unit_price"
+  ],
+  "yonetim": []
+ },
+ "reporting.management_dashboard": {
+  "admin": {
+   "pending_purchase_total_try": "<n>",
+   "status": 200,
+   "stock_value": [
+    "by_type",
+    "has_uncosted",
+    "total"
+   ]
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "status": 403
+  },
+  "depo+sevkiyat": {
+   "status": 403
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "pending_purchase_total_try": null,
+   "status": 200,
+   "stock_value": null
+  },
+  "satin_alma": {
+   "status": 403
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "pending_purchase_total_try": "<n>",
+   "status": 200,
+   "stock_value": [
+    "by_type",
+    "has_uncosted",
+    "total"
+   ]
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "pending_purchase_total_try": "<n>",
+   "status": 200,
+   "stock_value": [
+    "by_type",
+    "has_uncosted",
+    "total"
+   ]
+  }
+ },
+ "reporting.report_list": {
+  "admin": {
+   "sensitive_columns": {
+    "stock-status": [
+     "cost_is_estimated",
+     "unit_cost",
+     "value"
+    ]
+   },
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "sensitive_columns": {
+    "stock-status": []
+   },
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "sensitive_columns": {
+    "stock-status": []
+   },
+   "status": 200
+  },
+  "dolum": {
+   "sensitive_columns": {},
+   "status": 200
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "sensitive_columns": {},
+   "status": 200
+  },
+  "no_role": {
+   "sensitive_columns": {},
+   "status": 200
+  },
+  "planlama": {
+   "sensitive_columns": {
+    "stock-status": []
+   },
+   "status": 200
+  },
+  "satin_alma": {
+   "sensitive_columns": {
+    "stock-status": []
+   },
+   "status": 200
+  },
+  "sevkiyat": {
+   "sensitive_columns": {},
+   "status": 200
+  },
+  "superuser": {
+   "sensitive_columns": {
+    "stock-status": [
+     "cost_is_estimated",
+     "unit_cost",
+     "value"
+    ]
+   },
+   "status": 200
+  },
+  "uretim": {
+   "sensitive_columns": {},
+   "status": 200
+  },
+  "yonetim": {
+   "sensitive_columns": {
+    "stock-status": [
+     "cost_is_estimated",
+     "unit_cost",
+     "value"
+    ]
+   },
+   "status": 200
+  }
+ },
+ "reporting.stock_status": {
+  "admin": {
+   "columns": [
+    "cost_is_estimated",
+    "unit_cost",
+    "value"
+   ],
+   "row_keys": [
+    "cost_is_estimated",
+    "unit_cost",
+    "value"
+   ],
+   "status": 200,
+   "summary": [
+    "lot_count",
+    "row_count",
+    "stock_value"
+   ]
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "columns": [],
+   "row_keys": [],
+   "status": 200,
+   "summary": [
+    "lot_count",
+    "row_count"
+   ]
+  },
+  "depo+sevkiyat": {
+   "columns": [],
+   "row_keys": [],
+   "status": 200,
+   "summary": [
+    "lot_count",
+    "row_count"
+   ]
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "columns": [],
+   "row_keys": [],
+   "status": 200,
+   "summary": [
+    "lot_count",
+    "row_count"
+   ]
+  },
+  "satin_alma": {
+   "columns": [],
+   "row_keys": [],
+   "status": 200,
+   "summary": [
+    "lot_count",
+    "row_count"
+   ]
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "columns": [
+    "cost_is_estimated",
+    "unit_cost",
+    "value"
+   ],
+   "row_keys": [
+    "cost_is_estimated",
+    "unit_cost",
+    "value"
+   ],
+   "status": 200,
+   "summary": [
+    "lot_count",
+    "row_count",
+    "stock_value"
+   ]
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "columns": [
+    "cost_is_estimated",
+    "unit_cost",
+    "value"
+   ],
+   "row_keys": [
+    "cost_is_estimated",
+    "unit_cost",
+    "value"
+   ],
+   "status": 200,
+   "summary": [
+    "lot_count",
+    "row_count",
+    "stock_value"
+   ]
+  }
+ },
+ "reporting.stock_status_excel": {
+  "admin": {
+   "sensitive_labels": [
+    "Birim maliyet (TL)",
+    "Stok değeri (TL)",
+    "Tahmini",
+    "Toplam stok değeri (TL)"
+   ],
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "sensitive_labels": [],
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "sensitive_labels": [],
+   "status": 200
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "sensitive_labels": [],
+   "status": 200
+  },
+  "satin_alma": {
+   "sensitive_labels": [],
+   "status": 200
+  },
+  "sevkiyat": {
+   "status": 403
+  },
+  "superuser": {
+   "sensitive_labels": [
+    "Birim maliyet (TL)",
+    "Stok değeri (TL)",
+    "Tahmini",
+    "Toplam stok değeri (TL)"
+   ],
+   "status": 200
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "sensitive_labels": [
+    "Birim maliyet (TL)",
+    "Stok değeri (TL)",
+    "Tahmini",
+    "Toplam stok değeri (TL)"
+   ],
+   "status": 200
+  }
+ },
+ "sales_order.detail": {
+  "admin": {
+   "lines": [
+    {
+     "currency": "TRY",
+     "line_total": "300.00",
+     "unit_price": "12.5000"
+    }
+   ],
+   "money": {
+    "totals": [
+     {
+      "amount": "300.00",
+      "currency": "TRY"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "lines": [
+    {
+     "currency": "TRY",
+     "line_total": "300.00",
+     "unit_price": "12.5000"
+    }
+   ],
+   "money": {
+    "totals": [
+     {
+      "amount": "300.00",
+      "currency": "TRY"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "lines": [
+    {
+     "currency": "TRY",
+     "line_total": "300.00",
+     "unit_price": "12.5000"
+    }
+   ],
+   "money": {
+    "totals": [
+     {
+      "amount": "300.00",
+      "currency": "TRY"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "lines": [
+    {
+     "currency": "TRY",
+     "line_total": "300.00",
+     "unit_price": "12.5000"
+    }
+   ],
+   "money": {
+    "totals": [
+     {
+      "amount": "300.00",
+      "currency": "TRY"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "satin_alma": {
+   "status": 403
+  },
+  "sevkiyat": {
+   "lines": [
+    {
+     "currency": "TRY",
+     "line_total": "300.00",
+     "unit_price": "12.5000"
+    }
+   ],
+   "money": {
+    "totals": [
+     {
+      "amount": "300.00",
+      "currency": "TRY"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "superuser": {
+   "lines": [
+    {
+     "currency": "TRY",
+     "line_total": "300.00",
+     "unit_price": "12.5000"
+    }
+   ],
+   "money": {
+    "totals": [
+     {
+      "amount": "300.00",
+      "currency": "TRY"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "lines": [
+    {
+     "currency": "TRY",
+     "line_total": "300.00",
+     "unit_price": "12.5000"
+    }
+   ],
+   "money": {
+    "totals": [
+     {
+      "amount": "300.00",
+      "currency": "TRY"
+     }
+    ]
+   },
+   "status": 200
+  }
+ },
+ "sales_order.history": {
+  "admin": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "unit_price": "140.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "unit_price": "140.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "unit_price": "140.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "dolum": {
+   "code": "record_not_found",
+   "status": 400
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "code": "record_not_found",
+   "status": 400
+  },
+  "no_role": {
+   "code": "record_not_found",
+   "status": 400
+  },
+  "planlama": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "unit_price": "140.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "satin_alma": {
+   "code": "record_not_found",
+   "status": 400
+  },
+  "sevkiyat": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "unit_price": "140.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "superuser": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "unit_price": "140.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  },
+  "uretim": {
+   "code": "record_not_found",
+   "status": 400
+  },
+  "yonetim": {
+   "entries": [
+    {
+     "action": "update",
+     "money": {
+      "line": [
+       {
+        "currency": "TRY",
+        "unit_price": "140.0000"
+       },
+       null
+      ]
+     },
+     "note": "Satır # kaldırıldı (taslak)"
+    },
+    {
+     "action": "create",
+     "money": {},
+     "note": ""
+    }
+   ],
+   "status": 200
+  }
+ },
+ "sales_order.list": {
+  "admin": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "anonymous": {
+   "status": 401
+  },
+  "depo": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "depo+sevkiyat": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "dolum": {
+   "status": 403
+  },
+  "inactive": {
+   "status": 401
+  },
+  "laboratuvar": {
+   "status": 403
+  },
+  "no_role": {
+   "status": 403
+  },
+  "planlama": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "satin_alma": {
+   "status": 403
+  },
+  "sevkiyat": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "superuser": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  },
+  "uretim": {
+   "status": 403
+  },
+  "yonetim": {
+   "rows": [
+    {}
+   ],
+   "status": 200
+  }
+ }
+}

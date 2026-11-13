@@ -23,19 +23,19 @@ from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 from typing import Any
 
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import F, Max, Q, Sum
 from django.utils import timezone
 
 from apps.core import event_names as ev
 from apps.core import events
+from apps.core.access import APPROVE, CHANGE
 from apps.core.audit import log_change, snapshot
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
-from apps.core.permissions import user_has_role
-from apps.core.roles import DEPO, DOLUM, PLANLAMA
+from apps.core.permissions import require_access
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
+from apps.filling.access import ORDERS, PREP, RUNS, SPECS
 from apps.filling.models import (
     ConsumptionKind,
     FillingConsumption,
@@ -57,11 +57,6 @@ from apps.masterdata import services as masterdata
 from apps.masterdata.models import Equipment, Location, Material, UnitOfMeasure
 from apps.quality import services as quality
 from apps.quality.models import Sample, SampleStage
-
-SPEC_ROLES = (PLANLAMA,)
-ORDER_ROLES = (PLANLAMA,)
-PREP_ROLES = (DEPO,)
-FILLING_ROLES = (DOLUM,)
 
 Status = FillingOrder.Status
 RunStatus = FillingRun.Status
@@ -101,11 +96,6 @@ HUNDRED = Decimal(100)
 
 def _actor(actor: User | None) -> User | None:
     return actor if actor is not None and actor.is_authenticated else None
-
-
-def _require_role(actor: User | None, roles: tuple[str, ...], message: str) -> None:
-    if not user_has_role(actor, roles):
-        raise PermissionDenied(message)
 
 
 def _pick_fields(data: Mapping[str, Any], allowed: Sequence[str]) -> dict[str, Any]:
@@ -208,9 +198,9 @@ def _clean_save[M: PackagingSpec | PackagingSpecLine](instance: M, actor: User |
 
 @transaction.atomic
 def create_spec(actor: User | None, data: Mapping[str, Any]) -> PackagingSpec:
-    """Mamul için yeni taslak ambalaj reçetesi sürümü açar (rol: planlama). `lines` verilirse
-    satırlar da eklenir. Sürüm no mamulde bir sonrakidir."""
-    _require_role(actor, SPEC_ROLES, "Ambalaj reçetesini yalnızca planlama yazar.")
+    """Mamul için yeni taslak ambalaj reçetesi sürümü açar (Ambalaj reçeteleri: Değiştirir).
+    `lines` verilirse satırlar da eklenir. Sürüm no mamulde bir sonrakidir."""
+    require_access(actor, SPECS, CHANGE, "Ambalaj reçetesi açma yetkiniz yok.")
     values = _pick_fields(data, (*SPEC_FIELDS, "lines", "copied_from"))
     lines = values.pop("lines", None) or []
     finished: Material = values["finished_product"]
@@ -229,8 +219,8 @@ def create_spec(actor: User | None, data: Mapping[str, Any]) -> PackagingSpec:
 
 @transaction.atomic
 def update_spec(actor: User | None, spec: PackagingSpec, data: Mapping[str, Any]) -> PackagingSpec:
-    """Taslak sürümü günceller (rol: planlama). Mamul değiştirilemez."""
-    _require_role(actor, SPEC_ROLES, "Ambalaj reçetesini yalnızca planlama yazar.")
+    """Taslak sürümü günceller (Ambalaj reçeteleri: Değiştirir). Mamul değiştirilemez."""
+    require_access(actor, SPECS, CHANGE, "Ambalaj reçetesini değiştirme yetkiniz yok.")
     values = _pick_fields(data, SPEC_FIELDS)
     spec = _lock_spec(spec)
     _require_spec_draft(spec)
@@ -254,8 +244,9 @@ def _next_line_number(spec: PackagingSpec) -> int:
 def add_spec_line(
     actor: User | None, spec: PackagingSpec, data: Mapping[str, Any]
 ) -> PackagingSpecLine:
-    """Taslak sürüme ambalaj satırı ekler (rol: planlama). Sıra verilmezse sona eklenir."""
-    _require_role(actor, SPEC_ROLES, "Ambalaj reçetesini yalnızca planlama yazar.")
+    """Taslak sürüme ambalaj satırı ekler (Ambalaj reçeteleri: Değiştirir). Sıra verilmezse
+    sona eklenir."""
+    require_access(actor, SPECS, CHANGE, "Ambalaj reçetesini değiştirme yetkiniz yok.")
     spec = _lock_spec(spec)
     _require_spec_draft(spec)
     values = _pick_fields(data, LINE_FIELDS)
@@ -272,8 +263,8 @@ def add_spec_line(
 def update_spec_line(
     actor: User | None, line: PackagingSpecLine, data: Mapping[str, Any]
 ) -> PackagingSpecLine:
-    """Taslak sürümdeki ambalaj satırını günceller (rol: planlama)."""
-    _require_role(actor, SPEC_ROLES, "Ambalaj reçetesini yalnızca planlama yazar.")
+    """Taslak sürümdeki ambalaj satırını günceller (Ambalaj reçeteleri: Değiştirir)."""
+    require_access(actor, SPECS, CHANGE, "Ambalaj reçetesini değiştirme yetkiniz yok.")
     values = _pick_fields(data, LINE_FIELDS)
     spec = _lock_spec(line.spec)
     _require_spec_draft(spec)
@@ -290,7 +281,7 @@ def update_spec_line(
 def remove_spec_line(actor: User | None, line: PackagingSpecLine) -> None:
     """Taslak sürümden satırı kaldırır; silinen satır sürümün denetim kaydına yazılır (reçete
     taslağındaki gibi). Onaylı ya da eski sürümün satırı kaldırılamaz."""
-    _require_role(actor, SPEC_ROLES, "Ambalaj reçetesini yalnızca planlama yazar.")
+    require_access(actor, SPECS, CHANGE, "Ambalaj reçetesini değiştirme yetkiniz yok.")
     spec = _lock_spec(line.spec)
     _require_spec_draft(spec)
     line = PackagingSpecLine.objects.select_for_update().get(pk=line.pk)
@@ -352,9 +343,9 @@ def _set_spec_status(
 
 @transaction.atomic
 def approve_spec(actor: User | None, spec: PackagingSpec, note: str = "") -> PackagingSpec:
-    """Taslak sürümü onaylar (rol: planlama). Mamulün önceki onaylı sürümü eski sürüm olur. En az
-    bir satır olmalıdır. Açık dolum emirleri açıldıkları sürümle kalır."""
-    _require_role(actor, SPEC_ROLES, "Ambalaj reçetesini yalnızca planlama onaylar.")
+    """Taslak sürümü onaylar (Ambalaj reçeteleri: Onaylar). Mamulün önceki onaylı sürümü eski
+    sürüm olur. En az bir satır olmalıdır. Açık dolum emirleri açıldıkları sürümle kalır."""
+    require_access(actor, SPECS, APPROVE, "Ambalaj reçetesini onaylama yetkiniz yok.")
     actor = _actor(actor)
     Material.objects.select_for_update().get(pk=spec.finished_product_id)
     spec = _lock_spec(spec)
@@ -462,9 +453,9 @@ def _prepare_order(order: FillingOrder) -> None:
 
 @transaction.atomic
 def create_order(actor: User | None, data: Mapping[str, Any]) -> FillingOrder:
-    """Taslak dolum emri açar (`DO-`, rol: planlama). Mamulün onaylı ambalaj reçetesi emre
-    sabitlenir."""
-    _require_role(actor, ORDER_ROLES, "Dolum emrini yalnızca planlama açar.")
+    """Taslak dolum emri açar (`DO-`; Dolum emirleri: Değiştirir). Mamulün onaylı ambalaj
+    reçetesi emre sabitlenir."""
+    require_access(actor, ORDERS, CHANGE, "Dolum emri açma yetkiniz yok.")
     values = _pick_fields(data, ORDER_FIELDS)
     if values.get("notes") is None:
         values["notes"] = ""
@@ -475,9 +466,9 @@ def create_order(actor: User | None, data: Mapping[str, Any]) -> FillingOrder:
 
 @transaction.atomic
 def update_order(actor: User | None, order: FillingOrder, data: Mapping[str, Any]) -> FillingOrder:
-    """Taslak emri günceller (rol: planlama); ambalaj reçetesi o anki onaylı sürüme yenilenir.
-    Onaylanan emir değiştirilmez."""
-    _require_role(actor, ORDER_ROLES, "Dolum emrini yalnızca planlama değiştirir.")
+    """Taslak emri günceller (Dolum emirleri: Değiştirir); ambalaj reçetesi o anki onaylı sürüme
+    yenilenir. Onaylanan emir değiştirilmez."""
+    require_access(actor, ORDERS, CHANGE, "Dolum emrini değiştirme yetkiniz yok.")
     values = _pick_fields(data, ORDER_FIELDS)
     order = _lock_order(order)
     _require_status(order, (Status.DRAFT,), "document_locked", "değiştirilemez")
@@ -513,10 +504,10 @@ def build_requirements(order: FillingOrder) -> list[FillingRequirement]:
 
 @transaction.atomic
 def approve_order(actor: User | None, order: FillingOrder, note: str = "") -> FillingOrder:
-    """Emri onaylar (rol: planlama): ambalaj ihtiyacı hesaplanır. Olay `filling_order.approved`
-    depoya "Ambalaj malzemesi hazırla" görevi açar. Sabitlenen ambalaj reçetesi hâlâ onaylı
-    olmalıdır (değiştiyse taslak emir güncellenir)."""
-    _require_role(actor, ORDER_ROLES, "Dolum emrini yalnızca planlama onaylar.")
+    """Emri onaylar (Dolum emirleri: Onaylar): ambalaj ihtiyacı hesaplanır. Olay
+    `filling_order.approved` depoya "Ambalaj malzemesi hazırla" görevi açar. Sabitlenen ambalaj
+    reçetesi hâlâ onaylı olmalıdır (değiştiyse taslak emir güncellenir)."""
+    require_access(actor, ORDERS, APPROVE, "Dolum emrini onaylama yetkiniz yok.")
     actor = _actor(actor)
     order = _lock_order(order)
     filling_order_states.assert_can_transition(order.status, Status.APPROVED)
@@ -545,8 +536,9 @@ def approve_order(actor: User | None, order: FillingOrder, note: str = "") -> Fi
 
 @transaction.atomic
 def start_material_prep(actor: User | None, order: FillingOrder) -> FillingOrder:
-    """Depo ambalaj hazırlığına başlar (rol: depo). İlk hazırlama da hazırlığı başlatır."""
-    _require_role(actor, PREP_ROLES, "Ambalaj hazırlığını yalnızca depo başlatır.")
+    """Depo ambalaj hazırlığına başlar (Ambalaj hazırlama: Değiştirir). İlk hazırlama da hazırlığı
+    başlatır."""
+    require_access(actor, PREP, CHANGE, "Ambalaj hazırlığını başlatma yetkiniz yok.")
     order = _lock_order(order)
     return transition_status(order, Status.MATERIAL_PREP, actor, machine=filling_order_states)
 
@@ -573,10 +565,10 @@ def pick_packaging(
     from_location: Location | None = None,
     note: str = "",
 ) -> PackagingPick:
-    """Depo ambalaj lotu hazırlar (rol: depo): lot depodan dolum hattının lokasyonuna transfer
-    edilir (ortak hazırlama servisi). Yalnızca serbest, SKT'si geçmemiş ve satırın malzemesinden
-    lot; hazırlanan toplam ihtiyacın iki katını geçemez."""
-    _require_role(actor, PREP_ROLES, "Ambalajı yalnızca depo hazırlar.")
+    """Depo ambalaj lotu hazırlar (Ambalaj hazırlama: Değiştirir): lot depodan dolum hattının
+    lokasyonuna transfer edilir (ortak hazırlama servisi). Yalnızca serbest, SKT'si geçmemiş ve
+    satırın malzemesinden lot; hazırlanan toplam ihtiyacın iki katını geçemez."""
+    require_access(actor, PREP, CHANGE, "Ambalaj hazırlama yetkiniz yok.")
     actor = _actor(actor)
     order = _lock_order(order)
     _require_status(order, PICKABLE_STATUSES, "order_not_pickable", "ambalaj hazırlanamaz")
@@ -625,10 +617,10 @@ def missing_packaging(order: FillingOrder) -> list[FillingRequirement]:
 
 @transaction.atomic
 def mark_material_ready(actor: User | None, order: FillingOrder) -> FillingOrder:
-    """Ambalaj hazır (rol: depo): her satır en az fire payı hariç ihtiyaç kadar hazırlanmış
-    olmalıdır. Olay `filling_order.material_ready` dolum ekibine "Dolumu başlat" görevi açar ve
-    depo görevini kapatır."""
-    _require_role(actor, PREP_ROLES, "Ambalaj hazır bilgisini yalnızca depo verir.")
+    """Ambalaj hazır (Ambalaj hazırlama: Değiştirir): her satır en az fire payı hariç ihtiyaç
+    kadar hazırlanmış olmalıdır. Olay `filling_order.material_ready` dolum ekibine "Dolumu başlat"
+    görevi açar ve depo görevini kapatır."""
+    require_access(actor, PREP, CHANGE, "Ambalaj hazır bilgisi verme yetkiniz yok.")
     order = _lock_order(order)
     if order.status == Status.APPROVED:
         order = transition_status(order, Status.MATERIAL_PREP, actor, machine=filling_order_states)
@@ -642,12 +634,13 @@ def mark_material_ready(actor: User | None, order: FillingOrder) -> FillingOrder
 
 @transaction.atomic
 def cancel_order(actor: User | None, order: FillingOrder, reason: str) -> FillingOrder:
-    """Emri iptal eder (rol: planlama; taslak, onaylı ya da hazırlıktaki emir). Hazırlanan ambalaj
-    geldiği lokasyonlara geri transfer edilir. Olay `filling_order.cancelled` emre bağlı açık
-    görevleri iptal eder."""
-    _require_role(actor, ORDER_ROLES, "Dolum emrini yalnızca planlama iptal eder.")
+    """Emri iptal eder: taslağı iptal etmek Dolum emirleri: Değiştirir, onaylı ya da hazırlıktaki
+    emri iptal etmek Onaylar ister. Hazırlanan ambalaj geldiği lokasyonlara geri transfer edilir.
+    Olay `filling_order.cancelled` emre bağlı açık görevleri iptal eder."""
     actor = _actor(actor)
     order = _lock_order(order)
+    level = CHANGE if order.status == Status.DRAFT else APPROVE
+    require_access(actor, ORDERS, level, "Bu dolum emrini iptal etme yetkiniz yok.")
     filling_order_states.assert_can_transition(order.status, Status.CANCELLED)
     if not reason.strip():
         raise BusinessRuleError("cancel_reason_required", "İptal nedeni girilmelidir.")
@@ -695,10 +688,11 @@ def run_payload(run: FillingRun, **extra: Any) -> dict[str, Any]:
 
 @transaction.atomic
 def start_run(actor: User | None, order: FillingOrder) -> FillingRun:
-    """Dolum partisini başlatır (rol: dolum). Dolum lotu `D-YYYYMMDD-NNN` numarasıyla karantinada
-    açılır; SKT = dolum tarihi + mamulün raf ömrü. Emirde açık parti varsa yenisi açılmaz. İlk
-    partiyle emir "Dolumda" olur. Olay `filling_run.started` "Dolumu başlat" görevini kapatır."""
-    _require_role(actor, FILLING_ROLES, "Dolum partisini yalnızca dolum başlatır.")
+    """Dolum partisini başlatır (Dolum hattı: Değiştirir). Dolum lotu `D-YYYYMMDD-NNN`
+    numarasıyla karantinada açılır; SKT = dolum tarihi + mamulün raf ömrü. Emirde açık parti varsa
+    yenisi açılmaz. İlk partiyle emir "Dolumda" olur. Olay `filling_run.started` "Dolumu başlat"
+    görevini kapatır."""
+    require_access(actor, RUNS, CHANGE, "Dolum partisi başlatma yetkiniz yok.")
     actor = _actor(actor)
     order = _lock_order(order)
     _require_status(order, RUNNABLE_STATUSES, "order_not_ready", "dolum başlatılamaz")
@@ -821,11 +815,12 @@ def consume_bulk(
     quantity: Decimal,
     from_location: Location | None = None,
 ) -> FillingConsumption:
-    """Bulk tüketimi (rol: dolum): okutulan tank lotundan `ISSUE_PRODUCTION` ve bulk lot → dolum
-    lotu soy ağacı bağı. Bir partiye birden çok bulk lotu girebilir. Lot ambalaj reçetesinin
-    bulkundan, serbest ve SKT'si geçmemiş olmalıdır; bulunduğu (karantina dışı) lokasyondan düşülür.
+    """Bulk tüketimi (Dolum hattı: Değiştirir): okutulan tank lotundan `ISSUE_PRODUCTION` ve bulk
+    lot → dolum lotu soy ağacı bağı. Bir partiye birden çok bulk lotu girebilir. Lot ambalaj
+    reçetesinin bulkundan, serbest ve SKT'si geçmemiş olmalıdır; bulunduğu (karantina dışı)
+    lokasyondan düşülür.
     """
-    _require_role(actor, FILLING_ROLES, "Bulk tüketimini yalnızca dolum kaydeder.")
+    require_access(actor, RUNS, CHANGE, "Bulk tüketimi kaydetme yetkiniz yok.")
     actor = _actor(actor)
     run = _lock_run(run)
     _require_in_progress(run)
@@ -844,10 +839,10 @@ def consume_bulk(
 
 @transaction.atomic
 def scan_packaging_lot(actor: User | None, run: FillingRun, lot: Lot) -> RunLot:
-    """Partiye ambalaj lotu okutur (rol: dolum). Lot reçetedeki bir ambalaj malzemesinden olmalı
-    (yanlış malzemenin lotu reddedilir), serbest ve SKT'si geçmemiş olmalı ve hat başında stokta
-    bulunmalıdır. Aynı lot ikinci kez okutulursa var olan kayıt döner."""
-    _require_role(actor, FILLING_ROLES, "Ambalaj lotunu yalnızca dolum okutur.")
+    """Partiye ambalaj lotu okutur (Dolum hattı: Değiştirir). Lot reçetedeki bir ambalaj
+    malzemesinden olmalı (yanlış malzemenin lotu reddedilir), serbest ve SKT'si geçmemiş olmalı ve
+    hat başında stokta bulunmalıdır. Aynı lot ikinci kez okutulursa var olan kayıt döner."""
+    require_access(actor, RUNS, CHANGE, "Ambalaj lotu okutma yetkiniz yok.")
     actor = _actor(actor)
     run = _lock_run(run)
     _require_in_progress(run)
@@ -883,11 +878,11 @@ def record_scrap(
     lot: Lot | None = None,
     note: str = "",
 ) -> ScrapRecord:
-    """Fire kaydı (rol: dolum). Bulk firesi lotun bulunduğu lokasyondan, ambalaj firesi hat
-    başından hemen `SCRAP` hareketi yazar. Mamul firesi (dolup ayrılan adet) dolum lotuna yazılır;
-    stok hareketi parti bitişinde, mamul girişinin ardından düşülür. `OTHER` nedeninde not
-    zorunludur."""
-    _require_role(actor, FILLING_ROLES, "Fireyi yalnızca dolum kaydeder.")
+    """Fire kaydı (Dolum hattı: Değiştirir). Bulk firesi lotun bulunduğu lokasyondan, ambalaj
+    firesi hat başından hemen `SCRAP` hareketi yazar. Mamul firesi (dolup ayrılan adet) dolum
+    lotuna yazılır; stok hareketi parti bitişinde, mamul girişinin ardından düşülür. `OTHER`
+    nedeninde not zorunludur."""
+    require_access(actor, RUNS, CHANGE, "Fire kaydetme yetkiniz yok.")
     actor = _actor(actor)
     run = _lock_run(run)
     _require_in_progress(run)
@@ -1036,7 +1031,7 @@ def variance_pct(theoretical: Decimal, actual: Decimal) -> Decimal:
 
 @transaction.atomic
 def finish_run(actor: User | None, run: FillingRun, good_units: int, note: str = "") -> FillingRun:
-    """Partiyi bitirir (rol: dolum).
+    """Partiyi bitirir (Dolum hattı: Değiştirir).
 
     - Ambalaj tüketimi (sağlam + mamul firesi) × adet başına miktar olarak hat başındaki lotlardan
       düşülür; her tüketim ambalaj lotu → dolum lotu bağı yazar.
@@ -1045,7 +1040,7 @@ def finish_run(actor: User | None, run: FillingRun, good_units: int, note: str =
     - Teorik ve gerçek bulk karşılaştırılır; fark eşiği aşarsa `filling.bulk_variance`.
     Olay `filling_run.completed` laboratuvara "Mamul kontrolü" görevi açar.
     """
-    _require_role(actor, FILLING_ROLES, "Dolum partisini yalnızca dolum bitirir.")
+    require_access(actor, RUNS, CHANGE, "Dolum partisini bitirme yetkiniz yok.")
     actor = _actor(actor)
     run = _lock_run(run)
     filling_run_states.assert_can_transition(run.status, RunStatus.COMPLETED)
@@ -1143,9 +1138,9 @@ def _set_run_status(actor: User | None, run: FillingRun, to_status: str, note: s
 
 @transaction.atomic
 def cancel_run(actor: User | None, run: FillingRun, reason: str) -> FillingRun:
-    """Yanlış başlatılan partiyi iptal eder (rol: dolum; tüketim ve fire kaydı yoksa). Dolum lotu
-    stoksuz olarak karantinada kalır."""
-    _require_role(actor, FILLING_ROLES, "Dolum partisini yalnızca dolum iptal eder.")
+    """Yanlış başlatılan partiyi iptal eder (Dolum hattı: Değiştirir; tüketim ve fire kaydı
+    yoksa). Dolum lotu stoksuz olarak karantinada kalır."""
+    require_access(actor, RUNS, CHANGE, "Dolum partisini iptal etme yetkiniz yok.")
     actor = _actor(actor)
     reason = reason.strip()
     if not reason:
@@ -1167,9 +1162,10 @@ def cancel_run(actor: User | None, run: FillingRun, reason: str) -> FillingRun:
 
 @transaction.atomic
 def finish_filling(actor: User | None, order: FillingOrder, note: str = "") -> FillingOrder:
-    """Dolumu bitirir (rol: dolum): açık parti kalmamalı, en az bir parti tamamlanmış olmalıdır.
-    Emir "Analiz bekliyor" olur; tüm dolum lotları serbest bırakılınca kendiliğinden tamamlanır."""
-    _require_role(actor, FILLING_ROLES, "Dolumu yalnızca dolum bitirir.")
+    """Dolumu bitirir (Dolum hattı: Değiştirir): açık parti kalmamalı, en az bir parti tamamlanmış
+    olmalıdır. Emir "Analiz bekliyor" olur; tüm dolum lotları serbest bırakılınca kendiliğinden
+    tamamlanır."""
+    require_access(actor, RUNS, CHANGE, "Dolumu bitirme yetkiniz yok.")
     order = _lock_order(order)
     filling_order_states.assert_can_transition(order.status, Status.QC_PENDING)
     if order.runs.filter(status=RunStatus.IN_PROGRESS).exists():
@@ -1209,7 +1205,9 @@ def unreleased_lots(order: FillingOrder) -> list[Lot]:
 @transaction.atomic
 def complete_order(actor: User | None, order: FillingOrder) -> FillingOrder:
     """Emri tamamlar: tüm dolum lotları serbest bırakılmış olmalıdır. Laboratuvar son lotu serbest
-    bırakınca kendiliğinden çağrılır (`handlers.py`)."""
+    bırakınca kendiliğinden çağrılır (`handlers.py`). Serviste yetki denetimi yoktur: lot
+    kararının sonucudur, kararı veren dolum yetkisi taşımayabilir. Lotlar zaten serbestse dolumu
+    bitirmek (Dolum hattı: Değiştirir) emri hemen kapatır."""
     actor = _actor(actor)
     order = _lock_order(order)
     filling_order_states.assert_can_transition(order.status, Status.COMPLETED)

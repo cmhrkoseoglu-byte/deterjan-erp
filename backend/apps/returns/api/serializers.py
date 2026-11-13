@@ -133,3 +133,14 @@ class CustomerReturnDetailSerializer(CustomerReturnSerializer):
 
 class ScrapSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class DispatchedShipmentSerializer(serializers.ModelSerializer):
+    """İade formunun sevkiyat seçimi: yalnız numara, sipariş ve tarih (plan §5.4)."""
+
+    order_number = serializers.CharField(source="sales_order.number", read_only=True)
+
+    class Meta:
+        model = Shipment
+        fields = ["id", "number", "order_number", "planned_date"]
+        read_only_fields = fields

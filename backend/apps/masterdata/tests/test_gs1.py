@@ -110,7 +110,10 @@ def test_gs1_settings_are_admin_only_and_need_a_note(admin, planner) -> None:
                 note="x",
                 company_prefix=PREFIX,
             )
-        assert str(denied.value) == "GS1 ayarlarını yalnızca sistem yöneticisi değiştirir."
+        assert (
+            str(denied.value)
+            == "GS1 ayarlarını değiştirme yetkiniz yok (yalnız sistem yöneticisi)."
+        )
     for note in ("", "   "):
         assert rule_error(
             services.update_gs1_settings, admin, note=note, company_prefix=PREFIX

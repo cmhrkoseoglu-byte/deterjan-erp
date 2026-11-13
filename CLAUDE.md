@@ -39,7 +39,7 @@ Tek Django projesi, her iş alanı ayrı bir Django uygulaması (`backend/apps/<
 
 | Modül | Sorumluluk | Faz |
 |---|---|---|
-| `core` | Kullanıcı, rol, BaseModel, denetim günlüğü, belge numaralama, olay yayını | 0 |
+| `core` | Kullanıcı, rol, yetki kataloğu ve kişiye özel yetkiler, BaseModel, denetim günlüğü, belge numaralama, olay yayını | 0 |
 | `masterdata` | Malzeme, birim, dönüşüm, depo/lokasyon, ekipman (tank/hat), tedarikçi, müşteri | 1 |
 | `recipes` | Sürümlü reçete (formülasyon) | 1 |
 | `inventory` | Lot, stok hareket defteri, bakiye, lot soy ağacı, mal kabul, sayım | 1 |
@@ -77,6 +77,7 @@ apps/<modül>/
   services.py      # Tüm yazma işlemleri ve iş kuralları. transaction.atomic burada.
   selectors.py     # Karmaşık okuma sorguları (raporlar, bakiyeler, soy ağacı).
   state.py         # Durum makinesi tanımı (izinli geçişler) — durumlu belgelerde.
+  access.py        # Yetki bölümleri ve rol varsayılan paketleri (yalnız veri).
   api/serializers.py, api/views.py, api/urls.py
   admin.py
   tests/           # test_services.py, test_api.py, factories.py
@@ -110,14 +111,25 @@ View'lar ince olur: doğrula → servisi çağır → serialize et. Serializer `
 10. **Belge numaraları** `core.services.next_document_number(prefix)` ile üretilir
     (ör. `UE-2026-00001`), yıl bazında sıfırlanır, `select_for_update` ile çakışmasız.
 11. **Olaylar commit sonrası yayınlanır** (`transaction.on_commit`). Geri alınan işlem bildirim üretmez.
-12. **Yetki her uç noktada kontrol edilir.** Rol bazlı izinler `core.permissions` içinde; frontend'in
-   butonu gizlemesi yetki sayılmaz.
+12. **Yetki her uç noktada kontrol edilir.** Yetkiler modül bölümü ve düzey (görür / değiştirir /
+   onaylar) bazındadır. Bölümler ve rollerin varsayılan yetki paketleri her modülün `access.py`
+   dosyasındadır; kullanıcının geçerli yetkisi rol paketleri ile kişiye özel eklenen ya da kaldırılan
+   yetkilerden hesaplanır (`core.permissions`). API'de `HasAccess`, serviste `require_access`
+   kullanılır; arayüz aynı kuralı `can()` ile gösterir, frontend'in butonu gizlemesi yetki sayılmaz.
+   Onay ve karar adımları ayrı **onaylar** yetkisidir; değiştirir onaylamayı kapsamaz. Admin rolü ve
+   superuser her yetkiye sahiptir. Geçiş sürerken (docs/plan/kisi-yetkileri.md, 2-8. adımlar) henüz
+   geçmemiş modüller rol denetimini (`HasRole`, `hasAnyRole`) korur; yeni ve geçen kod `HasAccess`,
+   `require_access` ve `can()` kullanır.
 
 ## 5. Roller
 
 `admin`, `yonetim`, `planlama`, `depo`, `uretim`, `laboratuvar`, `dolum`, `sevkiyat`, `satin_alma`.
 Django `Group` olarak tanımlanır, `seed_roles` yönetim komutuyla oluşturulur. Bir kullanıcının birden
-fazla rolü olabilir. Görevler role ya da kişiye atanabilir.
+fazla rolü olabilir. Rol iki işe yarar: varsayılan yetki paketidir ve görev/bildirim adresidir. Rol
+paketleri kodda tutulur, yalnızca yeni sürümle ve DECISIONS kaydıyla değişir. Personel, bordro,
+personel maliyeti, olaylar ve kazalar ve denetim günlüğü yetkileri yalnızca yönetim rolündeki
+kullanıcılara verilebilir (KVKK). Görevler role ya da kişiye atanabilir; rolün üyelerinden görevin
+gerektirdiği yetkisi olmayanlar görevi ve bildirimini almaz.
 
 ## 6. Kod kuralları
 
@@ -137,6 +149,9 @@ fazla rolü olabilir. Görevler role ya da kişiye atanabilir.
 - Stok değişmezleri (kural 1, 2, 3) için ortak bir test yardımcısı: `assert_stock_invariants()`.
   Stoka dokunan her testin sonunda çağrılır.
 - API testleri yetkiyi de test eder (yetkisiz rol 403 almalı).
+- Yetki sözleşme testi (`apps/core/tests/access_contract/`) her adımda yeşil olur: kişiye özel yetki
+  yokken her uç nokta × rol kararı dondurulmuş anlık görüntüyle aynıdır. Bilinçli bir değişiklik
+  sahibin onayı ve DECISIONS kaydıyla anlık görüntüye işlenir.
 - `pytest` yeşil olmadan bir adım tamamlanmış sayılmaz.
 
 ## 8. Çalışma protokolü (Claude için)

@@ -4,12 +4,13 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.core.access import CHANGE, PRICES
 from apps.core.api.labels import LabelOutputSerializer, PrintRequestSerializer
 from apps.core.labels import is_valid_gtin
 from apps.core.models import Currency, User
-from apps.core.permissions import user_has_role
-from apps.core.roles import SATIN_ALMA, YONETIM
+from apps.core.permissions import has_access
 from apps.inventory import labels
+from apps.inventory.access import RECEIPT_PRICES
 from apps.inventory.models import (
     GoodsReceipt,
     GoodsReceiptExtraCost,
@@ -25,15 +26,19 @@ from apps.inventory.services import RECEIPT_PRICE_FIELDS
 from apps.inventory.state import goods_receipt_states, lot_states
 from apps.masterdata.models import Location, Material, Supplier, UnitOfMeasure
 
-# Mal kabuldeki alış fiyatı, kur ve ek masrafı görür ve girer (admin her yerde). Depo miktarı
-# görür, tutarı görmez (Faz 4, Adım 4.1).
-RECEIPT_PRICE_ROLES = (SATIN_ALMA, YONETIM)
 # Lotun koli içi adedi (`LotSerializer.case_units`) koli dönüşümünün basamaklarıyla yazılır.
 CASE_UNITS = serializers.DecimalField(max_digits=18, decimal_places=6)
 
 
 def can_see_receipt_prices(request: Any) -> bool:
-    return request is not None and user_has_role(request.user, RECEIPT_PRICE_ROLES)
+    """Mal kabulün alış fiyatı, kuru ve ek masrafı Fiyatları görür'e görünür (plan §5.6)."""
+    return request is not None and has_access(request.user, PRICES)
+
+
+def can_enter_receipt_prices(request: Any) -> bool:
+    """Fiyatı girmek Mal kabul fiyat ve masrafları: Değiştirir ister; giremeyenin gönderdiği
+    fiyat yok sayılır (plan §5.6)."""
+    return request is not None and has_access(request.user, RECEIPT_PRICES, CHANGE)
 
 
 def user_name(user: User | None) -> str | None:
@@ -429,8 +434,8 @@ class GoodsReceiptLineSerializer(serializers.ModelSerializer):
         return data
 
     def to_internal_value(self, data: Any) -> Any:
-        # Fiyat yetkisi olmayan rolün gönderdiği fiyat alanları yok sayılır (mevcut değer kalır).
-        if isinstance(data, dict) and not self._shows_prices():
+        # Fiyatı giremeyen kişinin gönderdiği fiyat alanları yok sayılır (mevcut değer kalır).
+        if isinstance(data, dict) and not can_enter_receipt_prices(self.context.get("request")):
             data = {k: v for k, v in data.items() if k not in RECEIPT_PRICE_FIELDS}
         return super().to_internal_value(data)
 
@@ -512,7 +517,7 @@ class GoodsReceiptDetailSerializer(GoodsReceiptSerializer):
 
     @extend_schema_field(GoodsReceiptExtraCostSerializer(many=True, allow_null=True))
     def get_extra_costs(self, receipt: GoodsReceipt) -> list[dict[str, Any]] | None:
-        """Ek masraflar; fiyat yetkisi olmayan role `null`."""
+        """Ek masraflar; Fiyatları görür'ü olmayana `null`."""
         if not can_see_receipt_prices(self.context.get("request")):
             return None
         rows = GoodsReceiptExtraCostSerializer(receipt.extra_costs.all(), many=True).data

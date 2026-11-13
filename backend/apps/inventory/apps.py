@@ -7,23 +7,41 @@ class InventoryConfig(AppConfig):
     verbose_name = "Stok ve lot"
 
     def ready(self) -> None:
+        from apps.core.access import COSTS, PRICES
         from apps.core.attachments import register_attachment_target
         from apps.core.models import User
-        from apps.core.permissions import user_has_role
+        from apps.core.permissions import has_access
         from apps.core.records import register_record_type
-        from apps.core.roles import YONETIM
+        from apps.inventory.services import PRICE_CORRECTION_NOTE, RECEIPT_PRICE_FIELDS
 
         # Tedarikçi CoA'sı, fotoğraf, irsaliye görüntüsü (Adım 2.4).
         register_attachment_target("inventory.lot")
         register_attachment_target("inventory.goodsreceipt")
 
         def lot_cost_fields(user: User) -> set[str]:
-            # Lot maliyetini yalnızca yönetim görür (Karar D-15, costing.COST_ROLES).
-            return set() if user_has_role(user, (YONETIM,)) else {"unit_cost", "cost_is_estimated"}
+            # Lot maliyeti Maliyetleri görür'e bağlıdır (plan §5.6; Karar D-15).
+            return set() if has_access(user, COSTS) else {"unit_cost", "cost_is_estimated"}
+
+        def receipt_price_fields(user: User) -> set[str]:
+            # Mal kabulün fiyatları, silinen satır kaydının içinde de, Fiyatları görür'e bağlıdır
+            # (plan §5.6, §8 madde 7). Ek masraf ekranda bütünüyle gizli olduğu için silinen ek
+            # masraf kaydı da gösterilmez.
+            if has_access(user, PRICES):
+                return set()
+            return {*RECEIPT_PRICE_FIELDS, "amount", "extra_cost"}
+
+        def receipt_price_note(user: User, note: str) -> bool:
+            # Fiyat düzeltmesinin notu tutar içerebilir.
+            return note.startswith(PRICE_CORRECTION_NOTE) and not has_access(user, PRICES)
 
         # Yorum, geçmiş, ek: lot ve stok belgelerini giriş yapmış herkes okur (ekranlarıyla aynı).
         register_record_type("inventory.lot", hidden_fields=lot_cost_fields)
-        register_record_type("inventory.goodsreceipt")
+        register_record_type(
+            "inventory.goodsreceipt",
+            hidden_fields=receipt_price_fields,
+            nested_hidden=True,
+            hidden_note=receipt_price_note,
+        )
         register_record_type("inventory.stockadjustment")
 
         # Belge numaraları: biçim Sistem > Kodlama sistematiği ayarından (core.coding).

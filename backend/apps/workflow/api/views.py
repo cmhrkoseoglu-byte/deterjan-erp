@@ -241,12 +241,12 @@ class RecordHistoryView(generics.ListAPIView):
     @extend_schema(parameters=_RECORD_PARAMS)
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         content_type, object_id = _record_from_query(request)
-        hidden = records.hidden_fields_for(request.user, _label(content_type))
+        history = records.history_filter_for(request.user, _label(content_type))
         entries: Any = selectors.record_history(content_type, object_id)
-        if hidden:
-            entries = [e for e in entries if not e.changes or set(e.changes) - hidden]
+        if history.fields or history.note is not None:
+            entries = [e for e in entries if history.shows(e.changes, e.note or "")]
         page = self.paginate_queryset(entries)
-        context = {**self.get_serializer_context(), "hidden_fields": hidden}
+        context = {**self.get_serializer_context(), "history": history}
         serializer = RecordHistorySerializer(
             page if page is not None else entries, many=True, context=context
         )

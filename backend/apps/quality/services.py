@@ -15,17 +15,16 @@ from collections.abc import Iterable, Mapping
 from decimal import Decimal
 from typing import Any
 
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
 from apps.core import events
+from apps.core.access import APPROVE, CHANGE
 from apps.core.audit import log_change, snapshot
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
-from apps.core.permissions import user_has_role
-from apps.core.roles import LABORATUVAR, YONETIM
+from apps.core.permissions import require_access
 from apps.core.services import (
     cancel_document,
     create_document,
@@ -38,6 +37,7 @@ from apps.inventory.services import lot_payload
 from apps.inventory.state import lot_states
 from apps.masterdata import services as masterdata
 from apps.masterdata.models import Location, Material
+from apps.quality.access import CONDITIONAL, SAMPLES, SPECS
 from apps.quality.models import (
     QualityDecision,
     Sample,
@@ -49,8 +49,6 @@ from apps.quality.models import (
 )
 from apps.quality.state import sample_states, specification_states
 
-LAB_ROLES = (LABORATUVAR,)
-APPROVAL_ROLES = (YONETIM,)
 # Spesifikasyon tanımlanabilen malzemeler. Ambalaj da giriş kontrolüne girebildiği için dahil.
 SPEC_MATERIAL_TYPES = (
     Material.Type.RAW,
@@ -88,11 +86,6 @@ def _actor(actor: User | None) -> User | None:
     return actor if actor is not None and actor.is_authenticated else None
 
 
-def _require_role(actor: User | None, roles: tuple[str, ...], message: str) -> None:
-    if not user_has_role(actor, roles):
-        raise PermissionDenied(message)
-
-
 def _pick(data: Mapping[str, Any], allowed: tuple[str, ...]) -> dict[str, Any]:
     unknown = set(data) - set(allowed)
     if unknown:
@@ -105,8 +98,8 @@ def _pick(data: Mapping[str, Any], allowed: tuple[str, ...]) -> dict[str, Any]:
 
 @transaction.atomic
 def create_test_definition(actor: User | None, data: Mapping[str, Any]) -> TestDefinition:
-    """Yeni test tanımı (rol: laboratuvar)."""
-    _require_role(actor, LAB_ROLES, "Test tanımını yalnızca laboratuvar yazar.")
+    """Yeni test tanımı (Spesifikasyonlar ve test tanımları: Değiştirir)."""
+    require_access(actor, SPECS, CHANGE, "Test tanımı açma yetkiniz yok.")
     return masterdata.create_record(actor, TestDefinition, _pick(data, TEST_FIELDS))
 
 
@@ -114,9 +107,9 @@ def create_test_definition(actor: User | None, data: Mapping[str, Any]) -> TestD
 def update_test_definition(
     actor: User | None, test: TestDefinition, data: Mapping[str, Any]
 ) -> TestDefinition:
-    """Test tanımını günceller (rol: laboratuvar). Spesifikasyonda kullanılan testin sonuç türü
-    değiştirilemez (girilmiş sonuçların anlamı değişir)."""
-    _require_role(actor, LAB_ROLES, "Test tanımını yalnızca laboratuvar yazar.")
+    """Test tanımını günceller (Spesifikasyonlar ve test tanımları: Değiştirir). Spesifikasyonda
+    kullanılan testin sonuç türü değiştirilemez (girilmiş sonuçların anlamı değişir)."""
+    require_access(actor, SPECS, CHANGE, "Test tanımını değiştirme yetkiniz yok.")
     values = _pick(data, TEST_FIELDS)
     new_type = values.get("result_type")
     if (
@@ -132,8 +125,9 @@ def update_test_definition(
 
 @transaction.atomic
 def set_test_active(actor: User | None, test: TestDefinition, active: bool) -> TestDefinition:
-    """Testi aktif ya da pasif yapar (rol: laboratuvar). Pasif test yeni satırda seçilemez."""
-    _require_role(actor, LAB_ROLES, "Test tanımını yalnızca laboratuvar yazar.")
+    """Testi aktif ya da pasif yapar (Spesifikasyonlar ve test tanımları: Değiştirir). Pasif test
+    yeni satırda seçilemez."""
+    require_access(actor, SPECS, CHANGE, "Test tanımını değiştirme yetkiniz yok.")
     return masterdata.set_active(actor, test, active)
 
 
@@ -206,8 +200,9 @@ def create_specification(
     lines: Iterable[Mapping[str, Any]] = (),
     copied_from: Specification | None = None,
 ) -> Specification:
-    """Malzeme + aşama için yeni taslak sürüm açar (rol: laboratuvar); sürüm no bir sonrakidir."""
-    _require_role(actor, LAB_ROLES, "Spesifikasyonu yalnızca laboratuvar yazar.")
+    """Malzeme + aşama için yeni taslak sürüm açar (Spesifikasyonlar ve test tanımları: Değiştirir);
+    sürüm no bir sonrakidir."""
+    require_access(actor, SPECS, CHANGE, "Spesifikasyon açma yetkiniz yok.")
     _validate_spec_material(material)
     if sample_stage not in SampleStage.values:
         raise BusinessRuleError("invalid_stage", "Geçersiz numune aşaması.")
@@ -238,8 +233,9 @@ def create_specification(
 def update_specification(
     actor: User | None, spec: Specification, data: Mapping[str, Any]
 ) -> Specification:
-    """Taslak sürümün değişiklik notunu günceller (rol: laboratuvar)."""
-    _require_role(actor, LAB_ROLES, "Spesifikasyonu yalnızca laboratuvar yazar.")
+    """Taslak sürümün değişiklik notunu günceller (Spesifikasyonlar ve test tanımları:
+    Değiştirir)."""
+    require_access(actor, SPECS, CHANGE, "Spesifikasyonu değiştirme yetkiniz yok.")
     values = _pick(data, ("change_note",))
     spec = _lock_spec(spec)
     _require_draft(spec)
@@ -295,10 +291,10 @@ def _set_spec_status(
 
 @transaction.atomic
 def approve_specification(actor: User | None, spec: Specification, note: str = "") -> Specification:
-    """Taslak sürümü onaylar (rol: laboratuvar). Aynı malzeme ve aşamanın önceki onaylı sürümü
-    geçersiz olur. En az bir satır olmalı, testler ve malzeme aktif olmalıdır. Açık numuneler
-    açıldıkları sürümle kalır."""
-    _require_role(actor, LAB_ROLES, "Spesifikasyonu yalnızca laboratuvar onaylar.")
+    """Taslak sürümü onaylar (Spesifikasyonlar ve test tanımları: Onaylar). Aynı malzeme ve aşamanın
+    önceki onaylı sürümü geçersiz olur. En az bir satır olmalı, testler ve malzeme aktif olmalıdır.
+    Açık numuneler açıldıkları sürümle kalır."""
+    require_access(actor, SPECS, APPROVE, "Spesifikasyonu onaylama yetkiniz yok.")
     actor = _actor(actor)
     Material.objects.select_for_update().get(pk=spec.material_id)
     spec = _lock_spec(spec)
@@ -333,8 +329,9 @@ def approve_specification(actor: User | None, spec: Specification, note: str = "
 def add_spec_line(
     actor: User | None, spec: Specification, data: Mapping[str, Any]
 ) -> SpecificationLine:
-    """Taslak sürüme satır ekler (rol: laboratuvar). Sıra verilmezse sona eklenir."""
-    _require_role(actor, LAB_ROLES, "Spesifikasyonu yalnızca laboratuvar yazar.")
+    """Taslak sürüme satır ekler (Spesifikasyonlar ve test tanımları: Değiştirir). Sıra verilmezse
+    sona eklenir."""
+    require_access(actor, SPECS, CHANGE, "Spesifikasyonu değiştirme yetkiniz yok.")
     spec = _lock_spec(spec)
     _require_draft(spec)
     values = _pick(data, LINE_FIELDS)
@@ -351,8 +348,8 @@ def add_spec_line(
 def update_spec_line(
     actor: User | None, line: SpecificationLine, data: Mapping[str, Any]
 ) -> SpecificationLine:
-    """Taslak sürümdeki satırı günceller (rol: laboratuvar)."""
-    _require_role(actor, LAB_ROLES, "Spesifikasyonu yalnızca laboratuvar yazar.")
+    """Taslak sürümdeki satırı günceller (Spesifikasyonlar ve test tanımları: Değiştirir)."""
+    require_access(actor, SPECS, CHANGE, "Spesifikasyonu değiştirme yetkiniz yok.")
     values = _pick(data, LINE_FIELDS)
     spec = _lock_spec(line.specification)
     _require_draft(spec)
@@ -367,7 +364,7 @@ def update_spec_line(
 def remove_spec_line(actor: User | None, line: SpecificationLine) -> None:
     """Taslak sürümden satırı kaldırır; silinen satır sürümün denetim kaydına yazılır (reçete
     taslağındaki gibi). Onaylı ya da geçersiz sürümün satırı kaldırılamaz."""
-    _require_role(actor, LAB_ROLES, "Spesifikasyonu yalnızca laboratuvar yazar.")
+    require_access(actor, SPECS, CHANGE, "Spesifikasyonu değiştirme yetkiniz yok.")
     spec = _lock_spec(line.specification)
     _require_draft(spec)
     line = SpecificationLine.objects.select_for_update().get(pk=line.pk)
@@ -479,8 +476,9 @@ def open_sample(
 
 @transaction.atomic
 def create_sample(actor: User | None, lot: Lot, stage: str, **kwargs: Any) -> Sample:
-    """Laboratuvarın elle açtığı numune (rol: laboratuvar); kurallar `open_sample` ile aynı."""
-    _require_role(actor, LAB_ROLES, "Numuneyi yalnızca laboratuvar açar.")
+    """Laboratuvarın elle açtığı numune (Numuneler ve kalite kararı: Değiştirir); kurallar
+    `open_sample` ile aynı."""
+    require_access(actor, SAMPLES, CHANGE, "Numune açma yetkiniz yok.")
     kwargs.setdefault("taken_by", _actor(actor))
     if kwargs.get("taken_by") is not None and kwargs.get("taken_at") is None:
         kwargs["taken_at"] = timezone.now()
@@ -497,9 +495,9 @@ def _require_open(sample: Sample, what: str) -> None:
 
 @transaction.atomic
 def update_sample(actor: User | None, sample: Sample, data: Mapping[str, Any]) -> Sample:
-    """Numune alma bilgilerini günceller (rol: laboratuvar): alan, zaman, şahit numune yeri, not.
-    Karar verilmiş numune değiştirilemez."""
-    _require_role(actor, LAB_ROLES, "Numuneyi yalnızca laboratuvar günceller.")
+    """Numune alma bilgilerini günceller (Numuneler ve kalite kararı: Değiştirir): alan, zaman,
+    şahit numune yeri, not. Karar verilmiş numune değiştirilemez."""
+    require_access(actor, SAMPLES, CHANGE, "Numuneyi değiştirme yetkiniz yok.")
     values = _pick(data, ("taken_by", "taken_at", "retain_location", "note"))
     sample = _lock_sample(sample)
     _require_open(sample, "değiştirilemez")
@@ -514,9 +512,9 @@ def update_sample(actor: User | None, sample: Sample, data: Mapping[str, Any]) -
 
 @transaction.atomic
 def assign_specification(actor: User | None, sample: Sample, spec: Specification) -> Sample:
-    """Numuneye spesifikasyon atar (rol: laboratuvar): onaylı, numunenin malzemesi ve aşamasına
-    ait olmalı. Sonuç girilmiş numunenin spesifikasyonu değiştirilemez."""
-    _require_role(actor, LAB_ROLES, "Spesifikasyonu yalnızca laboratuvar atar.")
+    """Numuneye spesifikasyon atar (Numuneler ve kalite kararı: Değiştirir): onaylı, numunenin
+    malzemesi ve aşamasına ait olmalı. Sonuç girilmiş numunenin spesifikasyonu değiştirilemez."""
+    require_access(actor, SAMPLES, CHANGE, "Numuneye spesifikasyon atama yetkiniz yok.")
     sample = _lock_sample(sample)
     _require_open(sample, "spesifikasyon atanamaz")
     spec = Specification.objects.get(pk=spec.pk)
@@ -539,9 +537,9 @@ def assign_specification(actor: User | None, sample: Sample, spec: Specification
 
 @transaction.atomic
 def cancel_sample(actor: User | None, sample: Sample, reason: str) -> Sample:
-    """Yanlış açılan numuneyi iptal eder (rol: laboratuvar; karar verilmemiş numune). Olay
-    `sample.cancelled` numune görevini kapatır."""
-    _require_role(actor, LAB_ROLES, "Numuneyi yalnızca laboratuvar iptal eder.")
+    """Yanlış açılan numuneyi iptal eder (Numuneler ve kalite kararı: Değiştirir; karar verilmemiş
+    numune). Olay `sample.cancelled` numune görevini kapatır."""
+    require_access(actor, SAMPLES, CHANGE, "Numuneyi iptal etme yetkiniz yok.")
     sample = _lock_sample(sample)
     if sample.status == Sample.Status.AWAITING_APPROVAL:
         raise BusinessRuleError(
@@ -609,13 +607,14 @@ def record_result(
     measured_at: Any = None,
     note: str = "",
 ) -> TestResult:
-    """Test sonucu girer (rol: laboratuvar). Uygunluk spesifikasyona göre hesaplanır.
+    """Test sonucu girer (Numuneler ve kalite kararı: Değiştirir). Uygunluk spesifikasyona göre
+    hesaplanır.
 
     Satırın geçerli sonucu varsa bu bir **düzeltmedir**: not (düzeltme nedeni) zorunludur, yeni
     kayıt yazılır ve eski kayıt `superseded_by` ile ona bağlanır (silinmez). İlk sonuç numuneyi
     "Testte" durumuna geçirir; numune alma bilgisi boşsa sonucu giren ve ölçüm zamanıyla doldurulur.
     """
-    _require_role(actor, LAB_ROLES, "Test sonucunu yalnızca laboratuvar girer.")
+    require_access(actor, SAMPLES, CHANGE, "Test sonucu girme yetkiniz yok.")
     actor = _actor(actor)
     sample = _lock_sample(sample)
     _require_open(sample, "sonuç girilemez")
@@ -814,7 +813,8 @@ def decide(
     *,
     release_location: Location | None = None,
 ) -> QualityDecision:
-    """Kalite kararı verir (rol: laboratuvar). **Lot serbest bırakma ve reddin tek yolu.**
+    """Kalite kararı verir (Numuneler ve kalite kararı: Onaylar). **Lot serbest bırakma ve reddin
+    tek yolu.**
 
     - Zorunlu testlerin hepsi girilmiş olmalı; spesifikasyon dışı sonuç varken `RELEASE` olmaz.
     - `RELEASE`: lot serbest; karantinadaki stoku `release_location`'a (verilmezse mal kabulün
@@ -825,7 +825,7 @@ def decide(
     `RELEASE` dışındaki kararlarda gerekçe zorunludur. Olay: `sample.decided` (şartlı kabulde
     `sample.awaiting_approval`).
     """
-    _require_role(actor, LAB_ROLES, "Kalite kararını yalnızca laboratuvar verir.")
+    require_access(actor, SAMPLES, APPROVE, "Kalite kararı verme yetkiniz yok.")
     actor = _actor(actor)
     sample = _lock_sample(sample)
     _require_open(sample, "karar verilemez")
@@ -890,16 +890,24 @@ def _close_sample(actor: User | None, sample: Sample, decision: QualityDecision)
 def review_conditional_release(
     actor: User | None, decision: QualityDecision, *, approve: bool, note: str = ""
 ) -> QualityDecision:
-    """Şartlı kabulü onaylar ya da reddeder (rol: yönetim).
+    """Şartlı kabulü onaylar ya da reddeder (Şartlı kabul onayı: Onaylar).
 
     Onay: lot serbest bırakılır, numune "Karar verildi" olur. Ret: not zorunlu; numune "Testte"
     durumuna döner ve laboratuvar yeniden karar verir. Her iki durumda da onay görevi kapanır.
+    Şartlı kabulü öneren kişi onu onaylayamaz, admin dahil (plan §5.11, karar 10); reddedebilir.
     """
-    _require_role(actor, APPROVAL_ROLES, "Şartlı kabulü yalnızca yönetim onaylar.")
+    require_access(
+        actor, CONDITIONAL, APPROVE, "Şartlı kabulü onaylama ya da reddetme yetkiniz yok."
+    )
     actor = _actor(actor)
     decision = QualityDecision.objects.select_for_update().get(pk=decision.pk)
     if decision.approval_status != Approval.PENDING:
         raise BusinessRuleError("decision_not_pending", "Bu karar onay beklemiyor.")
+    if approve and actor is not None and decision.decided_by_id == actor.pk:
+        raise BusinessRuleError(
+            "conditional_same_person",
+            "Şartlı kabulü öneren kişi onaylayamaz; başka bir yönetici onaylamalı.",
+        )
     sample = _lock_sample(decision.sample)
     decision.sample = sample
     note = note.strip()

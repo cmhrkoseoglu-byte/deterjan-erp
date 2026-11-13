@@ -38,13 +38,44 @@ class RecipeSerializer(FormerCodesMixin, serializers.ModelSerializer):
         extra_kwargs: dict[str, dict[str, Any]] = {"code": {"validators": []}}
 
     def get_approved_version(self, obj: Recipe) -> dict[str, int] | None:
-        # get_queryset'te prefetch edilir: approved_versions (en fazla bir kayıt).
-        approved = getattr(obj, "approved_versions", None)
-        if approved is None:
-            approved = list(obj.versions.filter(status=RecipeVersion.Status.APPROVED))
-        if not approved:
-            return None
-        return {"id": approved[0].pk, "version_no": approved[0].version_no}
+        return approved_version(obj)
+
+
+def approved_version(obj: Recipe) -> dict[str, int] | None:
+    """Reçetenin onaylı sürümü (`get_queryset`'te prefetch edilir: approved_versions)."""
+    approved = getattr(obj, "approved_versions", None)
+    if approved is None:
+        approved = list(obj.versions.filter(status=RecipeVersion.Status.APPROVED))
+    if not approved:
+        return None
+    return {"id": approved[0].pk, "version_no": approved[0].version_no}
+
+
+class RecipeChoiceSerializer(FormerCodesMixin, serializers.ModelSerializer):
+    """Reçeteleri okuyamayana üretim emri formundaki seçim için sade liste: kod, eski kodlar, ad,
+    ürün ve onaylı sürüm (plan §5.3)."""
+
+    product_code = serializers.CharField(source="product.code", read_only=True)
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    approved_version = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Recipe
+        list_serializer_class = FormerCodesListSerializer
+        fields = [
+            "id",
+            "code",
+            "former_codes",
+            "name",
+            "product",
+            "product_code",
+            "product_name",
+            "approved_version",
+        ]
+        read_only_fields = fields
+
+    def get_approved_version(self, obj: Recipe) -> dict[str, int] | None:
+        return approved_version(obj)
 
 
 class RecipeLineSerializer(serializers.ModelSerializer):

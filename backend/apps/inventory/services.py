@@ -23,6 +23,7 @@ from django.utils import timezone
 
 from apps.core import event_names as ev
 from apps.core import events
+from apps.core.access import APPROVE
 from apps.core.audit import log_change, snapshot
 from apps.core.coding import formats as coding_formats
 from apps.core.coding import registry as coding_registry
@@ -30,9 +31,10 @@ from apps.core.coding import selectors as coding_selectors
 from apps.core.exceptions import BusinessRuleError
 from apps.core.labels import GS1_CASE_COUNT_MAX
 from apps.core.models import AuditLog, Currency, DocumentModel, User
-from apps.core.roles import LABORATUVAR
+from apps.core.permissions import require_access
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
 from apps.core.state import StateMachine
+from apps.inventory.access import LOT_BLOCK, MANUAL_RELEASE
 from apps.inventory.models import (
     GoodsReceipt,
     GoodsReceiptExtraCost,
@@ -99,7 +101,9 @@ RESERVATION_GUARDED_TYPES = frozenset(
     }
 )
 
-LOT_DECISION_ROLES = (LABORATUVAR,)
+# Kaydedilmiş mal kabulde fiyat düzeltmesinin geçmiş notu; not tutar içerebilir ve Fiyatları
+# görür'ü olmayana gösterilmez (plan §5.6).
+PRICE_CORRECTION_NOTE = "Fiyat düzeltmesi:"
 # Lot türleri (Karar D-2): satın alma H, üretim B, dolum D. Etkin önek ve biçim kodlama
 # ayarından gelir (`next_lot_number`).
 LOT_PREFIXES: dict[str, str] = {
@@ -725,16 +729,6 @@ def link_lots(
     )
 
 
-def can_decide_lot(actor: User | None) -> bool:
-    """Lot bloke etme yetkisi: laboratuvar (ve admin)."""
-    actor = _actor(actor)
-    return (
-        actor is not None
-        and actor.is_active
-        and (actor.is_admin or actor.has_role(*LOT_DECISION_ROLES))
-    )
-
-
 def lot_payload(lot: Lot, **extra: Any) -> dict[str, Any]:
     """Olay sözleşmesindeki lot sözlüğü (DECISIONS.md "İş akışı olay sözleşmesi")."""
     return {
@@ -828,12 +822,12 @@ def release_lot(
     """
     note = note.strip()
     if not quality_decision:
-        user = _actor(actor)
-        if user is None or not user.is_active or not user.is_admin:
-            raise PermissionDenied(
-                "Lot yalnızca kalite kararıyla serbest bırakılır; elle serbest bırakma admin "
-                "yetkisindedir."
-            )
+        require_access(
+            _actor(actor),
+            MANUAL_RELEASE,
+            APPROVE,
+            "Lot yalnızca kalite kararıyla serbest bırakılır; elle serbest bırakma yetkiniz yok.",
+        )
         note = f"Elle serbest bırakma (D-5): {_require_note(note, 'Elle serbest bırakma')}"
     reason = unfinished_output(lot)
     if reason:
@@ -888,10 +882,10 @@ def reject_lot(actor: User | None, lot: Lot, note: str, *, quality_decision: boo
 
 @transaction.atomic
 def block_lot(actor: User | None, lot: Lot, note: str, *, quality_decision: bool = False) -> Lot:
-    """Lotu bloke eder (rol: laboratuvar). Neden zorunlu; bloke lot yeni numuneyle yeniden karara
-    gider (serbest, ret ya da yeniden işleme). Olay: `lot.blocked`."""
-    if not quality_decision and not can_decide_lot(actor):
-        raise PermissionDenied("Lotu yalnızca laboratuvar bloke eder.")
+    """Lotu bloke eder (Lot bloke etme: Onaylar). Neden zorunlu; bloke lot yeni numuneyle yeniden
+    karara gider (serbest, ret ya da yeniden işleme). Olay: `lot.blocked`."""
+    if not quality_decision:
+        require_access(_actor(actor), LOT_BLOCK, APPROVE, "Lotu bloke etme yetkiniz yok.")
     return _set_lot_status(actor, lot, Lot.Status.BLOCKED, _require_note(note, "Bloke"))
 
 
@@ -1248,7 +1242,7 @@ def set_receipt_costs(
     note: str = "",
 ) -> GoodsReceipt:
     """Mal kabulün fiyatlarını (satır: `unit_price`, `currency`, `exchange_rate`) ve ek
-    masraflarını yazar. Yetki API'de: satin_alma, yonetim, admin.
+    masraflarını yazar. Yetki API'de: Mal kabul fiyat ve masrafları: Değiştirir.
 
     Taslakta serbestçe; kaydedilmiş mal kabulde düzeltme notu zorunludur ve olay
     `goods_receipt.cost_changed` (oluşan lotlarla) yayınlanır: costing bu lotların maliyetini
@@ -1278,7 +1272,7 @@ def set_receipt_costs(
     if extra_costs is not None:
         _sync_extra_costs(actor, receipt, extra_costs)
     if posted:
-        log_change(actor, receipt, AuditLog.Action.UPDATE, {}, f"Fiyat düzeltmesi: {note}")
+        log_change(actor, receipt, AuditLog.Action.UPDATE, {}, f"{PRICE_CORRECTION_NOTE} {note}")
         lots = [
             lot_payload(line.created_lot)
             for line in receipt.lines.select_related("created_lot__material").order_by("line_no")

@@ -1,9 +1,10 @@
-from typing import Any
+from typing import Any, ClassVar
 
 from django.db.models.manager import BaseManager
 from rest_framework import serializers
 
 from apps.core.api.coding import FormerCodesListSerializer, FormerCodesMixin
+from apps.core.permissions import sees_fields
 from apps.masterdata import services
 from apps.masterdata.models import (
     CompanyProfile,
@@ -260,7 +261,31 @@ PARTNER_FIELDS = [
 ]
 
 
-class SupplierSerializer(FormerCodesMixin, serializers.ModelSerializer):
+# Müşteri ve tedarikçi kartının iletişim alanları (sade kart, plan §3.1 ve §5.6). Alan grubunu tam
+# göremeyen kişiye bu alanlar boş döner; öteki alanlar aynen kalır.
+SUPPLIER_CONTACT = "masterdata.supplier.contact"
+CUSTOMER_CONTACT = "masterdata.customer.contact"
+CONTACT_FIELDS = ("tax_office", "tax_number", "address", "phone", "email", "contact_person")
+
+
+class ContactFieldsMixin(serializers.Serializer):
+    """İletişim alanlarını, grubu tam göremeyen kişiye boş döndürür (sade kart)."""
+
+    contact_group: ClassVar[str]
+
+    def to_representation(self, instance: Any) -> Any:
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        if request is not None and not sees_fields(request.user, self.contact_group):
+            for name in CONTACT_FIELDS:
+                if name in data:
+                    data[name] = ""
+        return data
+
+
+class SupplierSerializer(ContactFieldsMixin, FormerCodesMixin, serializers.ModelSerializer):
+    contact_group = SUPPLIER_CONTACT
+
     class Meta:
         model = Supplier
         list_serializer_class = FormerCodesListSerializer
@@ -269,7 +294,9 @@ class SupplierSerializer(FormerCodesMixin, serializers.ModelSerializer):
         extra_kwargs = NO_UNIQUE_VALIDATOR
 
 
-class CustomerSerializer(FormerCodesMixin, serializers.ModelSerializer):
+class CustomerSerializer(ContactFieldsMixin, FormerCodesMixin, serializers.ModelSerializer):
+    contact_group = CUSTOMER_CONTACT
+
     class Meta:
         model = Customer
         list_serializer_class = FormerCodesListSerializer

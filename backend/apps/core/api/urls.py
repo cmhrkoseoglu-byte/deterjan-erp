@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
-from apps.core.api import coding, standards, views
+from apps.core.api import access, coding, standards, views
 
 app_name = "core"
 
@@ -28,6 +28,7 @@ urlpatterns = [
     ),
     path("auth/otp/disable/", views.OtpDisableView.as_view(), name="auth-otp-disable"),
     path("auth/field-device/", views.FieldDeviceView.as_view(), name="auth-field-device"),
+    path("access/catalog/", access.AccessCatalogView.as_view(), name="access-catalog"),
     path("coding/types/", coding.CodeTypeListView.as_view(), name="coding-types"),
     path("coding/types/<str:key>/", coding.CodeTypeDetailView.as_view(), name="coding-type"),
     path(

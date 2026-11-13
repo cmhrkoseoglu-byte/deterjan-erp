@@ -47,13 +47,17 @@ def test_login_success_returns_me_and_audits(make_user):
     response = post_with_csrf(client, LOGIN, {"username": "depo1", "password": DEFAULT_PASSWORD})
 
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    # Yetki harfleri depo rolünün paketidir (ayrı testlerde ayrıntılı sınanır).
+    assert body.pop("access") == user.access.letters()
+    assert body == {
         "id": user.pk,
         "username": "depo1",
         "full_name": "Ayşe Yılmaz",
         "email": "depo1@example.com",
         "roles": ["depo"],
         "is_superuser": False,
+        "is_admin": False,
         "otp_enabled": False,
         "password_change_required": False,
         "otp_setup_required": False,

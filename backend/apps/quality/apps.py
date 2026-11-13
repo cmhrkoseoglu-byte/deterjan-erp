@@ -20,8 +20,9 @@ class QualityConfig(AppConfig):
         register_document_type("NM", label="Numune", model="quality.sample")
 
         # Test tanımı kodu serbesttir (PH, AKTIF_MADDE); biçim etkinse karakter kuralı uygulanır.
+        from apps.core.access import CHANGE
         from apps.core.coding.registry import register_master_code
-        from apps.quality.services import LAB_ROLES
+        from apps.quality.access import SPECS
 
         register_master_code(
             "quality.testdefinition",
@@ -29,7 +30,7 @@ class QualityConfig(AppConfig):
             model="quality.testdefinition",
             free=True,
             allow_underscore=True,
-            write_roles=LAB_ROLES,
+            write_access=(SPECS.key, CHANGE),
         )
 
         # Çıktı doküman kodları: Sistem > Kodlama sistematiği > Çıktılar (ISO 9001 md. 7.5).

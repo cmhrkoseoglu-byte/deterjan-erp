@@ -1,0 +1,1102 @@
+{
+ "core.otp.api_block [OTP_REQUIRED_ROLES: admin, yonetim]": {
+  "admin": "403 otp_setup_required",
+  "anonymous": "401 not_authenticated",
+  "depo": "ok",
+  "depo+sevkiyat": "ok",
+  "dolum": "ok",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "ok",
+  "no_role": "ok",
+  "planlama": "ok",
+  "satin_alma": "ok",
+  "sevkiyat": "ok",
+  "superuser": "403 otp_setup_required",
+  "uretim": "ok",
+  "yonetim": "403 otp_setup_required"
+ },
+ "core.otp.api_block [OTP_REQUIRED_ROLES: boş]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "ok",
+  "depo+sevkiyat": "ok",
+  "dolum": "ok",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "ok",
+  "no_role": "ok",
+  "planlama": "ok",
+  "satin_alma": "ok",
+  "sevkiyat": "ok",
+  "superuser": "ok",
+  "uretim": "ok",
+  "yonetim": "ok"
+ },
+ "core.otp.api_block [OTP_REQUIRED_ROLES: depo]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 otp_setup_required",
+  "depo+sevkiyat": "403 otp_setup_required",
+  "dolum": "ok",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "ok",
+  "no_role": "ok",
+  "planlama": "ok",
+  "satin_alma": "ok",
+  "sevkiyat": "ok",
+  "superuser": "ok",
+  "uretim": "ok",
+  "yonetim": "ok"
+ },
+ "core.otp.api_block [OTP_REQUIRED_ROLES: yonetim]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "ok",
+  "depo+sevkiyat": "ok",
+  "dolum": "ok",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "ok",
+  "no_role": "ok",
+  "planlama": "ok",
+  "satin_alma": "ok",
+  "sevkiyat": "ok",
+  "superuser": "ok",
+  "uretim": "ok",
+  "yonetim": "403 otp_setup_required"
+ },
+ "core.otp.me.otp_setup_required [OTP_REQUIRED_ROLES: admin, yonetim]": {
+  "admin": true,
+  "anonymous": "401 not_authenticated",
+  "depo": false,
+  "depo+sevkiyat": false,
+  "dolum": false,
+  "inactive": "401 not_authenticated",
+  "laboratuvar": false,
+  "no_role": false,
+  "planlama": false,
+  "satin_alma": false,
+  "sevkiyat": false,
+  "superuser": true,
+  "uretim": false,
+  "yonetim": true
+ },
+ "core.otp.me.otp_setup_required [OTP_REQUIRED_ROLES: boş]": {
+  "admin": false,
+  "anonymous": "401 not_authenticated",
+  "depo": false,
+  "depo+sevkiyat": false,
+  "dolum": false,
+  "inactive": "401 not_authenticated",
+  "laboratuvar": false,
+  "no_role": false,
+  "planlama": false,
+  "satin_alma": false,
+  "sevkiyat": false,
+  "superuser": false,
+  "uretim": false,
+  "yonetim": false
+ },
+ "core.otp.me.otp_setup_required [OTP_REQUIRED_ROLES: depo]": {
+  "admin": false,
+  "anonymous": "401 not_authenticated",
+  "depo": true,
+  "depo+sevkiyat": true,
+  "dolum": false,
+  "inactive": "401 not_authenticated",
+  "laboratuvar": false,
+  "no_role": false,
+  "planlama": false,
+  "satin_alma": false,
+  "sevkiyat": false,
+  "superuser": false,
+  "uretim": false,
+  "yonetim": false
+ },
+ "core.otp.me.otp_setup_required [OTP_REQUIRED_ROLES: yonetim]": {
+  "admin": false,
+  "anonymous": "401 not_authenticated",
+  "depo": false,
+  "depo+sevkiyat": false,
+  "dolum": false,
+  "inactive": "401 not_authenticated",
+  "laboratuvar": false,
+  "no_role": false,
+  "planlama": false,
+  "satin_alma": false,
+  "sevkiyat": false,
+  "superuser": false,
+  "uretim": false,
+  "yonetim": true
+ },
+ "core.otp.security.otp_required [OTP_REQUIRED_ROLES: admin, yonetim]": {
+  "admin": true,
+  "anonymous": "401 not_authenticated",
+  "depo": false,
+  "depo+sevkiyat": false,
+  "dolum": false,
+  "inactive": "401 not_authenticated",
+  "laboratuvar": false,
+  "no_role": false,
+  "planlama": false,
+  "satin_alma": false,
+  "sevkiyat": false,
+  "superuser": true,
+  "uretim": false,
+  "yonetim": true
+ },
+ "core.otp.security.otp_required [OTP_REQUIRED_ROLES: boş]": {
+  "admin": false,
+  "anonymous": "401 not_authenticated",
+  "depo": false,
+  "depo+sevkiyat": false,
+  "dolum": false,
+  "inactive": "401 not_authenticated",
+  "laboratuvar": false,
+  "no_role": false,
+  "planlama": false,
+  "satin_alma": false,
+  "sevkiyat": false,
+  "superuser": false,
+  "uretim": false,
+  "yonetim": false
+ },
+ "core.otp.security.otp_required [OTP_REQUIRED_ROLES: depo]": {
+  "admin": false,
+  "anonymous": "401 not_authenticated",
+  "depo": true,
+  "depo+sevkiyat": true,
+  "dolum": false,
+  "inactive": "401 not_authenticated",
+  "laboratuvar": false,
+  "no_role": false,
+  "planlama": false,
+  "satin_alma": false,
+  "sevkiyat": false,
+  "superuser": false,
+  "uretim": false,
+  "yonetim": false
+ },
+ "core.otp.security.otp_required [OTP_REQUIRED_ROLES: yonetim]": {
+  "admin": false,
+  "anonymous": "401 not_authenticated",
+  "depo": false,
+  "depo+sevkiyat": false,
+  "dolum": false,
+  "inactive": "401 not_authenticated",
+  "laboratuvar": false,
+  "no_role": false,
+  "planlama": false,
+  "satin_alma": false,
+  "sevkiyat": false,
+  "superuser": false,
+  "uretim": false,
+  "yonetim": true
+ },
+ "golive.problemreport.list": {
+  "admin": [
+   "başkasının",
+   "kendi"
+  ],
+  "anonymous": "401 not_authenticated",
+  "depo": [
+   "kendi"
+  ],
+  "depo+sevkiyat": [
+   "kendi"
+  ],
+  "dolum": [
+   "kendi"
+  ],
+  "inactive": "401 not_authenticated",
+  "laboratuvar": [
+   "kendi"
+  ],
+  "no_role": [
+   "kendi"
+  ],
+  "planlama": [
+   "kendi"
+  ],
+  "satin_alma": [
+   "kendi"
+  ],
+  "sevkiyat": [
+   "kendi"
+  ],
+  "superuser": [
+   "başkasının",
+   "kendi"
+  ],
+  "uretim": [
+   "kendi"
+  ],
+  "yonetim": [
+   "kendi"
+  ]
+ },
+ "golive.problemreport.retrieve [başkasının]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "404 not_found",
+  "depo+sevkiyat": "404 not_found",
+  "dolum": "404 not_found",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "404 not_found",
+  "no_role": "404 not_found",
+  "planlama": "404 not_found",
+  "satin_alma": "404 not_found",
+  "sevkiyat": "404 not_found",
+  "superuser": "ok",
+  "uretim": "404 not_found",
+  "yonetim": "404 not_found"
+ },
+ "golive.problemreport.retrieve [kendi]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "ok",
+  "depo+sevkiyat": "ok",
+  "dolum": "ok",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "ok",
+  "no_role": "ok",
+  "planlama": "ok",
+  "satin_alma": "ok",
+  "sevkiyat": "ok",
+  "superuser": "ok",
+  "uretim": "ok",
+  "yonetim": "ok"
+ },
+ "golive.problemreport.visible": {
+  "admin": [
+   "başkasının",
+   "kendi"
+  ],
+  "anonymous": [],
+  "depo": [
+   "kendi"
+  ],
+  "depo+sevkiyat": [
+   "kendi"
+  ],
+  "dolum": [
+   "kendi"
+  ],
+  "inactive": [
+   "kendi"
+  ],
+  "laboratuvar": [
+   "kendi"
+  ],
+  "no_role": [
+   "kendi"
+  ],
+  "planlama": [
+   "kendi"
+  ],
+  "satin_alma": [
+   "kendi"
+  ],
+  "sevkiyat": [
+   "kendi"
+  ],
+  "superuser": [
+   "başkasının",
+   "kendi"
+  ],
+  "uretim": [
+   "kendi"
+  ],
+  "yonetim": [
+   "kendi"
+  ]
+ },
+ "hse.incident.list": {
+  "admin": [
+   "başkasının",
+   "kendi"
+  ],
+  "anonymous": "401 not_authenticated",
+  "depo": [
+   "kendi"
+  ],
+  "depo+sevkiyat": [
+   "kendi"
+  ],
+  "dolum": [
+   "kendi"
+  ],
+  "inactive": "401 not_authenticated",
+  "laboratuvar": [
+   "kendi"
+  ],
+  "no_role": "403 permission_denied",
+  "planlama": [
+   "kendi"
+  ],
+  "satin_alma": [
+   "kendi"
+  ],
+  "sevkiyat": [
+   "kendi"
+  ],
+  "superuser": [
+   "başkasının",
+   "kendi"
+  ],
+  "uretim": [
+   "kendi"
+  ],
+  "yonetim": [
+   "başkasının",
+   "kendi"
+  ]
+ },
+ "hse.incident.retrieve [başkasının]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "404 not_found",
+  "depo+sevkiyat": "404 not_found",
+  "dolum": "404 not_found",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "404 not_found",
+  "no_role": "403 permission_denied",
+  "planlama": "404 not_found",
+  "satin_alma": "404 not_found",
+  "sevkiyat": "404 not_found",
+  "superuser": "ok",
+  "uretim": "404 not_found",
+  "yonetim": "ok"
+ },
+ "hse.incident.retrieve [kendi]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "ok",
+  "depo+sevkiyat": "ok",
+  "dolum": "ok",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "ok",
+  "no_role": "403 permission_denied",
+  "planlama": "ok",
+  "satin_alma": "ok",
+  "sevkiyat": "ok",
+  "superuser": "ok",
+  "uretim": "ok",
+  "yonetim": "ok"
+ },
+ "hse.incident.visible": {
+  "admin": [
+   "başkasının",
+   "kendi"
+  ],
+  "anonymous": [],
+  "depo": [
+   "kendi"
+  ],
+  "depo+sevkiyat": [
+   "kendi"
+  ],
+  "dolum": [
+   "kendi"
+  ],
+  "inactive": [
+   "kendi"
+  ],
+  "laboratuvar": [
+   "kendi"
+  ],
+  "no_role": [
+   "kendi"
+  ],
+  "planlama": [
+   "kendi"
+  ],
+  "satin_alma": [
+   "kendi"
+  ],
+  "sevkiyat": [
+   "kendi"
+  ],
+  "superuser": [
+   "başkasının",
+   "kendi"
+  ],
+  "uretim": [
+   "kendi"
+  ],
+  "yonetim": [
+   "başkasının",
+   "kendi"
+  ]
+ },
+ "maintenance.cleaning.record [tank]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "ok",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.cancel [sorumlu birim: dolum]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "ok",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.cancel [sorumlu birim: laboratuvar]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "ok",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.cancel [sorumlu birim: planlama]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "ok",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.cancel [sorumlu birim: uretim]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "ok",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.cancel [sorumlu birim: yonetim]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.complete [sorumlu birim: dolum]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "ok",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.complete [sorumlu birim: laboratuvar]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "ok",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.complete [sorumlu birim: planlama]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "ok",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.complete [sorumlu birim: uretim]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "ok",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.complete [sorumlu birim: yonetim]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.parts [sorumlu birim: dolum]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "ok",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.parts [sorumlu birim: laboratuvar]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "ok",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.parts [sorumlu birim: planlama]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "ok",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.parts [sorumlu birim: uretim]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "ok",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.parts [sorumlu birim: yonetim]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.start [sorumlu birim: dolum]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "ok",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.start [sorumlu birim: laboratuvar]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "ok",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.start [sorumlu birim: planlama]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "ok",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.start [sorumlu birim: uretim]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "ok",
+  "yonetim": "ok"
+ },
+ "maintenance.work_order.start [sorumlu birim: yonetim]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "purchasing.order.approve [limit 1.000 TL; tutar 1.000 TL]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "ok",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "purchasing.order.approve [limit 1.000 TL; tutar 100 EUR x 40 = 4.000 TL]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "400 approval_limit_exceeded",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "purchasing.order.approve [limit 5.000 TL; tutar 1.000 TL]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "ok",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "purchasing.order.approve [limit 999,99 TL; tutar 1.000 TL]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "400 approval_limit_exceeded",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "purchasing.order.approve [limit yok; tutar 1.000 TL]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "400 approval_limit_exceeded",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "purchasing.order.approve [yönetim onayında; limit 500 TL; tutar 1.000 TL]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "400 approval_limit_exceeded",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "purchasing.order.can_approve [limit 1.000 TL; tutar 1.000 TL]": {
+  "admin": true,
+  "anonymous": "401 not_authenticated",
+  "depo": false,
+  "depo+sevkiyat": false,
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": true,
+  "sevkiyat": "403 permission_denied",
+  "superuser": true,
+  "uretim": "403 permission_denied",
+  "yonetim": true
+ },
+ "purchasing.order.can_approve [limit 1.000 TL; tutar 100 EUR x 40 = 4.000 TL]": {
+  "admin": true,
+  "anonymous": "401 not_authenticated",
+  "depo": false,
+  "depo+sevkiyat": false,
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": false,
+  "sevkiyat": "403 permission_denied",
+  "superuser": true,
+  "uretim": "403 permission_denied",
+  "yonetim": true
+ },
+ "purchasing.order.can_approve [limit 5.000 TL; tutar 1.000 TL]": {
+  "admin": true,
+  "anonymous": "401 not_authenticated",
+  "depo": false,
+  "depo+sevkiyat": false,
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": true,
+  "sevkiyat": "403 permission_denied",
+  "superuser": true,
+  "uretim": "403 permission_denied",
+  "yonetim": true
+ },
+ "purchasing.order.can_approve [limit 999,99 TL; tutar 1.000 TL]": {
+  "admin": true,
+  "anonymous": "401 not_authenticated",
+  "depo": false,
+  "depo+sevkiyat": false,
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": false,
+  "sevkiyat": "403 permission_denied",
+  "superuser": true,
+  "uretim": "403 permission_denied",
+  "yonetim": true
+ },
+ "purchasing.order.can_approve [limit yok; tutar 1.000 TL]": {
+  "admin": true,
+  "anonymous": "401 not_authenticated",
+  "depo": false,
+  "depo+sevkiyat": false,
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": false,
+  "sevkiyat": "403 permission_denied",
+  "superuser": true,
+  "uretim": "403 permission_denied",
+  "yonetim": true
+ },
+ "purchasing.order.can_approve [yönetim onayında; limit 500 TL; tutar 1.000 TL]": {
+  "admin": true,
+  "anonymous": "401 not_authenticated",
+  "depo": false,
+  "depo+sevkiyat": false,
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": false,
+  "sevkiyat": "403 permission_denied",
+  "superuser": true,
+  "uretim": "403 permission_denied",
+  "yonetim": true
+ },
+ "purchasing.order.return_to_draft [yönetim onayında]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "purchasing.request.cancel [başkasının talebi]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "ok",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "purchasing.request.cancel [kendi talebi]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "ok",
+  "depo+sevkiyat": "ok",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "ok",
+  "satin_alma": "ok",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "ok",
+  "yonetim": "ok"
+ },
+ "purchasing.request.update [başkasının talebi]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "ok",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "purchasing.request.update [kendi talebi]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "ok",
+  "depo+sevkiyat": "ok",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "ok",
+  "satin_alma": "ok",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "ok",
+  "yonetim": "ok"
+ },
+ "quality.conditional_release.approve [başkasının önerisi]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "quality.conditional_release.approve [kendi önerisi]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "quality.conditional_release.refuse [başkasının önerisi]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ },
+ "quality.conditional_release.refuse [kendi önerisi]": {
+  "admin": "ok",
+  "anonymous": "401 not_authenticated",
+  "depo": "403 permission_denied",
+  "depo+sevkiyat": "403 permission_denied",
+  "dolum": "403 permission_denied",
+  "inactive": "401 not_authenticated",
+  "laboratuvar": "403 permission_denied",
+  "no_role": "403 permission_denied",
+  "planlama": "403 permission_denied",
+  "satin_alma": "403 permission_denied",
+  "sevkiyat": "403 permission_denied",
+  "superuser": "ok",
+  "uretim": "403 permission_denied",
+  "yonetim": "ok"
+ }
+}

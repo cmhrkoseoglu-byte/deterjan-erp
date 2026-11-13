@@ -15,12 +15,13 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import FieldDoesNotExist, PermissionDenied
+from django.core.exceptions import FieldDoesNotExist
 from django.db import IntegrityError, connection, models, transaction
 from django.db.models import Exists, OuterRef, Q, QuerySet, Value
 from django.db.models.functions import LPad
 
 from apps.core import standards
+from apps.core.access import CHANGE
 from apps.core.audit import log_change
 from apps.core.coding import registry as coding_registry
 from apps.core.coding import selectors as coding_selectors
@@ -28,9 +29,9 @@ from apps.core.coding import services as coding
 from apps.core.exceptions import BusinessRuleError
 from apps.core.labels import gs1_check_digit, gtin14, is_ascii_digits, is_valid_gtin
 from apps.core.models import AuditLog, MasterDataModel, User
-from apps.core.permissions import user_has_role
-from apps.core.roles import ADMIN, YONETIM
+from apps.core.permissions import require_access, require_admin
 from apps.core.services import save_with_audit
+from apps.masterdata.access import COMPANY
 from apps.masterdata.fields import CodeField, normalize_code
 from apps.masterdata.models import (
     CompanyProfile,
@@ -799,8 +800,7 @@ def sscc_enabled() -> bool:
 
 # --- firma bilgileri ---------------------------------------------------------------------------
 
-# Firma bilgilerini değiştiren roller (admin her yere erişir); okuma giriş yapmış herkese.
-COMPANY_WRITE_ROLES = (YONETIM,)
+# Firma bilgilerini değiştirmek Firma bilgileri: Değiştirir ister; okuma giriş yapmış herkese.
 COMPANY_FIELDS = (
     "legal_name",
     "address",
@@ -872,13 +872,10 @@ def _company_text(name: str, value: Any) -> str:
 
 @transaction.atomic
 def update_company_profile(actor: User, data: Mapping[str, Any]) -> CompanyProfile:
-    """Firma bilgilerini günceller (yönetim ve admin); değişen alanlar eski → yeni değerleriyle
-    denetim günlüğüne yazılır. Ticari unvan boş olamaz; vergi no 10 haneli VKN ya da şahıs
-    firmasında 11 haneli TCKN, MERSİS no 16 hane olmalıdır (doluysa)."""
-    if not user_has_role(actor, COMPANY_WRITE_ROLES):
-        raise PermissionDenied(
-            "Firma bilgilerini yalnızca yönetim ve sistem yöneticisi değiştirir."
-        )
+    """Firma bilgilerini günceller (Firma bilgileri: Değiştirir); değişen alanlar eski → yeni
+    değerleriyle denetim günlüğüne yazılır. Ticari unvan boş olamaz; vergi no 10 haneli VKN ya da
+    şahıs firmasında 11 haneli TCKN, MERSİS no 16 hane olmalıdır (doluysa)."""
+    require_access(actor, COMPANY, CHANGE, "Firma bilgilerini değiştirme yetkiniz yok.")
     unknown = set(data) - set(COMPANY_FIELDS)
     if unknown:
         raise ValueError(f"Tanımsız alan: {', '.join(sorted(unknown))}")
@@ -930,7 +927,7 @@ def update_label_settings(actor: User, data: Mapping[str, Any]) -> LabelSettings
 
 # --- GS1 ayarları (Sistem > Kodlama sistematiği > GS1) -------------------------------------------
 
-GS1_ADMIN_MESSAGE = "GS1 ayarlarını yalnızca sistem yöneticisi değiştirir."
+GS1_ADMIN_MESSAGE = "GS1 ayarlarını değiştirme yetkiniz yok (yalnız sistem yöneticisi)."
 # GTIN-13 = firma öneki + ürün referansı + kontrol hanesi: önek ve ürün referansı birlikte 12 hane.
 GTIN13_BODY = 12
 # SSCC (18 hane) = uzantı hanesi + firma öneki + seri no + kontrol hanesi: önek ve seri no 16 hane.
@@ -1050,8 +1047,7 @@ def update_gs1_settings(
     - Önek ya da uzantı değişince SSCC seri no o (uzantı + önek) ile basılmış en büyük seri no + 1
       olur (yoksa 1): eski öneke dönülünce SSCC çakışmaz.
     """
-    if not user_has_role(actor, (ADMIN,)):
-        raise PermissionDenied(GS1_ADMIN_MESSAGE)
+    require_admin(actor, GS1_ADMIN_MESSAGE)
     note = (note or "").strip()
     if not note:
         raise BusinessRuleError(

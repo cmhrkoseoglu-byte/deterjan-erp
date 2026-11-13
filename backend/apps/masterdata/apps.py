@@ -9,12 +9,15 @@ class MasterdataConfig(AppConfig):
     def ready(self) -> None:
         # Ana veri kodları: biçim Sistem > Kodlama sistematiği ayarından (core.coding). Varsayılan
         # biçimler canlıda kullanılan düzendir (CUMHUR, 2026-11-04).
+        from apps.core.access import CHANGE
         from apps.core.coding.registry import register_master_code, register_standard_code
-        from apps.core.roles import PLANLAMA
         from apps.masterdata import services
+        from apps.masterdata.access import CARDS, REFERENCE
         from apps.masterdata.models import Equipment
 
-        write = (PLANLAMA,)
+        # Kod önerisi kaydı yazabilene açılır (plan §3.1): kartlar Ana veri kartları: Değiştirir,
+        # yazıcı Birimler, yazıcılar ve etiket ayarları: Değiştirir (yalnız admin).
+        write = (CARDS.key, CHANGE)
         register_master_code(
             "masterdata.material",
             label="Malzeme",
@@ -22,7 +25,7 @@ class MasterdataConfig(AppConfig):
             default_prefix="MLZ",
             default_width=7,
             scanned=True,
-            write_roles=write,
+            write_access=write,
             recode=services.recode_record,
         )
         register_master_code(
@@ -31,7 +34,7 @@ class MasterdataConfig(AppConfig):
             model="masterdata.materialcategory",
             default_prefix="KAT",
             default_width=4,
-            write_roles=write,
+            write_access=write,
             recode=services.recode_record,
         )
         register_master_code(
@@ -40,7 +43,7 @@ class MasterdataConfig(AppConfig):
             model="masterdata.warehouse",
             default_prefix="DEPO",
             default_width=5,
-            write_roles=write,
+            write_access=write,
             recode=services.recode_record,
         )
         register_master_code(
@@ -50,7 +53,7 @@ class MasterdataConfig(AppConfig):
             default_prefix="LOKASYON",
             default_width=4,
             scanned=True,
-            write_roles=write,
+            write_access=write,
             recode=services.recode_record,
         )
         register_master_code(
@@ -67,7 +70,7 @@ class MasterdataConfig(AppConfig):
                 Equipment.Type.SCALE: "TERAZI",
                 Equipment.Type.OTHER: "EKIPMAN",
             },
-            write_roles=write,
+            write_access=write,
             recode=services.recode_record,
         )
         register_master_code(
@@ -76,7 +79,7 @@ class MasterdataConfig(AppConfig):
             model="masterdata.supplier",
             default_prefix="TED",
             default_width=6,
-            write_roles=write,
+            write_access=write,
             recode=services.recode_record,
         )
         register_master_code(
@@ -85,16 +88,17 @@ class MasterdataConfig(AppConfig):
             model="masterdata.customer",
             default_prefix="MUS",
             default_width=6,
-            write_roles=write,
+            write_access=write,
             recode=services.recode_record,
         )
-        # Yazıcıyı yalnız admin tanımlar (yazma rolü yok).
+        # Yazıcıyı yalnız admin tanımlar.
         register_master_code(
             "masterdata.printer",
             label="Yazıcı",
             model="masterdata.printer",
             default_prefix="YAZICI",
             default_width=3,
+            write_access=(REFERENCE.key, CHANGE),
             recode=services.recode_record,
         )
         register_standard_code(

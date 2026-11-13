@@ -81,6 +81,24 @@ export async function listReturns(params: ListParams = {}): Promise<Paginated<Cu
   return data;
 }
 
+/** İade formunun sevkiyat seçimi: müşterinin sevk edilmiş sevkiyatları (en yeni önce). */
+export interface DispatchedShipment {
+  id: number;
+  number: string;
+  order_number: string;
+  planned_date: string;
+}
+
+export async function listDispatchedShipments(
+  customer: string,
+  pageSize = 100,
+): Promise<Paginated<DispatchedShipment>> {
+  const { data } = await api.get<Paginated<DispatchedShipment>>("/returns/shipments/", {
+    params: { customer, page_size: pageSize },
+  });
+  return data;
+}
+
 export async function getReturn(id: number): Promise<CustomerReturnDetail> {
   const { data } = await api.get<CustomerReturnDetail>(`/returns/${id}/`);
   return data;

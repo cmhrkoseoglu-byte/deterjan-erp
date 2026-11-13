@@ -21,18 +21,17 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
 from apps.core import event_names as ev
 from apps.core import events
+from apps.core.access import APPROVE, CHANGE
 from apps.core.audit import log_change
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
-from apps.core.permissions import user_has_role
-from apps.core.roles import DEPO, PLANLAMA, URETIM
+from apps.core.permissions import require_access
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
 from apps.inventory import picking
 from apps.inventory import services as inventory
@@ -40,6 +39,7 @@ from apps.inventory.models import Lot, StockBalance, StockMovement
 from apps.inventory.services import format_quantity, lot_payload, quantize
 from apps.masterdata import services as masterdata
 from apps.masterdata.models import Equipment, Location, Material
+from apps.production.access import BATCHES, ORDERS, PREP
 from apps.production.models import (
     BatchConsumption,
     MaterialPick,
@@ -51,10 +51,6 @@ from apps.production.models import (
 from apps.production.state import production_batch_states, production_order_states
 from apps.recipes import services as recipes
 from apps.recipes.models import RecipeVersion
-
-ORDER_ROLES = (PLANLAMA,)
-PREP_ROLES = (DEPO,)
-PRODUCTION_ROLES = (URETIM,)
 
 Status = ProductionOrder.Status
 BatchStatus = ProductionBatch.Status
@@ -96,11 +92,6 @@ HUNDRED = Decimal(100)
 
 def _actor(actor: User | None) -> User | None:
     return actor if actor is not None and actor.is_authenticated else None
-
-
-def _require_role(actor: User | None, roles: tuple[str, ...], message: str) -> None:
-    if not user_has_role(actor, roles):
-        raise PermissionDenied(message)
 
 
 def _pick_fields(data: Mapping[str, Any], allowed: Sequence[str]) -> dict[str, Any]:
@@ -279,10 +270,10 @@ def _prepare_order(order: ProductionOrder) -> None:
 
 @transaction.atomic
 def create_order(actor: User | None, data: Mapping[str, Any]) -> ProductionOrder:
-    """Taslak üretim emri açar (`UE-`, rol: planlama). Reçete sürümü onaylı olmalıdır ve emre
-    sabitlenir; ürün sürümün ürünüdür. Üretim lokasyonu verilmezse tankın deposundaki üretim
-    lokasyonu seçilir."""
-    _require_role(actor, ORDER_ROLES, "Üretim emrini yalnızca planlama açar.")
+    """Taslak üretim emri açar (`UE-`; Üretim emirleri: Değiştirir). Reçete sürümü onaylı
+    olmalıdır ve emre sabitlenir; ürün sürümün ürünüdür. Üretim lokasyonu verilmezse tankın
+    deposundaki üretim lokasyonu seçilir."""
+    require_access(actor, ORDERS, CHANGE, "Üretim emri açma yetkiniz yok.")
     values = _pick_fields(data, (*ORDER_FIELDS, "additions"))
     additions = values.pop("additions", None)
     order = ProductionOrder(**values)
@@ -297,8 +288,8 @@ def create_order(actor: User | None, data: Mapping[str, Any]) -> ProductionOrder
 def update_order(
     actor: User | None, order: ProductionOrder, data: Mapping[str, Any]
 ) -> ProductionOrder:
-    """Taslak emri günceller (rol: planlama). Onaylanan emir değiştirilmez."""
-    _require_role(actor, ORDER_ROLES, "Üretim emrini yalnızca planlama değiştirir.")
+    """Taslak emri günceller (Üretim emirleri: Değiştirir). Onaylanan emir değiştirilmez."""
+    require_access(actor, ORDERS, CHANGE, "Üretim emrini değiştirme yetkiniz yok.")
     values = _pick_fields(data, (*ORDER_FIELDS, "additions"))
     additions = values.pop("additions", None)
     order = _lock_order(order)
@@ -339,10 +330,10 @@ def _validate_addition(order: ProductionOrder, addition: ReworkAddition) -> None
 def set_rework_additions(
     actor: User | None, order: ProductionOrder, additions: Sequence[Mapping[str, Any]]
 ) -> list[ReworkAddition]:
-    """Yeniden işleme emrinin düzeltme satırlarını verilen listeyle değiştirir (rol: planlama,
-    yalnızca taslakta). Satırlar onayda ihtiyaç listesine eklenir. Kaldırılan satırlar emrin
-    denetim kaydına yazılır."""
-    _require_role(actor, ORDER_ROLES, "Üretim emrini yalnızca planlama değiştirir.")
+    """Yeniden işleme emrinin düzeltme satırlarını verilen listeyle değiştirir (Üretim emirleri:
+    Değiştirir, yalnızca taslakta). Satırlar onayda ihtiyaç listesine eklenir. Kaldırılan satırlar
+    emrin denetim kaydına yazılır."""
+    require_access(actor, ORDERS, CHANGE, "Üretim emrini değiştirme yetkiniz yok.")
     order = _lock_order(order)
     _require_status(order, (Status.DRAFT,), "document_locked", "değiştirilemez")
     if additions and order.rework_lot_id is None:
@@ -374,9 +365,10 @@ def set_rework_additions(
 
 @transaction.atomic
 def approve_order(actor: User | None, order: ProductionOrder, note: str = "") -> ProductionOrder:
-    """Emri onaylar (rol: planlama): reçete sürümü planlanan miktara ölçeklenir ve ihtiyaç listesi
-    oluşur. Olay `production_order.approved` depoya "Malzeme hazırla" görevi açar."""
-    _require_role(actor, ORDER_ROLES, "Üretim emrini yalnızca planlama onaylar.")
+    """Emri onaylar (Üretim emirleri: Onaylar): reçete sürümü planlanan miktara ölçeklenir ve
+    ihtiyaç listesi oluşur. Olay `production_order.approved` depoya "Malzeme hazırla" görevi
+    açar."""
+    require_access(actor, ORDERS, APPROVE, "Üretim emrini onaylama yetkiniz yok.")
     actor = _actor(actor)
     order = _lock_order(order)
     production_order_states.assert_can_transition(order.status, Status.APPROVED)
@@ -473,8 +465,9 @@ def _build_requirements(order: ProductionOrder) -> list[ProductionRequirement]:
 
 @transaction.atomic
 def start_material_prep(actor: User | None, order: ProductionOrder) -> ProductionOrder:
-    """Depo hazırlığa başlar (rol: depo). İlk hazırlama da hazırlığı kendiliğinden başlatır."""
-    _require_role(actor, PREP_ROLES, "Malzeme hazırlığını yalnızca depo başlatır.")
+    """Depo hazırlığa başlar (Malzeme hazırlama: Değiştirir). İlk hazırlama da hazırlığı
+    kendiliğinden başlatır."""
+    require_access(actor, PREP, CHANGE, "Malzeme hazırlığını başlatma yetkiniz yok.")
     order = _lock_order(order)
     return transition_status(order, Status.MATERIAL_PREP, actor, machine=production_order_states)
 
@@ -494,14 +487,14 @@ def pick_material(
     from_location: Location | None = None,
     note: str = "",
 ) -> MaterialPick:
-    """Depo ihtiyaç için lot hazırlar (rol: depo): stok kaynak lokasyondan emrin üretim
-    lokasyonuna transfer edilir (ortak hazırlama servisi `inventory.picking`).
+    """Depo ihtiyaç için lot hazırlar (Malzeme hazırlama: Değiştirir): stok kaynak lokasyondan
+    emrin üretim lokasyonuna transfer edilir (ortak hazırlama servisi `inventory.picking`).
 
     Yalnızca serbest ve SKT'si geçmemiş lot seçilir; lot ihtiyacın malzemesinden olmalıdır.
     Kaynak verilmezse lotun karantina dışı, yeterli stoklu lokasyonu seçilir. Hazırlanan toplam
     ihtiyacın iki katını geçemez. Şebeke suyu hazırlanmaz (tartımda kendi lokasyonundan düşülür).
     """
-    _require_role(actor, PREP_ROLES, "Malzemeyi yalnızca depo hazırlar.")
+    require_access(actor, PREP, CHANGE, "Malzeme hazırlama yetkiniz yok.")
     actor = _actor(actor)
     order = _lock_order(order)
     _require_status(order, PICKABLE_STATUSES, "order_not_pickable", "malzeme hazırlanamaz")
@@ -567,10 +560,10 @@ def missing_materials(order: ProductionOrder) -> list[ProductionRequirement]:
 
 @transaction.atomic
 def mark_material_ready(actor: User | None, order: ProductionOrder) -> ProductionOrder:
-    """Malzeme hazır (rol: depo). Su dışındaki her ihtiyaç en az toleransın alt sınırı kadar
-    hazırlanmış olmalıdır. Olay `production_order.material_ready` üretime "Şarjı başlat" görevi
-    açar ve depo görevini kapatır."""
-    _require_role(actor, PREP_ROLES, "Malzeme hazır bilgisini yalnızca depo verir.")
+    """Malzeme hazır (Malzeme hazırlama: Değiştirir). Su dışındaki her ihtiyaç en az toleransın
+    alt sınırı kadar hazırlanmış olmalıdır. Olay `production_order.material_ready` üretime "Şarjı
+    başlat" görevi açar ve depo görevini kapatır."""
+    require_access(actor, PREP, CHANGE, "Malzeme hazır bilgisi verme yetkiniz yok.")
     order = _lock_order(order)
     if order.status == Status.APPROVED:
         # Yalnızca su gibi hazırlanmayan satırlar varsa hazırlık doğrudan tamamlanır.
@@ -587,12 +580,13 @@ def mark_material_ready(actor: User | None, order: ProductionOrder) -> Productio
 
 @transaction.atomic
 def cancel_order(actor: User | None, order: ProductionOrder, reason: str) -> ProductionOrder:
-    """Emri iptal eder (rol: planlama; taslak, onaylı ya da hazırlıktaki emir). Hazırlanan
-    malzeme geldiği lokasyonlara geri transfer edilir. Olay `production_order.cancelled` emre bağlı
-    açık görevleri iptal eder."""
-    _require_role(actor, ORDER_ROLES, "Üretim emrini yalnızca planlama iptal eder.")
+    """Emri iptal eder: taslağı iptal etmek Üretim emirleri: Değiştirir, onaylı ya da
+    hazırlıktaki emri iptal etmek Onaylar ister. Hazırlanan malzeme geldiği lokasyonlara geri
+    transfer edilir. Olay `production_order.cancelled` emre bağlı açık görevleri iptal eder."""
     actor = _actor(actor)
     order = _lock_order(order)
+    level = CHANGE if order.status == Status.DRAFT else APPROVE
+    require_access(actor, ORDERS, level, "Bu üretim emrini iptal etme yetkiniz yok.")
     production_order_states.assert_can_transition(order.status, Status.CANCELLED)
     if not reason.strip():
         raise BusinessRuleError("cancel_reason_required", "İptal nedeni girilmelidir.")
@@ -680,13 +674,14 @@ def start_batch(
     equipment: Equipment | None = None,
     planned_quantity: Decimal | None = None,
 ) -> ProductionBatch:
-    """Şarjı başlatır (rol: uretim). Çıktı lotu `B-YYYYMMDD-NNN` numarasıyla karantinada açılır.
+    """Şarjı başlatır (Şarj ve tartım: Değiştirir). Çıktı lotu `B-YYYYMMDD-NNN` numarasıyla
+    karantinada açılır.
 
     Şarj miktarı verilmezse kalan miktar ile tank kapasitesinden küçüğüdür; kalanı ya da tank
     kapasitesini aşan şarj reddedilir (Karar D-4). Tankta devam eden şarj varsa yeni şarj
     başlatılamaz. İlk şarjla emir "Üretimde" olur. Olay `production_batch.started`.
     """
-    _require_role(actor, PRODUCTION_ROLES, "Şarjı yalnızca üretim başlatır.")
+    require_access(actor, BATCHES, CHANGE, "Şarj başlatma yetkiniz yok.")
     actor = _actor(actor)
     order = _lock_order(order)
     _require_status(order, BATCHABLE_STATUSES, "order_not_ready", "şarj başlatılamaz")
@@ -842,8 +837,8 @@ def record_consumption(
     note: str = "",
     scale: Equipment | None = None,
 ) -> BatchConsumption:
-    """Tartım kaydı (rol: uretim): girdi lottan `ISSUE_PRODUCTION` hareketi ve girdi lot → çıktı
-    lot soy ağacı bağı yazar.
+    """Tartım kaydı (Şarj ve tartım: Değiştirir): girdi lottan `ISSUE_PRODUCTION` hareketi ve
+    girdi lot → çıktı lot soy ağacı bağı yazar.
 
     Lot ihtiyacın malzemesinden, serbest ve SKT'si geçmemiş olmalıdır; su dışındaki malzeme emrin
     üretim lokasyonundan tüketilir. Negatif stoka düşürecek tartım reddedilir. Bir satır birden
@@ -853,7 +848,7 @@ def record_consumption(
     Faz 4: aktif terazi tanımlıysa su dışındaki tartımda terazi seçilmelidir (`scale_required`);
     kalibrasyonu geçmiş ya da duruştaki terazi bakım kancasıyla reddedilir.
     """
-    _require_role(actor, PRODUCTION_ROLES, "Tartımı yalnızca üretim kaydeder.")
+    require_access(actor, BATCHES, CHANGE, "Tartım kaydetme yetkiniz yok.")
     actor = _actor(actor)
     batch = _lock_batch(batch)
     if batch.status != BatchStatus.IN_PROGRESS:
@@ -973,15 +968,15 @@ def unfinished_batch_reason(lot: Lot) -> str | None:
 def finish_batch(
     actor: User | None, batch: ProductionBatch, output_quantity: Decimal, note: str = ""
 ) -> ProductionBatch:
-    """Şarjı bitirir (rol: uretim): çıktı miktarı `PRODUCTION_OUTPUT` ile tank lokasyonuna girer
-    (lot karantinada kalır, kararı laboratuvar verir). Olay `production_batch.completed`
-    laboratuvara "Numune analizi" görevi açar.
+    """Şarjı bitirir (Şarj ve tartım: Değiştirir): çıktı miktarı `PRODUCTION_OUTPUT` ile tank
+    lokasyonuna girer (lot karantinada kalır, kararı laboratuvar verir). Olay
+    `production_batch.completed` laboratuvara "Numune analizi" görevi açar.
 
     Toleransın altında kalan satır varsa not zorunludur ve her satır için `production.deviation`
     yayınlanır. Verim = çıktı / şarj miktarı; eşiğin altındaysa `production.low_yield`. Emrin tüm
     miktarı şarjlara dağıtılıp açık şarj kalmadıysa emir "Analiz bekliyor" olur.
     """
-    _require_role(actor, PRODUCTION_ROLES, "Şarjı yalnızca üretim bitirir.")
+    require_access(actor, BATCHES, CHANGE, "Şarjı bitirme yetkiniz yok.")
     actor = _actor(actor)
     batch = _lock_batch(batch)
     production_batch_states.assert_can_transition(batch.status, BatchStatus.COMPLETED)
@@ -1053,9 +1048,9 @@ def finish_batch(
 
 @transaction.atomic
 def cancel_batch(actor: User | None, batch: ProductionBatch, reason: str) -> ProductionBatch:
-    """Yanlış başlatılan şarjı iptal eder (rol: uretim; yalnızca tartım yapılmamışsa). Çıktı
-    lotu stoksuz olarak karantinada kalır; şarjın miktarı emre geri döner."""
-    _require_role(actor, PRODUCTION_ROLES, "Şarjı yalnızca üretim iptal eder.")
+    """Yanlış başlatılan şarjı iptal eder (Şarj ve tartım: Değiştirir; yalnızca tartım
+    yapılmamışsa). Çıktı lotu stoksuz olarak karantinada kalır; şarjın miktarı emre geri döner."""
+    require_access(actor, BATCHES, CHANGE, "Şarjı iptal etme yetkiniz yok.")
     actor = _actor(actor)
     reason = reason.strip()
     if not reason:
@@ -1092,7 +1087,9 @@ def unreleased_output_lots(order: ProductionOrder) -> list[Lot]:
 @transaction.atomic
 def complete_order(actor: User | None, order: ProductionOrder) -> ProductionOrder:
     """Emri tamamlar: tüm şarjların çıktı lotları serbest bırakılmış olmalıdır. Laboratuvar son
-    lotu serbest bırakınca kendiliğinden çağrılır (`handlers.py`)."""
+    lotu serbest bırakınca kendiliğinden çağrılır (`handlers.py`). Serviste yetki denetimi yoktur:
+    lot kararının sonucudur, kararı veren üretim yetkisi taşımayabilir; elle tamamlama uç noktası
+    Üretim emirleri: Değiştirir ister."""
     actor = _actor(actor)
     order = _lock_order(order)
     production_order_states.assert_can_transition(order.status, Status.COMPLETED)

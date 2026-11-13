@@ -18,18 +18,17 @@ from collections.abc import Iterable, Mapping
 from decimal import Decimal
 from typing import Any
 
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Max, Sum
 from django.utils import timezone
 
 from apps.core import event_names as ev
 from apps.core import events
+from apps.core.access import CHANGE
 from apps.core.audit import log_change, snapshot
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
-from apps.core.permissions import user_has_role
-from apps.core.roles import DEPO, SEVKIYAT
+from apps.core.permissions import require_access
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
 from apps.inventory import services as inventory
 from apps.inventory.models import Lot, StockMovement
@@ -38,14 +37,11 @@ from apps.masterdata import services as masterdata
 from apps.masterdata.models import Location, Material
 from apps.quality import services as quality
 from apps.quality.models import QualityDecision, Sample, SampleStage
+from apps.returns.access import RECEIVING, RETURNS
 from apps.returns.models import CustomerReturn, CustomerReturnLine
 from apps.returns.state import customer_return_states
 from apps.sales import selectors as sales_selectors
 from apps.sales.models import Shipment
-
-EDIT_ROLES = (SEVKIYAT,)
-RECEIVE_ROLES = (SEVKIYAT, DEPO)
-SCRAP_ROLES = (DEPO, SEVKIYAT)
 
 RETURN_FIELDS = ("customer", "shipment", "return_date", "reason", "quarantine_location", "note")
 LINE_FIELDS = ("product", "lot", "quantity", "unit")
@@ -56,11 +52,6 @@ Decision = QualityDecision.Decision
 
 def _actor(actor: User | None) -> User | None:
     return actor if actor is not None and actor.is_authenticated else None
-
-
-def _require_role(actor: User | None, roles: tuple[str, ...], message: str) -> None:
-    if not user_has_role(actor, roles):
-        raise PermissionDenied(message)
 
 
 def _pick(data: Mapping[str, Any], allowed: tuple[str, ...]) -> dict[str, Any]:
@@ -244,8 +235,9 @@ def _require_draft(customer_return: CustomerReturn) -> None:
 def create_return(
     actor: User | None, data: Mapping[str, Any], lines: Iterable[Mapping[str, Any]] = ()
 ) -> CustomerReturn:
-    """Taslak iade açar (`IA-`, rol: sevkiyat); satırlar (ürün, lot, miktar, birim) birlikte."""
-    _require_role(actor, EDIT_ROLES, "İadeyi yalnızca sevkiyat kaydeder.")
+    """Taslak iade açar (`IA-`; İade kayıtları: Değiştirir); satırlar (ürün, lot, miktar, birim)
+    birlikte."""
+    require_access(actor, RETURNS, CHANGE, "İade açma yetkiniz yok.")
     customer_return = CustomerReturn(**_pick(data, RETURN_FIELDS))
     _validate_header(customer_return)
     create_document(customer_return, actor, prefix="IA", machine=customer_return_states)
@@ -261,7 +253,7 @@ def update_return(
     lines: Iterable[Mapping[str, Any]] | None = None,
 ) -> CustomerReturn:
     """Taslak iadeyi günceller; `lines` verilirse satırları onunla eşitler."""
-    _require_role(actor, EDIT_ROLES, "İadeyi yalnızca sevkiyat değiştirir.")
+    require_access(actor, RETURNS, CHANGE, "İadeyi değiştirme yetkiniz yok.")
     values = _pick(data, RETURN_FIELDS)
     customer_return = _lock(customer_return)
     _require_draft(customer_return)
@@ -279,7 +271,7 @@ def cancel_return(
     actor: User | None, customer_return: CustomerReturn, reason: str
 ) -> CustomerReturn:
     """Taslak iadeyi iptal eder (neden zorunlu). Teslim alınmış iade iptal edilmez."""
-    _require_role(actor, EDIT_ROLES, "İadeyi yalnızca sevkiyat iptal eder.")
+    require_access(actor, RETURNS, CHANGE, "İadeyi iptal etme yetkiniz yok.")
     return cancel_document(customer_return, actor, reason=reason, machine=customer_return_states)
 
 
@@ -317,13 +309,13 @@ def _hold_lot(actor: User | None, lot: Lot, customer_return: CustomerReturn) -> 
 
 @transaction.atomic
 def receive_return(actor: User | None, customer_return: CustomerReturn) -> CustomerReturn:
-    """İadeyi teslim alır (rol: sevkiyat, depo).
+    """İadeyi teslim alır (İade teslim alma ve imha: Değiştirir).
 
     Her satır temel birime çevrilir ve `RETURN` hareketiyle karantina lokasyonuna girer. Serbest
     lot bloke edilir ve iade numunesi açılır (lotta açık numune varsa satır ona bağlanır);
     reddedilmiş lotun satırı doğrudan imha bekler. Olay: `customer_return.received`.
     """
-    _require_role(actor, RECEIVE_ROLES, "İadeyi yalnızca sevkiyat ya da depo teslim alır.")
+    require_access(actor, RECEIVING, CHANGE, "İadeyi teslim alma yetkiniz yok.")
     actor = _actor(actor)
     customer_return = _lock(customer_return)
     customer_return_states.assert_can_transition(
@@ -467,9 +459,9 @@ def apply_lot_outcome(actor: User | None, lot: Lot, disposition: str, note: str 
 
 @transaction.atomic
 def scrap_line(actor: User | None, line: CustomerReturnLine, note: str = "") -> CustomerReturnLine:
-    """İmha kararı verilen satırın iade miktarını karantinadan `SCRAP` hareketiyle düşer (rol:
-    depo, sevkiyat). Her satırı sonuçlanan iade kapanır."""
-    _require_role(actor, SCRAP_ROLES, "İmhayı yalnızca depo ya da sevkiyat kaydeder.")
+    """İmha kararı verilen satırın iade miktarını karantinadan `SCRAP` hareketiyle düşer
+    (İade teslim alma ve imha: Değiştirir). Her satırı sonuçlanan iade kapanır."""
+    require_access(actor, RECEIVING, CHANGE, "İade satırını imha etme yetkiniz yok.")
     actor = _actor(actor)
     line = (
         CustomerReturnLine.objects.select_for_update(of=("self",))

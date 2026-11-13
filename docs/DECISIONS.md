@@ -2331,6 +2331,121 @@ değiştirme zorunlu, yalnızca admin):
     tedarikçinindir. Lot etiketiyle okutulur. Tedarikçi lot numarasıyla eşleştirme ayrı bir
     özelliktir, istenirse sahibe sorulur.
 
+## 2026-11-10 — Kişiye özel yetkiler
+
+- **İstek (CUMHUR):** "kullanıcılara yetkinlik atamak istiyorum. modülleri görüntüleye bilme ve
+  değiştirebileceği bir sistem geliştirelim". Plan: `docs/plan/kisi-yetkileri.md` (CUMHUR onayladı,
+  2026-11-11: "Onaylıyorum").
+- **Kararlar (CUMHUR, 2026-11-10, soruların yanıtları):**
+  - Yapı: "Rol + kişiye ek/çıkar". Roller varsayılan yetki paketidir; admin kişiye yetki ekler ya
+    da rolünden geleni kaldırır. İlk gün herkesin erişimi bugünküyle aynıdır.
+  - Ayrıntı: "Modül ve alt bölüm"; düzeyler Görür, Değiştirir, Onaylar.
+  - Onaylar ayrı yetkidir: lot serbest bırakma ve ret, şartlı kabul, emir ve reçete onayı, D-13
+    limitiyle satın alma onayı, sevk onayı, puantaj ve bordro onayı.
+  - Hassas veri: "Fiyatları görür" ve "Maliyetleri görür" ayrı haklardır. Personel ve bordro
+    yalnız yönetim rolündekilere verilebilir (KVKK); bugünkü kural sürer.
+  - Görevler: "Gelmesin". Görevler role gider; rolde olup görevin gerektirdiği yetkisi kaldırılan
+    kişi görevi ve bildirimini almaz, göremez, üstlenemez. İşi yapabilecek kimse kalmazsa yetki
+    kaydedilirken uyarı çıkar.
+  - Fiyatlar: "Yalnız alış fiyatları". Fiyatları görür; mal kabul fiyat ve masraflarını, satın alma
+    tutarlarını ve sipariş PDF'ini kapsar. Satış siparişi fiyatlarını bugünkü gibi siparişi gören
+    herkes görür.
+  - Onaylar'ın kapsamı: "Evet, Onaylar'a bağlı". Satış siparişinde "Onayla ve rezerve et", sayım
+    düzeltmede "Kaydet ve stoka al" ve onaylanmış bir belgeyi iptal etme ya da yeniden açma da
+    Onaylar'dır. Modül ayarları (onay limiti, bakım ve İSG ayarları) ve canlı başlangıç tarihi ayrı
+    "Ayarlar" satırında Değiştirir'dir.
+  - Rol paketleri: "Hayır, sürümle değişsin". Ekranda salt okunur; değişiklik testle ve DECISIONS
+    kaydıyla yeni sürümde gelir.
+  - KVKK: "İkisi de yalnız yönetime". "Olaylar ve kazalar" ve "Denetim günlüğü" de yalnız yönetim
+    rolündekilere verilebilir.
+  - Görev ayrılığı: "Şartlı kabulde zorla, diğerlerinde uyar". Şartlı kabulü öneren kişi onu
+    onaylayamaz (admin dahil). Diğer riskli birleşimlerde yetki kaydedilirken uyarı çıkar.
+  - İki aşamalı doğrulama: "Admin ve yönetime zorunlu". Yetki ekranı canlıya alınmadan önce admin
+    ve yönetim için yeniden zorunlu olur.
+  - Açık okumalar: "Evet, ayrı bir adımda". Bugün giriş yapan herkesin okuyabildiği kayıtlar ilk
+    sürümde aynen kalır; bir kişi için kapatılabilir, lot sayfası ve seçim listeleri çalışmaya
+    devam eder. Sonra ayrı bir adımda (Faz B) yalnız Görür yetkisi olanlara kapatılır.
+- **Planla önerilen, ayrıca sorulmayan kurallar** (plan onayıyla kesinleşti, 2026-11-11):
+  - Değiştirir ve Onaylar, Görür düzeyi olan bölümlerde Görür'ü verir. Onaylar Değiştirir'i,
+    Değiştirir Onaylar'ı kapsamaz. Görür'ü olmayan işlem bölümleri menüde modül açmaz.
+  - İlk gün erişimin aynı kaldığını bugünkü koddan üretilen sözleşme testi kanıtlar. Anlık görüntü
+    yalnız planın §8'indeki maddeler kadar değişir; başka her fark sahibin onayını ve DECISIONS
+    kaydını ister.
+  - Herkese açık ve kişiden kaldırılamaz: stok sorgu ve lotlar (analiz sertifikası dahil), palet
+    listesi (herkes); tehlike bilgileri, arıza bildirimi ve olay bildirimi (rolü olan herkes).
+  - İlk sürümde kişiden kapatılamayan okumalar: ana veri kartları (müşteri ve tedarikçinin vergi,
+    adres ve iletişim bilgileri hariç), birimler, yazıcılar, etiket ayarları ve firma bilgileri
+    (herkes); duruş kayıtları (rolü olan herkes). Seçimler ve etiket basımı bunlara bağlıdır.
+  - Açık okumalı bölümde Görür'ü kaldırmak yalnız ekranı kapatır. Kayıtları da kapatmak için
+    modülün "Açık kayıtlar" satırında "Kayıtları okur" kaldırılır; kişi o zaman modülün
+    kayıtlarını yalnız Görür'ü olan bölümlerden okur. Lot sayfasının kalite bölümü, üretim emri
+    formundaki reçete seçimi, mal kabulün lot etiketleri, analiz sertifikası ve seçim listeleri
+    açık kalır.
+  - Ana veriler'de kapatılınca vergi, adres ve iletişim bilgileri; tedarikçi kartında Ana veri
+    kartları: Görür'ü, müşteri kartında Ana veri kartları ya da Satış siparişleri: Görür'ü
+    olmayan kişiye boş döner (sade kart); arama da yalnız kod, eski kod ve adda yapılır.
+    Sevkiyat'ın Müşteriler sekmesi ve müşteri kartı, siparişleri gören kişide tam kalır.
+  - Yalnız Görür'ü olan da yorum yazar, @bahseder ve dosya ekler. Baskı ve dışa aktarım bölümün
+    okumasına bağlıdır: açık okumalı bölümlerin çıktıları açık okumayı izler; lot, mal kabul ve
+    lokasyon etiketi basma ile yazıcı denemesi herkese açıktır; fiyatlı belgeler Fiyatları görür'ü
+    de ister.
+  - Ön koşullar: Maliyetleri görür, Fiyatları görür'ü ister (hammadde lotunun maliyeti alış
+    fiyatıdır). Bordro, Ücretler: Görür'ü ister. Personel maliyeti; Maliyetleri görür, Ücretler:
+    Görür ve Bordro: Görür'ü ister.
+  - Panodaki onay bekleyen satın alma siparişi toplamı Fiyatları görür'e (karar 6), stok değeri
+    Maliyetleri görür'e bağlıdır. Toplamı bugün yalnız yönetim görüyor; fark 1. adımda ortaya
+    çıktı. CUMHUR plandaki kuralı onayladı (2026-11-11): 6. adımdan sonra panoyu açabilen ve
+    Fiyatları görür'ü olan kişi de toplamı görür (ör. planlama ve satın alma rollerini birlikte
+    taşıyan, yönetimde olmayan kişi; tutarları satın almada zaten görüyor). İlk gün değişikliği
+    olarak plan §8'e eklendi.
+  - Personel ayarları (bordro parametreleri, hafta tatili günleri) ve canlı başlangıç tarihi kendi
+    "Ayarlar" satırlarındadır (karar 7). Onaylı bordronun ödeme tarihini düzeltmek Onaylar'dır.
+  - Var olan kullanıcının rolleri ve yetkileri yalnız admin tarafından, Sistem > Kullanıcılar >
+    Yetkiler ekranında, gerekçe yazılarak değiştirilir; kullanıcı düzenleme uç noktası rol almaz.
+    Yeni kullanıcının ilk rolleri açılış penceresinde verilir. Kişi kendi kişiye
+    özel yetkilerini değiştiremez; kendi rollerini değiştirebilir, kendi admin rolünü kaldıramaz.
+    Admine kişiye özel yetki tanımlanmaz; admin rolü ya da süper kullanıcı verilince etkin
+    ayarlar biter. Geçmiş silinmez. Django panelinde roller, süper kullanıcı ve panele giriş
+    işaretleri salt okunurdur. "Kim neyi görür" yalnız admine açıktır. Denetim günlüğünde
+    kişiye özel yetkilerin önce ve sonra hâli ve yetki değişikliğinin gerekçesi yalnız admine
+    görünür; rol değişiklikleri, giriş kayıtları ve sorun bildirimleri yönetime bugünkü gibi
+    görünür.
+  - Görevi üstlenen kişi gereken yetkisini ya da rolünü kaybederse görevi görmez ve tamamlayamaz;
+    yetkili başka bir üye tamamlar. "Tüm birimlerin görevleri" başka rollerin görevlerini
+    bugünkü gibi gösterir; kişinin kendi rollerinin görevlerinde karar 5 geçerlidir.
+  - Bildirimler, kuralın bölümünde Görür'ü olan rol üyelerine gider. Tartım sapması ve ara kontrol
+    reddi, hedeflerine karar verilene kadar bugünkü gibi gider.
+  - Rolsüz kullanıcıya kişiye özel yetki verilebilir; görev almaz, ekranda uyarı çıkar.
+  - Yetkisi ya da rolü değişen kişiye bildirim gider; gerekçe gösterilmez.
+  - Pano ve rapor yetkileri ayrıdır; bir bölümü kaldırmak panodaki özetini kaldırmaz. Rapor
+    dosyası indirilirken raporun yetkisi yeniden denetlenir.
+  - Kişinin açamayacağı sayfaya giden kayıt bağlantıları düz metin görünür; "Kayda git"
+    gösterilmez.
+  - Kayıt geçmişindeki ve denetim günlüğündeki tutar içeren notlar ve silinen satır kayıtlarının
+    içindeki fiyatlar da fiyat ve maliyet yetkisine bağlanır. Personel maliyetinden açılan yeni
+    gider oranının notunda yalnız bordro numarası yazar.
+  - Yetki paketlerinin kopyası her sürümde saklanır ve denetim günlüğüne yazılır.
+- **İlk gün değişiklikleri:** planın §8'indeki tam liste.
+- **CLAUDE.md:** kural 12, §3, §5 ve §7 için metin (plan §11) planla birlikte onaylandı. 1. adımda
+  kural 12 (geçiş cümlesiyle), §3, §5'in ilk kısmı ve §7 yazıldı; rol değiştirme cümlesi 9. adımda
+  yazılır, geçiş cümlesi 8. adımda silinir.
+
+## 2026-11-11 — Kişiye özel yetkiler: 1. adımın sahip kararları
+
+- **Bağlam:** 1. adımın sözleşme testi (plan §5.5) iki yerde sahibin kararını istedi.
+- **Panodaki bekleyen satın alma toplamı:** plandaki kural uygulanır ("plana uy"). 6. adımdan sonra
+  yönetim panosunu açabilen ve Fiyatları görür'ü olan kişi de toplamı görür (ör. planlama ve satın
+  alma rollerini birlikte taşıyan kişi). Gerekçe: bu kişi tutarları satın almada zaten görüyor.
+  Plan §8'e ilk gün değişikliği olarak eklendi.
+- **İzin listesinin planın eklediği kalemleri:** §5.5'in listesine, uç noktaların yanında planın
+  eklediği iki kayıt türü (kişiye özel yetki ve paket sürümü) ve Sistem > Rol yetkileri sekmesi de
+  girer. İki kayıt türü 1-5. adımlarda denetim günlüğünde bugünkü gibi yönetime de görünür (bu
+  adımlarda yalnız paket sürümü kaydı yazılır), 6. adımdan sonra yalnız admine. Gerekçe: üçü de
+  planın kendi getirdiği şeylerdir; sözleşme testi onları yeni fark olarak görür.
+- **İzin listesinin yazımı:** liste 1. adımda bütün maddeleriyle yazıldı, hücre başına; yeni değeri
+  plan sabitlemiyorsa açık bırakıldı ve adımı açılınca gözlenen değere sabitlenir (daraltmak onay
+  istemez, genişletmek ister).
+
 ## 2026-11-12 — Partisi bitmemiş lot serbest bırakılamaz
 
 - **Durum:** Bir dolum lotu, partisi bitmeden elle açılan son kontrol numunesiyle serbest

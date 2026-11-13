@@ -7,7 +7,7 @@ import os
 import uuid
 from collections.abc import Collection
 from functools import cached_property
-from typing import Any, ClassVar, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -17,6 +17,9 @@ from django.db import models
 from django.utils import timezone
 
 from apps.core.roles import ADMIN
+
+if TYPE_CHECKING:
+    from apps.core.effective_access import EffectiveAccess
 
 
 class User(AbstractUser):
@@ -41,7 +44,11 @@ class User(AbstractUser):
 
     @cached_property
     def role_names(self) -> frozenset[str]:
-        """Kullanıcının rol kodları (önbellekli; rol değişince `refresh_roles()` çağrılır)."""
+        """Kullanıcının rol kodları (önbellekli; rol değişince `refresh_roles()` çağrılır).
+        Roller önceden yüklendiyse (`prefetch_related("groups")`) sorgu yapılmaz."""
+        prefetched = getattr(self, "_prefetched_objects_cache", {})
+        if "groups" in prefetched:
+            return frozenset(group.name for group in prefetched["groups"])
         return frozenset(self.groups.values_list("name", flat=True))
 
     @property
@@ -63,8 +70,26 @@ class User(AbstractUser):
         return self.is_superuser or self.has_role(ADMIN)
 
     def refresh_roles(self) -> None:
-        """Rol önbelleğini temizler."""
+        """Rol ve yetki önbelleğini temizler (rol ya da kişiye özel yetki değişince); önceden
+        yüklenmiş roller ve kişiye özel ayarlar da bırakılır."""
         self.__dict__.pop("role_names", None)
+        self.__dict__.pop("access", None)
+        prefetched = getattr(self, "_prefetched_objects_cache", None)
+        if prefetched:
+            prefetched.pop("groups", None)
+            prefetched.pop("access_overrides", None)
+
+    refresh_access = refresh_roles
+
+    @cached_property
+    def access(self) -> "EffectiveAccess":
+        """Geçerli yetki (rol paketleri ve kişiye özel ayarlar; docs/plan/kisi-yetkileri.md §5.3).
+
+        Önbellekli: aynı nesnede bir kez hesaplanır; değişince `refresh_access()` çağrılır.
+        """
+        from apps.core.effective_access import effective_access
+
+        return effective_access(self)
 
 
 class Currency(models.TextChoices):
@@ -694,3 +719,137 @@ class RecoveryCode(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user} kurtarma kodu"
+
+
+# --- kişiye özel yetkiler (docs/plan/kisi-yetkileri.md §5.2) ----------------------------------
+
+
+class AccessOverride(models.Model):
+    """Kişiye özel yetki dönemi: rol paketine ekleme ya da paketten kaldırma.
+
+    Satır silinmez; bitmiş satır değişmez (yalnız bitiş alanları bir kez yazılır). Kişi, bölüm ve
+    düzey başına en çok bir etkin satır olur. `key` yetki kataloğundaki bölüm anahtarıdır
+    (`apps/<modül>/access.py`); veritabanı bunu bilmez, geçerli yetki hesabı tanımsız anahtarı yok
+    sayar. Yalnız `core.services` yazar.
+    """
+
+    class Level(models.TextChoices):
+        VIEW = "view", "Görür"
+        CHANGE = "change", "Değiştirir"
+        APPROVE = "approve", "Onaylar"
+        READ = "read", "Kayıtları okur"
+
+    class Effect(models.TextChoices):
+        GRANT = "grant", "Eklendi"
+        REVOKE = "revoke", "Kaldırıldı"
+
+    class EndReason(models.TextChoices):
+        RESET = "reset", "Rol varsayılanına döndü"
+        REPLACED = "replaced", "Yeni kayıtla değişti"
+        INEFFECTIVE = "ineffective", "Etkisiz kaldı"
+        ROLE_REMOVED = "role_removed", "Gerekli rol kaldırıldı"
+        ADMIN = "admin", "Sistem yöneticisi oldu"
+        RETIRED = "retired", "Yetki tanımı kaldırıldı"
+
+    END_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"ended_at", "ended_by", "end_reason", "end_note"}
+    )
+
+    user = models.ForeignKey(
+        User,
+        verbose_name="kullanıcı",
+        on_delete=models.PROTECT,
+        related_name="access_overrides",
+    )
+    key = models.CharField("yetki", max_length=64)
+    level = models.CharField("düzey", max_length=8, choices=Level.choices)
+    effect = models.CharField("değişiklik", max_length=8, choices=Effect.choices)
+    note = models.TextField("gerekçe")
+    created_at = models.DateTimeField("başlangıç", auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        verbose_name="değiştiren",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    ended_at = models.DateTimeField("bitiş", null=True, blank=True)
+    ended_by = models.ForeignKey(
+        User,
+        verbose_name="bitiren",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    end_reason = models.CharField(
+        "bitiş nedeni", max_length=16, choices=EndReason.choices, blank=True
+    )
+    end_note = models.TextField("bitiş notu", blank=True)
+
+    class Meta:
+        verbose_name = "kişiye özel yetki"
+        verbose_name_plural = "kişiye özel yetkiler"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "key", "level"],
+                condition=models.Q(ended_at__isnull=True),
+                name="core_accessoverride_active_uniq",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(ended_at__isnull=True, end_reason="", ended_by__isnull=True)
+                    | (models.Q(ended_at__isnull=False) & ~models.Q(end_reason=""))
+                ),
+                name="core_accessoverride_end_consistent",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(level="read", effect="grant"),
+                name="core_accessoverride_read_revoke_only",
+            ),
+        ]
+        indexes = [models.Index(fields=["user", "ended_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.user} {self.key} {self.get_level_display()} {self.get_effect_display()}"
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if self.pk is not None:
+            fields = kwargs.get("update_fields")
+            if fields is None or not set(fields) <= self.END_FIELDS:
+                raise ValueError("Kişiye özel yetki kaydı değiştirilemez; yalnız bitirilebilir.")
+            stored = type(self)._base_manager.filter(pk=self.pk).values_list("ended_at", flat=True)
+            if stored.first() is not None:
+                raise ValueError("Bitmiş kişiye özel yetki kaydı değiştirilemez.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args: Any, **kwargs: Any) -> tuple[int, dict[str, int]]:
+        raise ValueError("Yetki geçmişi silinemez.")
+
+    @property
+    def is_active(self) -> bool:
+        return self.ended_at is None
+
+
+class AccessCatalogSnapshot(ImmutableModel):
+    """Yetki kataloğunun (bölümler ve rol paketleri) bir sürümdeki kopyası.
+
+    `sync_access_catalog` komutu, katalog değişince bir satır yazar. Geçmiş bir tarihteki yetkiler
+    bu kopyadan, rol değişikliklerinden ve kişiye özel yetki dönemlerinden yeniden kurulur.
+    """
+
+    immutable_message = "Yetki paketi sürümü değiştirilemez."
+
+    catalog_hash = models.CharField("özet", max_length=64, db_index=True)
+    catalog = models.JSONField("katalog", encoder=DjangoJSONEncoder)
+    created_at = models.DateTimeField("kayıt zamanı", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "yetki paketi sürümü"
+        verbose_name_plural = "yetki paketi sürümleri"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.created_at:%d.%m.%Y %H:%M} {self.catalog_hash[:12]}"
