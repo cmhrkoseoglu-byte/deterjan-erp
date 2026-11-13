@@ -26,6 +26,7 @@ import re
 from collections.abc import Mapping, Sequence
 from datetime import date
 from decimal import Decimal
+from types import EllipsisType
 from typing import Any
 
 from django.conf import settings
@@ -717,6 +718,7 @@ WORKDAY_ONLY_STATUSES = (
 )
 REST_STATUSES = (AttendanceStatus.WEEKLY_REST, AttendanceStatus.PUBLIC_HOLIDAY)
 MAX_OVERTIME_HOURS = Decimal(24)
+MAX_DAILY_HOURS = Decimal(24)
 MAX_RANGE_DAYS = 366
 MIN_YEAR, MAX_YEAR = 2000, 2100
 
@@ -730,10 +732,23 @@ def get_attendance_settings() -> AttendanceSettings:
 
 
 @transaction.atomic
-def update_attendance_settings(actor: User, rest_weekdays: Sequence[int]) -> AttendanceSettings:
-    """Varsayılan hafta tatili günlerini değiştirir (pazartesi 0 … pazar 6). En az bir gün seçilir,
-    en az bir iş günü kalır. Açık aylarda değiştirilmemiş günler yeni ayara göre hesaplanır;
-    onaylı aylar değişmez."""
+def update_attendance_settings(
+    actor: User,
+    rest_weekdays: Sequence[int],
+    *,
+    daily_hours: Decimal | None | EllipsisType = ...,
+) -> AttendanceSettings:
+    """Puantaj ayarlarını değiştirir: varsayılan hafta tatili günleri (pazartesi 0 … pazar 6) ve
+    günlük çalışma saati.
+
+    Hafta tatili için en az bir gün seçilir, en az bir iş günü kalır. Açık aylarda değiştirilmemiş
+    günler yeni ayara göre hesaplanır; onaylı aylar değişmez.
+
+    Günlük çalışma saati (`daily_hours`) verilmezse değişmez. Verilen değer 0,01'e yuvarlanır;
+    0'dan büyük, en çok 24 olmalıdır (`invalid_daily_hours`). Bir kez belirlenen değer boşaltılamaz,
+    yalnızca değiştirilir (`daily_hours_required`). Kayıtlı günlere ve aylara dokunulmaz: hiç
+    onaylanmamış ayın günleri yeni değerle sayılır, bir kez onaylanmış ay onaydaki değeri korur.
+    """
     _require_role(actor)
     days = sorted({int(day) for day in rest_weekdays})
     if not days or len(days) > 6 or any(day < 0 or day > 6 for day in days):
@@ -742,6 +757,18 @@ def update_attendance_settings(actor: User, rest_weekdays: Sequence[int]) -> Att
         )
     instance = AttendanceSettings.objects.select_for_update().get(pk=get_attendance_settings().pk)
     instance.rest_weekdays = days
+    if daily_hours is None:
+        if instance.daily_hours is not None:
+            raise BusinessRuleError(
+                "daily_hours_required", "Günlük çalışma saati boş bırakılamaz; yeni değeri yazın."
+            )
+    elif not isinstance(daily_hours, EllipsisType):
+        value = selectors.round_hours(Decimal(daily_hours))
+        if not 0 < value <= MAX_DAILY_HOURS:
+            raise BusinessRuleError(
+                "invalid_daily_hours", "Günlük çalışma saati 0'dan büyük, en çok 24 olmalı."
+            )
+        instance.daily_hours = value
     return save_with_audit(instance, actor)
 
 
@@ -890,6 +917,85 @@ def _check_day(
             )
 
 
+def _check_worked_hours(
+    day: date,
+    status: str,
+    overtime: Decimal,
+    worked: Decimal | None,
+    *,
+    today: date,
+    half: bool,
+    short: bool,
+) -> Decimal | None:
+    """Çalışılan saat ve yarım gün işareti kuralları (`_check_day`'den sonra). Kaydedilecek saati
+    döner: günün çalışma saatine eşit saat kaydedilmez (tam gün), kayıtlı saat her zaman eksiktir.
+
+    Günün çalışma saati ayın günlük çalışma saatinden hesaplanır (yarım gün tatilde yarısı): ay bir
+    kez onaylandıysa onaydaki değer, değilse güncel ayar. Ay, ayar ve tatil kilitsiz okunur."""
+    if short and status != AttendanceStatus.WORKED:
+        raise BusinessRuleError(
+            "short_day_not_allowed", "Yarım gün yalnızca çalışılan güne (Ç) yazılır."
+        )
+    if worked is None:
+        if short:
+            raise BusinessRuleError(
+                "short_day_requires_hours", "Yarım gün işareti için önce çalışılan saati yazın."
+            )
+        return None
+    if status != AttendanceStatus.WORKED:
+        raise BusinessRuleError(
+            "worked_hours_not_allowed",
+            "Çalışılan saat yalnızca çalışılan güne (Ç) girilir; hafta tatili ve resmi tatilde "
+            "çalışılan saat fazla mesaiye yazılır.",
+        )
+    if day > today:
+        raise BusinessRuleError("future_day", "Çalışılan saat ileri bir güne girilemez.")
+    record = selectors.month_record(day.year, day.month)
+    daily = record.daily_hours if record is not None else None
+    if daily is None:
+        daily = selectors.daily_hours()
+    if daily is None:
+        raise BusinessRuleError(
+            "daily_hours_not_set",
+            "Önce günlük çalışma saatini belirleyin (Personel > Tatil takvimi).",
+        )
+    holiday = selectors.holidays_between(day, day).get(day)
+    expected = selectors.expected_hours(daily, holiday)
+    assert expected is not None
+    if not 0 < worked <= expected:
+        limit = selectors.format_hours(expected)
+        if holiday is not None and holiday.half_day:
+            raise BusinessRuleError(
+                "invalid_worked_hours",
+                f"Bu gün yarım gün tatil: çalışılan saat 0'dan büyük, en çok {limit} olabilir. "
+                "Öğleden sonra da çalışıldıysa saati boş bırakıp “Öğleden sonra da çalıştı”yı "
+                "işaretleyin.",
+            )
+        raise BusinessRuleError(
+            "invalid_worked_hours",
+            f"Çalışılan saat 0'dan büyük, en çok {limit} olmalı. Fazlasını fazla mesaiye yazın.",
+        )
+    if worked == expected:
+        if short:
+            raise BusinessRuleError(
+                "short_day_not_short",
+                "Yarım gün yalnızca saati günün çalışma saatinin altında kalan güne yazılır.",
+            )
+        return None
+    if overtime:
+        raise BusinessRuleError(
+            "overtime_with_short_hours",
+            "Çalışılan saat günün çalışma saatinin altındayken fazla mesai girilmez.",
+        )
+    if half:
+        raise BusinessRuleError(
+            "half_holiday_with_short_hours",
+            "“Öğleden sonra da çalıştı” işaretliyken çalışılan saat günün çalışma saatinin "
+            "altında olamaz.",
+        )
+    return worked
+
+
 def _write_day(
     actor: User,
     record: AttendanceMonth,
@@ -901,12 +1007,16 @@ def _write_day(
     hours: Decimal,
     note: str,
     half: bool = False,
+    worked: Decimal | None = None,
+    short: bool = False,
 ) -> AttendanceEntry:
     if entry is None:
         entry = AttendanceEntry(month=record, employee=employee, date=day)
     entry.status = status
     entry.overtime_hours = hours
     entry.holiday_half_worked = half
+    entry.worked_hours = worked
+    entry.short_day = short
     entry.note = note
     return save_with_audit(entry, actor)
 
@@ -921,21 +1031,36 @@ def set_attendance_day(
     overtime_hours: Decimal | None = None,
     note: str = "",
     holiday_half_worked: bool = False,
+    worked_hours: Decimal | None = None,
+    short_day: bool = False,
 ) -> AttendanceEntry:
-    """Kişinin bir gününü yazar: durum, fazla mesai (saat), yarım gün tatil çalışması ve not.
+    """Kişinin bir gününü yazar: durum, çalışılan saat, yarım gün işareti, fazla mesai (saat),
+    yarım gün tatil çalışması ve not. Gün tam değiştirilir: verilmeyen alan sıfırlanır.
 
     Gün kişinin işe giriş ile çıkış tarihi arasında, ay açık olmalı. Fazla mesai 0–24 saattir ve
     yalnızca çalışılan, hafta tatili ve resmi tatil günlerine girilir; devamsızlık ve fazla mesai
     ileri bir güne girilemez (izin ve rapor girilebilir). Yarım gün tatilde (28 Ekim, arife) öğleden
     sonra da çalışıldıysa `holiday_half_worked` işaretlenir: yalnızca takvimde yarım gün tatil olan,
     geçmiş ya da bugünkü çalışılan güne girilir (bordroda yarım günlük ilave ücret).
+
+    Çalışılan saat (`worked_hours`; fazla mesai hariç, 0,01'e yuvarlanır) yalnızca geçmiş ya da
+    bugünkü çalışılan güne (Ç) girilir: 0'dan büyük, en çok günün çalışma saati kadardır (günlük
+    çalışma saati; takvimde yarım gün tatil olan günde yarısı). Günlük çalışma saati belirlenmeden
+    saat girilemez. Günün çalışma saatine eşit saat kaydedilmez (boş = tam gün); saati eksik güne
+    fazla mesai ve yarım gün tatil çalışması girilmez. `short_day` (yarım gün çalıştı, YG) yalnızca
+    saati eksik güne yazılır; işareti kullanıcı verir, sunucu kendiliğinden yazmaz. Saat ve işaret
+    yalnızca kayıttır: bordroda gün tam gün sayılır.
     """
     _require_role(actor)
     # Kart kilitlenip yeniden okunur: aynı anda kaydedilen ayrılışın çıkış tarihi görülür.
     employee = Employee.objects.select_for_update().get(pk=employee.pk)
     hours = Decimal(overtime_hours or 0)
     half = bool(holiday_half_worked)
-    _check_day(employee, day, status, hours, today=timezone.localdate(), half=half)
+    worked = None if worked_hours is None else selectors.round_hours(Decimal(worked_hours))
+    short = bool(short_day)
+    today = timezone.localdate()
+    _check_day(employee, day, status, hours, today=today, half=half)
+    worked = _check_worked_hours(day, status, hours, worked, today=today, half=half, short=short)
     record = _open_month(actor, day.year, day.month)
     entry = AttendanceEntry.objects.select_for_update().filter(employee=employee, date=day).first()
     return _write_day(
@@ -948,6 +1073,8 @@ def set_attendance_day(
         hours=hours,
         note=_text(note)[:200],
         half=half,
+        worked=worked,
+        short=short,
     )
 
 
@@ -968,7 +1095,8 @@ def set_attendance_range(
     Yıllık izin, mazeret izni ve devamsızlık hafta tatili ve resmi tatil günlerine yazılmaz; rapor
     ve ücretsiz izin her takvim gününe yazılır. Kişinin işte olmadığı günler atlanır. Fazla mesai
     alamayan duruma geçen günün fazla mesaisi, çalışılmayan duruma geçen günün yarım gün tatil
-    çalışması işareti sıfırlanır.
+    çalışması işareti sıfırlanır. Aralık çalışılan saat taşımaz: "Çalıştı" kalan günün kayıtlı saati
+    ve yarım gün işareti korunur, başka duruma geçen günün saati ve işareti silinir.
     """
     _require_role(actor)
     if status not in AttendanceStatus.values:
@@ -1017,6 +1145,10 @@ def set_attendance_range(
                 continue
             hours = entry.overtime_hours if entry and status in OVERTIME_STATUSES else Decimal(0)
             half = bool(entry and entry.holiday_half_worked and status == AttendanceStatus.WORKED)
+            # "Çalıştı" kalan günün kayıtlı saati ve yarım gün işareti olduğu gibi korunur (güncel
+            # takvimle yeniden doğrulanmaz).
+            worked = entry.worked_hours if entry and status == AttendanceStatus.WORKED else None
+            short = bool(entry and entry.short_day and status == AttendanceStatus.WORKED)
             text = note or (entry.note if entry else "")
             if entry is None and status == current and not note:
                 continue  # zaten varsayılan; kayda gerek yok
@@ -1024,8 +1156,10 @@ def set_attendance_range(
                 entry.status,
                 entry.overtime_hours,
                 entry.holiday_half_worked,
+                entry.worked_hours,
+                entry.short_day,
                 entry.note,
-            ) == (status, hours, half, text):
+            ) == (status, hours, half, worked, short, text):
                 continue
             record = records[(day.year, day.month)]
             _write_day(
@@ -1038,6 +1172,8 @@ def set_attendance_range(
                 hours=hours,
                 note=text,
                 half=half,
+                worked=worked,
+                short=short,
             )
             changed += 1
     return changed
@@ -1046,7 +1182,8 @@ def set_attendance_range(
 @transaction.atomic
 def approve_attendance_month(actor: User, year: int, month: int) -> AttendanceMonth:
     """Ayın puantajını onaylar: değiştirilmemiş günler varsayılan durumlarıyla yazılır ve ay
-    kilitlenir (bordroya giden rakam sabitlenir). Ay bitmeden onaylanamaz.
+    kilitlenir (bordroya giden rakam sabitlenir). Ay bitmeden onaylanamaz. İlk onayda ay o anki
+    günlük çalışma saatini alır (`daily_hours`); yeniden açılıp onaylanan ay bu değeri korur.
 
     Ayın kişileri (o ay işte olanlar ve kayıtlı günü olanlar) aydan önce kilitlenir: varsayılan
     günler güncel giriş ve çıkış tarihleriyle yazılır, aynı anda kaydedilen ayrılışla çakışmaz.
@@ -1092,6 +1229,9 @@ def approve_attendance_month(actor: User, year: int, month: int) -> AttendanceMo
     AttendanceEntry.objects.bulk_create(defaults)
     record.approved_at = timezone.now()
     record.approved_by = actor
+    if record.daily_hours is None:
+        # Günlerin sayıldığı değer (tablonun aynı okuması); belirlenmemişse ay değersiz onaylanır.
+        record.daily_hours = grid.daily_hours
     save_with_audit(record, actor)
     return transition_status(
         record,
@@ -1105,8 +1245,8 @@ def approve_attendance_month(actor: User, year: int, month: int) -> AttendanceMo
 
 @transaction.atomic
 def reopen_attendance_month(actor: User, record: AttendanceMonth, reason: str) -> AttendanceMonth:
-    """Onaylı ayı düzeltme için yeniden açar (gerekçe zorunlu). Günler onaydaki haliyle kalır. Ayın
-    bordrosu onaylıysa reddedilir (önce bordro yeniden açılır)."""
+    """Onaylı ayı düzeltme için yeniden açar (gerekçe zorunlu). Günler ve ayın günlük çalışma saati
+    onaydaki haliyle kalır. Ayın bordrosu onaylıysa reddedilir (önce bordro yeniden açılır)."""
     _require_role(actor)
     reason = _text(reason)[:500]
     if not reason:

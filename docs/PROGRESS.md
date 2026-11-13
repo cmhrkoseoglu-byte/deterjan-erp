@@ -1725,3 +1725,48 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
 - **Doğrulama:** backend 2312, ön yüz 628 test yeşil; mypy, ruff, `manage.py check`, göç ve şema
   temiz. Bağımsız inceleme eski ve yeni kodu her yol, metot ve kişide karşılaştırdı (16.384 durum,
   0 fark); tek gerçek bulgu yeni uç noktada ASCII olmayan rakamla 500'dü, düzeltildi.
+
+## 2026-11-13 — Puantajda günlük çalışma saati ve yarım gün, 1. adım
+
+- Karar ve kurallar DECISIONS'ta ("2026-11-12 — Puantajda günlük çalışma saati ve yarım gün"):
+  sahibin dört cevabı, planla onaylanan ve tasarımda eklenen kurallar. Bu adım yalnız kayıttır;
+  bordro etkisi 2. adımdır.
+- Backend (`apps/personnel`, göç `0008_calisma_saatleri`): `AttendanceSettings.daily_hours` (günlük
+  çalışma saati), `AttendanceMonth.daily_hours` (onaydaki değer), `AttendanceEntry.worked_hours` ve
+  `short_day` (yarım gün çalıştı, kod YG; CHECK kısıtları). Seçiciler: `expected_hours` (yarım gün
+  tatilde yarısı), `month_daily_hours`, sayılan değerler (kayıtlı saat yalnız günün çalışma
+  saatinin altındaysa sayılır), toplamlarda `short_days`, `full_days`, `hours`. Servisler:
+  `update_attendance_settings(daily_hours=…)` (boşaltılamaz), `set_attendance_day(worked_hours,
+  short_day)` (dokuz kural; eşit saat kaydedilmez; işareti yalnız kullanıcı verir), aralık girişi
+  saati korur ya da siler, onay aya değeri yazar ve yeniden açılınca korunur. API alanları eklendi.
+  Excel: YG kodu ve sütunu, "Çalışılan saat (FM hariç)" sütunu, "Çalışma saatleri" sayfası, kod
+  açıklamaları; "Puantaj çizelgesi" şablon sürümü 2. `seed_personnel_demo` günlük çalışma saatini
+  (yoksa 9) ve iki örnek günü ekler.
+- Ön yüz: gün penceresinde "Çalışılan saat" ve "Yarım gün çalıştı (YG)" (sistem önerir, kullanıcı
+  onaylar; kayıtlı karar pencere yeniden açılınca korunur; var olan fazla mesai sessizce silinmez).
+  Tabloda YG hücresi, saat satırı, YG toplamı ve ayın günlük çalışma saati. Tatil takvimi'nde
+  "Puantaj ayarları" kartı (hafta tatili günleri ve günlük çalışma saati, tek Kaydet).
+- Kanıt: `personnel/tests/test_attendance_hours.py` (ayar, dokuz kural ve mesajları, yuvarlama,
+  yarım gün tatil, aralık, onay ve yeniden açma, sayılma kuralı, toplamlar, Excel, ayrılış özeti,
+  kilit sırası, sorgu sayısı, yetki, API, bordro rakamlarının değişmediği),
+  `test_attendance_live.py` (dış işlem olmadan ayar, gün, aralık ve onay), `test_seed_demo.py`;
+  `modules/personnel/attendance.test.tsx` (gün penceresi, tablo, ayar kartı). Tam backend (2144) ve
+  ön yüz (622) testleri, ruff, mypy, `makemigrations --check`, şema, lint, biçim, tip denetimi ve
+  derleme temiz.
+- İnceleme: kod yazılmadan önce dört açılı tasarım eleştirisi (2 engelleyici ve 19 önemli bulgu
+  tasarıma işlendi; DECISIONS "İnceleme sonrası"). Koddan sonra dört açılı inceleme: engelleyici ya
+  da önemli bulgu yok, dokuz küçük bulgu (metinler, kılavuz, iki eksik test) düzeltildi.
+- Tarayıcıda yönetimle (ayrı önizleme yığını, demo verisi): eksik saatte kutu işaretli geldi ve YG
+  kaydedildi; işaret kaldırılınca gün Ç kaldı, yeniden açılınca ve not değişince karar korundu;
+  günün saatini aşan, geçersiz ve ileri güne yazılan saat reddedildi; fazla mesaili güne eksik saat
+  yazılamadı; yarım gün tatilde sınır yarım; ayar boşaltılamadı; ayar 8,5 yapılınca 8,5 saatli gün
+  tam gün sayıldı, geri alınınca yeniden sayıldı; Excel indi.
+- Kılavuz: `yonetim.md` "Puantaj", "Tatil takvimi" ve "Personel" (ayrılış özeti); görseller
+  `yonetim-puantaj.jpg`, `yonetim-tatil-takvimi.jpg`. KVKK envanteri ve DECISIONS güncellendi.
+- Canlıya alırken: göç `personnel 0008` yalnız alan ve kısıt ekler; göçten hemen sonra servisler
+  yeniden başlamalı (eski kod yeni zorunlu alanı yazamaz). Yönetim Personel > Tatil takvimi'nde
+  günlük çalışma saatini girer; girilene kadar saat alanı kapalıdır. Açık sekmeler yenilenir.
+  "Puantaj çizelgesi" (FR-IK-001) çıktısına revizyon girilmişse Kodlama sistematiği > Çıktılar'da
+  "Şablon değişti" çıkar; sistem yöneticisi yeni revizyon girer (çıktı engellenmez).
+- Açık iş: 2. adım, bordroda yarım gün başına brüt / 60 kesinti. Kesintinin başlayacağı ay sahibe
+  sorulacak; kuralı mali müşavir de uygulamalı (karşılaştırma sayfası buna bağlı).

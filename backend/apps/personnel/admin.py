@@ -30,13 +30,13 @@ class EmployeeDocumentAdmin(ReadOnlyAdmin):
 
 @admin.register(AttendanceMonth)
 class AttendanceMonthAdmin(ReadOnlyAdmin):
-    list_display = ("number", "year", "month", "status", "approved_at")
+    list_display = ("number", "year", "month", "status", "daily_hours", "approved_at")
     list_filter = ("status", "year")
 
 
 @admin.register(AttendanceEntry)
 class AttendanceEntryAdmin(ReadOnlyAdmin):
-    list_display = ("date", "employee", "status", "overtime_hours")
+    list_display = ("date", "employee", "status", "worked_hours", "short_day", "overtime_hours")
     list_filter = ("status",)
     search_fields = ("employee__full_name",)
     list_select_related = ("employee",)

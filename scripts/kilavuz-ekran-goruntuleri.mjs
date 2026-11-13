@@ -983,8 +983,11 @@ const SHOTS = [
     },
   },
   {
+    // Tatil listesinin altındaki "Puantaj ayarları" kartı (hafta tatili günleri, günlük çalışma
+    // saati) da görünsün diye uzun görüntü.
     name: "yonetim-tatil-takvimi",
     user: "yonetim",
+    viewport: { width: 1366, height: 1100 },
     run: async (page) => {
       await go(page, "/personel/tatiller", "Tatil ekle");
       await page.getByTestId("holidays").waitFor({ timeout: 15000 });

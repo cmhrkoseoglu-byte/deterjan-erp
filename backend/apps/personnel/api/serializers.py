@@ -10,6 +10,7 @@ from apps.core.models import User
 from apps.personnel import payroll, selectors
 from apps.personnel.models import (
     ATTENDANCE_CODES,
+    SHORT_DAY_CODE,
     AttendanceEntry,
     AttendanceMonth,
     AttendanceSettings,
@@ -206,13 +207,18 @@ def _hours(**kwargs: Any) -> serializers.DecimalField:
 
 
 class AttendanceColumnSerializer(serializers.Serializer):
-    """Tablonun bir günü: hafta tatili mi, resmi tatil mi."""
+    """Tablonun bir günü: hafta tatili mi, resmi tatil mi, günün çalışma saati."""
 
     date = serializers.DateField()
     weekday = serializers.IntegerField(help_text="pazartesi 0 … pazar 6")
     rest = serializers.BooleanField(help_text="varsayılan hafta tatili günü")
     holiday_name = serializers.CharField()
     half_day = serializers.BooleanField()
+    expected_hours = _hours(
+        allow_null=True,
+        help_text="günün çalışma saati (yarım gün tatilde yarısı); günlük çalışma saati "
+        "bilinmiyorsa boş",
+    )
 
 
 class AttendanceCellSerializer(serializers.Serializer):
@@ -223,6 +229,14 @@ class AttendanceCellSerializer(serializers.Serializer):
     holiday_half_worked = serializers.BooleanField(
         help_text="yarım gün tatilde öğleden sonra da çalıştı"
     )
+    worked_hours = _hours(
+        allow_null=True,
+        help_text="çalışılan saat, yalnızca günün çalışma saatinin altındaysa (sayılan değer); "
+        "değilse boş (tam gün)",
+    )
+    short_day = serializers.BooleanField(
+        help_text="yarım gün çalıştı (sayılan değer); işaretliyse `code` YG'dir"
+    )
     note = serializers.CharField()
     explicit = serializers.BooleanField(help_text="kayıtlı gün; değilse takvimden varsayılan")
     editable = serializers.BooleanField()
@@ -230,6 +244,10 @@ class AttendanceCellSerializer(serializers.Serializer):
 
 class AttendanceTotalsSerializer(serializers.Serializer):
     days = serializers.DictField(child=serializers.IntegerField(), help_text="durum → gün")
+    short_days = serializers.IntegerField(
+        help_text="yarım gün çalışılan gün (YG); `days` içinde WORKED sayılır"
+    )
+    full_days = serializers.IntegerField(help_text="tam gün çalışılan gün (Ç): WORKED − YG")
     missing_days = serializers.IntegerField(help_text="ücretsiz izin + rapor + devamsız")
     overtime = serializers.DictField(child=_hours(), help_text="günün durumu → saat")
     overtime_total = _hours()
@@ -282,6 +300,11 @@ class AttendanceGridSerializer(serializers.Serializer):
     status = serializers.CharField()
     finished = serializers.BooleanField(help_text="ay bitti (onay ancak ay bitince)")
     month_record = serializers.SerializerMethodField()
+    daily_hours = _hours(
+        allow_null=True,
+        help_text="ayın günlük çalışma saati: onaydaki değer, hiç onaylanmamış ayda güncel ayar; "
+        "belirlenmediyse ya da onayda kayıtlı değilse boş",
+    )
     days = AttendanceColumnSerializer(many=True)
     rows = AttendanceRowSerializer(many=True)
 
@@ -301,6 +324,8 @@ class AttendanceGridSerializer(serializers.Serializer):
 
 
 class AttendanceEntrySerializer(serializers.ModelSerializer):
+    """Kayıtlı gün. `worked_hours` ve `short_day` kayıttaki değerlerdir (tablo sayılanı verir)."""
+
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     code = serializers.SerializerMethodField()
 
@@ -315,11 +340,15 @@ class AttendanceEntrySerializer(serializers.ModelSerializer):
             "code",
             "overtime_hours",
             "holiday_half_worked",
+            "worked_hours",
+            "short_day",
             "note",
         ]
         read_only_fields = fields
 
     def get_code(self, obj: AttendanceEntry) -> str:
+        if obj.short_day:
+            return SHORT_DAY_CODE
         return ATTENDANCE_CODES.get(obj.status, "")
 
 
@@ -338,6 +367,16 @@ class AttendanceDayInputSerializer(serializers.Serializer):
     holiday_half_worked = serializers.BooleanField(
         required=False, default=False, label="yarım gün tatilde çalıştı"
     )
+    # Alt ve üst sınır serviste (günün çalışma saati); verilmezse saat silinir, işaret kalkar.
+    worked_hours = serializers.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        default=None,
+        label="çalışılan saat",
+    )
+    short_day = serializers.BooleanField(required=False, default=False, label="yarım gün çalıştı")
     note = _blank(max_length=200, label="not")
 
 
@@ -379,6 +418,9 @@ class FixedHolidaysSerializer(serializers.Serializer):
 
 
 class AttendanceSettingsSerializer(serializers.ModelSerializer):
+    """`daily_hours` (günlük çalışma saati) istekte isteğe bağlıdır: gönderilmezse değişmez. Alt ve
+    üst sınır serviste."""
+
     rest_weekdays = serializers.ListField(
         child=serializers.IntegerField(min_value=0, max_value=6),
         allow_empty=True,
@@ -387,7 +429,7 @@ class AttendanceSettingsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AttendanceSettings
-        fields = ["rest_weekdays", "updated_at"]
+        fields = ["rest_weekdays", "daily_hours", "updated_at"]
         read_only_fields = ["updated_at"]
 
 

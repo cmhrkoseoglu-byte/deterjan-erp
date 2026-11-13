@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from django.contrib.contenttypes.models import ContentType
@@ -21,6 +21,7 @@ from apps.personnel import payroll
 from apps.personnel.models import (
     ATTENDANCE_CODES,
     OVERTIME_STATUSES,
+    SHORT_DAY_CODE,
     AttendanceEntry,
     AttendanceMonth,
     AttendanceSettings,
@@ -141,29 +142,46 @@ def format_hours(value: Decimal) -> str:
     return f"{value.normalize():f}".replace(".", ",")
 
 
-# Günün özetteki ayırt edici bilgisi: durum, fazla mesai ve not olup olmadığı.
-_DayKey = tuple[str, Decimal, bool]
+def round_hours(value: Decimal) -> Decimal:
+    """Saat, 0,01'e yuvarlanır (yarım yukarı): günlük çalışma saati ve çalışılan saat."""
+    return value.quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+
+# Günün özetteki ayırt edici bilgisi: durum, fazla mesai, not olup olmadığı, kayıtlı çalışılan saat
+# ve yarım gün işareti.
+_DayKey = tuple[str, Decimal, bool, Decimal | None, bool]
 
 
 def _run_label(first: date, last: date, key: _DayKey) -> str:
-    status, hours, noted = key
+    status, hours, noted, worked, short = key
+    each = "günde " if first != last else ""
     extra = []
+    if worked is not None:
+        extra.append(f"{each}{format_hours(worked)} sa")
     if hours:
-        extra.append(f"{'günde ' if first != last else ''}{format_hours(hours)} sa FM")
+        extra.append(f"{each}{format_hours(hours)} sa FM")
     if noted:
         extra.append("notlu")
-    text = f"{day_span(first, last)} {ATTENDANCE_CODES.get(status, status)}"
+    code = SHORT_DAY_CODE if short else ATTENDANCE_CODES.get(status, status)
+    text = f"{day_span(first, last)} {code}"
     return f"{text} ({', '.join(extra)})" if extra else text
 
 
 def summarize_days(entries: Iterable[AttendanceEntry]) -> str:
-    """Kayıtlı günlerin kısa özeti, ay ay. Durumu, fazla mesaisi ve not işareti aynı ardışık günler
-    aralık olur: "Eylül 2026: 21–23.09 Üİ, 24.09 Ç (2 sa FM, notlu); Ekim 2026: 05–06.10 Yİ".
-    Çok günlük aralıkta fazla mesai gün başınadır ("günde 2 sa FM"); notun metni denetim
-    kaydındadır."""
+    """Kayıtlı günlerin kısa özeti, ay ay. Durumu, fazla mesaisi, not işareti, çalışılan saati ve
+    yarım gün işareti aynı ardışık günler aralık olur: "Eylül 2026: 21–23.09 Üİ, 24.09 Ç (2 sa FM,
+    notlu), 25.09 YG (4,5 sa); Ekim 2026: 05–06.10 Yİ". Çok günlük aralıkta saatler gün başınadır
+    ("günde 2 sa FM"); notun metni denetim kaydındadır. Çalışılan saat ve yarım gün kayıttaki
+    haliyle yazılır (takvime göre sayılıp sayılmadığına bakılmaz)."""
     months: dict[tuple[int, int], list[tuple[date, date, _DayKey]]] = {}
     for entry in sorted(entries, key=lambda item: item.date):
-        key = (entry.status, Decimal(entry.overtime_hours or 0), bool(entry.note))
+        key = (
+            entry.status,
+            Decimal(entry.overtime_hours or 0),
+            bool(entry.note),
+            None if entry.worked_hours is None else Decimal(entry.worked_hours),
+            bool(entry.short_day),
+        )
         runs = months.setdefault((entry.date.year, entry.date.month), [])
         if runs and runs[-1][2] == key and runs[-1][1] + timedelta(days=1) == entry.date:
             runs[-1] = (runs[-1][0], entry.date, key)
@@ -175,10 +193,24 @@ def summarize_days(entries: Iterable[AttendanceEntry]) -> str:
     )
 
 
+def attendance_settings() -> AttendanceSettings | None:
+    """Puantaj ayarları kaydı, tek sorguyla; hiç kaydedilmediyse None (varsayılanlar geçerlidir)."""
+    return AttendanceSettings.objects.order_by("pk").first()
+
+
+def _rest_days(settings: AttendanceSettings | None) -> set[int]:
+    return set(settings.rest_weekdays if settings else default_rest_weekdays())
+
+
 def rest_weekdays() -> set[int]:
     """Ay önceden dolu açılırken hafta tatili sayılan günler (pazartesi 0 … pazar 6)."""
-    settings = AttendanceSettings.objects.order_by("pk").first()
-    return set(settings.rest_weekdays if settings else default_rest_weekdays())
+    return _rest_days(attendance_settings())
+
+
+def daily_hours() -> Decimal | None:
+    """Güncel günlük çalışma saati (ayardan); belirlenmediyse None."""
+    settings = attendance_settings()
+    return settings.daily_hours if settings else None
 
 
 def holidays_between(start: date, end: date) -> dict[date, PublicHoliday]:
@@ -189,6 +221,33 @@ def holidays_between(start: date, end: date) -> dict[date, PublicHoliday]:
 
 def holidays_of_year(year: int) -> QuerySet[PublicHoliday]:
     return PublicHoliday.objects.filter(is_active=True, date__year=year).order_by("date")
+
+
+def half_holiday_hours(daily: Decimal) -> Decimal:
+    """Yarım gün tatilde (arife, 28 Ekim) günün çalışma saati: günlük çalışma saatinin yarısı."""
+    return round_hours(daily / 2)
+
+
+def expected_hours(daily: Decimal | None, holiday: PublicHoliday | None) -> Decimal | None:
+    """Günün çalışma saati: günlük çalışma saati, takvimde yarım gün tatil olan günde yarısı.
+    Tam gün tatile ya da hafta tatiline "Çalıştı" yazılmış günde de günlük çalışma saatidir.
+    Günlük çalışma saati bilinmiyorsa None."""
+    if daily is None:
+        return None
+    if holiday is not None and holiday.half_day:
+        return half_holiday_hours(daily)
+    return daily
+
+
+def month_daily_hours(record: AttendanceMonth | None, current: Decimal | None) -> Decimal | None:
+    """Ayın günlük çalışma saati: ay bir kez onaylandıysa onaydaki değer (yeniden açılınca da
+    korunur); hiç onaylanmamış ayda güncel ayar (`current`). Değeri kaydedilmeden onaylanmış ay
+    onaylıyken None'dır ("kayıtlı değil"); yeniden açılınca güncel ayarı kullanır."""
+    if record is not None and record.daily_hours is not None:
+        return record.daily_hours
+    if record is not None and record.status == AttendanceMonth.Status.APPROVED:
+        return None
+    return current
 
 
 def default_status(day: date, holiday: PublicHoliday | None, rest: set[int]) -> str:
@@ -243,11 +302,13 @@ def in_payroll(employee: Employee, year: int, month: int) -> bool:
 
 @dataclass(frozen=True)
 class AttendanceDay:
-    """Tablonun bir günü (sütun)."""
+    """Tablonun bir günü (sütun). `expected_hours`: günün çalışma saati (ayın günlük çalışma
+    saati, yarım gün tatilde yarısı); günlük çalışma saati bilinmiyorsa None."""
 
     date: date
     rest: bool
     holiday: PublicHoliday | None
+    expected_hours: Decimal | None = None
 
     @property
     def weekday(self) -> int:
@@ -266,7 +327,13 @@ class AttendanceDay:
 class AttendanceCell:
     """Kişinin bir günü. `status` boşsa kişi o gün işte değil. `explicit`: kayıtlı gün
     (değiştirilmiş ya da onayla yazılmış); değilse varsayılan. `holiday_half_worked`: yarım gün
-    tatilde öğleden sonra da çalıştı."""
+    tatilde öğleden sonra da çalıştı.
+
+    `worked_hours` ve `short_day` sayılan değerlerdir (`_counted_hours`): kayıtlı çalışılan saat
+    yalnızca günün çalışma saatinin altındaysa, yarım gün işareti yalnızca saat sayılıyorsa.
+    `day_hours` çalışılan günün sayılan saatidir (fazla mesai hariç): sayılan çalışılan saat;
+    yoksa günün çalışma saati, yarım gün tatilde öğleden sonra da çalışıldıysa günlük çalışma
+    saatinin tamamı. Çalışılmayan günde ve günlük çalışma saati bilinmiyorsa None."""
 
     date: date
     status: str
@@ -275,18 +342,29 @@ class AttendanceCell:
     explicit: bool
     editable: bool
     holiday_half_worked: bool = False
+    worked_hours: Decimal | None = None
+    short_day: bool = False
+    day_hours: Decimal | None = None
 
     @property
     def code(self) -> str:
+        if self.short_day:
+            return SHORT_DAY_CODE
         return ATTENDANCE_CODES.get(self.status, "")
 
 
 @dataclass
 class AttendanceTotals:
-    """Kişinin ay toplamları: durum başına gün, eksik gün ve günün durumuna göre fazla mesai."""
+    """Kişinin ay toplamları: durum başına gün, eksik gün ve günün durumuna göre fazla mesai.
+
+    Yarım gün çalışılan gün (`short_days`) `days` içinde "Çalıştı" sayılır; tam gün çalışılan gün
+    `full_days`'tir. `hours`: günlerin sayılan çalışma saati toplamı (`AttendanceCell.day_hours`,
+    fazla mesai hariç); hiçbir günün saati bilinmiyorsa None."""
 
     days: dict[str, int] = field(default_factory=dict)
     overtime: dict[str, Decimal] = field(default_factory=dict)
+    short_days: int = 0
+    hours: Decimal | None = None
 
     @property
     def missing_days(self) -> int:
@@ -295,6 +373,10 @@ class AttendanceTotals:
     @property
     def overtime_total(self) -> Decimal:
         return sum(self.overtime.values(), Decimal(0))
+
+    @property
+    def full_days(self) -> int:
+        return self.days.get(AttendanceStatus.WORKED, 0) - self.short_days
 
 
 def attendance_totals(cells: Iterable[AttendanceCell]) -> AttendanceTotals:
@@ -306,6 +388,10 @@ def attendance_totals(cells: Iterable[AttendanceCell]) -> AttendanceTotals:
         if not cell.status:
             continue
         totals.days[cell.status] += 1
+        if cell.short_day:
+            totals.short_days += 1
+        if cell.day_hours is not None:
+            totals.hours = (totals.hours or Decimal(0)) + cell.day_hours
         if cell.overtime_hours:
             totals.overtime[cell.status] += cell.overtime_hours
     return totals
@@ -324,13 +410,15 @@ class AttendanceRow:
 @dataclass
 class AttendanceGrid:
     """Aylık puantaj tablosu. Açık ayda değiştirilmemiş günler takvimden hesaplanır; onaylı ayda
-    yalnızca kayıtlı günler vardır."""
+    yalnızca kayıtlı günler vardır. `daily_hours` ayın günlük çalışma saatidir
+    (`month_daily_hours`); günlerin çalışma saati bundan hesaplanır."""
 
     year: int
     month: int
     record: AttendanceMonth | None
     days: list[AttendanceDay]
     rows: list[AttendanceRow]
+    daily_hours: Decimal | None
 
     @property
     def status(self) -> str:
@@ -357,12 +445,22 @@ def _overlaps(employee: Employee, first: date, last: date) -> bool:
     return not (employee.termination_date and employee.termination_date < first)
 
 
+def _counted_hours(entry: AttendanceEntry | None, day: AttendanceDay) -> Decimal | None:
+    """Kayıtlı çalışılan saat, yalnızca günün çalışma saatinin altındaysa (sayılma kuralı). Tatil
+    takvimi ya da günlük çalışma saati sonradan değişir ve kayıtlı saat eksik olmaktan çıkarsa
+    kayıt durur ama gün tam gün sayılır; değişiklik geri alınırsa yeniden sayılır."""
+    if entry is None or entry.worked_hours is None or day.expected_hours is None:
+        return None
+    return entry.worked_hours if entry.worked_hours < day.expected_hours else None
+
+
 def _grid_rows(
     people: Iterable[Employee],
     days: list[AttendanceDay],
     saved: dict[tuple[int, date], AttendanceEntry],
     approved: bool,
     rest: set[int],
+    daily: Decimal | None,
 ) -> list[AttendanceRow]:
     rows = []
     for employee in sorted(people, key=lambda person: (fold(person.full_name), person.pk)):
@@ -376,6 +474,17 @@ def _grid_rows(
                 status, hours, note = default_status(day.date, day.holiday, rest), Decimal(0), ""
             else:
                 status, hours, note = "", Decimal(0), ""
+            # İşaret yalnızca takvimde hâlâ yarım gün tatil olan günde sayılır; tatil
+            # kaldırılırsa saklı işaret durur ama tabloda, Excel'de ve bordroda görünmez.
+            half_worked = bool(entry and entry.holiday_half_worked and day.half_day)
+            worked = _counted_hours(entry, day)
+            if status != AttendanceStatus.WORKED:
+                day_hours = None
+            elif worked is not None:
+                day_hours = worked
+            else:
+                # Öğleden sonra da çalışılan yarım gün tatil günlük çalışma saatinin tamamıdır.
+                day_hours = daily if half_worked else day.expected_hours
             cells.append(
                 AttendanceCell(
                     date=day.date,
@@ -384,9 +493,10 @@ def _grid_rows(
                     note=note,
                     explicit=entry is not None,
                     editable=working and not approved,
-                    # İşaret yalnızca takvimde hâlâ yarım gün tatil olan günde sayılır; tatil
-                    # kaldırılırsa saklı işaret durur ama tabloda, Excel'de ve bordroda görünmez.
-                    holiday_half_worked=bool(entry and entry.holiday_half_worked and day.half_day),
+                    holiday_half_worked=half_worked,
+                    worked_hours=worked,
+                    short_day=bool(entry and entry.short_day and worked is not None),
+                    day_hours=day_hours,
                 )
             )
         rows.append(AttendanceRow(employee=employee, cells=cells))
@@ -410,7 +520,10 @@ def attendance_grids(
         )
     }
     holidays = holidays_between(first, last)
-    rest = rest_weekdays()
+    # Ayar bir kez okunur: hafta tatili günleri ve güncel günlük çalışma saati.
+    settings = attendance_settings()
+    rest = _rest_days(settings)
+    current = settings.daily_hours if settings else None
     entries = AttendanceEntry.objects.filter(date__range=(first, last)).select_related("employee")
     if department:
         entries = entries.filter(employee__department=department)
@@ -423,8 +536,14 @@ def attendance_grids(
         month_first, month_last = month_bounds(year, month)
         record = records.get(month)
         approved = record is not None and record.status == AttendanceMonth.Status.APPROVED
+        daily = month_daily_hours(record, current)
         days = [
-            AttendanceDay(date=day, rest=day.weekday() in rest, holiday=holidays.get(day))
+            AttendanceDay(
+                date=day,
+                rest=day.weekday() in rest,
+                holiday=holidays.get(day),
+                expected_hours=expected_hours(daily, holidays.get(day)),
+            )
             for day in days_between(month_first, month_last)
         ]
         saved = saved_by_month.get(month, {})
@@ -435,8 +554,10 @@ def attendance_grids(
             for employee in candidates:
                 if _overlaps(employee, month_first, month_last):
                     people.setdefault(employee.pk, employee)
-        rows = _grid_rows(people.values(), days, saved, approved, rest)
-        grids[month] = AttendanceGrid(year=year, month=month, record=record, days=days, rows=rows)
+        rows = _grid_rows(people.values(), days, saved, approved, rest, daily)
+        grids[month] = AttendanceGrid(
+            year=year, month=month, record=record, days=days, rows=rows, daily_hours=daily
+        )
     return grids
 
 

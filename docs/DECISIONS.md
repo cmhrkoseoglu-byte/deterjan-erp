@@ -1547,26 +1547,38 @@ değiştirme zorunlu, yalnızca admin):
   (ücretli), Üİ ücretsiz izin, R raporlu, D devamsız. Fazla mesai saat olarak (0–24) yalnızca Ç, HT
   ve RT günlerine girilir; tatilde çalışan kişinin günü HT/RT kalır, çalıştığı saat fazla mesaidir.
   Devamsızlık ve fazla mesai ileri bir güne girilemez; izin ve rapor önceden girilebilir.
+  (Güncelleme 2026-11-12: Ç gününe çalışılan saat ve yarım gün (YG) işareti girilebilir; bunlar da
+  ileri bir güne girilemez, saati eksik güne fazla mesai girilmez; bkz. "Puantajda günlük çalışma
+  saati ve yarım gün".)
 - **Varsayılan günler:** ay takvimden dolu açılır: tam gün resmi tatil RT (hafta tatiline denk gelse
   de), varsayılan hafta tatili günü HT (başlangıçta pazar; ayardan değişir), diğer günler (yarım gün
   tatil dahil) Ç. Kişinin işe girişinden önceki ve çıkışından sonraki günler boştur (2026-10-30:
   çıkıştan sonra kayıtlı kalmış günler ayrılışta kaldırılır; bkz. "Puantajda çıkıştan sonraki
   günler"). Açık ayda
   yalnızca değiştirilen günler saklanır; takvim ya da ayar değişirse diğer günler yeniden hesaplanır.
+  (Güncelleme 2026-11-12: saat girilmeyen çalışılan gün günlük çalışma saatiyle sayılır; bkz.
+  "Puantajda günlük çalışma saati ve yarım gün".)
 - **Aralık girişi:** kişi, birim ya da herkes. Yıllık izin, mazeret izni ve devamsızlık HT ve RT
   günlerine yazılmaz (İş Kanunu m.56); rapor ve ücretsiz izin her takvim gününe yazılır.
+  (Güncelleme 2026-11-12: aralık girişi saat taşımaz; başka duruma geçen günün saati ve yarım gün
+  işareti silinir.)
 - **Onay:** ay bitmeden onaylanamaz. Onayda değiştirilmemiş günler varsayılan durumlarıyla yazılır
   (toplu, ayın denetim kaydında sayısıyla) ve ay kilitlenir; gün, aralık ve o aya düşen tatil
   değişmez. Yeniden açma gerekçeyle yapılır; günler onaydaki haliyle kalır. Ay `PU-` numaralı belge,
   durum makinesi Açık ⇄ Onaylandı; geçişler olay yayınlar (`attendance_month.approved`/`.open`).
+  (Güncelleme 2026-11-12: ay ilk onayında günlük çalışma saatini alır ve yeniden açılınca korur;
+  bkz. "Puantajda günlük çalışma saati ve yarım gün".)
 - **Toplamlar:** durum başına gün, eksik gün (Üİ + R + D), fazla mesai iş günü / hafta tatili /
   resmi tatil ayrı. Ücret ve bordro hesaplanmaz; Excel bordroyu hazırlayana verilir. (Güncelleme
   2026-10-29: ücretten personel maliyeti maliyet modülünde hesaplanır, bordro yine hesaplanmaz; bkz.
-  "Personel maliyeti".)
+  "Personel maliyeti".) (Güncelleme 2026-11-12: Ç tam gün çalışılan günleri sayar, yarım gün (YG)
+  ayrı sütundadır, eksik gün değişmedi; çalışılan saat toplamı Excel'dedir.)
 - **Tatil takvimi:** sabit tatiller (2429 sayılı Kanun) düğmeyle eklenir; Ramazan ve Kurban Bayramı
   günleri her yıl elle girilir, arifeler yarım gün. Tatil silinmez, takvimden kaldırılır.
 - **Kapsam dışı:** giriş-çıkış saatleri, vardiya planı, yıllık izin hakkı ve bakiyesi, ücret hesabı,
-  birim sorumlusu girişi, yıllık 270 saat fazla mesai sınırı uyarısı.
+  birim sorumlusu girişi, yıllık 270 saat fazla mesai sınırı uyarısı. (Güncelleme 2026-11-12: günlük
+  çalışma saati toplam saat olarak kapsama girdi; giriş-çıkış saati ve vardiya planı kapsam dışı
+  kaldı; bkz. "Puantajda günlük çalışma saati ve yarım gün".)
 - **CLAUDE.md:** modül tablosunda `personnel` satırı "özlük bilgileri ve belgeleri, puantaj" ile
   güncellendi (planla onaylandı).
 
@@ -1654,6 +1666,7 @@ değiştirme zorunlu, yalnızca admin):
 - **Açık aylar:** ayrılış kaydedilirken çıkıştan sonraki kayıtlı günler listelenir
   (`attendance_after_exit`; ay ay, durumu, fazla mesaisi ve not işareti aynı ardışık günler aralık
   olarak, ör. "Eylül 2026: 21–23.09 Üİ, 24.09 Ç (2,5 sa FM, notlu); Ekim 2026: 05–06.10 Yİ").
+  (Güncelleme 2026-11-12: özet çalışılan saati ve yarım günü de yazar, ör. "24.09 YG (4,5 sa)".)
   "Kaydet ve günleri kaldır" (`remove_attendance`) ayrılışı kaydeder ve günleri aynı işlemde kaldırır.
   Onay o tarih içindir; tarih değişince ya da onaylı kayıt bir iş kuralıyla reddedilince düşer ve
   günler yeniden sorulur. İstek sürerken tarih ve not değiştirilemez. İleri tarihli çıkışta (ihbar
@@ -1778,7 +1791,9 @@ değiştirme zorunlu, yalnızca admin):
   - Yarım gün tatil çalışması puantajda gün başına işarettir (`holiday_half_worked`): yalnızca
     takvimde yarım gün tatil olan, bugün ya da geçmiş, çalışılan güne (Ç) girilir; aralık girişi
     çalışılmayan duruma geçen günün işaretini sıfırlar. Tatil sonradan kaldırılırsa işaret hesapta
-    sayılmaz. Excel'de "Ç½".
+    sayılmaz. Excel'de "Ç½". (2026-11-12: yarım gün çalışma (YG) ayrı bir işarettir ve aynı
+    sayılma kuralına uyar; saati eksik güne Ç½ girilmez; bkz. "Puantajda günlük çalışma saati ve
+    yarım gün".)
   - Ücreti girilmemiş günü olan kişide SGK alt sınırı uygulanmaz (ücretsiz görünen kişiye prim
     yazılmasın); satır "ücret eksik" uyarısı taşır.
   - Kart işaretleri: "Bordrosu mali müşavirde" (`payroll_external`) ve "BES'e dahil"
@@ -2453,3 +2468,72 @@ değiştirme zorunlu, yalnızca admin):
   (`unfinished_run_reason`) ve üretim (`unfinished_batch_reason`) kendi denetimlerini `apps.py`'de
   kaydeder (bağımlılık yönü: depo modülü onları tanımaz). Denetimi `quality.open_sample`,
   kalite kararı ve `inventory.release_lot` kullanır.
+
+## 2026-11-12 — Puantajda günlük çalışma saati ve yarım gün
+
+- **İstek (CUMHUR):** "PUANTAJ KISMINA GÜNLÜK ÇALIŞMA SAATLERİNİ KAYDETMEMİZ GEREKİYOR. GÜNLÜK
+  ÇALIŞMA SAATİNİ MANUEL BELİRLEYELİM SONRASINDA EKSİK GÖRÜNEN GÜNLERİ YARIM GÜN OLARAK KAYIT
+  EDELİM". "Personel puantajı" kararında kapsam dışı bırakılan saat kaydı, toplam saat olarak
+  kapsama girer.
+- **Kararlar (CUMHUR, 2026-11-12, soruların yanıtları; plan için "Onaylıyorum, başla"):**
+  - Kayıt biçimi: "Toplam saat". Güne tek sayı yazılır (ör. 9 ya da 4,5). Saat girilmeyen çalışılan
+    gün standart saatle çalışılmış sayılır; yalnız farklı günler girilir. Fazla mesai bugünkü gibi
+    ayrı alanda kalır.
+  - Standart: "Tek değer, ayardan". Herkes ve her iş günü için aynı saat. Yönetim Personel > Tatil
+    takvimi'ndeki ayara kendisi girer ve istediğinde değiştirir; onaylı aylar değişmez.
+  - Yarım gün: "Sistem önersin, ben onaylayayım". Saat standardın altındaysa gün penceresinde
+    "Yarım gün" işaretli gelir. İstenmeyen günde (ör. yarım saat erken çıkış) işaret kaldırılır;
+    saat yine kayıtlı kalır.
+  - Ücret: "Yarım günlük ücret kesilsin". Her yarım gün için günlük ücretin yarısı (brüt / 60)
+    düşülür, pusulada ayrı satır olur. SGK günü değişmez; mali müşavirle teyit edilir. Kayıt
+    kısmından sonra ayrı adım olarak yapılır.
+- **Planla onaylanan, ayrıca sorulmayan kurallar** (değiştirilebilir):
+  - Çalışılan saat yalnız çalışılan güne (Ç), bugün ya da geçmiş bir güne yazılır; 0'dan büyük ve en
+    çok o günün çalışma saati kadardır. Fazlası fazla mesaidir.
+  - Günün çalışma saati günlük çalışma saatidir; takvimde yarım gün tatil olan günde (arife, 28
+    Ekim) yarısıdır.
+  - Hiç çalışılmayan gün bugünkü durumlarla (D, Üİ, R, Yİ, Mİ) girilir; 0 saat yazılmaz.
+  - Saati eksik güne fazla mesai girilmez.
+  - Günlük çalışma saati belirlenmeden güne saat yazılamaz.
+  - Kod YG ("Yarım gün çalıştı"). `½` ve `Ç½` yarım gün tatil anlamını korur. Toplamlarda ayrı YG
+    sütunu vardır; Ç tam gün çalışılan günleri sayar; Eksik (Üİ + R + D) değişmez.
+  - Yetki değişmez: yalnız admin ve yönetim.
+  - Excel'e "Çalışma saatleri" sayfası, YG sütunu ve kod açıklaması eklenir; "Puantaj çizelgesi"
+    (FR-IK-001) şablon sürümü 2 olur.
+- **Tasarımda eklenen, sahibe ayrıca gösterilmeyen kurallar** (değiştirilebilir):
+  - Yarım gün işaretini yalnız kullanıcı koyar; sunucu kendiliğinden yarım gün yazmaz. Öneri gün
+    penceresindedir ("ben onaylayayım").
+  - Girilen saat günün çalışma saatine eşitse saat kaydedilmez (tam gün). Kayıtlı saat her zaman
+    "kaydedildiği gün eksikti" demektir.
+  - Saati eksik güne "Öğleden sonra da çalıştı (yarım gün tatil)" işareti de girilmez.
+  - Sayılma kuralı (Ç½ işaretindeki kural gibi): kayıtlı saat ve yarım gün işareti silinmez; ama
+    tatil takvimi ya da günlük çalışma saati sonradan değişir ve kayıtlı saat artık günün çalışma
+    saatinin altında kalmazsa o gün tam gün sayılır. Değişiklik geri alınırsa kayıt yeniden
+    sayılır; gün yeniden kaydedilince kayıtlı saat temizlenir. Gerekçe: arifeler her yıl elle
+    girilir; sonradan eklenen arife, o gün öğlene kadar çalışanı yarım gün bırakmamalıdır.
+  - Günlük çalışma saati bir kez belirlendikten sonra boşaltılamaz, yalnız değiştirilir (boşalırsa
+    saati girilmiş günler yeniden kaydedilemez).
+  - Ay ilk onayında o anki günlük çalışma saatini alır ve yeniden açılınca da korur ("günler
+    onaydaki haliyle kalır"); hiç onaylanmamış ay güncel ayarı kullanır. Bu karardan önce
+    onaylanmış ay onaylıyken "kayıtlı değil" gösterir; yeniden açılınca güncel ayarı kullanır ve
+    yeniden onayda onu alır.
+  - Aralık girişi saat taşımaz: Ç kalan günün saati ve işareti korunur, başka duruma geçen günün
+    saati ve işareti silinir.
+  - Günlük çalışma saati yalnız puantajda kullanılır; bordrodaki brüt / 225, 7,5 saat ve 3,75 saat
+    kuralları değişmez.
+  - Bordrosu mali müşavirde olan kişilere de saat ve yarım gün girilebilir (puantaj tektir).
+  - Gün kaydı tam değiştirir: istekte saat ya da işaret yoksa silinir. Güncellemeden sonra açık
+    sekmeler yenilenmelidir.
+- **İnceleme sonrası (2026-11-12, kod yazılmadan önce dört açılı tasarım eleştirisi):** planın
+  "standart ya da tatil takvimi sonradan değişse de kayıtlı günler değişmez" cümlesi sayılma
+  kuralıyla daraltıldı: kayıt değişmez, ama artık eksik olmayan gün yarım gün sayılmaz. Günlük
+  çalışma saatinin boşaltılması, yeniden açılan ayın güncel ayara geçmesi, sunucunun yarım günü
+  kendiliğinden yazması ve tam saatin sayı olarak saklanması tasarımdan çıkarıldı.
+- **1. adımda bordro etkisi yok:** YG günü bordroda ve personel maliyetinde tam gün ödenir ve
+  çalışılan gün sayılır. Ekranda, Excel'de ve kılavuzda bu yazar; 2. adımda kaldırılır.
+- **2. adım (yapılmadı):** karar verildi: yarım gün başına brüt / 60, pusulada ayrı satır, SGK
+  günü değişmez. Açık kalan: kesintinin başlayacağı ay (sahibe sorulacak) ve mali müşavirin aynı
+  kuralı uygulaması (karşılaştırma sayfası buna bağlı).
+- **Kapsam dışı:** giriş-çıkış saati, kişiye ya da güne göre standart, toplu saat girişi, yarım gün
+  ücretli izin.
+- **CLAUDE.md:** değişiklik gerekmedi.

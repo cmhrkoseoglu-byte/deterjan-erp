@@ -317,7 +317,7 @@ class AttendanceReopenView(APIView):
 
 
 class AttendanceExportView(APIView):
-    """Aylık puantajın Excel çıktısı (tablo, fazla mesai, kodlar)."""
+    """Aylık puantajın Excel çıktısı (tablo, fazla mesai, çalışma saatleri, kodlar)."""
 
     permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
 
@@ -331,7 +331,8 @@ class AttendanceExportView(APIView):
 
 
 class AttendanceDayView(APIView):
-    """Kişinin bir gününü yazar (durum, fazla mesai, not)."""
+    """Kişinin bir gününü yazar (durum, çalışılan saat, yarım gün, fazla mesai, not). Gün tam
+    değiştirilir: gönderilmeyen çalışılan saat silinir, yarım gün işareti kalkar."""
 
     permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
 
@@ -348,6 +349,8 @@ class AttendanceDayView(APIView):
             overtime_hours=data["overtime_hours"],
             note=data["note"],
             holiday_half_worked=data["holiday_half_worked"],
+            worked_hours=data["worked_hours"],
+            short_day=data["short_day"],
         )
         return Response(s.AttendanceEntrySerializer(entry).data)
 
@@ -425,7 +428,8 @@ class PublicHolidayViewSet(
 
 
 class AttendanceSettingsView(APIView):
-    """Puantaj ayarları: varsayılan hafta tatili günleri."""
+    """Puantaj ayarları: varsayılan hafta tatili günleri ve günlük çalışma saati. Güncellemede
+    `daily_hours` gönderilmezse günlük çalışma saati değişmez."""
 
     permission_classes = [HasRole(*services.PERSONNEL_ROLES)]
 
@@ -437,8 +441,9 @@ class AttendanceSettingsView(APIView):
     def patch(self, request: Request) -> Response:
         body = s.AttendanceSettingsSerializer(data=request.data)
         body.is_valid(raise_exception=True)
+        data = body.validated_data
         instance = services.update_attendance_settings(
-            _user(request), body.validated_data["rest_weekdays"]
+            _user(request), data["rest_weekdays"], daily_hours=data.get("daily_hours", ...)
         )
         return Response(s.AttendanceSettingsSerializer(instance).data)
 
