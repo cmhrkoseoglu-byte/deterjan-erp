@@ -6,7 +6,6 @@ import * as inventoryApi from "../../api/inventory";
 import * as mdApi from "../../api/masterdata";
 import * as returnsApi from "../../api/returns";
 import type { CustomerReturnDetail } from "../../api/returns";
-import * as salesApi from "../../api/sales";
 import * as workflowApi from "../../api/workflow";
 import { page, userWith } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
@@ -18,16 +17,13 @@ vi.mock("../../api/returns", async (importOriginal) => ({
   listReturns: vi.fn(),
   getReturn: vi.fn(),
   saveReturn: vi.fn(),
+  listDispatchedShipments: vi.fn(),
   receiveReturn: vi.fn(),
   scrapReturnLine: vi.fn(),
 }));
 vi.mock("../../api/inventory", async (importOriginal) => ({
   ...(await importOriginal<typeof inventoryApi>()),
   listLots: vi.fn(),
-}));
-vi.mock("../../api/sales", async (importOriginal) => ({
-  ...(await importOriginal<typeof salesApi>()),
-  listShipments: vi.fn(),
 }));
 vi.mock("../../api/masterdata", async (importOriginal) => ({
   ...(await importOriginal<typeof mdApi>()),
@@ -100,7 +96,7 @@ beforeEach(() => {
   vi.mocked(workflowApi.fetchRecordHistory).mockResolvedValue([]);
   vi.mocked(mdApi.listRecords).mockResolvedValue(page([]));
   vi.mocked(inventoryApi.listLots).mockResolvedValue(page([]));
-  vi.mocked(salesApi.listShipments).mockResolvedValue(page([]));
+  vi.mocked(returnsApi.listDispatchedShipments).mockResolvedValue(page([]));
   vi.mocked(returnsApi.listReturns).mockResolvedValue(page([doc()]));
   vi.mocked(returnsApi.getReturn).mockResolvedValue(doc());
 });
@@ -198,23 +194,21 @@ describe("iade detayı", () => {
     vi.mocked(returnsApi.saveReturn).mockResolvedValue(
       doc({ ...draft, shipment: 70, shipment_number: "SV-2026-00001" }),
     );
-    vi.mocked(salesApi.listShipments).mockResolvedValue(
+    vi.mocked(returnsApi.listDispatchedShipments).mockResolvedValue(
       page([
         {
           id: 70,
           number: "SV-2026-00001",
           order_number: "SS-2026-00001",
           planned_date: "2026-10-16",
-        } as salesApi.Shipment,
+        },
       ]),
     );
     renderApp("/iadeler/4");
     const select = await screen.findByRole("textbox", { name: /^Sevkiyat/ });
     await userEvent.click(select);
     await userEvent.click(await screen.findByRole("option", { name: /SV-2026-00001/ }));
-    expect(salesApi.listShipments).toHaveBeenCalledWith({ customer: "3", page_size: 100 }, [
-      "DISPATCHED",
-    ]);
+    expect(returnsApi.listDispatchedShipments).toHaveBeenCalledWith("3");
     await userEvent.click(screen.getByRole("button", { name: "Taslağı kaydet" }));
     await waitFor(() =>
       expect(returnsApi.saveReturn).toHaveBeenCalledWith(

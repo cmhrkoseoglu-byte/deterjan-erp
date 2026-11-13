@@ -22,7 +22,16 @@ APPS_DIR = Path(__file__).resolve().parent.parent
 
 # Yetki denetimine geçmiş modüller (her adım kendi modüllerini ekler).
 ENFORCED_APPS: frozenset[str] = frozenset(
-    {"filling", "inventory", "masterdata", "production", "recipes"}
+    {
+        "filling",
+        "inventory",
+        "masterdata",
+        "production",
+        "quality",
+        "recipes",
+        "returns",
+        "traceability",
+    }
 )
 
 # Her modülün bölümüne bakabilen modüller: workflow herkesi dinler (CLAUDE.md §3).

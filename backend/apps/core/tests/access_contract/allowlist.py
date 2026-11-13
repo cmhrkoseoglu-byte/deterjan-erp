@@ -24,7 +24,7 @@ MISSING = "<yok>"  # durum anlık görüntüde (ya da bugünkü kodda) yok
 ANY = "<her>"  # eski ya da yeni değer ne olursa olsun
 
 # Uygulanan adım (plan §10). Her adım bu sayıyı artırır ve kendi kayıtlarını ekler.
-CURRENT_STEP = 3
+CURRENT_STEP = 4
 
 
 def matches(pattern: str, text: str) -> bool:
@@ -266,14 +266,15 @@ ALLOWED: tuple[Allowed, ...] = (
         old=MISSING,
         new="403",
     ),
-    # OPTIONS görünümün okuma iznini izleyebilir (AccessMixin'de `metadata`); plan bunu sabitlemez.
+    # OPTIONS görünümün okuma iznini izler (AccessMixin'de `metadata`; iade kayıtlarının açık
+    # okuması); 4. adımda gözlenen değere sabitlendi.
     *_cells(
         "yeni uç nokta: iadelerin sevkiyat seçimi (plan §5.4)",
         "endpoints",
         {"OPTIONS /api/v1/returns/*shipment*": _RETURNS_DENIED},
         step=4,
         old=MISSING,
-        required=False,
+        new="allow",
     ),
     *_cells(
         "yeni uç nokta: iadelerin sevkiyat seçimi (plan §5.4)",

@@ -17,8 +17,9 @@ ROWS = [
         "TRACE_ROLES)",
         TRACE_PAGE,
         level(TRACE),
-        live="apps.traceability.api.views:TRACE_ROLES",
     ),
+    # Bugün sınıf düzeyindeki HasRole her metodu (yazma metotları dahil) denetler.
+    Row("API TraceView karşılanmayan metot (TRACE_ROLES)", TRACE_PAGE, level(TRACE)),
     # --- kabuk: modülün menü ve rota girişleri ---
     Row(
         "Ön yüz layout/menu.ts MENU traceability.roles",

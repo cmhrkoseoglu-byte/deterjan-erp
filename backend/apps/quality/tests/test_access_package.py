@@ -15,8 +15,6 @@ from apps.inventory.access import LOTS
 from apps.production.access import ORDERS as PRODUCTION_ORDERS
 from apps.quality.access import CONDITIONAL, SAMPLES, SPECS
 
-API = "apps.quality.api.views"
-SERVICES = "apps.quality.services"
 CONFIG = "frontend:src/modules/quality/config.ts"
 
 LAB = ("laboratuvar",)
@@ -31,50 +29,57 @@ MODULE_VIEW = any_of(level(SAMPLES), level(CONDITIONAL), level(SPECS))
 SAMPLE_READ = read(SAMPLES, CONDITIONAL)
 
 ROWS = [
+    # Karşılanmayan metot (ör. numunede silme, onay yolunda GET): bugünkü `write_roles` (LAB_ROLES)
+    # yedeği; kalitede yalnız list, retrieve, queue ve coa okumadır. 4. adımda unhandled_access.
+    Row(
+        "API RolePermissionMixin karşılanmayan metot (write_roles = LAB_ROLES; spesifikasyon ve "
+        "test tanımı görünümleri)",
+        LAB,
+        level(SPECS, CHANGE),
+    ),
+    Row(
+        "API RolePermissionMixin karşılanmayan metot (write_roles = LAB_ROLES; numune ve karar "
+        "görünümleri)",
+        LAB,
+        level(SAMPLES, CHANGE),
+    ),
     # --- API: yazma eylemleri (views.py, RolePermissionMixin ve write_roles) ---
     Row(
         "API TestDefinitionViewSet create, update, partial_update, activate, deactivate "
         "(write_roles = LAB_ROLES)",
         LAB,
         level(SPECS, CHANGE),
-        live=f"{API}:LAB_ROLES",
     ),
     Row(
         "API SpecificationViewSet create, update, partial_update, copy, lines (LAB_ROLES)",
         LAB,
         level(SPECS, CHANGE),
-        live=f"{API}:LAB_ROLES",
     ),
     Row(
         "API SpecificationViewSet approve (LAB_ROLES)",
         LAB,
         level(SPECS, APPROVE),
-        live=f"{API}:LAB_ROLES",
     ),
     Row(
         "API SpecificationLineViewSet update, partial_update, destroy (LAB_ROLES)",
         LAB,
         level(SPECS, CHANGE),
-        live=f"{API}:LAB_ROLES",
     ),
     Row(
         "API SampleViewSet create, update, partial_update, assign_specification, results, "
         "cancel (LAB_ROLES)",
         LAB,
         level(SAMPLES, CHANGE),
-        live=f"{API}:LAB_ROLES",
     ),
     Row(
         "API SampleViewSet decide (LAB_ROLES)",
         LAB,
         level(SAMPLES, APPROVE),
-        live=f"{API}:LAB_ROLES",
     ),
     Row(
         "API QualityDecisionViewSet review (action_roles = APPROVAL_ROLES)",
         MANAGEMENT,
         level(CONDITIONAL, APPROVE),
-        live=f"{API}:APPROVAL_ROLES",
     ),
     # --- API: okumalar (READ_ACTIONS → IsAuthenticated) ---
     Row(
@@ -117,39 +122,33 @@ ROWS = [
         "Servis create_test_definition, update_test_definition, set_test_active (LAB_ROLES)",
         LAB,
         level(SPECS, CHANGE),
-        live=f"{SERVICES}:LAB_ROLES",
     ),
     Row(
         "Servis create_specification (copy_specification dahil), update_specification, "
         "add_spec_line, update_spec_line, remove_spec_line (LAB_ROLES)",
         LAB,
         level(SPECS, CHANGE),
-        live=f"{SERVICES}:LAB_ROLES",
     ),
     Row(
         "Servis approve_specification (LAB_ROLES)",
         LAB,
         level(SPECS, APPROVE),
-        live=f"{SERVICES}:LAB_ROLES",
     ),
     Row(
         "Servis create_sample, update_sample, assign_specification, cancel_sample, "
         "record_result (LAB_ROLES)",
         LAB,
         level(SAMPLES, CHANGE),
-        live=f"{SERVICES}:LAB_ROLES",
     ),
     Row(
         "Servis decide (LAB_ROLES)",
         LAB,
         level(SAMPLES, APPROVE),
-        live=f"{SERVICES}:LAB_ROLES",
     ),
     Row(
         "Servis review_conditional_release (APPROVAL_ROLES)",
         MANAGEMENT,
         level(CONDITIONAL, APPROVE),
-        live=f"{SERVICES}:APPROVAL_ROLES",
     ),
     # --- apps.py: kod önerisi, kayıt paneli ve ekler ---
     Row(
@@ -157,7 +156,6 @@ ROWS = [
         "(core CodeSuggestView kod önerisi)",
         LAB,
         level(SPECS, CHANGE),
-        live=f"{SERVICES}:LAB_ROLES",
     ),
     Row(
         "apps.py register_record_type quality.sample, roles yok (yorum, geçmiş, ek okuması)",

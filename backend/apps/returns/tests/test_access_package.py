@@ -16,7 +16,6 @@ from apps.sales.access import ORDERS as SALES_ORDERS
 from apps.sales.access import PICKING, SHIPMENTS, SHIPPED_LOTS
 
 VIEWSET = "CustomerReturnViewSet"
-SERVICES = "apps.returns.services"
 CONFIG = "frontend:src/modules/returns/config.ts"
 
 SHIPPING = ("sevkiyat",)
@@ -30,6 +29,12 @@ SALES_VIEW = any_of(level(SALES_ORDERS), level(SHIPMENTS), level(PICKING), level
 
 ROWS = [
     # --- API (api/views.py; inventory.DocumentViewSet → RolePermissionMixin) ---
+    # Karşılanmayan metot (teslim alma ve imha yolunda GET dahil): bugünkü `write_roles` yedeği.
+    Row(
+        f"API {VIEWSET} karşılanmayan metot (write_roles = (SEVKIYAT,))",
+        SHIPPING,
+        level(RETURNS, CHANGE),
+    ),
     Row(
         f"API {VIEWSET} create, update, partial_update, cancel (write_roles = (SEVKIYAT,))",
         SHIPPING,
@@ -55,19 +60,16 @@ ROWS = [
         "Servis create_return, update_return, cancel_return (EDIT_ROLES)",
         SHIPPING,
         level(RETURNS, CHANGE),
-        live=f"{SERVICES}:EDIT_ROLES",
     ),
     Row(
         "Servis receive_return (RECEIVE_ROLES)",
         RECEIVERS,
         level(RECEIVING, CHANGE),
-        live=f"{SERVICES}:RECEIVE_ROLES",
     ),
     Row(
         "Servis scrap_line (SCRAP_ROLES)",
         RECEIVERS,
         level(RECEIVING, CHANGE),
-        live=f"{SERVICES}:SCRAP_ROLES",
     ),
     # --- apps.py: kayıt paneli ---
     Row(

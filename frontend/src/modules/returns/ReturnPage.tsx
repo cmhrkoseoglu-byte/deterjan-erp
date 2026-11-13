@@ -33,10 +33,10 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import { listLots } from "../../api/inventory";
 import { listRecords, type Material } from "../../api/masterdata";
-import { listShipments } from "../../api/sales";
 import {
   cancelReturn,
   getReturn,
+  listDispatchedShipments,
   receiveReturn,
   saveReturn,
   scrapReturnLine,
@@ -170,14 +170,15 @@ function useFinishedProducts() {
   });
 }
 
-/** Müşterinin sevk edilmiş sevkiyatları (iade bağlantısı için, en yeni önce). */
-function useCustomerShipments(customer: string | null) {
+/** Müşterinin sevk edilmiş sevkiyatları (iade bağlantısı için, en yeni önce). İadelerin kendi uç
+ * noktası; yalnız iadeyi düzenleyebilen kişide istenir. */
+function useCustomerShipments(customer: string | null, editable: boolean) {
   return useQuery({
     queryKey: ["options", "dispatched-shipments", customer],
-    enabled: Boolean(customer),
+    enabled: Boolean(customer) && editable,
     staleTime: 30_000,
     queryFn: async () => {
-      const page = await listShipments({ customer: customer!, page_size: 100 }, ["DISPATCHED"]);
+      const page = await listDispatchedShipments(customer!);
       return page.results.map((row) => ({
         value: String(row.id),
         label: `${row.number} · ${row.order_number} · ${formatDate(row.planned_date)}`,
@@ -339,7 +340,7 @@ function ReturnForm({ doc }: { doc: CustomerReturnDetail | null }) {
   const [scrapLine, setScrapLine] = useState<ReturnLine | null>(null);
   const customers = useOptions({ endpoint: "customers" });
   const units = useOptions({ endpoint: "units" });
-  const shipments = useCustomerShipments(header.customer);
+  const shipments = useCustomerShipments(header.customer, editable);
   const products = useFinishedProducts();
   const locations = useLocations();
   const quarantineOptions = (locations.data ?? []).filter((row) => row.type === "QUARANTINE");

@@ -27,6 +27,9 @@ ALLOWED: dict[str, str] = {
     "production/management/commands/seed_demo.py: from apps.core.roles import PLANLAMA": DEMO_USER,
     "filling/management/commands/seed_filling_demo.py: "
     "from apps.core.roles import LABORATUVAR, PLANLAMA": DEMO_USER,
+    "quality/management/commands/seed_quality_demo.py: from apps.core.roles import LABORATUVAR": (
+        DEMO_USER
+    ),
 }
 
 

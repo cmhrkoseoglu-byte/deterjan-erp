@@ -1,4 +1,4 @@
-from typing import Any, ClassVar
+from typing import Any
 
 import django_filters
 from django.db.models import Count, Prefetch, QuerySet
@@ -7,14 +7,15 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from apps.core.permissions import HasRole
-from apps.core.roles import LABORATUVAR, YONETIM
-from apps.masterdata.api.views import MasterDataViewSet
+from apps.core.access import APPROVE, CHANGE
+from apps.core.permissions import AccessMixin, HasAccess, PermissionClass, ReadRule
+from apps.inventory.access import LOTS
+from apps.masterdata.api.views import MasterDataViewSet, writes
 from apps.quality import coa, selectors, services
+from apps.quality.access import CONDITIONAL, SAMPLES, SPECS
 from apps.quality.api import serializers as s
 from apps.quality.models import (
     QualityDecision,
@@ -25,11 +26,19 @@ from apps.quality.models import (
     TestDefinition,
 )
 
-# Kalite verisini yazan rol laboratuvardır; şartlı kabulü yönetim onaylar. Okuma herkese açık.
-# Admin her yere erişir (Faz 0 kararı).
-LAB_ROLES = (LABORATUVAR,)
-APPROVAL_ROLES = (YONETIM,)
-READ_ACTIONS = frozenset({"list", "retrieve", "metadata", "coa", "queue"})
+# Bölümler plan §3.5'te. Okuma açık okumadır; karşılanmayan metot (ör. numunede silme) bugünkü
+# gibi laboratuvarın yazma yetkisini ister, sonra DRF 405 döner. Bugün kalitede her GET okuma
+# değildir (yalnız list, retrieve, queue, coa): `unhandled_read_methods` boş kalır.
+SPEC_READ = ReadRule(SPECS)
+SPEC_CHANGE = HasAccess(SPECS, CHANGE)
+SPEC_APPROVE = HasAccess(SPECS, APPROVE)
+# Numune ve karar okuması: iki bölümden birinde okuma yeter (plan §5.1).
+SAMPLE_READ = ReadRule(SAMPLES, CONDITIONAL)
+SAMPLE_CHANGE = HasAccess(SAMPLES, CHANGE)
+SAMPLE_APPROVE = HasAccess(SAMPLES, APPROVE)
+CONDITIONAL_APPROVE = HasAccess(CONDITIONAL, APPROVE)
+# Lot sayfasının kalite bölümü ve analiz sertifikası Lotlar okumasını izler (plan §5.3).
+LOT_READ = ReadRule(LOTS)
 PDF = "application/pdf"
 
 
@@ -37,29 +46,19 @@ def _user(request: Request) -> Any:
     return request.user
 
 
-class RolePermissionMixin:
-    """Okuma eylemleri giriş yapmış herkese, diğerleri `write_roles`'a açık."""
-
-    write_roles: ClassVar[tuple[str, ...]] = LAB_ROLES
-    action_roles: ClassVar[dict[str, tuple[str, ...]]] = {}
-
-    def get_permissions(self) -> list[BasePermission]:
-        name = getattr(self, "action", None)
-        if name in READ_ACTIONS:
-            return [IsAuthenticated()]
-        return [HasRole(*self.action_roles.get(name or "", self.write_roles))()]
-
-
 # --- test tanımı -----------------------------------------------------------------------------
 
 
-class TestDefinitionViewSet(RolePermissionMixin, MasterDataViewSet):
-    """Test tanımları (laboratuvar yazar, herkes okur). Silinmez; `deactivate` ile pasife alınır.
-    Kalite bölüm denetimine 4. adımda geçer; o güne kadar bugünkü rol kuralı."""
+class TestDefinitionViewSet(MasterDataViewSet):
+    """Test tanımları (Spesifikasyonlar ve test tanımları; açık okuma). Silinmez; `deactivate`
+    ile pasife alınır. Ana veri görünümünün kart kuralları burada kalitenin bölümüyle değişir
+    (üçü de)."""
 
     serializer_class = s.TestDefinitionSerializer
     queryset = TestDefinition.objects.all()
-    write_roles = LAB_ROLES
+    read_access = SPEC_READ
+    action_access = writes(SPEC_CHANGE)
+    unhandled_access = SPEC_CHANGE
     filterset_fields = ["is_active", "result_type"]
     ordering = ["code"]
 
@@ -104,7 +103,7 @@ class SpecificationFilter(django_filters.FilterSet):
 
 
 class SpecificationViewSet(
-    RolePermissionMixin,
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
@@ -113,6 +112,12 @@ class SpecificationViewSet(
     """Sürümlü spesifikasyonlar. Durum yalnızca `approve` ile değişir; taslak dışındaki sürüm
     değiştirilmez (`copy` ile yeni taslak açılır)."""
 
+    read_access = SPEC_READ
+    unhandled_access = SPEC_CHANGE
+    action_access = {
+        **{name: SPEC_CHANGE for name in ("create", "update", "partial_update", "copy", "lines")},
+        "approve": SPEC_APPROVE,
+    }
     filterset_class = SpecificationFilter
     search_fields = ["material__code", "material__name", "change_note"]
     ordering_fields = ["version_no", "created_at", "approved_at"]
@@ -201,7 +206,7 @@ class SpecificationViewSet(
 
 
 class SpecificationLineViewSet(
-    RolePermissionMixin,
+    AccessMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     mixins.DestroyModelMixin,
@@ -209,6 +214,9 @@ class SpecificationLineViewSet(
 ):
     """Taslak sürüm satırı: güncelle ve kaldır (onaylı sürümde 400 `specification_locked`)."""
 
+    read_access = SPEC_READ
+    unhandled_access = SPEC_CHANGE
+    action_access = {name: SPEC_CHANGE for name in ("update", "partial_update", "destroy")}
     queryset = SpecificationLine.objects.select_related("test", "specification")
     serializer_class = s.SpecificationLineSerializer
 
@@ -245,19 +253,46 @@ class SampleFilter(django_filters.FilterSet):
 
 
 class SampleViewSet(
-    RolePermissionMixin,
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
     """Numuneler (`NM-`). Durum yalnızca eylem uç noktalarıyla değişir. Lot serbest bırakma ve
-    reddin tek yolu `decide`'dır."""
+    reddin tek yolu `decide`'dır. Karar Onaylar, öteki yazmalar Değiştirir ister. Lot verilen
+    liste (lot sayfasının kalite bölümü) ve analiz sertifikası Lotlar okumasını izler; lotsuz
+    liste, kuyruk ve numune sayfası numune okumasını (plan §5.3)."""
 
+    read_access = SAMPLE_READ
+    unhandled_access = SAMPLE_CHANGE
+    action_access = {
+        **{
+            name: SAMPLE_CHANGE
+            for name in (
+                "create",
+                "update",
+                "partial_update",
+                "assign_specification",
+                "results",
+                "cancel",
+            )
+        },
+        "decide": SAMPLE_APPROVE,
+        "coa": LOT_READ,
+    }
     filterset_class = SampleFilter
     search_fields = ["number", "lot__lot_no", "lot__material__code", "lot__material__name"]
     ordering_fields = ["created_at", "number", "decided_at"]
     ordering = ["-created_at", "-id"]
+
+    def _access_rule(self) -> PermissionClass:
+        # Yalnız lot verilen liste (HEAD dahil): lotun sayfası onu görebilene açık kalır. Kuyruk
+        # ve numune sayfası aynı süzgeci uygulasa da numune okumasıyla kalır.
+        params = getattr(getattr(self, "request", None), "query_params", None) or {}
+        if getattr(self, "action", None) == "list" and str(params.get("lot", "")).strip():
+            return LOT_READ
+        return super()._access_rule()
 
     def get_queryset(self) -> QuerySet[Sample]:
         queryset = selectors.sample_queryset()
@@ -387,7 +422,7 @@ class SampleViewSet(
 
 
 class QualityDecisionViewSet(
-    RolePermissionMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+    AccessMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
 ):
     """Kalite kararları (salt okunur). Şartlı kabul `review` ile yönetim tarafından onaylanır ya
     da reddedilir."""
@@ -395,7 +430,10 @@ class QualityDecisionViewSet(
     serializer_class = s.QualityDecisionSerializer
     filterset_fields = ["sample", "decision", "approval_status"]
     ordering = ["-decided_at", "-id"]
-    action_roles = {"review": APPROVAL_ROLES}
+    read_access = SAMPLE_READ
+    # Karşılanmayan metot bugünkü gibi laboratuvarın yazma yetkisini ister (onay kuralı değil).
+    unhandled_access = SAMPLE_CHANGE
+    action_access = {"review": CONDITIONAL_APPROVE}
 
     def get_queryset(self) -> QuerySet[QualityDecision]:
         return QualityDecision.objects.select_related(

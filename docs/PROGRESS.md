@@ -1690,3 +1690,38 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   açılmış numune, parti bitince akış), `production/tests/test_output_guard.py` (şarj sırasında
   yalnız ara kontrol numunesi), `inventory/tests/test_services.py` (kayıt noktası ve elle serbest
   bırakma). Kural kapatılınca yeni testler kırılıyor.
+
+## 2026-11-13 — Kişiye özel yetkiler: 4. adım (kalite, iadeler, izlenebilirlik)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-12). Önce dal canlı kodla
+  eşitlendi (main birleştirmesi: partisi bitmemiş lot kuralı ve şarj bitirme düzeltmesi).
+- **Geçiş:** kalite, iadeler ve izlenebilirliğin API'si ve servisleri rol denetimini bıraktı; bölüm
+  denetimine geçti. Kalitede karar Onaylar, numune açma, düzenleme, spesifikasyon atama, sonuç ve
+  iptal Değiştirir ister; spesifikasyon onayı Onaylar, öteki spesifikasyon ve test tanımı yazmaları
+  Değiştirir; şartlı kabul onayı kendi bölümündedir. İadelerde kayıtlar İade kayıtları: Değiştirir,
+  teslim alma ve imha kendi bölümünü ister; izlenebilirlik Görür ister. Kişiye özel ayar yokken
+  kararlar bugünküyle aynıdır; anlık görüntü yalnız izin listesinin 4. adım kayıtları kadar değişti.
+- **İlk gün değişikliği (§8 madde 5):** şartlı kabulü öneren kişi onu onaylayamaz, admin dahil
+  (400 `conditional_same_person`); reddetmek değişmez.
+- **Yeni uç nokta (plan §5.4):** iade formunun sevkiyat seçimi `GET /api/v1/returns/shipments/?customer=`
+  iadelerin kendi uç noktasıdır, İade kayıtları: Değiştirir ister ve yalnız müşterinin sevk edilmiş
+  sevkiyatlarını numara, sipariş ve tarihle döner. İade formu bunu kullanır ve yalnız düzenlenebilir
+  formda ister (salt okuyanlarda istek yok).
+- **Açık kalanlar (plan §5.3):** kalitenin açık kayıtları kapatılsa da lot verilen numune listesi
+  (lot sayfasının kalite bölümü) ve analiz sertifikası Lotlar okumasını izler.
+- **Giriş noktası kuralı (plan §5.4):** numune açılması ve iade sonucu denetimsiz sistem
+  adımlarıdır; ardıl yetkisi olmayan kişiyle test edildi.
+- **Mesajlar** rol adı yerine yetkiyi söyler (§8 madde 4).
+- **Geçiş notları:** kalite ve iadelerde bugün her GET okuma değildi (yalnız liste, kayıt, kuyruk,
+  sertifika): karşılanmayan metot GET dahil bugünkü gibi yazma yetkisi ister. Test tanımları ana
+  veri görünümünün kart kurallarını kalitenin bölümüyle değiştirir. İzin listesinde yeni uç noktanın
+  OPTIONS hücreleri gözlenen değere (izin) sabitlendi. Rol denetimi tarayıcısına kalitenin demo
+  komutu eklendi (demo kullanıcısı).
+- **Kişiye özel ayar ve bağ testleri** (14): dört göz (admin dahil), karar Onaylar ve sonuç
+  Değiştirir, şartlı kabulün kendi bölümü, açık kayıtlar kapatılınca lot sayfası ve sertifika, test
+  tanımlarının ana veri kartlarına değil kaliteye bağlı olması, sevkiyat seçimi uç noktası, teslim
+  alma, numune açılması ve iade sonucunun sistem adımı olması, karşılanmayan metotlar, her servisin
+  bölüm ve düzeyi, izlenebilirliğin Görür'ü.
+- **Doğrulama:** backend 2312, ön yüz 628 test yeşil; mypy, ruff, `manage.py check`, göç ve şema
+  temiz. Bağımsız inceleme eski ve yeni kodu her yol, metot ve kişide karşılaştırdı (16.384 durum,
+  0 fark); tek gerçek bulgu yeni uç noktada ASCII olmayan rakamla 500'dü, düzeltildi.

@@ -1,39 +1,30 @@
-from typing import Any, ClassVar
+from typing import Any
 
 import django_filters
 from django.db.models import Count, Prefetch, QuerySet
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
-from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from apps.core.permissions import HasRole
-from apps.core.roles import DEPO, SEVKIYAT
+from apps.core.access import CHANGE
+from apps.core.permissions import AccessMixin, HasAccess, ReadRule
 from apps.inventory.api.serializers import CancelSerializer
 from apps.inventory.api.views import DocumentViewSet
 from apps.returns import services
+from apps.returns.access import RECEIVING, RETURNS
 from apps.returns.api import serializers as s
 from apps.returns.models import CustomerReturn, CustomerReturnLine
+from apps.sales.models import Shipment
+
+RETURN_READ = ReadRule(RETURNS)
+RETURN_CHANGE = HasAccess(RETURNS, CHANGE)
+RECEIVING_CHANGE = HasAccess(RECEIVING, CHANGE)
 
 
 def _user(request: Request) -> Any:
     return request.user
-
-
-class RolePermissionMixin:
-    """Okuma eylemleri giriş yapmış herkese, diğerleri `write_roles`'a açık. İadeler bölüm
-    denetimine 4. adımda geçer (docs/plan/kisi-yetkileri.md §10); o güne kadar bugünkü kural."""
-
-    write_roles: ClassVar[tuple[str, ...]] = (SEVKIYAT,)
-    action_roles: ClassVar[dict[str, tuple[str, ...]]] = {}
-
-    def get_permissions(self) -> list[BasePermission]:
-        name = getattr(self, "action", None)
-        if name in ("list", "retrieve", "metadata"):
-            return [IsAuthenticated()]
-        return [HasRole(*self.action_roles.get(name or "", self.write_roles))()]
 
 
 class CustomerReturnFilter(django_filters.FilterSet):
@@ -47,14 +38,23 @@ class CustomerReturnFilter(django_filters.FilterSet):
         fields = ["customer", "shipment"]
 
 
-class CustomerReturnViewSet(RolePermissionMixin, DocumentViewSet):
-    """Müşteri iadeleri (sevkiyat yazar). Satırlar iç içe yazılır; `receive` iadeyi karantinaya
-    alır ve laboratuvara numune açar; `scrap` imha kararı verilen satırı stoktan düşer."""
+class CustomerReturnViewSet(AccessMixin, DocumentViewSet):
+    """Müşteri iadeleri (İade kayıtları; açık okuma). Satırlar iç içe yazılır; `receive` iadeyi
+    karantinaya alır ve laboratuvara numune açar; `scrap` imha kararı verilen satırı stoktan
+    düşer (İade teslim alma ve imha). Karşılanmayan metot bugünkü gibi iade yazma yetkisi ister;
+    bugün yalnız liste ve kayıt okumadır (`unhandled_read_methods` boş)."""
 
     serializer_class = s.CustomerReturnSerializer
     detail_serializer = s.CustomerReturnDetailSerializer  # type: ignore[assignment]
-    write_roles = (SEVKIYAT,)
-    action_roles = {"receive": (SEVKIYAT, DEPO), "scrap": (DEPO, SEVKIYAT)}
+    read_access = RETURN_READ
+    unhandled_access = RETURN_CHANGE
+    action_access = {
+        **{name: RETURN_CHANGE for name in ("create", "update", "partial_update", "cancel")},
+        "receive": RECEIVING_CHANGE,
+        "scrap": RECEIVING_CHANGE,
+        # İade formunun sevkiyat seçimi (plan §5.4): satış modülüne bakmaz.
+        "shipments": RETURN_CHANGE,
+    }
     filterset_class = CustomerReturnFilter
     search_fields = ["number", "customer__name", "customer__code", "lines__lot__lot_no"]
     ordering_fields = ["return_date", "number", "created_at"]
@@ -82,6 +82,27 @@ class CustomerReturnViewSet(RolePermissionMixin, DocumentViewSet):
         self, instance: Any, data: dict[str, Any], lines: list[dict[str, Any]] | None
     ) -> Any:
         return services.update_return(_user(self.request), instance, data, lines)
+
+    @extend_schema(
+        parameters=[OpenApiParameter("customer", int, required=True)],
+        responses=s.DispatchedShipmentSerializer(many=True),
+        filters=False,
+    )
+    @action(detail=False, methods=["get"], filter_backends=[])
+    def shipments(self, request: Request) -> Response:
+        """İade formunun sevkiyat seçimi: müşterinin sevk edilmiş sevkiyatları, en yeni önce
+        (numara, sipariş, tarih). İade kayıtları: Değiştirir ister (plan §5.4)."""
+        value = request.query_params.get("customer", "")
+        if not (value.isascii() and value.isdigit()):
+            raise ValidationError({"customer": ["Müşteri seçilmelidir."]})
+        rows = (
+            Shipment.objects.select_related("sales_order")
+            .filter(status=Shipment.Status.DISPATCHED, sales_order__customer_id=int(value))
+            .order_by("-planned_date", "-id")
+        )
+        page = self.paginate_queryset(rows)
+        data = s.DispatchedShipmentSerializer(page if page is not None else rows, many=True).data
+        return self.get_paginated_response(data) if page is not None else Response(data)
 
     @extend_schema(request=None, responses=s.CustomerReturnDetailSerializer)
     @action(detail=True, methods=["post"])

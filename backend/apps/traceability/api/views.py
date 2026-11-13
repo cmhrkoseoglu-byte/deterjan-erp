@@ -9,14 +9,15 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import HasRole
-from apps.core.roles import LABORATUVAR, YONETIM
+from apps.core.permissions import AccessMixin, HasAccess
 from apps.inventory.models import Lot
 from apps.traceability import exports, selectors
+from apps.traceability.access import TRACE
 from apps.traceability.api import serializers as s
 
-# İzlenebilirlik ve geri çağırma ekranı: laboratuvar ve yönetim (admin her yere).
-TRACE_ROLES = (LABORATUVAR, YONETIM)
+# İzlenebilirlik ve geri çağırma (plan §3.9): her metotta Görür (bugünkü gibi yazma metodu da
+# aynı kuralla denetlenir, sonra DRF 405 döner).
+TRACE_VIEW = HasAccess(TRACE)
 PDF = "application/pdf"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 LOT_PARAM = OpenApiParameter(
@@ -24,8 +25,9 @@ LOT_PARAM = OpenApiParameter(
 )
 
 
-class TraceView(APIView):
-    permission_classes = [HasRole(*TRACE_ROLES)]
+class TraceView(AccessMixin, APIView):
+    read_access = TRACE_VIEW
+    unhandled_access = TRACE_VIEW
 
     def _lot(self, pk: int) -> Lot:
         return get_object_or_404(Lot.objects.select_related("material"), pk=pk)
