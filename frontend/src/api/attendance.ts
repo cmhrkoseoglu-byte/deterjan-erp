@@ -25,16 +25,23 @@ export interface AttendanceColumn {
   rest: boolean;
   holiday_name: string;
   half_day: boolean;
+  /** Günün çalışma saati (yarım gün tatilde yarısı); günlük çalışma saati yoksa boş. */
+  expected_hours: string | null;
 }
 
 export interface AttendanceCell {
   date: string;
   /** Boşsa kişi o gün işte değil. */
   status: AttendanceStatus | "";
+  /** Yarım gün çalışılan günde "YG". */
   code: string;
   overtime_hours: string;
   /** Yarım gün tatilde (28 Ekim, arife) öğleden sonra da çalıştı (bordroda yarım günlük ilave). */
   holiday_half_worked: boolean;
+  /** Sayılan çalışılan saat: kayıtlı saat günün çalışma saatinin altındaysa; tam günde boş. */
+  worked_hours: string | null;
+  /** Sayılan yarım gün işareti (YG): yalnızca sayılan saati olan günde. */
+  short_day: boolean;
   note: string;
   /** Kayıtlı gün; değilse takvimden varsayılan. */
   explicit: boolean;
@@ -42,7 +49,12 @@ export interface AttendanceCell {
 }
 
 export interface AttendanceTotals {
+  /** Yarım gün çalışılan günler `WORKED` içinde sayılır. */
   days: Record<AttendanceStatus, number>;
+  /** Yarım gün çalışılan günler (YG). */
+  short_days: number;
+  /** Tam gün çalışılan günler: `days.WORKED` − `short_days`. */
+  full_days: number;
   /** Ücretsiz izin + rapor + devamsız. */
   missing_days: number;
   overtime: Record<"WORKED" | "WEEKLY_REST" | "PUBLIC_HOLIDAY", string>;
@@ -85,6 +97,11 @@ export interface AttendanceGrid {
   month_record: AttendanceMonthRecord | null;
   /** Ayın bordrosu (yoksa boş): onaylıyken puantaj yeniden açılamaz. */
   payroll: { number: string; status: "OPEN" | "APPROVED" } | null;
+  /**
+   * Ayın günlük çalışma saati: ilk onayda kaydedilen değer (yeniden açılınca da korunur); kayıtlı
+   * değer yoksa açık ayda güncel ayar, onaylı ayda boş. Ayar hiç belirlenmediyse de boş.
+   */
+  daily_hours: string | null;
   days: AttendanceColumn[];
   rows: AttendanceRow[];
 }
@@ -93,6 +110,10 @@ export interface AttendanceDayInput {
   employee: number;
   date: string;
   status: AttendanceStatus;
+  /** Yalnızca çalışılan güne (Ç), en çok günün çalışma saati; boşsa tam gün. */
+  worked_hours: string | null;
+  /** Yarım gün çalıştı (YG): yalnızca çalışılan saati günün çalışma saatinin altındaki güne. */
+  short_day: boolean;
   overtime_hours?: string;
   /** Yalnızca yarım gün tatil olan çalışılan güne (Ç). */
   holiday_half_worked?: boolean;
@@ -121,6 +142,8 @@ export type PublicHolidayInput = Omit<PublicHoliday, "id">;
 export interface AttendanceSettings {
   /** Hafta tatili günleri: pazartesi 0 … pazar 6. */
   rest_weekdays: number[];
+  /** Günlük çalışma saati (herkes ve her iş günü için aynı); belirlenmediyse boş. */
+  daily_hours: string | null;
   updated_at: string;
 }
 
@@ -135,7 +158,10 @@ export async function getAttendanceGrid(
   return data;
 }
 
-/** Hata kodları: not_employed, overtime_not_allowed, invalid_overtime, future_day, month_locked. */
+/** Hata kodları: not_employed, overtime_not_allowed, invalid_overtime, future_day, month_locked,
+ * short_day_not_allowed, worked_hours_not_allowed, daily_hours_not_set, invalid_worked_hours,
+ * short_day_requires_hours, short_day_not_short, overtime_with_short_hours,
+ * half_holiday_with_short_hours. */
 export async function setAttendanceDay(input: AttendanceDayInput): Promise<void> {
   await api.post(`${BASE}/days/`, input);
 }
@@ -204,11 +230,13 @@ export async function getAttendanceSettings(): Promise<AttendanceSettings> {
   return data;
 }
 
-/** Hata kodu: invalid_rest_weekdays. */
-export async function saveAttendanceSettings(restWeekdays: number[]): Promise<AttendanceSettings> {
-  const { data } = await api.patch<AttendanceSettings>(`${BASE}/settings/`, {
-    rest_weekdays: restWeekdays,
-  });
+/** Günlük çalışma saati yalnızca gönderilirse değişir. Hata kodları: invalid_rest_weekdays,
+ * invalid_daily_hours, daily_hours_required. */
+export async function saveAttendanceSettings(input: {
+  rest_weekdays: number[];
+  daily_hours?: string;
+}): Promise<AttendanceSettings> {
+  const { data } = await api.patch<AttendanceSettings>(`${BASE}/settings/`, input);
   return data;
 }
 

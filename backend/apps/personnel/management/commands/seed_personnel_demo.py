@@ -1,11 +1,11 @@
 """Personel demo verisi: demo kullanıcıların kartları, sistemi kullanmayan saha çalışanları,
-ayrılmış bir personel, özlük bilgisi ile belgeleri dolu örnek bir kart, geçen ayın puantajı,
-örnek brüt ücretler ve (Ekim 2026'dan) ön bordro örneği: yılın parametre seti, zincirin ilk ayına
-devirler ve geçen aya birkaç ek ödeme ve kesinti. `seed_demo` sonunda çağrılır; tekrar çalıştırmak
-güvenlidir (var olan sicil no, belgesi olan kart, kaydı olan ay, ücreti olan kişi, yılın seti,
-devri olan kişi ve kalemi olan ay atlanır; bordrosu onaylı aya yazılmaz). Adlar, telefonlar,
-belgeler ve tutarlar örnektir; TC kimlik no girilmez (eğitim ortamına gerçek kişi bilgisi
-girilmez)."""
+ayrılmış bir personel, özlük bilgisi ile belgeleri dolu örnek bir kart, günlük çalışma saati, geçen
+ayın puantajı, örnek brüt ücretler ve (Ekim 2026'dan) ön bordro örneği: yılın parametre seti,
+zincirin ilk ayına devirler ve geçen aya birkaç ek ödeme ve kesinti. `seed_demo` sonunda çağrılır;
+tekrar çalıştırmak güvenlidir (var olan sicil no, belgesi olan kart, belirlenmiş günlük çalışma
+saati, kaydı olan ay, ücreti olan kişi, yılın seti, devri olan kişi ve kalemi olan ay atlanır;
+bordrosu onaylı aya yazılmaz). Adlar, telefonlar, belgeler ve tutarlar örnektir; TC kimlik no
+girilmez (eğitim ortamına gerçek kişi bilgisi girilmez)."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -71,6 +71,8 @@ LEFT_CARD = ("S-0010", "Demo Eski Operatör", "Üretim", "Karıştırma operatö
 PROFILE_CARD = "S-0012"
 # Geçen ayın puantajında izin, rapor, devamsızlık ve fazla mesaisi olan saha çalışanları.
 ATTENDANCE_CARDS = ("S-0011", "S-0012", "S-0013", "S-0014")
+# Günlük çalışma saati örneği: yalnızca ayarda değer yoksa yazılır.
+DAILY_HOURS = Decimal("9")
 # Örnek brüt aylık ücretler (TL; eğitim içindir, gerçek kişi ücreti değildir): sicil no → tutar.
 WAGES = {
     "S-0001": "120000",
@@ -331,13 +333,18 @@ def _payroll(actor: User, today: date) -> tuple[int, int, int]:
 
 
 def _attendance(actor: User, today: date) -> None:
-    """Bu yılın ve geçen ayın yılının sabit tatilleri; geçen ayın puantajında birkaç izin, rapor,
-    devamsızlık ve fazla mesai. Ay açık bırakılır (eğitimde onaylanabilsin). Geçen ayda kayıt
-    varsa puantaja dokunulmaz."""
+    """Bu yılın ve geçen ayın yılının sabit tatilleri; günlük çalışma saati (belirlenmemişse 9);
+    geçen ayın puantajında birkaç izin, rapor, devamsızlık, fazla mesai, bir yarım gün ve saati
+    eksik bir gün. Ay açık bırakılır (eğitimde onaylanabilsin). Geçen ayda kayıt varsa puantaja
+    dokunulmaz."""
     last = today.replace(day=1) - timedelta(days=1)
     first = last.replace(day=1)
     for year in sorted({last.year, today.year}):
         services.add_fixed_holidays(actor, year)
+    if selectors.daily_hours() is None:
+        services.update_attendance_settings(
+            actor, sorted(selectors.rest_weekdays()), daily_hours=DAILY_HOURS
+        )
     if AttendanceEntry.objects.filter(date__range=(first, last)).exists():
         return
     holidays = selectors.holidays_between(first, last)
@@ -381,6 +388,24 @@ def _attendance(actor: User, today: date) -> None:
             )
     if "S-0014" in people:
         services.set_attendance_day(actor, people["S-0014"], workdays[15], status=status.ABSENT)
+    # Çalışılan saat örnekleri güncel günlük çalışma saatinden türetilir: yarısı yarım gün (YG),
+    # yarım saat eksiği yalnızca saat. Yarım gün tatil olmayan, başka örnek taşımayan iş günlerine.
+    daily = selectors.daily_hours()
+    if "S-0013" in people and daily is not None:
+        half = selectors.round_hours(daily / 2)
+        samples = [(half, True)] if half < daily else []
+        if daily > 1:
+            samples.append((daily - Decimal("0.5"), False))
+        plain = [day for day in workdays[12:] if day not in holidays]
+        for day, (worked, short) in zip(plain, samples, strict=False):
+            services.set_attendance_day(
+                actor,
+                people["S-0013"],
+                day,
+                status=status.WORKED,
+                worked_hours=worked,
+                short_day=short,
+            )
 
 
 class Command(BaseCommand):

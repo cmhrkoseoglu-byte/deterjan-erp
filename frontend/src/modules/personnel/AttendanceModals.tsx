@@ -29,12 +29,16 @@ import {
   calendarStatus,
   dayLabel,
   formatHours,
+  formatWorkedHours,
   parseHours,
+  parseWorkedHours,
   STATUS_OPTIONS,
 } from "./attendanceFormat";
 import { at } from "./strings";
 
-/** Kişinin bir gününü değiştirme penceresi: durum, fazla mesai ve not. */
+type DayErrors = Partial<Record<"hours" | "overtime", string>>;
+
+/** Kişinin bir gününü değiştirme penceresi: durum, çalışılan saat, yarım gün, fazla mesai, not. */
 export function DayModal({
   employee,
   cell,
@@ -49,19 +53,44 @@ export function DayModal({
   onSaved: () => void;
 }) {
   const [status, setStatus] = useState<AttendanceStatus>(cell.status || calendarStatus(column));
-  const [hours, setHours] = useState(formatHours(cell.overtime_hours));
+  const [hoursText, setHoursText] = useState(formatWorkedHours(cell.worked_hours));
+  // Kullanıcının bu pencerede "Yarım gün çalıştı" kutusuna dokunuşu (dokunmadıysa null). Saat ya da
+  // durum değişikliği buna dokunmaz: kullanıcının seçimi pencere kapanana kadar geçerlidir.
+  const [shortChoice, setShortChoice] = useState<boolean | null>(null);
+  const [overtimeText, setOvertimeText] = useState(formatHours(cell.overtime_hours));
   const [note, setNote] = useState(cell.note);
   const [halfWorked, setHalfWorked] = useState(cell.holiday_half_worked);
-  const [error, setError] = useState<string | undefined>();
+  const [errors, setErrors] = useState<DayErrors>({});
   const overtimeAllowed = OVERTIME_STATUSES.includes(status);
   // Yarım gün tatilde öğleden sonra çalışma yalnızca çalışılan güne (Ç) girilir.
   const halfAllowed = column.half_day && status === "WORKED";
+  // Günün çalışma saati (yarım gün tatilde yarısı); günlük çalışma saati belirlenmediyse yok.
+  const expected = column.expected_hours === null ? null : Number(column.expected_hours);
+  const expectedText = formatWorkedHours(column.expected_hours);
+  // Çalışılan saat yalnızca çalışılan güne (Ç) ve günün çalışma saati biliniyorsa girilir.
+  const hoursAllowed = status === "WORKED" && expected !== null;
+  const parsed = parseWorkedHours(hoursText);
+  const entered = hoursAllowed && parsed.kind === "value" ? parsed : null;
+  // Saat günün çalışma saatinin altında: gün yarım gün sayılabilir.
+  const short = entered !== null && expected !== null && entered.number < expected;
+  // Kutunun değeri (sistem önerir, kullanıcı onaylar): kullanıcı kutuya dokunduysa onun seçimi;
+  // saat pencere açılırkenki (kayıtlı) saatle sayıca aynıysa kayıtlı karar; değilse öneri.
+  const storedHours = cell.worked_hours === null ? null : Number(cell.worked_hours);
+  const shortDay = !short
+    ? false
+    : shortChoice !== null
+      ? shortChoice
+      : entered.number === storedHours
+        ? cell.short_day
+        : true;
   const mutation = useMutation({
     mutationFn: (overtime: string) =>
       setAttendanceDay({
         employee: employee.id,
         date: cell.date,
         status,
+        worked_hours: entered ? entered.value : null,
+        short_day: shortDay,
         overtime_hours: overtime,
         holiday_half_worked: halfAllowed && halfWorked,
         note: note.trim(),
@@ -69,13 +98,45 @@ export function DayModal({
     onSuccess: onSaved,
   });
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    const overtime = overtimeAllowed ? parseHours(hours) : "0";
-    setError(overtime === null ? at.overtimeInvalid : undefined);
-    if (overtime !== null) mutation.mutate(overtime);
+  /** Çalışılan saat alanının hatası; kapalı alan denetlenmez. */
+  function hoursError(): string | undefined {
+    if (!hoursAllowed) return undefined;
+    if (parsed.kind === "invalid") return at.workedHoursInvalid;
+    if (entered !== null && expected !== null && entered.number > expected) {
+      return column.half_day
+        ? at.workedHoursTooManyHalfHoliday(expectedText)
+        : at.workedHoursTooMany(expectedText);
+    }
+    return short && halfAllowed && halfWorked ? at.workedHoursWithHalfHoliday : undefined;
   }
 
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const overtime = overtimeAllowed ? parseHours(overtimeText) : "0";
+    // Saati eksik güne fazla mesai ve "Öğleden sonra da çalıştı" girilmez; var olan fazla mesai ya
+    // da işaret sessizce silinmez, hangisinin doğru olduğuna kullanıcı karar verir.
+    const next: DayErrors = {
+      hours: hoursError(),
+      overtime:
+        overtime === null
+          ? at.overtimeInvalid
+          : short && Number(overtime) > 0
+            ? at.overtimeWithShortHours
+            : undefined,
+    };
+    setErrors(next);
+    if (overtime !== null && !next.hours && !next.overtime) mutation.mutate(overtime);
+  }
+
+  // Çalışılmayan günde (izin, tatil) alan kapalıdır; açıklama nedenini söyler.
+  const hoursHelp =
+    status !== "WORKED"
+      ? at.workedHoursOnlyWorked
+      : expected === null
+        ? at.workedHoursNotSet
+        : column.half_day
+          ? at.workedHoursHalfHolidayHelp(expectedText)
+          : at.workedHoursHelp(expectedText);
   const holiday = column.holiday_name
     ? at.holidayOn(column.half_day ? `${column.holiday_name} (${at.halfDay})` : column.holiday_name)
     : at.calendarDefault(at.labels[calendarStatus(column)]);
@@ -93,13 +154,37 @@ export function DayModal({
             onChange={(value) => value && setStatus(value as AttendanceStatus)}
             allowDeselect={false}
           />
+          <Stack gap={4}>
+            <TextInput
+              label={at.workedHours}
+              description={hoursHelp}
+              value={hoursAllowed ? hoursText : ""}
+              onChange={(e) => setHoursText(e.currentTarget.value)}
+              disabled={!hoursAllowed}
+              error={errors.hours}
+              inputMode="decimal"
+              autoComplete="off"
+            />
+            <Text size="sm" aria-live="polite">
+              {short && (shortDay ? at.shortDayOn : at.shortDayOff)}
+            </Text>
+          </Stack>
+          {status === "WORKED" && (
+            <Checkbox
+              label={at.shortDay}
+              description={at.shortDayHelp}
+              checked={shortDay}
+              disabled={!short}
+              onChange={(e) => setShortChoice(e.currentTarget.checked)}
+            />
+          )}
           <TextInput
             label={at.overtime}
             description={at.overtimeHelp}
-            value={overtimeAllowed ? hours : ""}
-            onChange={(e) => setHours(e.currentTarget.value)}
+            value={overtimeAllowed ? overtimeText : ""}
+            onChange={(e) => setOvertimeText(e.currentTarget.value)}
             disabled={!overtimeAllowed}
-            error={error}
+            error={errors.overtime}
             inputMode="decimal"
             autoComplete="off"
           />

@@ -1,4 +1,5 @@
-// Tatil takvimi (admin ve yönetim): resmi tatiller ve varsayılan hafta tatili günleri.
+// Tatil takvimi (admin ve yönetim): resmi tatiller ve puantaj ayarları (varsayılan hafta tatili
+// günleri, günlük çalışma saati).
 import {
   ActionIcon,
   Alert,
@@ -43,7 +44,7 @@ import {
 import { getErrorMessage } from "../../api/client";
 import { formatDate } from "../../i18n/format";
 import { ConfirmModal } from "../common/ConfirmModal";
-import { dayLabel } from "./attendanceFormat";
+import { dayLabel, formatWorkedHours, parseWorkedHours } from "./attendanceFormat";
 import { PersonnelTabs } from "./PersonnelTabs";
 import { at, HOLIDAYS_BASE, pe } from "./strings";
 
@@ -142,14 +143,25 @@ function HolidayFormModal({
   );
 }
 
-/** Varsayılan hafta tatili günleri (en az bir, en çok altı gün). */
-function RestDaysCard({ settings }: { settings: AttendanceSettings }) {
+/**
+ * Puantaj ayarları: varsayılan hafta tatili günleri (en az bir, en çok altı gün) ve günlük çalışma
+ * saati. Tek "Kaydet" ikisini birlikte gönderir.
+ */
+function SettingsCard({ settings }: { settings: AttendanceSettings }) {
   const queryClient = useQueryClient();
   const [days, setDays] = useState(settings.rest_weekdays.map(String));
-  const [error, setError] = useState<string | undefined>();
+  const [hours, setHours] = useState(formatWorkedHours(settings.daily_hours));
+  const [errors, setErrors] = useState<Partial<Record<"days" | "hours", string>>>({});
+  // Her alan kendi sunucu değeri değişince eşitlenir: saat metni ilkel değere bağlıdır, öteki
+  // alanın kaydı ya da yenilenen ayar yazılmakta olan saati silmez.
   useEffect(() => setDays(settings.rest_weekdays.map(String)), [settings.rest_weekdays]);
+  useEffect(() => setHours(formatWorkedHours(settings.daily_hours)), [settings.daily_hours]);
   const mutation = useMutation({
-    mutationFn: () => saveAttendanceSettings(days.map(Number)),
+    mutationFn: (dailyHours: string | null) =>
+      saveAttendanceSettings({
+        rest_weekdays: days.map(Number),
+        ...(dailyHours === null ? {} : { daily_hours: dailyHours }),
+      }),
     onSuccess: () => {
       notifications.show({ color: "green", message: at.settingsSaved });
       void queryClient.invalidateQueries({ queryKey: attendanceKeys.all });
@@ -158,18 +170,34 @@ function RestDaysCard({ settings }: { settings: AttendanceSettings }) {
   });
 
   function save() {
-    const invalid = days.length === 0 || days.length > 6;
-    setError(invalid ? at.restDaysInvalid : undefined);
-    if (!invalid) mutation.mutate();
+    const parsed = parseWorkedHours(hours);
+    // Kayıtlı günlük çalışma saati boşaltılamaz, yalnızca değiştirilir; hiç belirlenmediyse boş
+    // bırakılabilir ve o zaman gönderilmez.
+    const next = {
+      days: days.length === 0 || days.length > 6 ? at.restDaysInvalid : undefined,
+      hours:
+        parsed.kind === "invalid"
+          ? at.dailyHoursInvalid
+          : parsed.kind === "empty" && settings.daily_hours !== null
+            ? at.dailyHoursRequired
+            : undefined,
+    };
+    setErrors(next);
+    if (!next.days && !next.hours) mutation.mutate(parsed.kind === "value" ? parsed.value : null);
   }
 
   return (
     <Paper withBorder p="md" radius="md">
       <Stack gap="sm">
-        <Text fw={600}>{at.restDays}</Text>
-        <Text size="sm" c="dimmed">
-          {at.restDaysHelp}
-        </Text>
+        <Text fw={600}>{at.settingsTitle}</Text>
+        <div>
+          <Text size="sm" fw={500}>
+            {at.restDays}
+          </Text>
+          <Text size="sm" c="dimmed">
+            {at.restDaysHelp}
+          </Text>
+        </div>
         <Chip.Group multiple value={days} onChange={setDays}>
           <Group gap="xs">
             {at.weekdayNames.map((name, index) => (
@@ -179,11 +207,21 @@ function RestDaysCard({ settings }: { settings: AttendanceSettings }) {
             ))}
           </Group>
         </Chip.Group>
-        {error && (
+        {errors.days && (
           <Text size="sm" c="red" role="alert">
-            {error}
+            {errors.days}
           </Text>
         )}
+        <TextInput
+          label={at.dailyHours}
+          description={at.dailyHoursHelp}
+          value={hours}
+          onChange={(e) => setHours(e.currentTarget.value)}
+          error={errors.hours}
+          inputMode="decimal"
+          autoComplete="off"
+          styles={{ wrapper: { maxWidth: 160 } }}
+        />
         <Group>
           <Button onClick={save} loading={mutation.isPending}>
             {at.save}
@@ -194,7 +232,7 @@ function RestDaysCard({ settings }: { settings: AttendanceSettings }) {
   );
 }
 
-/** Personel > Tatil takvimi: yılın resmi tatilleri ve hafta tatili günleri. */
+/** Personel > Tatil takvimi: yılın resmi tatilleri ve puantaj ayarları. */
 export function HolidaysPage() {
   const [params, setParams] = useSearchParams();
   const year = parseYear(params.get("yil"));
@@ -325,7 +363,7 @@ export function HolidaysPage() {
           </Table>
         </Table.ScrollContainer>
       )}
-      {settings.data && <RestDaysCard settings={settings.data} />}
+      {settings.data && <SettingsCard settings={settings.data} />}
       {editing && (
         <HolidayFormModal
           holiday={editing === "new" ? null : editing}

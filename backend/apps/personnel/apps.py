@@ -24,5 +24,12 @@ class PersonnelConfig(AppConfig):
             (pdf.PAYSLIP_OUTPUT, "Ücret hesap pusulası", ("PDF",), "FR-IK-004"),
         ):
             register_output(
-                key, label=label, group="Personel", formats=formats, suggested_code=code
+                key,
+                label=label,
+                group="Personel",
+                formats=formats,
+                suggested_code=code,
+                # Puantaj çizelgesi şablonu sürüm 2: YG sütunu, "Çalışma saatleri" sayfası ve kod
+                # açıklamaları (2026-11-12).
+                template_version=2 if key == pdf.ATTENDANCE_OUTPUT else 1,
             )
