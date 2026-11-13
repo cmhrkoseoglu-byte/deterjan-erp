@@ -1048,8 +1048,10 @@ def set_attendance_day(
     çalışma saati; takvimde yarım gün tatil olan günde yarısı). Günlük çalışma saati belirlenmeden
     saat girilemez. Günün çalışma saatine eşit saat kaydedilmez (boş = tam gün); saati eksik güne
     fazla mesai ve yarım gün tatil çalışması girilmez. `short_day` (yarım gün çalıştı, YG) yalnızca
-    saati eksik güne yazılır; işareti kullanıcı verir, sunucu kendiliğinden yazmaz. Saat ve işaret
-    yalnızca kayıttır: bordroda gün tam gün sayılır.
+    saati eksik güne yazılır; işareti kullanıcı verir, sunucu kendiliğinden yazmaz. Saat yalnızca
+    kayıttır. Sayılan YG günü bordroda ve personel maliyetinde yarım günlük ücret (brüt / 60)
+    kesintisi doğurur (hafta tatiline ya da tam gün tatile "Çalıştı" yazılmış günde doğurmaz); SGK
+    günü değişmez, bordrosu onaylı ay değişmez.
     """
     _require_role(actor)
     # Kart kilitlenip yeniden okunur: aynı anda kaydedilen ayrılışın çıkış tarihi görülür.

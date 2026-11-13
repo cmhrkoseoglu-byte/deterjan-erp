@@ -533,6 +533,42 @@ def test_extras_are_reported_separately(manager: User) -> None:
     assert D(str(sheet_row["Ek ödeme (TL)"])) == D("10000")
 
 
+def test_short_day_lowers_gross_salary_and_cost(manager: User) -> None:
+    """Puantajda yarım gün çalışılan (YG) gün yarım günlük ücret (45.000 / 60 = 750,00) düşer:
+    "Brüt ücret" kesinti düşülmüş haldedir, brüt toplam ve maliyet düşer, brüt + işveren payı =
+    toplam maliyet korunur. Bordro başlangıcından önceki ay (Eylül 2026) da. Bordrosu mali müşavirde
+    olan kişinin maliyeti girilmiş rakamdır, YG değiştirmez."""
+    personnel.update_attendance_settings(manager, [6], daily_hours=D("9"))
+    person = employee(manager)
+    _wage(manager, person, "45000", date(2020, 1, 1))
+    external = employee(manager, full_name="Can Kaya", payroll_external=True)
+    personnel.set_external_payroll(
+        manager, external, 2026, 9, gross_total=D("41000"), employer_cost=D("50123.45")
+    )
+    full = _row(2026, 9, person)
+    figure = _row(2026, 9, external)
+    for card in (person, external):
+        personnel.set_attendance_day(
+            manager,
+            card,
+            date(2026, 9, 7),
+            status=S.WORKED,
+            worked_hours=D("4.5"),
+            short_day=True,
+        )
+    row = _row(2026, 9, person)
+    assert (row.gross_salary, row.gross_total) == (D("44250.00"), D("44250.00"))
+    assert row.total_cost < full.total_cost
+    assert row.gross_total + row.employer_share == row.total_cost
+    assert (row.paid_days, row.unpaid_days) == (full.paid_days, full.unpaid_days)
+    assert _row(2026, 9, external) == figure
+    report = selectors.personnel_cost_report(2026, 9)
+    assert report.gross_salary == D("44250.00") + D("41000.00")
+    workbook = load_workbook(BytesIO(exports.personnel_cost_xlsx(report)))
+    sheet = {item["Ad soyad"]: item for item in _sheet_rows(workbook["Personel maliyeti"])}
+    assert D(str(sheet["Ayşe Demir"]["Brüt ücret (TL)"])) == D("44250")
+
+
 def test_external_payroll_uses_entered_figures(manager: User) -> None:
     """Bordrosu mali müşavirde olan kişide maliyet o ayın girilmiş rakamlarıdır; girilmemişse sıfır
     ve eksik görünür."""

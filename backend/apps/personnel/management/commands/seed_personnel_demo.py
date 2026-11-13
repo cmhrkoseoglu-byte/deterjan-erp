@@ -390,6 +390,7 @@ def _attendance(actor: User, today: date) -> None:
         services.set_attendance_day(actor, people["S-0014"], workdays[15], status=status.ABSENT)
     # Çalışılan saat örnekleri güncel günlük çalışma saatinden türetilir: yarısı yarım gün (YG),
     # yarım saat eksiği yalnızca saat. Yarım gün tatil olmayan, başka örnek taşımayan iş günlerine.
+    # YG örneği geçen ayın ön bordrosunda ve personel maliyetinde yarım gün kesintisi gösterir.
     daily = selectors.daily_hours()
     if "S-0013" in people and daily is not None:
         half = selectors.round_hours(daily / 2)

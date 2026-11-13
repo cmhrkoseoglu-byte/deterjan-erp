@@ -350,7 +350,9 @@ class AttendanceEntry(BaseModel):
         "çalışılan saat", max_digits=4, decimal_places=2, null=True, blank=True
     )
     # Yönetim günü yarım gün saydı (kod YG); yalnızca saati kayıtlı güne. Yarım gün tatil
-    # (`PublicHoliday.half_day`) değildir.
+    # (`PublicHoliday.half_day`) değildir. Bordroda takvimde iş günü olan (arife dahil) gün için
+    # yarım günlük ücret (brüt / 60) kesilir; hafta tatiline ya da tam gün tatile Ç yazılan günde
+    # kesilmez.
     short_day = models.BooleanField("yarım gün çalıştı", default=False)
     note = models.CharField("not", max_length=200, blank=True)
 

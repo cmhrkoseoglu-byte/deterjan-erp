@@ -1769,4 +1769,44 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   "Puantaj çizelgesi" (FR-IK-001) çıktısına revizyon girilmişse Kodlama sistematiği > Çıktılar'da
   "Şablon değişti" çıkar; sistem yöneticisi yeni revizyon girer (çıktı engellenmez).
 - Açık iş: 2. adım, bordroda yarım gün başına brüt / 60 kesinti. Kesintinin başlayacağı ay sahibe
-  sorulacak; kuralı mali müşavir de uygulamalı (karşılaştırma sayfası buna bağlı).
+  sorulacak; kuralı mali müşavir de uygulamalı (karşılaştırma sayfası buna bağlı). (2026-11-13:
+  kapandı; bkz. "Puantajda yarım gün, 2. adım: bordroda yarım gün kesintisi". Mali müşavirle teyit
+  ilk karşılaştırmaya kaldı.)
+
+## 2026-11-13 — Puantajda yarım gün, 2. adım: bordroda yarım gün kesintisi
+
+- Karar ve kurallar DECISIONS'ta ("2026-11-13 — Bordroda yarım gün kesintisi (2. adım)"): sahibin
+  dört cevabı (başlangıç: onaylanmamış bütün aylar; mali müşavire henüz sorulmadı; arifede
+  kesilir; hafta tatiline ya da tam gün tatile Ç yazılan günde kesilmez), hesap kuralları,
+  örnekler ve mali müşavire sorulacaklar.
+- Backend (`apps/personnel`): hesap motoru sürümü `2026.3`; `Day.short_day`, sonuçta `short_days`
+  ve `short_day_deduction` (o günkü ücretle günlük ücretin yarısı, tek yuvarlama, normal ücreti
+  aşamaz; SGK günü, ücretli gün ve çalışılan gün değişmez; eski satırlar 0 okunur). Köprü
+  (`selectors._month_input`) yalnız sayılan ve takvimde çalışılan güne düşen YG'yi kesintiye
+  sokar. API: bordro satırında `short_days`, `short_day_deduction`, toplamlarda
+  `short_day_deduction`. Çıktılar: pusula, bordro listesi ve icmalde koşullu satırlar; ön bordro
+  Excel'inde iki sütun (kesinti negatif; 2026.2 ile onaylı ayın yeniden basımında yok); bordro
+  listesinde mali müşavirdeki kişinin notu; puantaj Excel'inin Kodlar açıklaması. "Ön bordro
+  (bordro listesi)" (FR-IK-002) ve "Ücret hesap pusulası" (FR-IK-004) şablon sürümü 2. Göç yok.
+- Personel maliyeti (`apps/costing`): "Brüt ücret" yarım gün kesintisi düşülmüş haldedir; brüt
+  toplam ve toplam maliyet bordroyla aynı. Ekim 2026'dan önceki aylar da kesintiyi alır.
+- Ön yüz: bordro dökümünde YG gün satırı ve "Yarım gün kesintisi" satırı, bordro tablosunda "YG
+  kesintisi" sütunu ve toplamı; puantaj gün penceresi metinleri; personel maliyeti kurallar
+  listesi.
+- Kanıt: tam backend 2165 test ve ön yüz 624 test yeşil; ruff, mypy, `makemigrations --check`
+  (göç yok), OpenAPI şeması, lint, biçim, tip denetimi ve derleme temiz. Gerçek tarayıcıda demo
+  verisiyle bordro tablosu ve dökümü denendi (34.000 TL, 1 YG: −566,67).
+- İnceleme: kod yazılmadan önce dört açılı tasarım eleştirisi; bulgular ve sahibe sorulan iki
+  yeni soru tasarıma işlendi. Koddan sonraki inceleme:
+  dört alanda satır satır inceleme ve bulgu doğrulama; 12 küçük bulgu düzeltildi, engelleyici yok.
+- Kılavuz: `yonetim.md` "Personel maliyeti", "Puantaj", "Tatil takvimi" ve "Bordro" (kesinti
+  kuralı, işaretin anlamı, döküm, pusula, tablo, Excel, alt sınır). KVKK envanteri ve DECISIONS
+  güncellendi.
+- Canlıya alırken: göç yok. Yönetim günlük çalışma saatini girene kadar YG, dolayısıyla kesinti
+  çıkmaz. Güncellemeden önce açılmış bordro onay penceresi bir kez "onay penceresi açıldıktan
+  sonra değişti" der (`payroll_changed`); hesabı inceleyip yeniden onaylayın. "Ön bordro
+  (bordro listesi)" (FR-IK-002) ya da "Ücret hesap pusulası" (FR-IK-004) çıktısına revizyon girilmişse Kodlama sistematiği >
+  Çıktılar'da "Şablon değişti" çıkar; sistem yöneticisi yeni revizyon girer. Puantaj Excel'inin
+  Kodlar açıklaması eski aylarda da yeni cümleyi gösterir (cümle her ay için doğrudur).
+- Açık iş: kuralın mali müşavirle teyidi (iki YG'nin bir eksik gün sayılıp sayılmadığı; aynı
+  haftada YG ve fazla mesai).

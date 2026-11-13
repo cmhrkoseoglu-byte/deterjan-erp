@@ -1606,7 +1606,9 @@ değiştirme zorunlu, yalnızca admin):
   sonrası, 2026-10-29): hiç ücretli günü olmayan ay ücretsizdir (Şubat'ta 30 − 28 = 2 gün kalmaz);
   30 gün usulü sıfıra düşerken ücretli günü olan (31 çeken ayda 30 gün ücretsiz) ücretli takvim günü
   kadar alır. Ücreti girilmemiş günler sıfır sayılır ve kişi "ücret eksik" diye işaretlenir. Kişi
-  tutarı tek bölmeyle bulunur, yarım kuruş yukarı yuvarlanır.
+  tutarı tek bölmeyle bulunur, yarım kuruş yukarı yuvarlanır. (Güncelleme 2026-11-13: puantajda
+  yarım gün çalışılan (YG) her gün için günlük ücretin yarısı (brüt / 60) da düşülür; "Brüt ücret"
+  bu kesinti düşülmüş haldedir; bkz. "Bordroda yarım gün kesintisi (2. adım)".)
 - **Fazla mesai:** saat ücreti brüt / 225. İş günü ve hafta tatilinde 1,5 kat; resmi tatilde çalışılan
   saate ayrıca 1 kat (günün ücreti zaten aylığın içinde). (2026-11-02: resmi tatilde bir günlük ilave
   ücret, 7,5 saati aşan saatler 1,5 kat; bkz. "Personel bordrosu".)
@@ -1743,7 +1745,9 @@ değiştirme zorunlu, yalnızca admin):
   (çalışılan saat × brüt / 225 × 1) bırakılır; personel maliyeti de aynı kuralı kullanır. Mali
   müşavirle ilk karşılaştırmada teyit edilir.
 - **Rapor, ücretsiz izin, devamsızlık:** bugünkü gibi brüt / 30 ile düşülür ("Personel maliyeti",
-  "Ücretten düşülsün").
+  "Ücretten düşülsün"). (Güncelleme 2026-11-13: yarım gün çalışılan (YG) her gün için günlük ücretin
+  yarısı (brüt / 60) düşülür, pusulada ayrı satırdır, SGK günü değişmez; bkz. "Bordroda yarım gün
+  kesintisi (2. adım)".)
 - **Ek ödeme ve kesinti:** her ay kişiye elle ek ödeme (brüt; prim, ikramiye, yol, yemek; SGK'ya ve
   vergiye tabi) ve net kesinti (avans, icra ya da nafaka, diğer) girilir; pusulada her biri ayrı
   satırdır (İş Kanunu m.37). BES otomatik katılımı kartta işaretlenir; kesinti her ay SGK matrahının
@@ -2531,9 +2535,103 @@ değiştirme zorunlu, yalnızca admin):
   kendiliğinden yazması ve tam saatin sayı olarak saklanması tasarımdan çıkarıldı.
 - **1. adımda bordro etkisi yok:** YG günü bordroda ve personel maliyetinde tam gün ödenir ve
   çalışılan gün sayılır. Ekranda, Excel'de ve kılavuzda bu yazar; 2. adımda kaldırılır.
+  (2026-11-13: 2. adımla kalktı; YG günü bordroda ve personel maliyetinde yarım günlük ücret keser,
+  çalışılan gün ve SGK günü değişmez; ekran, Excel ve kılavuz metinleri değişti. Bkz. "Bordroda
+  yarım gün kesintisi (2. adım)".)
 - **2. adım (yapılmadı):** karar verildi: yarım gün başına brüt / 60, pusulada ayrı satır, SGK
   günü değişmez. Açık kalan: kesintinin başlayacağı ay (sahibe sorulacak) ve mali müşavirin aynı
-  kuralı uygulaması (karşılaştırma sayfası buna bağlı).
+  kuralı uygulaması (karşılaştırma sayfası buna bağlı). (2026-11-13: yapıldı. Başlangıç sahibe
+  soruldu: ayrı başlangıç ayı yok, bordrosu onaylanmamış bütün aylar; mali müşavire henüz
+  sorulmadı, ilk karşılaştırmada teyit edilecek. Bkz. "Bordroda yarım gün kesintisi (2. adım)".)
 - **Kapsam dışı:** giriş-çıkış saati, kişiye ya da güne göre standart, toplu saat girişi, yarım gün
   ücretli izin.
+- **CLAUDE.md:** değişiklik gerekmedi.
+
+## 2026-11-13 — Bordroda yarım gün kesintisi (2. adım)
+
+- **İstek (CUMHUR, 2026-11-12, "Yarım günlük ücret kesilsin"):** puantajda yarım gün çalışılan (YG)
+  her gün için günlük ücretin yarısı (brüt / 60) düşülür, pusulada ayrı satır olur, SGK günü
+  değişmez; mali müşavirle teyit edilir. Kayıt kısmı 1. adımda yapıldı ("Puantajda günlük çalışma
+  saati ve yarım gün"); bu adım kesintidir.
+- **Kararlar (CUMHUR, 2026-11-13, soruların yanıtları; plan için "Onaylıyorum, başla"):**
+  - Başlangıç: "Onaylanmamış bütün aylar (Önerilen)". Ayrı başlangıç tarihi ya da ayarı yoktur.
+    Bordrosu onaylı olmayan her ay (açık, yeniden açılmış ve Ekim 2026'dan önceki personel maliyeti
+    ayları) canlı hesapta kesintiyi alır; onaylı bordronun saklı satırları değişmez.
+  - Mali müşavir: "Henüz sormadım, böyle ilerle (Önerilen)". Kural mali müşavirle ilk
+    karşılaştırmada teyit edilecek (aşağıdaki sorular).
+- **Eleştiri sonrası sorulan (CUMHUR, 2026-11-13):**
+  - Arifede (yarım gün resmî tatil) YG: "Kesilsin, işaret bende (Önerilen)". Normal günle aynı
+    kural, kesinti vardır. Gerekçe: öğleden sonrası zaten tatildir; günün çalışma saati yarıdır ve
+    işareti kullanıcı verir (öğlene kadarki süreden az çalışılmışsa önerilir, istenmezse
+    kaldırılır).
+  - Takvimde hafta tatili ya da tam gün resmî tatil olan güne elle Ç yazılmış günde YG: "Kesilmesin,
+    yalnız kayıt (Önerilen)". Kesinti yoktur; YG puantajda yine görünür. Gerekçe: o gün çalışılmasa
+    da ücretlidir; yarım çalışan, hiç gelmeyenden az almamalıdır (tam gün resmî tatilde tatil ücreti
+    çalışılmasa da ödenir, İş Kanunu m.47).
+- **Hesap (planla onaylandı):**
+  - Kesinti o günkü ücretle hesaplanır: yarım gün çalışılan her gün için 3,75 saat × saat ücreti (brüt / 225), yani
+    günlük ücretin yarısı (brüt / 60). Aylık toplam tek kez yuvarlanır (yarım gün tatil ilavesinin
+    aynası). Ücreti girilmemiş günde YG sayılır ama tutar yoktur.
+  - Kesinti normal ücreti aşamaz (tavan). Brüt toplam = normal ücret − yarım gün kesintisi + fazla
+    mesai ve tatil + ek ödemeler. SGK matrahı, vergiler, net, BES ve işveren maliyeti düşük brütten
+    hesaplanır.
+  - Normal ücret, ücretli gün, SGK günü ve fiilen çalışılan gün (nakit yemek istisnası dahil)
+    değişmez: YG günü çalışılan gündür, eksik gün değildir. Excel'in "Eksik gün" sayfası değişmez.
+  - Kesinti, sayılan YG'ye bağlıdır (1. adımın sayılma kuralı) ve günün takvim varsayılanı
+    çalışılan gün olmalıdır: hafta tatili ve tam gün tatilde kesinti yoktur, arifede vardır.
+    Bordrodaki YG sayısı "kesintiye giren YG günü"dür; puantajın YG toplamından az olabilir.
+  - Bordrosu mali müşavirde olan kişide tutar hesaplanmaz (ERP tutarı kullanılmaz). ERP bordro
+    çıktıları bu kişide YG sayısı ya da kesinti göstermez; mali müşavirin kaynağı puantaj Excel'idir
+    (YG sütunu ve Kodlar açıklaması). Bordro listesi PDF'inde bu kişinin notuna "Puantajda n YG günü
+    (yarım gün kesintisi mali müşavirce)" yazılır. Personel maliyeti bu kişide mali müşavir
+    rakamından gelir, değişmez.
+  - Sayılma kuralı yüzünden günlük çalışma saati ya da tatil takvimi değişince bordrosu
+    onaylanmamış aylardaki kesinti de değişir (sonraki ayların kümülatif gelir vergisi matrahı
+    dahil); onaylı aylar değişmez. Günlük çalışma saati girilene kadar YG olmadığı için kesinti de
+    çıkmaz.
+- **Örnekler (2026 değerleriyle, motorla hesaplandı):**
+  - 45.000 TL, 1 YG: kesinti 750,00. 50.000 TL, 1 YG: 833,33.
+  - Asgari ücret 33.030,00 TL, 1 YG: kesinti 550,50, brüt 32.479,50. SGK günü 30 kaldığı için
+    matrah alt sınıra (33.030,00) çıkarılır; alt sınır farkının primini işveren öder (82,57; 5510
+    m.82). Net 28.075,50'den 27.607,57'ye düşer (−467,93); işverene maliyet de 467,93 azalır
+    (550,50 − 82,57). Gelir ve damga vergisi istisna yüzünden 0 kalır; BES (dahilse) alt sınırdan
+    %3, 990,90. Yani asgari ücretlide YG, işverene göründüğünden az tasarruf sağlar.
+  - Tavan: 31 çeken ay, tek ücret 45.000 TL, 29 gün devamsız + 2 YG: normal ücret 1.500,00, kesinti
+    1.500,00, brüt 0, SGK günü 2; matrah alt sınıra çıkar ve işçi payı dahil primini işveren öder
+    (alt sınır farkı 330,30). Tek ücretle kesinti normal ücreti aşmaz, bu uçta ona eşitlenir. Tavan
+    yalnız ay içi zamda gerçekten keser (YG günleri 45.000, zamdan sonraki devamsız günler 46.000:
+    normal ücret 1.468,82 < 1.500,00, kesinti 1.468,82). Sessizdir (uyarı yok).
+- **Çıktılar:**
+  - Etiketler: sayı "Yarım gün çalışılan (YG)", tutar "Yarım gün kesintisi" (pusula, icmal, Excel,
+    döküm). "Yarım gün (YG)" kullanılmaz; yarım gün tatil ile karışır. Kısa biçim yalnız dar
+    yerlerde: bordro listesi PDF'inde "YG −…" (açıklamada "YG: yarım gün kesintisi") ve ekran
+    tablosunda "YG kesintisi". Kesinti kazançların içinde her yerde eksi gösterilir.
+  - Pusula, bordro listesi ve icmal satırları koşulludur: kesinti satırı tutar 0 ise, YG gün
+    satırı YG sayısı 0 ise yoktur. Bu yüzden
+    önceki motorla (2026.2) onaylanmış ayların PDF'leri aynı kalır.
+  - Ön bordro Excel'inin "Bordro" sayfasına "Yarım gün çalışılan (YG)" (Genel toplamda toplanır,
+    para biçimi yok) ve "Yarım gün kesintisi (TL)" sütunları eklenir. Kesinti negatif yazılır ki
+    Normal + YG + fazla mesai ve tatil + ek ödemeler = Brüt toplam tutsun. 2026.2 ile onaylanmış
+    ayın yeniden basımında bu iki sütun yoktur (eski sütun düzeni aynen).
+  - Puantaj Excel'inin Kodlar açıklaması (FR-IK-001, sürüm 2 kalır) her ay için doğru olacak
+    biçimde yazıldı: kesinti bordrosu onaylanmamış aylarda yapılır, hafta tatili ve tam gün tatile
+    Ç yazılan günde yapılmaz, bordrosu mali müşavirde olan kişide mali müşavir uygular.
+  - "Ön bordro (bordro listesi)" (FR-IK-002) ve "Ücret hesap pusulası" (FR-IK-004) şablon
+    sürümleri 2 olur; "İşveren maliyeti tablosu" (FR-IK-003) 1 kalır.
+  - Karşılaştırma sayfası brüt toplamı karşılaştırır, değişmez. Mali müşavir kuralı uygulayana dek
+    YG'li kişide brütte ve ondan hesaplanan tutarlarda fark çıkar; bu beklenir.
+- **Personel maliyeti:** "Brüt ücret" = normal ücret − yarım gün kesintisi; brüt toplam ve toplam
+  maliyet bordroyla aynı kalır. Sütun, API ve Excel düzeni değişmez; "Personel maliyeti" şablon
+  sürümü artmaz. Kurallar listesinde YG maddesi vardır.
+- **Mali müşavirle ilk karşılaştırmada teyit edilecek:**
+  - Kural: YG başına günlük ücretin yarısı (brüt / 60), SGK günü değişmez.
+  - (1) Mali müşavir iki YG'yi bir eksik gün olarak bildiriyor mu? Öyleyse SGK günü ve alt sınır
+    ERP'den farklı olur.
+  - (2) Aynı haftada YG ve fazla mesai: haftalık 45 saat mahsubu yapılıyor mu? ERP aynı günde
+    engeller, aynı haftada engellemez.
+- **Uygulama:** hesap motoru sürümü `2026.3`; `payroll.Day.short_day`, sonuçta `short_days` ve
+  `short_day_deduction` (eski sürümle saklanmış satırlar 0 okunur). Köprü
+  `personnel.selectors._month_input` yalnız kesintiye giren günü işaretler. Göç yoktur. Hesap
+  satırına yeni alanlar eklendiği için güncellemeden önce açılmış onay penceresi bir kez "onay
+  penceresi açıldıktan sonra değişti" der (`payroll_changed`); hesap yenilenip yeniden onaylanır.
 - **CLAUDE.md:** değişiklik gerekmedi.
