@@ -65,7 +65,7 @@ def test_without_limit_every_order_goes_to_management(buyer: User, manager: User
     with pytest.raises(BusinessRuleError) as exc:
         services.approve_order(buyer, order)
     assert exc.value.code == "approval_limit_exceeded"
-    assert "yönetim" in exc.value.message
+    assert "Limit üstü sipariş onayı" in exc.value.message
     approved = services.approve_order(manager, order)
     assert approved.status == Status.APPROVED
     assert approved.approved_by == manager

@@ -27,7 +27,7 @@ from rest_framework.views import APIView
 from apps.core.access import APPROVE, CHANGE, VIEW
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import User
-from apps.core.permissions import AccessMixin, HasAccess, ReadRule
+from apps.core.permissions import AccessMixin, HasAccess, ReadRule, has_access
 from apps.personnel import exports, pdf, selectors, services
 from apps.personnel.access import ATTENDANCE, CARDS, PAYROLL, SETTINGS, WAGES
 from apps.personnel.api import serializers as s
@@ -126,8 +126,13 @@ class EmployeeViewSet(
         was_external = instance.payroll_external
         employee = services.update_employee(_user(request), instance, body.validated_data)
         data = dict(s.EmployeeSerializer(employee).data)
-        if employee.payroll_external and not was_external:
+        if (
+            employee.payroll_external
+            and not was_external
+            and has_access(request.user, PAYROLL, VIEW)
+        ):
             # Onaylanmamış aylarda ERP'de girilmiş kayıtlar: ekran uyarır (kartın geçmişinde de).
+            # Bordro verisidir; Bordro: Görür'ü olmayana verilmez.
             data["payroll_external_records"] = selectors.unapproved_payroll_records(employee)
             data["payroll_external_kept"] = selectors.kept_erp_months(employee)
         return Response(data)
@@ -175,8 +180,11 @@ class EmployeeViewSet(
     @extend_schema(responses=s.EmployeeHistorySerializer(many=True))
     @action(detail=True, methods=["get"])
     def history(self, request: Request, pk: str | None = None) -> Response:
-        """Kartın değişiklik geçmişi (en yenisi önce)."""
-        entries = selectors.employee_history(self.get_object())[:200]
+        """Kartın değişiklik geçmişi (en yenisi önce). Bordro özetleri (ek ödeme, kesinti, devir,
+        pusula) yalnız Bordro: Görür'ü olana gösterilir."""
+        entries = selectors.employee_history(
+            self.get_object(), with_payroll=has_access(request.user, PAYROLL, VIEW)
+        )[:200]
         return Response(s.EmployeeHistorySerializer(entries, many=True).data)
 
 

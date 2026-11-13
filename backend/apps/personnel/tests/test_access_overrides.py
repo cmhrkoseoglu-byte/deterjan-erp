@@ -12,12 +12,13 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.core.access import APPROVE, CHANGE, VIEW
+from apps.core.audit import log_change
 from apps.core.models import AccessOverride, AuditLog, User
 from apps.core.permissions import MissingAccess, has_access
 from apps.personnel import services
 from apps.personnel.access import ATTENDANCE, CARDS, PAYROLL, SETTINGS, WAGES
 from apps.personnel.models import PayrollRun
-from apps.personnel.tests.factories import document, employee
+from apps.personnel.tests.factories import document, employee, parameter_set
 
 pytestmark = pytest.mark.django_db
 D = Decimal
@@ -416,3 +417,55 @@ def test_unrouted_methods_keep_todays_rule(manager: User, make_user: Callable[..
             user = getattr(client.handler, "_force_user", None)
             wrong.append(f"{method.upper()} {path} [{user}]: {status} != {expected}")
     assert not wrong, "\n".join(wrong)
+
+
+def test_card_history_and_external_switch_hide_payroll_without_payroll_view(
+    manager: User, make_user: Callable[..., User]
+) -> None:
+    """Bordro özetleri (ek ödeme, kesinti, devir, pusula, mali müşavir işareti, ayın kartı
+    izlemesi) Bordro bölümünün verisidir (plan §3.14, §5.6): "Bordro: Görür"ü kaldırılan kişi
+    kartın geçmişinde onları görmez, kartı "mali müşavirde" işaretlerken yanıtta ERP kayıtları
+    listelenmez. Kartın kendi kayıtları (belge, düzenleme) görünür; bordrosu olan hepsini görür."""
+    parameter_set(manager)
+    card = employee(manager)
+    services.add_wage(
+        manager, {"employee": card, "gross_monthly": D("45000"), "valid_from": date(2020, 1, 1)}
+    )
+    services.add_payroll_item(
+        manager,
+        {"employee": card, "year": 2026, "month": 11, "category": "BONUS", "amount": D("5000")},
+    )
+    services.set_opening_balance(
+        manager, card, 2026, 11, tax_base=D("344250"), exemption_months=9, confirm_override=True
+    )
+    log_change(manager, card, AuditLog.Action.CUSTOM, {}, "Kasım 2026 bordrosu: kartı izler")
+    document(manager, card)
+
+    full = api(manager).get(f"{BASE}/employees/{card.pk}/history/").json()
+    full_notes = [row["note"] for row in full]
+    assert any(note.startswith("Ek ödeme eklendi:") for note in full_notes)
+    assert any(note.startswith("Devir girildi:") for note in full_notes)
+    assert "Kasım 2026 bordrosu: kartı izler" in full_notes
+
+    viewer = override(make_user("yonetim"), PAYROLL.key, VIEW)
+    client = api(viewer)
+    assert client.get(f"{BASE}/payroll/items/", {"employee": card.pk}).status_code == 403
+    shown = client.get(f"{BASE}/employees/{card.pk}/history/")
+    assert shown.status_code == 200
+    notes = [row["note"] for row in shown.json()]
+    assert not any(" TL" in note or "bordrosu:" in note for note in notes), notes
+    assert any(note.startswith("Belge eklendi:") for note in notes)
+    assert len(notes) == len(full_notes) - 3
+
+    switched = client.patch(
+        f"{BASE}/employees/{card.pk}/", {"payroll_external": True}, format="json"
+    )
+    assert switched.status_code == 200
+    assert "payroll_external_records" not in switched.json()
+    assert "payroll_external_kept" not in switched.json()
+    later = [row["note"] for row in client.get(f"{BASE}/employees/{card.pk}/history/").json()]
+    assert not any("mali müşavirde" in note for note in later)
+    assert any(
+        "mali müşavirde" in row["note"]
+        for row in api(manager).get(f"{BASE}/employees/{card.pk}/history/").json()
+    )

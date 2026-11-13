@@ -242,7 +242,7 @@ describe("satın alma", () => {
 
     expect(await screen.findAllByTestId("purchase-line")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Onayla" })).toBeNull();
-    expect(screen.getByText(/yönetim onaylar/)).toBeInTheDocument();
+    expect(screen.getByText(/Limit üstü sipariş onayı yetkisi olan onaylar/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Yönetim onayına gönder" }));
     await waitFor(() => expect(purchasingApi.submitPurchaseOrder).toHaveBeenCalledWith(5));
     const payload = vi.mocked(purchasingApi.savePurchaseOrder).mock.calls[0][1];

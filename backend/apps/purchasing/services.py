@@ -547,12 +547,15 @@ def approve_order(actor: User | None, order: PurchaseOrder) -> PurchaseOrder:
     limit = get_settings().approval_limit_try
     if not can_approve(actor, order):
         if limit is None:
-            message = "Onay limiti girilmediği için siparişi yönetim onaylar."
+            message = (
+                "Onay limiti girilmediği için siparişi Limit üstü sipariş onayı yetkisi olan "
+                'onaylar; "Yönetim onayına gönder" ile gönderin.'
+            )
         else:
             message = (
                 f"Sipariş tutarı {format_money(totals.total_try)} TL, onay limitiniz "
-                f"{format_money(limit)} TL; "
-                "siparişi yönetim onaylar."
+                f"{format_money(limit)} TL; siparişi Limit üstü sipariş onayı yetkisi olan "
+                'onaylar; "Yönetim onayına gönder" ile gönderin.'
             )
         raise BusinessRuleError("approval_limit_exceeded", message)
     changes = _approval_changes(order, totals.total_try, limit)

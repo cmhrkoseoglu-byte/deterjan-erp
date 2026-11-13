@@ -99,6 +99,24 @@ def test_granted_over_limit_approves_any_amount_and_returns_to_draft(
     assert returned.status_code == 200, returned.json()
 
 
+@pytest.mark.parametrize("limit", [None, "1"])
+def test_over_limit_refusal_names_the_permission_not_the_role(
+    buyer: User, manager: User, limit: str | None
+) -> None:
+    """D-13 reddi (plan §5.4, §10 "mesajlar rol adı içermez"): Limit üstü sipariş onayı
+    kaldırılan yönetim üyesine "yönetim onaylar" denmez, gereken yetki söylenir."""
+    set_limit(manager, limit)
+    order = draft_order(buyer, [line(raw_material(), "100", "100")])  # 10.000 TL
+    client = api(override(manager, OVER_LIMIT.key, APPROVE))
+
+    refused = client.post(url("order-approve", order.pk))
+    assert refused.status_code == 400
+    assert refused.json()["code"] == "approval_limit_exceeded"
+    detail = refused.json()["detail"]
+    assert "Limit üstü sipariş onayı yetkisi olan onaylar" in detail
+    assert "yönetim onaylar" not in detail
+
+
 def test_cancel_level_follows_status(buyer: User, manager: User) -> None:
     """Taslak ya da onay bekleyeni iptal Değiştirir, onaylıyı iptal Onaylar ister (plan §3.10)."""
     draft = draft_order(buyer, [line(raw_material())])

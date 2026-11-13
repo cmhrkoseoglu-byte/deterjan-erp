@@ -65,7 +65,7 @@ export const pt = {
   approve: "Onayla",
   approved: "Sipariş onaylandı",
   approveQuestion: (total: string) => `Sipariş onaylanacak (tutar ${total}). Devam edilsin mi?`,
-  needsManagement: "Bu siparişi yönetim onaylar (onay limiti).",
+  needsManagement: "Bu siparişi Limit üstü sipariş onayı yetkisi olan onaylar (onay limiti).",
   returnToDraft: "Taslağa geri gönder",
   returnTitle: "Siparişi taslağa geri gönder",
   returned: "Sipariş taslağa geri gönderildi",

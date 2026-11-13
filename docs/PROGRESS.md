@@ -1810,3 +1810,35 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   Kodlar açıklaması eski aylarda da yeni cümleyi gösterir (cümle her ay için doğrudur).
 - Açık iş: kuralın mali müşavirle teyidi (iki YG'nin bir eksik gün sayılıp sayılmadığı; aynı
   haftada YG ve fazla mesai).
+
+## 2026-11-14 — Kişiye özel yetkiler: 5. adım (sevkiyat, satın alma, maliyet, personel, bakım, İSG, canlıya geçiş)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-13). Önce §12 sorusu
+  cevaplandı: bordrosu olmayan ayın işçilik oranı notu yalnız "Personel maliyetinden" yazar
+  (DECISIONS). Dal sonra main'le birleştirildi (bordroda yarım gün kesintisi).
+- **Geçiş:** sevkiyat, satın alma, maliyet, personel, bakım, İSG ve canlıya geçişin API'si ve
+  servisleri rol denetimini bıraktı; bölüm denetimine geçti. Kişiye özel ayar yokken kararlar
+  bugünküyle aynıdır; anlık görüntü yalnız izin listesinin 5. adım kayıtları kadar değişti.
+- **Kayıt paneli:** `register_record_type(readers=...)` kayıt türünü bölüm okumasına bağlar
+  (`can_view`'da); satır kuralı (`visible=`) olmayan türler satır kuralı sayılmaz. Sevkiyat,
+  satın alma, İSG ve bakım bunu kullanır; İSG olaylarında satır kuralı (kendi bildirdiği) kalır.
+- **İlk gün değişikliği (§8 madde 7):** satın alma siparişinin onay geçişi denetim kaydına onay
+  tutarını, limiti ve kuru alan olarak yazar (`transition_status(changes=)`); tutarlar Fiyatları
+  görür'ü olmayana gösterilmez, eski tutarlı notlar da gizlenir.
+- **§12:** işçilik oranı notu "Personel maliyetinden" (onaylı bordrosu olan ayda bordro numarası
+  eklenir); eski tutarlı notlar Personel maliyeti: Görür'ü olmayana gösterilmez. Personel maliyeti
+  Excel'i bordro erişim günlüğünü personelin yardımcısıyla yazar.
+- **Mesajlar** rol adı yerine yetkiyi söyler (§8 madde 4); satın almanın onay limiti reddi
+  (D-13) de artık "yönetim onaylar" değil, "Limit üstü sipariş onayı yetkisi olan onaylar" der
+  (kod `approval_limit_exceeded` aynı; ekrandaki ipucu da).
+- **KVKK:** personel bölümleri ve personel maliyeti yalnız yönetim rolündekilere verilebilir.
+- **Rol denetimi tarayıcısı:** demo komutları, canlıya geçiş hazırlık listesinin rol sayımı ve
+  bakımda sorumlu birim kuralı (plan §4, §10) izinli.
+- **Kişiye özel ayar ve bağ testleri:** yedi modülde yeni `test_access_overrides.py`
+  (kaldırma/verme, gereken bölüm ve düzey, karşılanmayan metotlar, giriş noktaları).
+- **Doğrulama:** backend 2444, ön yüz 649 test yeşil; mypy, ruff, `manage.py check`, göç ve şema
+  temiz. Bağımsız inceleme eski ve yeni kodu her yol, metot ve kişide karşılaştırdı (sevkiyat
+  9.899, satın alma 7.840, maliyet ve personel 10.780, bakım/İSG/canlıya geçiş 14.839 durum;
+  0 fark). İncelemenin iki bulgusu kişiye özel ayarla ilgiliydi ve düzeltildi: kartın geçmişindeki
+  bordro özetleri ve kartı "mali müşavirde" işaretlerken listelenen ERP kayıtları artık Bordro:
+  Görür'e bağlı (plan §3.14, §5.6); D-13 reddi yetkiyi söylüyor.
