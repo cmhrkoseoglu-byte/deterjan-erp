@@ -179,6 +179,8 @@ export interface FillingOrderDetail extends FillingOrder {
   picks: PackagingPick[];
   runs: FillingRun[];
   allowed_transitions: FillingOrderStatus[];
+  /** Emir geri alınabilir durumda ve kullanıcının "Dolum emrini geri alma" yetkisi var. */
+  can_revert: boolean;
   approved_by_name: string | null;
   approved_at: string | null;
   completed_at: string | null;
@@ -415,6 +417,17 @@ export async function fillingOrderAction(
 
 export async function cancelFillingOrder(id: number, reason: string): Promise<FillingOrderDetail> {
   const { data } = await api.post<FillingOrderDetail>(`/filling/orders/${id}/cancel/`, {
+    reason,
+  });
+  return data;
+}
+
+/**
+ * Fiilen yapılmamış dolumu geri alır: emrin bütün stok hareketleri ters kayıtla geri alınır, partiler
+ * ve açık numuneler iptal edilir, emir iptal olur. Neden zorunludur.
+ */
+export async function revertFillingOrder(id: number, reason: string): Promise<FillingOrderDetail> {
+  const { data } = await api.post<FillingOrderDetail>(`/filling/orders/${id}/revert/`, {
     reason,
   });
   return data;

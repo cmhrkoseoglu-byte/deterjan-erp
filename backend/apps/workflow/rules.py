@@ -406,7 +406,12 @@ RULES: tuple[Rule, ...] = (
         description="{material_code} {material_name} — dolum emri {order_number}, numune "
         "{sample_number}",
         subjects=_output_lot,
-        close_on=(CloseOn(ev.SAMPLE_DECIDED, lambda payload: payload.get("lot")),),
+        # Dolum emrini geri almada parti iptal olur; görev kendiliğinden kapanır (DECISIONS
+        # 2026-11-14).
+        close_on=(
+            CloseOn(ev.SAMPLE_DECIDED, lambda payload: payload.get("lot")),
+            CloseOn(ev.FILLING_RUN_CANCELLED, lambda payload: payload.get("output_lot")),
+        ),
     ),
     NotifyRule(
         code="filling_bulk_variance",

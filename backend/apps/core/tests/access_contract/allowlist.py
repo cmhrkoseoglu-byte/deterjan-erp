@@ -151,6 +151,9 @@ _SIGNED_IN_PERSONAS = (
     "depo+sevkiyat",
 )
 
+# Plan dışı yeni uç nokta: dolum emrini geri alma (DECISIONS 2026-11-14).
+_FILLING_REVERT = "yeni uç nokta: dolum emrini geri alma (DECISIONS 2026-11-14)"
+
 ALLOWED: tuple[Allowed, ...] = (
     # 1. adım: planın eklediği uç nokta (plan §5.1, §5.5). Giriş yapan herkese açık (SignedIn).
     *(
@@ -306,6 +309,54 @@ ALLOWED: tuple[Allowed, ...] = (
         step=4,
         old="ok",
         new="400 conditional_same_person",
+    ),
+    # Plan dışı yeni uç nokta (DECISIONS 2026-11-14; sahibin onayladığı geri alma planı):
+    # fiilen yapılmamış dolumu geri alma "Dolum emrini geri alma: Değiştirir" ister (yalnız admin
+    # ve yönetim). OPTIONS görünümün okuma iznini izler (dolum kayıtlarının açık okuması); gözlenen
+    # değere sabitlendi.
+    *_cells(
+        _FILLING_REVERT,
+        "endpoints",
+        {"* /api/v1/filling/orders/{pk}/revert/": _SIGNED_OUT},
+        step=4,
+        old=MISSING,
+        new="401",
+    ),
+    *_cells(
+        _FILLING_REVERT,
+        "endpoints",
+        {"POST /api/v1/filling/orders/{pk}/revert/": ("admin", "superuser", "yonetim")},
+        step=4,
+        old=MISSING,
+        new="allow",
+    ),
+    *_cells(
+        _FILLING_REVERT,
+        "endpoints",
+        {
+            "POST /api/v1/filling/orders/{pk}/revert/": (
+                "no_role",
+                "planlama",
+                "depo",
+                "uretim",
+                "laboratuvar",
+                "dolum",
+                "sevkiyat",
+                "satin_alma",
+                "depo+sevkiyat",
+            )
+        },
+        step=4,
+        old=MISSING,
+        new="403",
+    ),
+    *_cells(
+        _FILLING_REVERT,
+        "endpoints",
+        {"OPTIONS /api/v1/filling/orders/{pk}/revert/": _SIGNED_IN_PERSONAS},
+        step=4,
+        old=MISSING,
+        new="allow",
     ),
     # 5. adım — Onaya gönderme ve onay kayıtlarında tutar, kur ve limit notta değil ayrı alan
     # satırlarında görünür; nottaki tutar aramada bulunmaz.

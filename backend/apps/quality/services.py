@@ -548,6 +548,37 @@ def cancel_sample(actor: User | None, sample: Sample, reason: str) -> Sample:
     return cancel_document(sample, actor, reason=reason, machine=sample_states)
 
 
+@transaction.atomic
+def cancel_lot_samples(actor: User | None, lot: Lot, reason: str) -> list[Sample]:
+    """Lotun karar verilmemiş (bekleyen ya da testteki) numunelerini iptal eder ve döner. Serviste
+    yetki denetimi yoktur, yetkiyi çağıran denetler (ör. dolum emrini geri alma; DECISIONS
+    2026-11-14). Şartlı kabul onayı bekleyen numune varsa hiçbiri iptal edilmez
+    (`sample_awaiting_approval`). Her iptal `sample.cancelled` olayı yayınlar."""
+    samples = list(
+        Sample.objects.select_for_update(of=("self",))
+        .filter(
+            lot=lot,
+            status__in=(
+                Sample.Status.PENDING,
+                Sample.Status.IN_TEST,
+                Sample.Status.AWAITING_APPROVAL,
+            ),
+        )
+        .select_related("lot__material", "specification")
+        .order_by("id")
+    )
+    waiting = [x for x in samples if x.status == Sample.Status.AWAITING_APPROVAL]
+    if waiting:
+        raise BusinessRuleError(
+            "sample_awaiting_approval",
+            f"{lot.lot_no} lotunun {waiting[0].number} numunesi şartlı kabul onayı bekliyor; "
+            "önce karar verilmelidir.",
+        )
+    return [
+        cancel_document(sample, actor, reason=reason, machine=sample_states) for sample in samples
+    ]
+
+
 # --- test sonucu -----------------------------------------------------------------------------
 
 

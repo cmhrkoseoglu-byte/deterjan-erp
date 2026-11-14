@@ -463,6 +463,8 @@ Diğer ayrıntılar:
   girer, mamul firesi aynı anda `SCRAP` ile düşülür; böylece depoda sağlam adet kalır. Mamul lotu karantinada
   olduğu için sevk edilemez; serbest bırakılınca yer değiştirmez. Bitişte mamul lotuna `FINAL` numune açılır
   (`Sample.Origin.FILLING`). Kaydı olmayan parti gerekçeyle iptal edilir (`run_has_records`).
+  (2026-11-14: kaydı olan ya da bitmiş parti, fiilen yapılmamış dolumda emirle birlikte geri
+  alınır ve iptal olur; bkz. "Dolum emrini geri alma".)
 - **Bulk farkı**: teorik = `sağlam adet × dolum miktarı` (bulkun temel biriminde); gerçek = tüketilen bulk +
   bulk firesi. Fark yüzdesi `(gerçek − teorik) / teorik`, eşik `FILL_VARIANCE_THRESHOLD_PCT` (varsayılan
   1,5). Mutlak fark eşiği aşarsa `filling.bulk_variance`.
@@ -476,6 +478,8 @@ Diğer ayrıntılar:
 - **Yetki**: ambalaj reçetesi ve emir yazma/onay/iptal `planlama`; ambalaj hazırlama ve "Ambalaj hazır"
   `depo`; parti, tüketim, okutma, fire, bitiş ve "Dolumu bitir" `dolum`; okuma her giriş yapmış kullanıcıya
   açık. Menüde "Dolum" artık `depo`'ya da görünür (ambalaj hazırlama sekmesi).
+  (2026-11-14: başlamış emir planlamaca iptal edilemez; fiilen yapılmamış dolumu admin ve yönetim
+  "Dolum emrini geri alma" yetkisiyle geri alır; bkz. "Dolum emrini geri alma".)
 - **Okutma**: lot numarası ya da lot etiketi içeriği (`LOT:<lot_no>`) kabul edilir. Okutulan lot reçetedeki
   malzemelerden değilse `lot_material_mismatch`; hat başında olmayan ambalaj lotu `lot_not_at_line`.
   Ortak `ScanInput` bileşeni ve koli etiketi basımı Adım 2.3 PR'ıyla (#9) bağlandı.
@@ -490,6 +494,7 @@ Diğer ayrıntılar:
 |---|---|
 | `filling_order.approved`, `.material_ready`, `.cancelled`, `.completed` | `transition_status` payload'ı (onayda ek olarak `product_code`) |
 | `filling_run.started` | `model, id, lot_no, order: {model, id, number}, order_number` |
+| `filling_run.cancelled` | başlama alanları + `output_lot` (`lot_payload` + `material_type`), `reason` |
 | `filling_run.completed` | yukarıdakiler + `output_lot` (`lot_payload` + `material_type`), `good_units`, `scrapped_units`, `sample_number` |
 | `filling.bulk_variance` | `model: filling.fillingorder, id, number, lot_no, product_code, good_units, theoretical_quantity, actual_quantity, variance_pct, threshold_pct` (sayılar Türkçe biçimli metin) |
 
@@ -499,6 +504,8 @@ kapanır), `start_filling` (dolum, "Dolumu başlat: {number}", parti başlayınc
 `batch_sample_analysis` görevi mamul numunesi için açılmaz), `filling_bulk_variance` (planlama, yönetim;
 uyarı), `finished_lot_released` (sevkiyat, planlama: "Sevke hazır: {lot}"), `finished_lot_rejected`
 (planlama, dolum), `filling_order_cancelled` (açık görevleri iptal eder, planlamaya bildirim).
+(2026-11-14: `finished_qc` görevi `filling_run.cancelled` ile de kendiliğinden kapanır; bkz.
+"Dolum emrini geri alma".)
 
 ## 2026-10-15 — Etiket, barkod ve ekler (Faz 2, Adım 2.3 ve 2.4)
 
@@ -2634,4 +2641,84 @@ değiştirme zorunlu, yalnızca admin):
   `personnel.selectors._month_input` yalnız kesintiye giren günü işaretler. Göç yoktur. Hesap
   satırına yeni alanlar eklendiği için güncellemeden önce açılmış onay penceresi bir kez "onay
   penceresi açıldıktan sonra değişti" der (`payroll_changed`); hesap yenilenip yeniden onaylanır.
+- **CLAUDE.md:** değişiklik gerekmedi.
+
+## 2026-11-14 — Dolum emrini geri alma
+
+- **İstek (CUMHUR):** DO-2026-00008 ve DO-2026-00009 dolum emirleri sistemde başlatıldı, ama dolum
+  fabrikada fiilen yapılmadı. Bugün başlamış emir iptal edilemiyor (yalnız kaydı olmayan parti
+  iptal edilir); emirlerin stok hareketleri, partileri ve numuneleri geri alınmalı.
+- **Kararlar (CUMHUR, 2026-11-14, soruların yanıtları; plan için "Onaylıyorum, başla"):**
+  - Ne yapılacak: "Hiç yapılmadı, tamamen geri al (Önerilen)". Emrin bütün stok hareketleri ters
+    kayıtla geri alınır: mamul stoktan düşer, tüketilen bulk kendi lotuyla tanka, tüketilen ve
+    hazırlanan ambalaj depoya döner. Partiler ve açık numuneler iptal edilir, emir İptal olur.
+    Kayıt silinmez.
+  - Ambalaj: "Ambalaj malzemeleri depoya dönsün (Önerilen)". Hatta tüketilmiş görünen ambalaj önce
+    hatta geri gelir, sonra hazırlık transferi ters kayıtla alındığı lokasyona döner.
+  - Plan: yalnız admin ve yönetim yapar, neden zorunludur, tek işlemdir; mamul sevk edilmiş ya da
+    başka yerde kullanılmışsa reddedilir. Yanıt: "Onaylıyorum, başla".
+- **Kurallar:**
+  1. Tek işlem: ya hepsi ya hiçbiri. Bütün denetimler ilk yazmadan önce yapılır; arada hata
+     çıkarsa her şey geri alınır.
+  2. Sıra (bakiye eksiye düşmesin): önce tüketim ve fire hareketleri (stok geri gelir), sonra
+     bitmiş partilerin mamul girişi (çıktı lotu 0 olur), en son iade edilmemiş ambalaj
+     hazırlıkları (hattan depoya; transferin iki bacağı birlikte). Hazırlığa iade zamanı yazılır.
+     Daha önce elle ters kaydı yapılmış hareket atlanır; hazırlığa yine iade zamanı yazılır.
+  3. Sonunda emre bağlı, ters kaydı olmayan bir hareket kalırsa işlem reddedilir
+     (`unreversed_movement`) ve hiçbir şey değişmez.
+  4. Parti iptali `filling_run.cancelled`, emir iptali `filling_order.cancelled` yayınlar; iş
+     akışı emre bağlı açık görevleri iptal eder, planlamaya bildirim gider. Denetim günlüğüne
+     neden ve ters kaydedilen hareket sayısı yazılır. Var olan "Partiyi iptal et" de artık
+     `filling_run.cancelled` yayınlar (CLAUDE.md kural 5).
+- **Reddedilen durumlar (hata kodları):**
+  - Emir Ambalaj hazır, Dolumda ya da Analiz bekliyor değilse `order_not_revertible`; neden boşsa
+    `cancel_reason_required`.
+  - Çıktı lotu (iptal partilerinki dahil) için tek kural: lot serbest bırakılmışsa ya da lotta bu
+    emrin kendi hareketleri ve onların ters kayıtları dışında hareket varsa (sevk, elle transfer,
+    serbest bırakmadaki depo transferi, iade) `output_lot_used`. Serbest bırakılıp sonra bloke
+    edilen lot da bu yüzden reddedilir. Başka hareketi olmayan karantina, bloke ya da red
+    durumundaki lot kabul edilir.
+  - Çıktı lotundan başka lot üretilmişse `output_lot_consumed`; lotta etkin rezervasyon varsa
+    `output_lot_reserved`; lotun onay bekleyen numunesi varsa `sample_awaiting_approval`.
+  - Ambalaj lotu aynı hatta başka bir emirde tüketildiği için geri çekilecek kadar stok hatta
+    yoksa `packaging_used_elsewhere`; mesaj lotu, hattı ve önce geri alınması gereken emri söyler.
+  - Stok alacak lokasyonlardan biri (tank, hat, mamul deposu, ambalajın alındığı yer) pasifse
+    işlem bunu söyleyen mesajla reddedilir; önce lokasyon etkinleştirilir.
+  - Geri çekilecek stok başka bir nedenle yoksa (ör. ambalaj hattan elle taşınmış) `negative_stock`.
+  - İade edilmiş ambalaj hazırlığı olan emir geri alınmaz (`unreversed_movement`). Olağan akışta
+    olmaz: hazırlık yalnız iptal edilen emirde iade edilir.
+  - Ambalajı tüketen öteki emir geri alınamaz durumdaysa (ör. tamamlanmış) ileti onu geri almayı
+    önermez; geri alma yapılamaz.
+- **Tasarımda eklenen, sahibe ayrıca gösterilmeyen kurallar** (değiştirilebilir):
+  - Ambalajı hazır (MATERIAL_READY) emir de geri alınabilir: partisi yoktur, yalnız ambalaj depoya
+    döner. Bugün bu durumdaki emir hiç iptal edilemiyordu.
+  - Serbest bırakılmış mamul lotu geri alınmaz (yukarıdaki tek kural).
+  - Soy ağacı (`LotLink`) silinmez, geçmiş olarak kalır; ters kayıtlarla miktarlar net sıfırdır.
+    İzlenebilirlikte çıktı lotu 0 stoklu, partisi iptal edilmiş lot olarak görünür.
+  - Bulk lotlarının ve çıktı lotlarının durumu değişmez: çıktı lotu bulunduğu durumda (genellikle
+    karantinada) 0 stokla kalır
+    (iptal partinin lotu serbest bırakılamaz; bkz. "Partisi bitmemiş lot serbest bırakılamaz");
+    bulk lotu bugünkü durumunda (ör. bloke) kalır.
+  - Yetki ayrı bölümdür: Dolum > "Dolum emrini geri alma" (`filling.revert`, yalnız Değiştirir).
+    Yönetim rol paketine verilir (paket yeni sürümle değişir), admin her zaman yapar. Kişiye özel
+    yetkiyle başkasına da verilebilir; bölüm Dolum emirleri: Görür'ü ister. Planlamanın "Emri
+    iptal et"i ve emir ile partinin durum tabloları değişmez; geri alma kendi tablosuyla ilerler.
+  - Maliyet modülü değişmez: iptal parti maliyet raporlarından düşer, lot bakiyesi 0'dır.
+- **İnceleme sonrası (2026-11-14, kod yazılmadan önce iki açılı tasarım eleştirisi):**
+  - Aynı hatta iki emir aynı ambalaj lotunu kullandıysa geri alma sırası önemlidir; ön denetim
+    eklendi (`packaging_used_elsewhere`). Canlıda önce DO-2026-00009, sonra DO-2026-00008 geri
+    alınır.
+  - Laboratuvarın "Mamul kontrolü: D-…" görevi geri almada kendiliğinden kapanır (`finished_qc`
+    kuralı `filling_run.cancelled` ile de kapanır). Görev "tamamlandı" görünür; tamamlayan, geri
+    almayı yapan kişidir.
+  - Sözleşme testinin anlık görüntüsü (`endpoints.json`) yeniden yazılmaz. Yeni uç nokta
+    `POST /api/v1/filling/orders/{id}/revert/` izin listesine 4. adımın kaydı olarak eklenir
+    (anonim ve pasif kullanıcı 401; POST'ta admin, süper kullanıcı ve yönetim izinli, öteki
+    roller 403; OPTIONS görünümün okuma iznini izler, giriş yapan herkese açık) ve bu karara
+    bağlanır. Sahibin onayladığı plan bu uç noktayı tanımlar ("yalnız admin ve yönetim"); kayıt o
+    onaya dayanır.
+  - Ön yüzde düğme sunucunun verdiği `can_revert` alanına bağlıdır, rol denetimi yapılmaz;
+    kişiye özel ayar düğmeye de yansır.
+- **Önceki kayıtlara not:** "Dolum ve ambalaj (Faz 2, Adım 2.2)" kaydının parti iptali, yetki, olay
+  sözleşmesi ve iş akışı maddelerine tarihli not düşüldü.
 - **CLAUDE.md:** değişiklik gerekmedi.

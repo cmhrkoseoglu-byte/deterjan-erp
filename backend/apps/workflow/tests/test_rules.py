@@ -491,6 +491,35 @@ def test_filling_run_completed_opens_finished_qc_closed_by_sample_decision(fire,
     assert task.status == Task.Status.DONE
 
 
+def test_finished_qc_closes_when_filling_run_is_cancelled(fire, staff):
+    """Dolum emrini geri alma partiyi iptal eder; "Mamul kontrolü" görevi kendiliğinden kapanır
+    (DECISIONS 2026-11-14)."""
+    order, run, lot, other = WidgetFactory(), WidgetFactory(), WidgetFactory(), WidgetFactory()
+    lot_payload = ref(lot, lot_no="D-261015-001", material_code="BL-750", material_name="Bulaşık")
+    run_payload = ref(
+        run,
+        lot_no="D-261015-001",
+        order=filling_ref(order),
+        order_number=f"DO-2026-{order.pk:05d}",
+        output_lot={**lot_payload, "material_type": "FINISHED"},
+    )
+    fire(ev.FILLING_RUN_COMPLETED, {**run_payload, "sample_number": "NM-2026-00007"})
+    task = Task.objects.get(rule_code="finished_qc")
+
+    # Başka lotun partisinin iptali görevi kapatmaz.
+    fire(
+        ev.FILLING_RUN_CANCELLED,
+        {**run_payload, "output_lot": ref(other, lot_no="D-261015-002"), "reason": "x"},
+    )
+    task.refresh_from_db()
+    assert task.status == Task.Status.OPEN
+
+    fire(ev.FILLING_RUN_CANCELLED, {**run_payload, "reason": "Dolum yapılmadı"}, staff["yonetim"])
+
+    task.refresh_from_db()
+    assert task.status == Task.Status.DONE
+
+
 def test_finished_final_sample_opens_no_batch_analysis_task(fire, staff):
     lot, sample = WidgetFactory(), WidgetFactory()
 
