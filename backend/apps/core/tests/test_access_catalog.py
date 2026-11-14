@@ -19,7 +19,7 @@ FRONTEND_FILE = Path(__file__).resolve().parents[4] / "frontend" / "src" / "auth
 def test_section_counts_match_the_plan() -> None:
     kinds = [item.kind for item in access.sections()]
 
-    assert kinds.count(Kind.SECTION) + kinds.count(Kind.ACTION) == 75
+    assert kinds.count(Kind.SECTION) + kinds.count(Kind.ACTION) == 76
     assert kinds.count(Kind.OPEN_RECORDS) == 7
     assert kinds.count(Kind.SENSITIVE) == 2
 
@@ -142,6 +142,7 @@ def test_actions_never_open_a_menu_module() -> None:
         "purchasing.over_limit",
         "maintenance.any_unit",
         "maintenance.breakdowns",
+        "filling.revert",
     }
     for key in actions:
         assert VIEW not in access.section(key).levels

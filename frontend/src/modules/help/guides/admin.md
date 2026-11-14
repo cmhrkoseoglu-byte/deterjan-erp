@@ -117,6 +117,7 @@ GS1 firma öneki palet etiketindeki SSCC numarasında ve mamullerin GTIN öneris
 ## Diğer yönetici işleri
 
 - **Elle serbest bırak**: Lot sayfasında yalnızca yöneticiye görünür. Olağan serbest bırakma laboratuvar kararıyla yapılır; bu düğme istisnai durumlar içindir ve gerekçe denetim günlüğüne yazılır. Dolum partisi ya da üretim şarjı bitmemiş (ya da iptal edilmiş) lot elle de serbest bırakılamaz.
+- **Dolumu geri al**: Dolum emri sayfasında size ve yönetime görünür. Fabrikada fiilen yapılmamış dolumu geri alır: emrin stok hareketleri ters kayıtla geri alınır, partiler ve açık numuneler iptal edilir, emir iptal olur. Dolum lotu serbest bırakılmış ya da başka işlemde kullanılmışsa reddedilir. Ayrıntısı yönetim kılavuzunun "Dolumu geri alma" bölümündedir.
 - **Canlıya geçiş > Hazırlık** listesindeki "Kullanıcılar" ve "Etiket yazıcıları" maddeleri sizin sorumluluğunuzdadır.
 - **Birimler**: **Ana veriler > Birimler** sekmesini yalnızca sistem yöneticisi yazar. Her birimin uluslararası **UN/ECE kodu** (KGM, LTR, C62; koli XCT, palet XPX) ve **Sembol**'ü vardır.
 - Kullanıcı bir ekranı göremediğini söylerse önce rollerini kontrol edin. Menü ve sekmeler role göre açılır.

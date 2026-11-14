@@ -62,6 +62,18 @@ SPECS = register_section(
     },
     read=ReadScope.OPEN,
 )
+# Fiilen yapılmamış dolumu geri alma (DECISIONS 2026-11-14): yalnız admin ve yönetim. Emri
+# açamayan geri alamasın diye Dolum emirleri: Görür ön koşuldur.
+REVERT = register_section(
+    "filling.revert",
+    "Dolum emrini geri alma",
+    levels=(CHANGE,),
+    help={
+        CHANGE: "Fiilen yapılmamış dolumu geri alır: emrin stok hareketleri ters kayıtla geri "
+        "alınır, partiler ve açık numuneler iptal edilir, emir iptal olur."
+    },
+    requires={CHANGE: [(ORDERS, VIEW)]},
+)
 OPEN_RECORDS = register_open_records("filling")
 
 register_readers("filling.fillingorder", ORDERS, PREP, RUNS)
@@ -76,3 +88,4 @@ grant(PLANLAMA, ORDERS, CHANGE, APPROVE)
 grant(DEPO, PREP, VIEW, CHANGE)
 grant(DOLUM, RUNS, CHANGE)
 grant(PLANLAMA, SPECS, CHANGE, APPROVE)
+grant(YONETIM, REVERT, CHANGE)

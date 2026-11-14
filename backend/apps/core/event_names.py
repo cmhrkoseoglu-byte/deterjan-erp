@@ -59,12 +59,15 @@ SPECIFICATION_OBSOLETE = "specification.obsolete"
 
 # filling (Faz 2, Adım 2.2). Emir olayları durum makinesinden (`filling_order.<durum>`); parti
 # olayları `filling_run.started` / `filling_run.completed` (payload'da `order`, `output_lot`).
+# `filling_run.cancelled` partinin iptali (yanlış başlatılan parti ya da dolum emrini geri alma;
+# payload'da `order`, `output_lot`, `reason`).
 FILLING_ORDER_APPROVED = "filling_order.approved"
 FILLING_ORDER_MATERIAL_READY = "filling_order.material_ready"
 FILLING_ORDER_CANCELLED = "filling_order.cancelled"
 FILLING_ORDER_COMPLETED = "filling_order.completed"
 FILLING_RUN_STARTED = "filling_run.started"
 FILLING_RUN_COMPLETED = "filling_run.completed"
+FILLING_RUN_CANCELLED = "filling_run.cancelled"
 FILLING_BULK_VARIANCE = "filling.bulk_variance"
 
 # sales (Faz 3, Adım 3.1). Sipariş olayları durum makinesinden (`sales_order.<durum>`); payload'da

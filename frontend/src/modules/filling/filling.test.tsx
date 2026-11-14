@@ -1,3 +1,4 @@
+import { notifications } from "@mantine/notifications";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +29,7 @@ vi.mock("../../api/filling", async (importOriginal) => ({
   getFillingOrder: vi.fn(),
   getRun: vi.fn(),
   fillingOrderAction: vi.fn(),
+  revertFillingOrder: vi.fn(),
   pickPackaging: vi.fn(),
   packagingSuggestions: vi.fn(),
   orderReport: vi.fn(),
@@ -146,6 +148,7 @@ function order(overrides: Partial<FillingOrderDetail> = {}): FillingOrderDetail 
     picks: [],
     runs: [],
     allowed_transitions: ["MATERIAL_PREP", "CANCELLED"],
+    can_revert: false,
     approved_by_name: "Planlama",
     approved_at: "2026-10-15T10:05:00+03:00",
     completed_at: null,
@@ -342,6 +345,78 @@ describe("dolum emri", () => {
     expect(screen.getByText(/eşiğini aşıyor/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dolumu bitir" }));
   });
+
+  it("yönetim fiilen yapılmamış dolumu nedeniyle geri alır", async () => {
+    const user = userEvent.setup();
+    const show = vi.spyOn(notifications, "show").mockReturnValue("bildirim");
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    vi.mocked(fillingApi.getFillingOrder).mockResolvedValue(
+      order({ status: "IN_PROGRESS", allowed_transitions: ["QC_PENDING"], can_revert: true }),
+    );
+    const cancelled = order({
+      status: "CANCELLED",
+      status_display: "İptal",
+      allowed_transitions: [],
+      can_revert: false,
+      cancel_reason: "Dolum yapılmadı",
+    });
+    vi.mocked(fillingApi.revertFillingOrder).mockImplementation(async () => {
+      vi.mocked(fillingApi.getFillingOrder).mockResolvedValue(cancelled);
+      return cancelled;
+    });
+    renderApp("/dolum/emirler/5");
+    await user.click(await screen.findByRole("button", { name: "Dolumu geri al" }));
+    const dialog = await screen.findByRole("dialog", { name: "Dolum emrini geri al" });
+    expect(dialog).toHaveTextContent("ters kayıtla geri alınır");
+    const confirm = within(dialog).getByRole("button", { name: "Dolumu geri al" });
+    expect(confirm).toBeDisabled();
+    await user.type(
+      within(dialog).getByRole("textbox", { name: /Geri alma nedeni/ }),
+      "Dolum yapılmadı",
+    );
+    await user.click(confirm);
+    await waitFor(() =>
+      expect(fillingApi.revertFillingOrder).toHaveBeenCalledWith(5, "Dolum yapılmadı"),
+    );
+    expect(show).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Dolum geri alındı, emir iptal edildi." }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Dolumu geri al" })).toBeNull(),
+    );
+    // Başlamış emir planlamanın sıradan iptaline açılmaz.
+    expect(screen.queryByRole("button", { name: "Emri iptal et" })).toBeNull();
+  });
+
+  it("geri alma reddedilirse sunucunun nedeni pencerede görünür", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    vi.mocked(fillingApi.getFillingOrder).mockResolvedValue(
+      order({ status: "QC_PENDING", allowed_transitions: ["COMPLETED"], can_revert: true }),
+    );
+    vi.mocked(fillingApi.revertFillingOrder).mockRejectedValueOnce(
+      httpError(400, { code: "output_lot_used", detail: "Dolum lotu sevk edilmiş." }),
+    );
+    renderApp("/dolum/emirler/5");
+    await user.click(await screen.findByRole("button", { name: "Dolumu geri al" }));
+    const dialog = await screen.findByRole("dialog", { name: "Dolum emrini geri al" });
+    await user.type(within(dialog).getByRole("textbox", { name: /Geri alma nedeni/ }), "Yanlış");
+    await user.click(within(dialog).getByRole("button", { name: "Dolumu geri al" }));
+    expect(await within(dialog).findByText("Dolum lotu sevk edilmiş.")).toBeInTheDocument();
+  });
+
+  it.each(["planlama", "dolum", "yonetim"] as const)(
+    "sunucu izin vermezse (%s) geri alma düğmesi görünmez",
+    async (role) => {
+      vi.mocked(authApi.fetchMe).mockResolvedValue(userWith(role));
+      vi.mocked(fillingApi.getFillingOrder).mockResolvedValue(
+        order({ status: "IN_PROGRESS", allowed_transitions: ["QC_PENDING"], can_revert: false }),
+      );
+      renderApp("/dolum/emirler/5");
+      expect(await screen.findByTestId("requirements"));
+      expect(screen.queryByRole("button", { name: "Dolumu geri al" })).toBeNull();
+    },
+  );
 });
 
 describe("ambalaj hazırlama", () => {

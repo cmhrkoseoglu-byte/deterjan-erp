@@ -341,3 +341,50 @@ def test_spec_create_with_lines(line: Line, planner):
     response = client(planner).post(url("packaging-spec-list"), body, format="json")
     assert response.status_code == 201, response.data
     assert response.data["version_no"] == other.version_no + 1
+
+
+# --- dolum emrini geri alma (DECISIONS 2026-11-14) -------------------------------------------
+
+
+@pytest.mark.parametrize("role", ["planlama", "dolum", "depo", "laboratuvar"])
+def test_revert_is_forbidden_without_access(role, make_user, line: Line, planner, depo, filler):
+    run = started_run(line, planner, depo, filler)
+    api = client(make_user(role, username=f"u-{role}"))
+    detail = api.get(url("order-detail", run.order.pk))
+    assert detail.status_code == 200
+    assert detail.data["can_revert"] is False
+    response = api.post(url("order-revert", run.order.pk), {"reason": "x"})
+    assert response.status_code == 403
+    run.order.refresh_from_db()
+    assert run.order.status == FillingOrder.Status.IN_PROGRESS
+
+
+@pytest.mark.parametrize("role", ["yonetim", "admin"])
+def test_revert_by_management_and_admin(role, make_user, line: Line, planner, depo, filler):
+    run = started_run(line, planner, depo, filler)
+    services.consume_bulk(filler, run, line.lots["bulk"], D("400"))
+    api = client(make_user(role, username=f"u-{role}"))
+    assert api.get(url("order-detail", run.order.pk)).data["can_revert"] is True
+
+    missing = api.post(url("order-revert", run.order.pk), {"reason": " "})
+    assert missing.status_code == 400
+
+    response = api.post(url("order-revert", run.order.pk), {"reason": "Dolum yapılmadı"})
+    assert response.status_code == 200, response.data
+    assert response.data["status"] == "CANCELLED"
+    assert response.data["cancel_reason"] == "Dolum yapılmadı"
+    assert response.data["can_revert"] is False
+    assert response.data["runs"][0]["status"] == "CANCELLED"
+
+    again = api.post(url("order-revert", run.order.pk), {"reason": "x"})
+    assert again.status_code == 400
+    assert again.data["code"] == "order_not_revertible"
+
+
+def test_revert_not_offered_for_draft(make_user, line: Line, planner):
+    order = approved_order(line, planner)
+    api = client(make_user("yonetim", username="yonetim"))
+    assert api.get(url("order-detail", order.pk)).data["can_revert"] is False
+    response = api.post(url("order-revert", order.pk), {"reason": "x"})
+    assert response.status_code == 400
+    assert response.data["code"] == "order_not_revertible"

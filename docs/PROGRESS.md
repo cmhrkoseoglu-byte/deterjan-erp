@@ -1810,3 +1810,44 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   Kodlar açıklaması eski aylarda da yeni cümleyi gösterir (cümle her ay için doğrudur).
 - Açık iş: kuralın mali müşavirle teyidi (iki YG'nin bir eksik gün sayılıp sayılmadığı; aynı
   haftada YG ve fazla mesai).
+
+## 2026-11-14 — Dolum emrini geri alma
+
+- Karar ve kurallar DECISIONS'ta ("2026-11-14 — Dolum emrini geri alma"): sahibin cevapları ("Hiç
+  yapılmadı, tamamen geri al", "Ambalaj malzemeleri depoya dönsün", plan için "Onaylıyorum,
+  başla"), kurallar, reddedilen durumlar ve tasarımda eklenen kurallar.
+- Backend: `filling.services.revert_order` (tek işlem; bütün denetimler ilk yazmadan önce; ters
+  kayıt sırası tüketim ve fire, mamul girişi, ambalaj hazırlıkları; sonda emre bağlı ters kaydı
+  olmayan hareket kalmadığı denetlenir). Ayrı geri alma durum tabloları (emir: ambalaj hazır,
+  dolumda, analiz bekliyor → iptal; parti: dolumda, bitti → iptal); ana tablolar ve planlamanın
+  "Emri iptal et"i değişmedi. Yeni yetki bölümü Dolum > "Dolum emrini geri alma"
+  (`filling.revert`, Değiştirir; yönetim paketinde, admin her zaman). Uç nokta
+  `POST /api/v1/filling/orders/{id}/revert/` (neden zorunlu), emir sayfası verisinde `can_revert`.
+  Yeni olay `filling_run.cancelled` (geri almada ve "Partiyi iptal et"te). Çıktı lotunun bekleyen
+  ve testteki numuneleri iptal edilir; laboratuvarın "Mamul kontrolü" görevi kapanır.
+- Ön yüz: emir sayfasında "Dolumu geri al" düğmesi (yalnız `can_revert` doğruysa) ve neden
+  penceresi; bitince dolum, stok ve görev ekranları yenilenir.
+- Yetki türevleri: `access.gen.ts` bu dalın kendi backend'inden üretildi; katalog testi 76 bölüm;
+  sözleşme testinin anlık görüntüsü yeniden yazılmadı, yeni uç nokta izin listesine 4. adımın
+  kaydı olarak eklendi; `test_access_package`; plan §3.6 tablosu ve §9'daki bölüm sayısı.
+- Kanıt: tam backend 2410 ve ön yüz 654 test yeşil; ruff, mypy, `makemigrations --check` (göç
+  yok), OpenAPI şeması, lint, biçim, tip denetimi ve derleme temiz. Canlıda salt okunur ön
+  denetim: iki emir aynı ambalaj lotlarını kullanmış; iki sırada da hiçbir lot eksiye düşmez.
+- Koddan sonraki inceleme: üç alanda satır satır inceleme ve bulgu doğrulama; 8 küçük bulgu
+  düzeltildi (çıktı lotu ve numune kilidi, geri alınamayan emir iletisi, belge ayrıntıları).
+- İnceleme: kod yazılmadan önce iki açılı tasarım eleştirisi (stok kuralları; yetki ve akış): 2
+  engelleyici, 3 önemli ve 8 küçük bulgu tasarıma işlendi (DECISIONS "İnceleme sonrası").
+- Kılavuz: `yonetim.md` "Dolumu geri alma", `admin.md` "Diğer yönetici işleri", `planlama.md`
+  "Dolum emri açma" ve `dolum.md` "Partiyi ve dolumu bitirme".
+- Canlıya alırken:
+  - Yetki kataloğu için elle adım yok: `docker-compose.prod.yml`'deki `migrate` servisi her
+    kurulumda `seed_roles` ve `sync_access_catalog` çalıştırır; yeni katalog sürümü kendiliğinden
+    yazılır. Kurulumdan sonra yeni katalog sürümünün oluştuğuna bakılır.
+  - Geri almadan önce canlıda salt okunur denetim: hattaki (LOKASYON-0001) her ambalaj lotunun
+    bakiyesi, iki emrin lot başına ambalaj hazırlık miktarlarıyla karşılaştırılır.
+  - Sıra: önce DO-2026-00009, sonra DO-2026-00008 geri alınır; her birinde neden yazılır. Ters
+    sırada ortak ambalaj lotu yüzünden `packaging_used_elsewhere` çıkabilir (hiçbir şey değişmez).
+  - Sonra beklenen: emirler ve partileri İptal; çıktı lotları karantinada 0 stokla; bulk tankta,
+    ambalaj depoda; mamul kontrolü görevi kapanmış. Açık sekmeler yenilenir.
+- İzin listesine eklenen yeni uç nokta kaydı sahibin onayladığı plana dayanır (yalnız admin ve
+  yönetim).

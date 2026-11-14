@@ -63,4 +63,4 @@ Koli etiketine lotun koli GTIN'i basılır (lot açılırken malzemede tanımlı
 3. Ambalaj tüketimi düşülür, mamul depoya girer ve laboratuvara mamul kontrolü görevi düşer.
 4. Emrin tüm partileri bitince emir sayfasında **Dolumu bitir**'e basın. Emir mamul kontrolünü bekler; lotlar serbest kalınca tamamlanır.
 
-> Tüketim ya da fire kaydı olmayan parti **Partiyi iptal et** ile iptal edilebilir. Hat arızasında **Görevlerim** ekranındaki **Arıza bildir**'i, ekran hatasında sağ üstteki **Sorun bildir** simgesini kullanın.
+> Tüketim ya da fire kaydı olmayan parti **Partiyi iptal et** ile iptal edilebilir. Kaydı olan ya da bitmiş partide dolum fiilen yapılmadıysa planlamaya ya da yönetime bildirin; yönetim emri **Dolumu geri al** ile geri alır. Hat arızasında **Görevlerim** ekranındaki **Arıza bildir**'i, ekran hatasında sağ üstteki **Sorun bildir** simgesini kullanın.

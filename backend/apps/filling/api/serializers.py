@@ -3,7 +3,7 @@ from typing import Any
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from apps.filling import selectors
+from apps.filling import selectors, services
 from apps.filling.models import (
     FillingConsumption,
     FillingOrder,
@@ -336,6 +336,7 @@ class FillingOrderDetailSerializer(FillingOrderSerializer):
     picks = serializers.SerializerMethodField()
     runs = serializers.SerializerMethodField()
     allowed_transitions = serializers.SerializerMethodField()
+    can_revert = serializers.SerializerMethodField()
     approved_by_name = UserNameField(source="approved_by")
     units_per_case = serializers.IntegerField(
         source="packaging_spec.units_per_case", read_only=True
@@ -349,6 +350,7 @@ class FillingOrderDetailSerializer(FillingOrderSerializer):
             "picks",
             "runs",
             "allowed_transitions",
+            "can_revert",
             "approved_by_name",
             "approved_at",
             "completed_at",
@@ -376,6 +378,11 @@ class FillingOrderDetailSerializer(FillingOrderSerializer):
 
     def get_allowed_transitions(self, order: FillingOrder) -> list[str]:
         return filling_order_states.allowed_transitions(order.status)
+
+    def get_can_revert(self, order: FillingOrder) -> bool:
+        """Emir geri alınabilir durumda ve kullanıcının Dolum emrini geri alma yetkisi var."""
+        request = self.context.get("request")
+        return request is not None and services.can_revert(request.user, order)
 
 
 # --- dolum partisi -----------------------------------------------------------------------------
