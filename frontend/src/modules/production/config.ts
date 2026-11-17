@@ -1,10 +1,5 @@
 import type { BatchStatus, LineState, OrderStatus } from "../../api/production";
-import type { Role } from "../../api/types";
 
-// Yetkiler backend ile aynıdır (apps/production/api/views.py); arayüz yalnızca düğmeleri gizler.
-export const ORDER_ROLES: Role[] = ["planlama"];
-export const PREP_ROLES: Role[] = ["depo"];
-export const BATCH_ROLES: Role[] = ["uretim"];
 export const PRODUCTION_BASE = "/uretim";
 
 export const orderPath = (id: number | "yeni") => `${PRODUCTION_BASE}/emirler/${id}`;

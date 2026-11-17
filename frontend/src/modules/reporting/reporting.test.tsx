@@ -383,6 +383,23 @@ describe("indirmeler", () => {
     );
     expect(screen.getByText("Hazır")).toBeInTheDocument();
   });
+
+  it("yetkisi sonradan kaldırılan dosyada indirme bağlantısı çıkmaz (§8 madde 12)", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));
+    vi.mocked(reportingApi.listJobs).mockResolvedValue(
+      page([job({ download_required: [{ key: "reporting.stock", level: "view" }] })]),
+    );
+    renderApp("/raporlar/indirmeler");
+    expect(await screen.findByText("Hazır")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "İndir" })).not.toBeInTheDocument();
+  });
+
+  it("rolü olmayan kullanıcı yalnız İndirmeler'i açar (§8 madde 1)", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith());
+    renderApp("/raporlar/indirmeler");
+    expect(await screen.findByRole("link", { name: "İndir" })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["İndirmeler"]);
+  });
 });
 
 describe("biçim", () => {

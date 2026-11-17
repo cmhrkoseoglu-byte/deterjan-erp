@@ -2773,3 +2773,32 @@ değiştirme zorunlu, yalnızca admin):
   - **Yetki değişti olayı:** rol gerçekten değiştiğinde (kullanıcı penceresi, yönetim komutları,
     Django yönetim paneli) yayınlanır ve kişinin açık oturumlarına iletilir; bildirim ya da
     denetim kaydı yazmaz. Ön yüzün buna göre yenilenmesi 8. adımdadır.
+
+## 2026-11-17 — Kişiye özel yetkiler: 8. adımın uygulama kararları
+
+- **Bağlam:** 8. adımda ön yüzün her kararı kişinin etkin yetkisinden verilir (plan §5.9).
+  Planın harfiyen söylemediği noktalar. Hepsi varsayılan rol paketlerinde bugünkü davranışı
+  korur; fark yalnız kişiye özel ayarlarda (Paket B) çıkar.
+- **Kararlar:**
+  - **Kendi ekranı olmayan bölümler** (Canlıya geçiş ayarları, Tank temizliği, Personel
+    ayarları, Müşteriye sevk edilen lotlar) yalnız başka bir ekranın içinde görünür; modülün
+    menüsünü ve sayfasını tek başına açmaz (plan §2'deki "ekranı olan bölümler"in yorumu).
+    Açsaydı menü "Yetkiniz yok" sayfasına giderdi. Varsayılan paketlerde bu bölümlere sahip her
+    rolün modülde sekmesi olan başka bir bölümü vardır (testle denetlenir).
+  - **Varsayılan sekme:** bugünkü rol tercihi korunur (rol görünümü); tercih edilen sekme
+    görünmüyorsa ilk görünen sekme açılır, hiçbiri yoksa "Yetkiniz yok". Görünmeyen bir sekmenin
+    adresi modülün ana sayfasına yönlenir.
+  - **"Yetkiniz yok" sayfası** eksik yetki biliniyorsa onu söyler; modül sayfasında "bölümlerinden
+    biri", yalnız rol eksikse (yönetim panosu) satır çıkmaz.
+  - **Rolsüz kullanıcının üst bandı** nötr (gri, "Kullanıcı paneli"); `/raporlar` adresi
+    "Yetkiniz yok", `/raporlar/indirmeler` açık (§8 madde 1).
+  - **Düğmeler backend'in istediği düzeyi ister:** onaylamak Onaylar (satış siparişi dahil);
+    yalnız Onaylar'ı olan kişi taslağı yeniden kaydetmeden onaylar; iptal taslakta Değiştirir,
+    onaylı belgede Onaylar ister.
+  - **Gizli 403 yok:** kişinin göremeyeceği veriyi soran sorgu çalışmaz (ör. müşteri kartında
+    sipariş geçmişi, satın alma siparişinde açık talepler).
+  - **Oturum tazeleme:** yetki değişince bütün sorgular yenilenir (kaldırılan fiyat/maliyet açık
+    sayfada kalmasın); pencereye dönünce (30 sn'den eskiyse) ve 403 gelince (5 sn'den eskiyse)
+    `me` bir kez yenilenir.
+  - **Rapor indirme bağlantısı** dosyayı indirmek için eksik yetki yoksa görünür
+    (`download_required`).

@@ -35,15 +35,15 @@ import {
   type SpecStatus,
   type TestDefinition,
 } from "../../api/quality";
-import type { Role } from "../../api/types";
-import { useAuth } from "../../auth/AuthContext";
+import { useCan, type Level } from "../../auth/access";
+import { RequireAccess } from "../../auth/RequireAccess";
 import { hasAnyRole } from "../../auth/roles";
 import { formatDateTime, formatElapsed } from "../../i18n/format";
 import { CrudPage, type EntityConfig } from "../common/CrudPage";
 import { ct } from "../common/strings";
 import { useOptions } from "../common/useOptions";
 import { idOrNull } from "../inventory/options";
-import { APPROVAL_ROLES, LAB_ROLES, QUALITY_BASE, samplePath, specPath, STAGES } from "./config";
+import { QUALITY_BASE, samplePath, specPath, STAGES } from "./config";
 import { DecisionBadge, SampleStatusBadge, SpecStatusBadge } from "./shared";
 import { qt } from "./strings";
 
@@ -252,6 +252,8 @@ function SamplesTab() {
 
 /** Yönetim: onay bekleyen şartlı kabul kararları. */
 function ApprovalsTab() {
+  const { can } = useCan();
+  const canReview = can("quality.conditional", "approve");
   const queryClient = useQueryClient();
   const [target, setTarget] = useState<{ row: QualityDecision; approve: boolean } | null>(null);
   const query = useQuery({
@@ -277,25 +279,26 @@ function ApprovalsTab() {
     },
     {
       header: ct.actions,
-      render: (r) => (
-        <Group gap={4} wrap="nowrap">
-          <Button
-            size="compact-sm"
-            color="green"
-            onClick={() => setTarget({ row: r, approve: true })}
-          >
-            {qt.approve}
-          </Button>
-          <Button
-            size="compact-sm"
-            color="red"
-            variant="light"
-            onClick={() => setTarget({ row: r, approve: false })}
-          >
-            {qt.refuse}
-          </Button>
-        </Group>
-      ),
+      render: (r) =>
+        canReview && (
+          <Group gap={4} wrap="nowrap">
+            <Button
+              size="compact-sm"
+              color="green"
+              onClick={() => setTarget({ row: r, approve: true })}
+            >
+              {qt.approve}
+            </Button>
+            <Button
+              size="compact-sm"
+              color="red"
+              variant="light"
+              onClick={() => setTarget({ row: r, approve: false })}
+            >
+              {qt.refuse}
+            </Button>
+          </Group>
+        ),
     },
   ];
   return (
@@ -386,7 +389,7 @@ export function ReviewModal({
 }
 
 function SpecsTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
@@ -454,7 +457,7 @@ function SpecsTab() {
             }}
           />
         </Group>
-        {hasAnyRole(user, LAB_ROLES) && (
+        {can("quality.specs", "change") && (
           <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>
             {qt.newSpec}
           </Button>
@@ -552,7 +555,7 @@ const testConfig: EntityConfig<TestDefinition> = {
   codeType: "quality.testdefinition",
   title: qt.tabs.tests,
   singular: qt.testSingular,
-  writeRoles: LAB_ROLES,
+  writeSection: "quality.specs",
   columns: [
     { key: "code", label: qt.code },
     { key: "name", label: qt.name },
@@ -580,19 +583,40 @@ const testConfig: EntityConfig<TestDefinition> = {
 interface TabDef {
   slug: string;
   label: string;
-  roles: readonly Role[];
+  /** Sekmeyi gösteren bölüm ve düzey. Kuyruk sonuç girene (Numuneler: Değiştirir) çıkar. */
+  access: [section: string, level: Exclude<Level, "read">];
   render: () => ReactNode;
 }
 
 const TABS: TabDef[] = [
-  { slug: "kuyruk", label: qt.tabs.queue, roles: LAB_ROLES, render: () => <QueueTab /> },
-  { slug: "numuneler", label: qt.tabs.samples, roles: [], render: () => <SamplesTab /> },
-  { slug: "onay", label: qt.tabs.approvals, roles: APPROVAL_ROLES, render: () => <ApprovalsTab /> },
-  { slug: "spesifikasyonlar", label: qt.tabs.specs, roles: [], render: () => <SpecsTab /> },
+  {
+    slug: "kuyruk",
+    label: qt.tabs.queue,
+    access: ["quality.samples", "change"],
+    render: () => <QueueTab />,
+  },
+  {
+    slug: "numuneler",
+    label: qt.tabs.samples,
+    access: ["quality.samples", "view"],
+    render: () => <SamplesTab />,
+  },
+  {
+    slug: "onay",
+    label: qt.tabs.approvals,
+    access: ["quality.conditional", "view"],
+    render: () => <ApprovalsTab />,
+  },
+  {
+    slug: "spesifikasyonlar",
+    label: qt.tabs.specs,
+    access: ["quality.specs", "view"],
+    render: () => <SpecsTab />,
+  },
   {
     slug: "testler",
     label: qt.tabs.tests,
-    roles: [],
+    access: ["quality.specs", "view"],
     render: () => <CrudPage config={testConfig} />,
   },
 ];
@@ -600,16 +624,26 @@ const TABS: TabDef[] = [
 /** Kalite kontrol: sekmeler (`/kalite/<sekme>`). Laboratuvar kuyruğa, yönetim onaya düşer. */
 export function QualityPage() {
   const { tab } = useParams();
-  const { user } = useAuth();
+  const { user, can } = useCan();
   const navigate = useNavigate();
-  const visible = TABS.filter((item) => hasAnyRole(user, item.roles));
-  const fallback = visible.some((item) => item.slug === "kuyruk")
-    ? hasAnyRole(user, APPROVAL_ROLES) && !user?.roles.includes("laboratuvar")
+  const visible = TABS.filter((item) => can(...item.access));
+  if (visible.length === 0) {
+    return (
+      <RequireAccess allow={() => false} need={[{ key: "quality", level: "view" }]}>
+        {null}
+      </RequireAccess>
+    );
+  }
+  const shown = (slug: string) => visible.some((item) => item.slug === slug);
+  // Varsayılan sekme rol görünümüdür (plan §5.9): bugünkü tercih, görünmüyorsa ilk görünür sekme.
+  const preferred = shown("kuyruk")
+    ? hasAnyRole(user, ["yonetim"]) && !user?.roles.includes("laboratuvar")
       ? "onay"
       : "kuyruk"
-    : visible.some((item) => item.slug === "onay")
+    : shown("onay")
       ? "onay"
       : "numuneler";
+  const fallback = shown(preferred) ? preferred : visible[0].slug;
   const current = visible.find((item) => item.slug === (tab ?? fallback));
   if (!current) return <Navigate to={QUALITY_BASE} replace />;
 

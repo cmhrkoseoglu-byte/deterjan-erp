@@ -1,9 +1,8 @@
 import { Group, Stack, Tabs, Title } from "@mantine/core";
 import type { ReactNode } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
-import type { Role } from "../../api/types";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { RequireAccess } from "../../auth/RequireAccess";
 import { ScanInput } from "../../components/scan/ScanInput";
 import { INVENTORY_BASE, lotPath } from "./config";
 import { AdjustmentsTab, LotsTab, ReceiptsTab, StockTab } from "./ListTabs";
@@ -12,34 +11,41 @@ import { it } from "./strings";
 interface TabDef {
   slug: string;
   label: string;
-  /** Boşsa herkes görür (okuma herkese açık; yazma backend'de rolle sınırlı). */
-  roles: readonly Role[];
+  /** Sekmeyi gösteren bölüm (Görür). Stok, lotlar ve paletler herkese açıktır (kilitli). */
+  section: string;
   render: () => ReactNode;
 }
 
 const TABS: TabDef[] = [
-  { slug: "stok", label: it.tabs.stock, roles: [], render: () => <StockTab /> },
-  { slug: "lotlar", label: it.tabs.lots, roles: [], render: () => <LotsTab /> },
+  { slug: "stok", label: it.tabs.stock, section: "inventory.stock", render: () => <StockTab /> },
+  { slug: "lotlar", label: it.tabs.lots, section: "inventory.lots", render: () => <LotsTab /> },
   {
     slug: "mal-kabul",
     label: it.tabs.receipts,
-    roles: ["depo", "planlama", "yonetim", "satin_alma", "laboratuvar"],
+    section: "inventory.receipts",
     render: () => <ReceiptsTab />,
   },
   {
     slug: "sayim",
     label: it.tabs.adjustments,
-    roles: ["depo", "yonetim"],
+    section: "inventory.adjustments",
     render: () => <AdjustmentsTab />,
   },
 ];
 
-/** Depo ve stok: sekmeler (`/depo/<sekme>`), kullanıcının rolüne göre. */
+/** Depo ve stok: sekmeler (`/depo/<sekme>`), kullanıcının yetkisine göre. */
 export function InventoryPage() {
   const { tab } = useParams();
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
-  const visible = TABS.filter((item) => hasAnyRole(user, item.roles));
+  const visible = TABS.filter((item) => can(item.section, "view"));
+  if (visible.length === 0) {
+    return (
+      <RequireAccess allow={() => false} need={[{ key: "inventory", level: "view" }]}>
+        {null}
+      </RequireAccess>
+    );
+  }
   // Lot serbest bırakma ve ret kalite modülündedir (numune kararı); burada stok sorgu açılır.
   const current = visible.find((item) => item.slug === (tab ?? visible[0].slug));
   if (!current) return <Navigate to={INVENTORY_BASE} replace />;

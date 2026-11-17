@@ -39,8 +39,7 @@ import {
   type GoodsReceiptPayload,
 } from "../../api/inventory";
 import { listRecords, type Material } from "../../api/masterdata";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { labelPaths, printPaths } from "../../api/labels";
 import { AttachmentPanel } from "../../components/attachments/AttachmentPanel";
 import { LabelPrintModal } from "../../components/labels/LabelPrintModal";
@@ -53,7 +52,7 @@ import { ct } from "../common/strings";
 import { optionLabel, useOptions } from "../common/useOptions";
 import { CancelModal } from "./CancelModal";
 import { ReceiptCostsPanel } from "./ReceiptCostsPanel";
-import { INVENTORY_BASE, lotPath, receiptPath, STOCK_WRITE_ROLES, today } from "./config";
+import { INVENTORY_BASE, lotPath, receiptPath, today } from "./config";
 import { idOrNull, useLocations } from "./options";
 import { DocStatusBadge, Info, LotStatusBadge, Qty } from "./shared";
 import { it } from "./strings";
@@ -216,10 +215,11 @@ export function GoodsReceiptPage() {
 }
 
 function ReceiptForm({ doc }: { doc: GoodsReceiptDetail | null }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const editable = hasAnyRole(user, STOCK_WRITE_ROLES) && (!doc || doc.status === "DRAFT");
+  // Mal kabulün onay düzeyi yoktur: kaydet ve stoka al da Değiştirir'dir.
+  const editable = can("inventory.receipts", "change") && (!doc || doc.status === "DRAFT");
   const [{ header, lines }, setDraft] = useState(() => toDraft(doc));
   const [error, setError] = useState("");
   const [confirmPost, setConfirmPost] = useState(false);

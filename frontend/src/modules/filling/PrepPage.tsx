@@ -30,14 +30,13 @@ import {
   type FillingOrderDetail,
   type FillingRequirementRow,
 } from "../../api/filling";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { errorFeedback } from "../../components/scan/feedback";
 import { ScanInput, type ScanInputHandle } from "../../components/scan/ScanInput";
 import { formatNumber } from "../../i18n/format";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ExpiryText, Qty } from "../inventory/shared";
-import { fillingOrderPath, PREP_ROLES, PREP_STATUSES } from "./config";
+import { fillingOrderPath, PREP_STATUSES } from "./config";
 import { FillingOrderStatusBadge } from "./shared";
 import { ft } from "./strings";
 
@@ -61,13 +60,14 @@ export function FillingPrepPage() {
 }
 
 function Prep({ order }: { order: FillingOrderDetail }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const queryClient = useQueryClient();
   const lines = order.requirements;
   const firstOpen = lines.find((row) => !row.is_ready) ?? lines[0];
   const [selected, setSelected] = useState<number | null>(firstOpen?.id ?? null);
   const [error, setError] = useState("");
-  const canPick = hasAnyRole(user, PREP_ROLES) && PICKABLE.includes(order.status);
+  const canWork = can("filling.prep", "change");
+  const canPick = canWork && PICKABLE.includes(order.status);
   const allReady = lines.every((row) => row.is_ready);
   const doneCount = lines.filter((row) => row.is_ready).length;
   const current = lines.find((row) => row.id === selected) ?? null;
@@ -135,7 +135,7 @@ function Prep({ order }: { order: FillingOrderDetail }) {
         />
       )}
 
-      {hasAnyRole(user, PREP_ROLES) && PREP_STATUSES.includes(order.status) && (
+      {canWork && PREP_STATUSES.includes(order.status) && (
         <Paper withBorder p="md" radius="md">
           <Group justify="space-between">
             <Text size="sm" c="dimmed">

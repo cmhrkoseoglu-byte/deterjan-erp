@@ -1,9 +1,12 @@
 // Anlık bildirim bağlantısı: /ws/notifications/ (aynı origin, oturum çereziyle).
-// Sunucu yeni bildirim ve görev değişikliğini gönderir; ilgili sorgular tazelenir.
+// Sunucu yeni bildirim ve görev değişikliğini gönderir; ilgili sorgular tazelenir. Kişinin yetkisi
+// değişince (`access.changed`, plan §8 madde 11) `me` ve görevler yeniden alınır: menü, sekme ve
+// düğmeler sayfa yenilenmeden güncellenir, açık sayfa artık izinli değilse "Yetkiniz yok" çıkar.
 // Bağlantı yokken bildirim sayısı ve görev listesi 30 sn'de bir yoklanır (yedek).
 import { notifications } from "@mantine/notifications";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
+import { ME_QUERY_KEY } from "../auth/AuthProvider";
 import { workflowKeys } from "./queryKeys";
 import { RealtimeContext } from "./realtimeContext";
 
@@ -34,6 +37,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let attempts = 0;
     let stopped = false;
+    let wasConnected = false;
 
     const handleMessage = (event: MessageEvent) => {
       let message: ServerMessage;
@@ -56,6 +60,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         void queryClient.invalidateQueries({ queryKey: workflowKeys.notifications });
       } else if (message.type === "task.changed") {
         void queryClient.invalidateQueries({ queryKey: workflowKeys.tasks });
+      } else if (message.type === "access.changed") {
+        // Her şey: fiyat/maliyet gibi kaldırılan alanlar açık sayfada eski haliyle kalmasın.
+        void queryClient.invalidateQueries();
       }
     };
 
@@ -64,8 +71,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       socket.onopen = () => {
         attempts = 0;
         setConnected(true);
-        // Bağlantı kopukken kaçırılanlar için bir kez tazele.
+        // Bağlantı kopukken kaçırılanlar için bir kez tazele (yetki değişikliği dahil).
         void queryClient.invalidateQueries({ queryKey: workflowKeys.all });
+        if (wasConnected) void queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
+        wasConnected = true;
       };
       socket.onmessage = handleMessage;
       socket.onclose = () => {

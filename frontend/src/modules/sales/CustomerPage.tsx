@@ -18,12 +18,12 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import { getRecord, type Partner } from "../../api/masterdata";
 import { listSalesOrders, listShippedLots, SHIPPED_LOTS_PAGE_SIZE } from "../../api/sales";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDateTime, formatNumber } from "../../i18n/format";
 import { RowsTable } from "../filling/FillingPage";
 import { ExpiryText, Info } from "../inventory/shared";
-import { SALES_BASE, salesOrderPath, SHIPPED_LOT_ROLES, shipmentPath } from "./config";
+import { SALES_BASE, salesOrderPath, shipmentPath } from "./config";
 import { orderColumns } from "./columns";
 import { st } from "./strings";
 
@@ -35,8 +35,9 @@ interface Customer extends Partner {
 export function CustomerPage() {
   const customerId = Number(useParams().customerId);
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const showLots = hasAnyRole(user, SHIPPED_LOT_ROLES);
+  const { can, canRead } = useCan();
+  const showLots = can(PERM.SALES_SHIPPED_LOTS);
+  const showOrders = canRead(PERM.SALES_ORDERS);
   const customer = useQuery({
     queryKey: ["sales", "customer", customerId],
     queryFn: () => getRecord<Customer>("customers", customerId),
@@ -44,6 +45,7 @@ export function CustomerPage() {
   const orders = useQuery({
     queryKey: ["sales", "orders", "customer", customerId],
     queryFn: () => listSalesOrders({ customer: customerId, page_size: 100 }),
+    enabled: showOrders,
   });
 
   if (customer.isLoading) return <Loader />;
@@ -90,15 +92,19 @@ export function CustomerPage() {
           </Info>
         </SimpleGrid>
       </Paper>
-      <Title order={4}>{st.orderHistory}</Title>
-      <RowsTable
-        testId="customer-orders"
-        columns={orderColumns.filter((column) => column.header !== st.customer)}
-        rows={orders.data?.results ?? []}
-        loading={orders.isLoading}
-        error={orders.error}
-        onOpen={(order) => navigate(salesOrderPath(order.id))}
-      />
+      {showOrders && (
+        <>
+          <Title order={4}>{st.orderHistory}</Title>
+          <RowsTable
+            testId="customer-orders"
+            columns={orderColumns.filter((column) => column.header !== st.customer)}
+            rows={orders.data?.results ?? []}
+            loading={orders.isLoading}
+            error={orders.error}
+            onOpen={(order) => navigate(salesOrderPath(order.id))}
+          />
+        </>
+      )}
       {showLots && <ShippedLots key={customerId} customerId={customerId} />}
     </Stack>
   );
@@ -106,6 +112,8 @@ export function CustomerPage() {
 
 /** Müşteriye sevk edilen lotlar (geri çağırmada kime ne gittiği). */
 function ShippedLots({ customerId }: { customerId: number }) {
+  const { canRead } = useCan();
+  const openShipments = canRead(PERM.SALES_SHIPMENTS, PERM.SALES_PICKING);
   const [page, setPage] = useState(1);
   const query = useQuery({
     queryKey: ["sales", "shipped-lots", customerId, page],
@@ -160,9 +168,13 @@ function ShippedLots({ customerId }: { customerId: number }) {
                   </Table.Td>
                   <Table.Td ta="right">{formatNumber(row.quantity)}</Table.Td>
                   <Table.Td>
-                    <Anchor component={Link} to={shipmentPath(row.shipment)} size="sm">
-                      {row.shipment_number}
-                    </Anchor>
+                    {openShipments ? (
+                      <Anchor component={Link} to={shipmentPath(row.shipment)} size="sm">
+                        {row.shipment_number}
+                      </Anchor>
+                    ) : (
+                      row.shipment_number
+                    )}
                   </Table.Td>
                   <Table.Td>{row.order_number}</Table.Td>
                   <Table.Td>{formatDateTime(row.dispatched_at)}</Table.Td>

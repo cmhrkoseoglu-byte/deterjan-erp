@@ -42,6 +42,8 @@ import {
   type PublicHoliday,
 } from "../../api/attendance";
 import { getErrorMessage } from "../../api/client";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate } from "../../i18n/format";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { dayLabel, formatWorkedHours, parseWorkedHours } from "./attendanceFormat";
@@ -147,7 +149,14 @@ function HolidayFormModal({
  * Puantaj ayarları: varsayılan hafta tatili günleri (en az bir, en çok altı gün) ve günlük çalışma
  * saati. Tek "Kaydet" ikisini birlikte gönderir.
  */
-function SettingsCard({ settings }: { settings: AttendanceSettings }) {
+function SettingsCard({
+  settings,
+  editable,
+}: {
+  settings: AttendanceSettings;
+  /** Personel ayarları: Değiştirir yoksa salt okunur. */
+  editable: boolean;
+}) {
   const queryClient = useQueryClient();
   const [days, setDays] = useState(settings.rest_weekdays.map(String));
   const [hours, setHours] = useState(formatWorkedHours(settings.daily_hours));
@@ -201,7 +210,7 @@ function SettingsCard({ settings }: { settings: AttendanceSettings }) {
         <Chip.Group multiple value={days} onChange={setDays}>
           <Group gap="xs">
             {at.weekdayNames.map((name, index) => (
-              <Chip key={name} value={String(index)}>
+              <Chip key={name} value={String(index)} disabled={!editable}>
                 {name}
               </Chip>
             ))}
@@ -220,13 +229,16 @@ function SettingsCard({ settings }: { settings: AttendanceSettings }) {
           error={errors.hours}
           inputMode="decimal"
           autoComplete="off"
+          readOnly={!editable}
           styles={{ wrapper: { maxWidth: 160 } }}
         />
-        <Group>
-          <Button onClick={save} loading={mutation.isPending}>
-            {at.save}
-          </Button>
-        </Group>
+        {editable && (
+          <Group>
+            <Button onClick={save} loading={mutation.isPending}>
+              {at.save}
+            </Button>
+          </Group>
+        )}
       </Stack>
     </Paper>
   );
@@ -237,6 +249,10 @@ export function HolidaysPage() {
   const [params, setParams] = useSearchParams();
   const year = parseYear(params.get("yil"));
   const queryClient = useQueryClient();
+  const { can } = useCan();
+  const writer = can(PERM.PERSONNEL_ATTENDANCE, "change");
+  // Puantaj ayarları Personel ayarları bölümündedir; sayfa Puantaj ve tatil takvimi ile açılır.
+  const showSettings = can(PERM.PERSONNEL_SETTINGS);
   const [editing, setEditing] = useState<PublicHoliday | "new" | null>(null);
   const [removing, setRemoving] = useState<PublicHoliday | null>(null);
   const list = useQuery({
@@ -246,6 +262,7 @@ export function HolidaysPage() {
   const settings = useQuery({
     queryKey: attendanceKeys.settings,
     queryFn: getAttendanceSettings,
+    enabled: showSettings,
   });
 
   function refresh(message: string) {
@@ -294,14 +311,16 @@ export function HolidaysPage() {
             <IconChevronRight size={16} />
           </ActionIcon>
         </Group>
-        <Group gap="xs" wrap="wrap">
-          <Button variant="light" onClick={() => fixed.mutate()} loading={fixed.isPending}>
-            {at.addFixed}
-          </Button>
-          <Button leftSection={<IconCalendarPlus size={16} />} onClick={() => setEditing("new")}>
-            {at.addHoliday}
-          </Button>
-        </Group>
+        {writer && (
+          <Group gap="xs" wrap="wrap">
+            <Button variant="light" onClick={() => fixed.mutate()} loading={fixed.isPending}>
+              {at.addFixed}
+            </Button>
+            <Button leftSection={<IconCalendarPlus size={16} />} onClick={() => setEditing("new")}>
+              {at.addHoliday}
+            </Button>
+          </Group>
+        )}
       </Group>
       {list.isError && (
         <Alert color="red" variant="light">
@@ -335,27 +354,29 @@ export function HolidaysPage() {
                     </Group>
                   </Table.Td>
                   <Table.Td>
-                    <Group gap={4} justify="flex-end" wrap="nowrap">
-                      <Tooltip label={at.editHoliday}>
-                        <ActionIcon
-                          variant="subtle"
-                          aria-label={`${at.editHoliday}: ${holiday.name}`}
-                          onClick={() => setEditing(holiday)}
-                        >
-                          <IconEdit size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                      <Tooltip label={at.removeHoliday}>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          aria-label={`${at.removeHoliday}: ${holiday.name}`}
-                          onClick={() => setRemoving(holiday)}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
+                    {writer && (
+                      <Group gap={4} justify="flex-end" wrap="nowrap">
+                        <Tooltip label={at.editHoliday}>
+                          <ActionIcon
+                            variant="subtle"
+                            aria-label={`${at.editHoliday}: ${holiday.name}`}
+                            onClick={() => setEditing(holiday)}
+                          >
+                            <IconEdit size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                        <Tooltip label={at.removeHoliday}>
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            aria-label={`${at.removeHoliday}: ${holiday.name}`}
+                            onClick={() => setRemoving(holiday)}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
+                    )}
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -363,7 +384,9 @@ export function HolidaysPage() {
           </Table>
         </Table.ScrollContainer>
       )}
-      {settings.data && <SettingsCard settings={settings.data} />}
+      {showSettings && settings.data && (
+        <SettingsCard settings={settings.data} editable={can(PERM.PERSONNEL_SETTINGS, "change")} />
+      )}
       {editing && (
         <HolidayFormModal
           holiday={editing === "new" ? null : editing}

@@ -75,7 +75,8 @@ export function JobsPanel() {
                   <Table.Td ta="right">{formatNumber(job.row_count)}</Table.Td>
                   <Table.Td>{formatDateTime(job.expires_at)}</Table.Td>
                   <Table.Td>
-                    {job.can_download && (
+                    {/* Yetkisi sonradan kaldırılan kişiye bağlantı çıkmaz (§8 madde 12). */}
+                    {job.can_download && !job.download_required?.length && (
                       <Anchor href={jobDownloadUrl(job.id)}>{rt.download}</Anchor>
                     )}
                   </Table.Td>

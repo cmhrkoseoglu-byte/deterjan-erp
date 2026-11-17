@@ -36,15 +36,15 @@ import {
   type ShipmentPick,
 } from "../../api/sales";
 import type { ScanResult } from "../../api/scan";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { ScanInput, type ScanInputHandle } from "../../components/scan/ScanInput";
 import { formatDate, formatNumber } from "../../i18n/format";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ct } from "../common/strings";
 import { ExpiryText, Qty } from "../inventory/shared";
-import { PICK_ROLES, PICKABLE_STATUSES, SALES_BASE, shipmentPath } from "./config";
+import { PICKABLE_STATUSES, SALES_BASE, shipmentPath } from "./config";
 import { ShipmentStatusBadge } from "./shared";
 import { PicksTable } from "./ShipmentPage";
 import { lineRemaining, useShipmentRefresh } from "./shipmentUtils";
@@ -70,10 +70,10 @@ export function ShipmentPickPage() {
 }
 
 function Picking({ shipment }: { shipment: ShipmentDetail }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const refresh = useShipmentRefresh();
-  const canPick = hasAnyRole(user, PICK_ROLES) && PICKABLE_STATUSES.includes(shipment.status);
+  const canPick = can(PERM.SALES_PICKING, "change") && PICKABLE_STATUSES.includes(shipment.status);
   const suggestions = useQuery({
     queryKey: ["sales", "pick-suggestions", shipment.id],
     queryFn: () => shipmentSuggestions(shipment.id),

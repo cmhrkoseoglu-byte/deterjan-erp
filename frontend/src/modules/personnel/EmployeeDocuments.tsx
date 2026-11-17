@@ -32,6 +32,8 @@ import {
   type EmployeeDocumentKind,
 } from "../../api/personnel";
 import { MAX_ATTACHMENT_MB, formatSize, prepareImage } from "../../components/attachments/files";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { today } from "../inventory/config";
 import { pe, PERSONNEL_KEY } from "./strings";
@@ -57,7 +59,7 @@ function documentDetail(item: EmployeeDocument): string {
   return "";
 }
 
-function DocumentRow({ item, onRemove }: { item: EmployeeDocument; onRemove: () => void }) {
+function DocumentRow({ item, onRemove }: { item: EmployeeDocument; onRemove?: () => void }) {
   const detail = documentDetail(item);
   const ended = item.valid_until !== null && item.valid_until < today();
   const Icon = item.mime_type.startsWith("image/") ? IconPhoto : IconFileText;
@@ -93,16 +95,18 @@ function DocumentRow({ item, onRemove }: { item: EmployeeDocument; onRemove: () 
         </Text>
         {item.note && <Text size="xs">{item.note}</Text>}
       </Stack>
-      <Tooltip label={pe.removeDocument}>
-        <ActionIcon
-          variant="subtle"
-          color="red"
-          aria-label={`${pe.removeDocument}: ${item.original_name}`}
-          onClick={onRemove}
-        >
-          <IconTrash size={16} />
-        </ActionIcon>
-      </Tooltip>
+      {onRemove && (
+        <Tooltip label={pe.removeDocument}>
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            aria-label={`${pe.removeDocument}: ${item.original_name}`}
+            onClick={onRemove}
+          >
+            <IconTrash size={16} />
+          </ActionIcon>
+        </Tooltip>
+      )}
     </Group>
   );
 }
@@ -325,6 +329,8 @@ function RemoveModal({
 /** Kartın "Belgeler" bölümü: türüne göre gruplanmış liste, ekleme ve kaldırma. */
 export function EmployeeDocuments({ employee }: { employee: Employee }) {
   const queryClient = useQueryClient();
+  const { can } = useCan();
+  const writer = can(PERM.PERSONNEL_CARDS, "change");
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<EmployeeDocument | null>(null);
   const list = useQuery({
@@ -356,13 +362,15 @@ export function EmployeeDocuments({ employee }: { employee: Employee }) {
               {pe.documentsIntro}
             </Text>
           </Stack>
-          <Button
-            variant="light"
-            leftSection={<IconUpload size={16} />}
-            onClick={() => setAdding(true)}
-          >
-            {pe.addDocument}
-          </Button>
+          {writer && (
+            <Button
+              variant="light"
+              leftSection={<IconUpload size={16} />}
+              onClick={() => setAdding(true)}
+            >
+              {pe.addDocument}
+            </Button>
+          )}
         </Group>
         {list.isPending && <Loader size="sm" />}
         {list.isError && (
@@ -381,7 +389,11 @@ export function EmployeeDocuments({ employee }: { employee: Employee }) {
               {`${pe.documentKinds[group.kind]} (${group.items.length})`}
             </Text>
             {group.items.map((item) => (
-              <DocumentRow key={item.id} item={item} onRemove={() => setRemoving(item)} />
+              <DocumentRow
+                key={item.id}
+                item={item}
+                onRemove={writer ? () => setRemoving(item) : undefined}
+              />
             ))}
           </Stack>
         ))}

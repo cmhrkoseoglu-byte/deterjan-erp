@@ -27,8 +27,8 @@ import {
   type StockComparison,
 } from "../../api/golive";
 import type { ImportReport } from "../../api/masterdata";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { ReportView } from "../common/ImportModal";
 import { reportFromError } from "../common/importReport";
@@ -140,10 +140,9 @@ function NewComparisonModal({
 }
 
 export function ComparisonsTab() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const canCreate = hasAnyRole(user, ["depo", "yonetim"]);
+  const canCreate = useCan().can(PERM.GOLIVE_COMPARISONS, "change");
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const list = useQuery({

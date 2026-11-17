@@ -233,6 +233,7 @@ def test_download_rechecks_the_section(
     job = background_job(depo, "stock-movements", commit, monkeypatch)
     client = api(depo)
     assert client.get(f"{BASE}/jobs/{job.pk}/download/").status_code == 200
+    assert client.get(f"{BASE}/jobs/{job.pk}/").json()["download_required"] == []
 
     override(depo, STOCK.key)
 
@@ -244,6 +245,8 @@ def test_download_rechecks_the_section(
     # İş listesi ve ayrıntısı değişmez.
     detail = client.get(f"{BASE}/jobs/{job.pk}/").json()
     assert detail["can_download"] is True
+    # Ön yüz indirme bağlantısını eksik yetki varken göstermez (plan §8 madde 12).
+    assert detail["download_required"] == [{"key": STOCK.key, "level": VIEW}]
     assert [j["id"] for j in client.get(f"{BASE}/jobs/").json()["results"]] == [job.pk]
     # Başkasının dosyası önce 404 (yetki denetiminden önce).
     other = override(make_user(DEPO), STOCK.key)

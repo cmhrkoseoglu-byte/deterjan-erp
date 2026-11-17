@@ -11,7 +11,6 @@ import {
   type Unit,
   type Warehouse,
 } from "../../api/masterdata";
-import type { Role } from "../../api/types";
 import { formatNumber } from "../../i18n/format";
 import type { EntityConfig } from "../common/CrudPage";
 import { decimalKey, type FieldDef, type FormValues } from "../common/forms";
@@ -20,10 +19,10 @@ import { CaseGtinField, MaterialGtinField } from "./GtinFields";
 import { CountryField } from "./CountryField";
 import { LocationLabelAction, PrinterTestAction } from "./LabelTools";
 
-// Ana verileri planlama yazar (admin her yere erişir); birimleri yalnızca admin.
-// Backend'deki izinlerle aynı tutulur: apps/masterdata/api/views.py.
-const WRITE: Role[] = ["planlama"];
-const ADMIN_ONLY: Role[] = ["admin"];
+// Kartları "Ana veri kartları: Değiştirir" yazar; birimleri ve yazıcıları "Referans veriler:
+// Değiştirir" (yalnız admine verilebilir, plan §4). Backend: apps/masterdata/api/views.py.
+const CARDS = "masterdata.cards";
+const REFERENCE = "masterdata.reference";
 
 export const MATERIAL_TYPES = [
   { value: "RAW", label: "Hammadde" },
@@ -83,7 +82,7 @@ export const materialConfig: EntityConfig<Material> = {
   codeType: "masterdata.material",
   title: "Malzemeler",
   singular: "Malzeme",
-  writeRoles: WRITE,
+  writeSection: CARDS,
   importKind: "materials",
   columns: [
     codeColumn,
@@ -168,7 +167,7 @@ export const conversionConfig: EntityConfig<Conversion & { code?: string; name?:
   endpoint: "conversions",
   title: "Birim dönüşümleri",
   singular: "Birim dönüşümü",
-  writeRoles: WRITE,
+  writeSection: CARDS,
   importKind: "conversions",
   columns: [
     { key: "material", label: "Malzeme", render: (row) => row.material_code },
@@ -227,7 +226,7 @@ export const categoryConfig: EntityConfig<Category> = {
   codeType: "masterdata.materialcategory",
   title: "Kategoriler",
   singular: "Kategori",
-  writeRoles: WRITE,
+  writeSection: CARDS,
   columns: [codeColumn, nameColumn],
   fields: [code, name],
 };
@@ -236,7 +235,7 @@ export const unitConfig: EntityConfig<Unit> = {
   endpoint: "units",
   title: "Birimler",
   singular: "Birim",
-  writeRoles: ADMIN_ONLY,
+  writeSection: REFERENCE,
   columns: [
     codeColumn,
     nameColumn,
@@ -280,7 +279,7 @@ export const warehouseConfig: EntityConfig<Warehouse> = {
   codeType: "masterdata.warehouse",
   title: "Depolar",
   singular: "Depo",
-  writeRoles: WRITE,
+  writeSection: CARDS,
   importKind: "warehouses",
   columns: [codeColumn, nameColumn],
   fields: [code, name],
@@ -291,7 +290,7 @@ export const locationConfig: EntityConfig<Location> = {
   codeType: "masterdata.location",
   title: "Lokasyonlar",
   singular: "Lokasyon",
-  writeRoles: WRITE,
+  writeSection: CARDS,
   importKind: "locations",
   columns: [
     codeColumn,
@@ -329,7 +328,7 @@ export const equipmentConfig: EntityConfig<Equipment> = {
   codeTypeField: "equipment_type",
   title: "Ekipmanlar",
   singular: "Ekipman",
-  writeRoles: WRITE,
+  writeSection: CARDS,
   importKind: "equipment",
   columns: [
     codeColumn,
@@ -408,7 +407,7 @@ export const supplierConfig: EntityConfig<Partner> = {
   codeType: "masterdata.supplier",
   title: "Tedarikçiler",
   singular: "Tedarikçi",
-  writeRoles: WRITE,
+  writeSection: CARDS,
   importKind: "suppliers",
   columns: partnerColumns,
   fields: partnerFields,
@@ -420,7 +419,7 @@ export const customerConfig: EntityConfig<Partner> = {
   codeType: "masterdata.customer",
   title: "Müşteriler",
   singular: "Müşteri",
-  writeRoles: WRITE,
+  writeSection: CARDS,
   importKind: "customers",
   columns: partnerColumns,
   defaults: partnerDefaults,
@@ -441,7 +440,7 @@ export const printerConfig: EntityConfig<Printer> = {
   codeType: "masterdata.printer",
   title: "Yazıcılar",
   singular: "Yazıcı",
-  writeRoles: ADMIN_ONLY,
+  writeSection: REFERENCE,
   columns: [
     codeColumn,
     nameColumn,

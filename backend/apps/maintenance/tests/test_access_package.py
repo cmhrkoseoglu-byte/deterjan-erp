@@ -2,7 +2,7 @@
 
 Bugünkü her rol denetimi (API, servis, kayıt türü, ön yüz) planın §3.12 tablosundaki yetkiye
 eşlenir. Kişiye özel ayar yokken eski ve yeni denetim, admin dışındaki 8 rolün bütün
-bileşimlerinde aynı kararı verir. `live=` satırları koddaki rol sabitine de bağlıdır.
+bileşimlerinde aynı kararı verir.
 
 Sorumlu birim kuralı (`services._can_work`, ön yüzde `canWork`): iş emrini sorumlu rol ya da
 yönetim yürütür. Sorumlu rol iş verisidir ve rol denetimi olarak kalır (plan §4 satır kuralları);
@@ -17,7 +17,9 @@ Satır olmayanlar (rolle kalır, iş verisi):
 
 5. adımda modül bölüm denetimine geçti: API, servis ve kayıt türü satırlarının `live` bağlantısı
 kaldırıldı (`services`'teki rol sabitleri yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt
-olarak tutar. Ön yüz sabitlerine bağlantı 8. adıma kadar kalır.
+olarak tutar.
+8. adımda ön yüz de bölüm denetimine geçti: ön yüz satırlarının `live` bağlantısı kaldırıldı;
+satırlar 8. adım öncesi rol listelerini dondurulmuş olarak tutar.
 """
 
 from dataclasses import replace
@@ -48,7 +50,6 @@ from apps.maintenance.access import (
 )
 from apps.production.access import BATCHES
 
-CONFIG = "frontend:src/modules/maintenance/config.ts"
 # READ_ROLES ve DOWNTIME_ROLES; layout/menu.ts MENU "maintenance" de aynı birimlerdir.
 UNITS = ("uretim", "dolum", "laboratuvar", "planlama", "yonetim")
 PLANNERS = ("uretim", "dolum", "laboratuvar", "yonetim")  # PLAN_ROLES
@@ -267,37 +268,31 @@ ROWS = [
         "MaintenancePage TABS is-emirleri (READ_ROLES)",
         UNITS,
         level(WORK_ORDERS),
-        live=f"{CONFIG}:READ_ROLES",
     ),
     Row(
         "MaintenancePage TABS duruslar (READ_ROLES)",
         UNITS,
         level(DOWNTIMES),
-        live=f"{CONFIG}:READ_ROLES",
     ),
     Row(
         "MaintenancePage TABS planlar (READ_ROLES)",
         UNITS,
         level(PLANS),
-        live=f"{CONFIG}:READ_ROLES",
     ),
     Row(
         "MaintenancePage TABS kalibrasyon (READ_ROLES)",
         UNITS,
         level(CALIBRATION),
-        live=f"{CONFIG}:READ_ROLES",
     ),
     Row(
         "MaintenancePage TABS temizliksiz-gecisler (READ_ROLES)",
         UNITS,
         level(UNCLEANED),
-        live=f"{CONFIG}:READ_ROLES",
     ),
     Row(
         "MaintenancePage TABS ayarlar (SETTINGS_ROLES)",
         MANAGEMENT,
         level(SETTINGS),
-        live=f"{CONFIG}:SETTINGS_ROLES",
     ),
     Row(
         "MaintenancePage başlıktaki BreakdownButton (koşulsuz; sayfa koruması)",
@@ -308,31 +303,26 @@ ROWS = [
         "MaintenancePage WorkOrdersTab yeni iş emri düğmesi (PLAN_ROLES)",
         PLANNERS,
         level(PLANS, CHANGE),
-        live=f"{CONFIG}:PLAN_ROLES",
     ),
     Row(
         "MaintenancePage PlansTab yeni plan, düzenle, etkinleştir ve pasife al (PLAN_ROLES)",
         PLANNERS,
         level(PLANS, CHANGE),
-        live=f"{CONFIG}:PLAN_ROLES",
     ),
     Row(
         "MaintenancePage DowntimesTab duruş başlat düğmesi (DOWNTIME_ROLES)",
         UNITS,
         level(DOWNTIMES, CHANGE),
-        live=f"{CONFIG}:DOWNTIME_ROLES",
     ),
     Row(
         "MaintenancePage OpenDowntimes duruşu bitir düğmesi (DOWNTIME_ROLES)",
         UNITS,
         level(DOWNTIMES, CHANGE),
-        live=f"{CONFIG}:DOWNTIME_ROLES",
     ),
     Row(
         "MaintenancePage ChangeoversTab yeni kural, etkinleştir ve pasife al (CHANGEOVER_ROLES)",
         LAB,
         level(UNCLEANED, CHANGE),
-        live=f"{CONFIG}:CHANGEOVER_ROLES",
     ),
     Row(
         "config.ts canWork yönetim istisnası (WorkOrderPage işe başla, parça, tamamla, iptal)",

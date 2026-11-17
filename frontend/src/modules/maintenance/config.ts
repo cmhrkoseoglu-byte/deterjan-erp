@@ -5,27 +5,24 @@ import type {
   WorkOrder,
   WorkOrderStatus,
 } from "../../api/maintenance";
-import type { CurrentUser, Role } from "../../api/types";
-import { hasAnyRole } from "../../auth/roles";
+import type { CurrentUser } from "../../api/types";
+import { can } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 
-// Yetkiler backend ile aynıdır (apps/maintenance/services.py); arayüz yalnızca düğmeleri gizler.
-/** Bakım planı ve elle iş emri açar. */
-export const PLAN_ROLES: Role[] = ["uretim", "dolum", "laboratuvar", "yonetim"];
-/** Duruş başlatır / bitirir. */
-export const DOWNTIME_ROLES: Role[] = ["uretim", "dolum", "laboratuvar", "planlama", "yonetim"];
-/** Bakım ekranlarını görür. */
-export const READ_ROLES: Role[] = ["uretim", "dolum", "laboratuvar", "planlama", "yonetim"];
-/** Temizliksiz geçişleri tanımlar (Karar D-14). */
-export const CHANGEOVER_ROLES: Role[] = ["laboratuvar"];
-export const SETTINGS_ROLES: Role[] = ["yonetim"];
+// Düğme ve sekmeler bölüm yetkisine bakar (`auth/access`); asıl denetim backend'dedir.
 
 export const MAINTENANCE_BASE = "/bakim";
 export const workOrderPath = (id: number) => `${MAINTENANCE_BASE}/is-emirleri/${id}`;
 
-/** İş emrini sorumlu birim ya da yönetim yürütür. */
+/**
+ * İş emrini yürütür mü: Bakım iş emirleri: Değiştirir ve sorumlu birim (iş emrinin sorumlu rolü)
+ * ya da "Tüm birimlerin iş emirlerini yürütme" (backend `services._can_work`). Sorumlu rol iş
+ * verisidir, rol denetimi olarak kalır (plan §4).
+ */
 export function canWork(user: CurrentUser | null, order: Pick<WorkOrder, "responsible_role">) {
-  const roles: Role[] = order.responsible_role ? [order.responsible_role, "yonetim"] : ["yonetim"];
-  return hasAnyRole(user, roles);
+  if (!user || !can(user, PERM.MAINTENANCE_WORK_ORDERS, "change")) return false;
+  if (can(user, PERM.MAINTENANCE_ANY_UNIT, "change")) return true;
+  return Boolean(order.responsible_role && user.roles.includes(order.responsible_role));
 }
 
 export const WORK_ORDER_STATUS_COLOR: Record<WorkOrderStatus, string> = {

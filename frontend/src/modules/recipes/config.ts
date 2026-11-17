@@ -1,9 +1,6 @@
-import type { Role } from "../../api/types";
 import type { FieldDef } from "../common/forms";
 import { rt } from "./strings";
 
-// Reçeteyi planlama ve laboratuvar yazar (admin her yere erişir); backend: apps/recipes/api/views.py.
-export const RECIPE_WRITE_ROLES: Role[] = ["planlama", "laboratuvar"];
 export const RECIPES_BASE = "/receteler";
 
 export const recipeFields: FieldDef[] = [

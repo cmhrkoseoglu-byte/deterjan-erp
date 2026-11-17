@@ -39,6 +39,8 @@ import {
   type PersonnelCostReport,
   type StageCost,
 } from "../../api/costing";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate, formatMoney, formatNumber } from "../../i18n/format";
 import { PAYROLL_BASE, WAGES_BASE } from "../personnel/strings";
 import { CostCentersSection } from "./PersonnelCostSettings";
@@ -168,6 +170,9 @@ function ReportView({
   report: PersonnelCostReport;
   onRate: (stage: CostStage) => void;
 }) {
+  const { can } = useCan();
+  // İşçilik oranı eklemek Personel maliyeti ve Gider oranları: Değiştirir ister (backend).
+  const canRate = can(PERM.COSTING_PERSONNEL_COST, "change") && can(PERM.COSTING_RATES, "change");
   // Ücreti eksik kişi Ücretler'e (ayrılan varsa ayrılanlarla), rakamı girilmemiş mali müşavir
   // kişisi Bordro'ya yönlendirilir (orada ücret kullanılmaz).
   const wageMissing = report.rows.filter((row) => row.missing_wage && !row.payroll_external);
@@ -245,7 +250,7 @@ function ReportView({
           {
             label: "",
             render: (r) => {
-              if (!isRated(r)) return null;
+              if (!isRated(r) || !canRate) return null;
               const blocker = rateBlocker(report, r);
               // Neden yazıyla da görünür (dokunmatik ekranda ve klavyede ipucu açılmaz); onay
               // eksikliği zaten üstteki uyarıda yazar.

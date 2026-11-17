@@ -62,9 +62,9 @@ import {
   type WasteRecord,
 } from "../../api/hse";
 import { listRecords, type Material, type Partner } from "../../api/masterdata";
-import type { Role } from "../../api/types";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { PERM, type PermKey } from "../../auth/access.gen";
+import { ForbiddenPage } from "../../pages/ForbiddenPage";
 import { AttachmentPanel } from "../../components/attachments/AttachmentPanel";
 import { WithHazard } from "../../components/hazard/HazardIcon";
 import { useStandardOptions, withValue } from "../../components/standards/useStandardOptions";
@@ -79,14 +79,9 @@ import { idOrNull, useLocations } from "../inventory/options";
 import { Info } from "../inventory/shared";
 import {
   HAZARD_CLASSES,
-  HAZARD_ROLES,
   HSE_BASE,
-  HSE_ROLES,
-  INCIDENT_ROLES,
   INCIDENT_TYPES,
   OPEN_INCIDENT_STATUSES,
-  SDS_READ_ROLES,
-  STORAGE_READ_ROLES,
   incidentPath,
 } from "./config";
 import { IncidentReportButton } from "./IncidentReportModal";
@@ -276,7 +271,7 @@ const STATUS_OPTIONS = [
 ];
 
 function IncidentsTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
@@ -363,7 +358,7 @@ function IncidentsTab() {
           }}
         />
       </Group>
-      {!hasAnyRole(user, HSE_ROLES) && (
+      {!can(PERM.HSE_INCIDENTS) && (
         <Text size="sm" c="dimmed">
           {hs.onlyOwn}
         </Text>
@@ -384,8 +379,7 @@ function IncidentsTab() {
 // --- GBF ---
 
 function SdsModal({ sheet, onClose }: { sheet: SafetyDataSheet | null; onClose: () => void }) {
-  const { user } = useAuth();
-  const writer = hasAnyRole(user, HSE_ROLES);
+  const writer = useCan().can(PERM.HSE_SDS, "change");
   const materials = useMaterialSelect();
   const suppliers = useSupplierSelect();
   const { languages } = useStandardOptions();
@@ -597,7 +591,7 @@ function SdsGapReport() {
 }
 
 function SdsTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const materials = useMaterialSelect();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
@@ -652,7 +646,7 @@ function SdsTab() {
       <SdsGapReport />
       <Group justify="space-between">
         <Title order={4}>{hs.sdsArchive}</Title>
-        {hasAnyRole(user, HSE_ROLES) && (
+        {can(PERM.HSE_SDS, "change") && (
           <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing("new")}>
             {hs.newSds}
           </Button>
@@ -711,7 +705,7 @@ function SdsTab() {
 // --- tehlike bilgileri ---
 
 function HazardsTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const materials = useMaterialSelect();
   const materialRows = useMaterialOptions();
   const [search, setSearch] = useState("");
@@ -788,7 +782,7 @@ function HazardsTab() {
             }}
           />
         </Group>
-        {hasAnyRole(user, HAZARD_ROLES) && (
+        {can(PERM.HSE_HAZARDS, "change") && (
           <Select
             aria-label={hs.selectMaterial}
             placeholder={hs.selectMaterial}
@@ -886,8 +880,7 @@ function StatementModal({
 }
 
 function StatementsTab() {
-  const { user } = useAuth();
-  const writer = hasAnyRole(user, HAZARD_ROLES);
+  const writer = useCan().can(PERM.HSE_HAZARDS, "change");
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
   const [kind, setKind] = useState<string | null>(null);
@@ -1060,8 +1053,7 @@ function StorageLimitModal({
 }
 
 function StorageTab() {
-  const { user } = useAuth();
-  const writer = hasAnyRole(user, HSE_ROLES);
+  const writer = useCan().can(PERM.HSE_STORAGE, "change");
   const locations = useLocations();
   const [location, setLocation] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
@@ -1427,6 +1419,7 @@ function ContractorModal({
 }
 
 function ContractorsSection() {
+  const writer = useCan().can(PERM.HSE_WASTE, "change");
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<WasteContractor | "new" | null>(null);
   const params = { page_size: 500, is_active: showInactive ? undefined : true };
@@ -1447,13 +1440,15 @@ function ContractorsSection() {
             onChange={(event) => setShowInactive(event.currentTarget.checked)}
           />
         </Group>
-        <Button
-          variant="light"
-          leftSection={<IconPlus size={16} />}
-          onClick={() => setEditing("new")}
-        >
-          {hs.newContractor}
-        </Button>
+        {writer && (
+          <Button
+            variant="light"
+            leftSection={<IconPlus size={16} />}
+            onClick={() => setEditing("new")}
+          >
+            {hs.newContractor}
+          </Button>
+        )}
       </Group>
       <ErrorAlert error={query.error} />
       <Table.ScrollContainer minWidth={640}>
@@ -1489,12 +1484,14 @@ function ContractorsSection() {
                   <ActiveBadge active={row.is_active} />
                 </Table.Td>
                 <Table.Td>
-                  <Group gap={4} wrap="nowrap">
-                    <Button size="compact-xs" variant="light" onClick={() => setEditing(row)}>
-                      {hs.edit}
-                    </Button>
-                    <ToggleButton row={row} toggle={toggle} />
-                  </Group>
+                  {writer && (
+                    <Group gap={4} wrap="nowrap">
+                      <Button size="compact-xs" variant="light" onClick={() => setEditing(row)}>
+                        {hs.edit}
+                      </Button>
+                      <ToggleButton row={row} toggle={toggle} />
+                    </Group>
+                  )}
                 </Table.Td>
               </Table.Tr>
             ))}
@@ -1513,6 +1510,7 @@ function ContractorsSection() {
 }
 
 function WasteTab() {
+  const writer = useCan().can(PERM.HSE_WASTE, "change");
   const contractors = useQuery({
     queryKey: ["hse", "contractors", "options"],
     queryFn: () => listContractors({ page_size: 500 }),
@@ -1568,9 +1566,11 @@ function WasteTab() {
     <Stack>
       <Group justify="space-between">
         <Title order={4}>{hs.wasteRecords}</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>
-          {hs.newWaste}
-        </Button>
+        {writer && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>
+            {hs.newWaste}
+          </Button>
+        )}
       </Group>
       <Group align="flex-end">
         <Select
@@ -1745,9 +1745,12 @@ function SummaryTab() {
 
 function SettingsForm({
   initial,
+  editable,
   onSaved,
 }: {
   initial: HseSettings;
+  /** İSG ayarları: Değiştirir yoksa salt okunur. */
+  editable: boolean;
   onSaved: (saved: HseSettings) => void;
 }) {
   const [months, setMonths] = useState(String(initial.sds_max_age_months));
@@ -1764,25 +1767,29 @@ function SettingsForm({
           label={hs.sdsMaxAge}
           description={hs.sdsMaxAgeHint}
           inputMode="numeric"
+          readOnly={!editable}
           value={months}
           onChange={(event) => setMonths(event.currentTarget.value)}
         />
         <ErrorAlert error={error} />
-        <Group justify="flex-end">
-          <Button
-            disabled={!valid}
-            loading={mutation.isPending}
-            onClick={() => mutation.mutate(undefined)}
-          >
-            {hs.save}
-          </Button>
-        </Group>
+        {editable && (
+          <Group justify="flex-end">
+            <Button
+              disabled={!valid}
+              loading={mutation.isPending}
+              onClick={() => mutation.mutate(undefined)}
+            >
+              {hs.save}
+            </Button>
+          </Group>
+        )}
       </Stack>
     </Paper>
   );
 }
 
 function SettingsTab() {
+  const { can } = useCan();
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["hse", "settings"], queryFn: getHseSettings });
   if (query.isLoading) return null;
@@ -1790,6 +1797,7 @@ function SettingsTab() {
   return (
     <SettingsForm
       initial={query.data}
+      editable={can(PERM.HSE_SETTINGS, "change")}
       onSaved={(saved) => queryClient.setQueryData(["hse", "settings"], saved)}
     />
   );
@@ -1798,7 +1806,8 @@ function SettingsTab() {
 interface TabDef {
   slug: string;
   label: string;
-  roles: readonly Role[];
+  /** Sekmeyi açan bölümler (birinin Görür'ü yeter). */
+  sections: PermKey[];
   render: () => ReactNode;
 }
 
@@ -1806,29 +1815,52 @@ const TABS: TabDef[] = [
   {
     slug: "olaylar",
     label: hs.tabs.incidents,
-    roles: INCIDENT_ROLES,
+    // Olay bildirimi (kendi olayları) ya da Olaylar ve kazalar (bütün olaylar), plan §3.13.
+    sections: [PERM.HSE_INCIDENT_REPORT, PERM.HSE_INCIDENTS],
     render: () => <IncidentsTab />,
   },
-  { slug: "gbf", label: hs.tabs.sds, roles: SDS_READ_ROLES, render: () => <SdsTab /> },
-  { slug: "tehlike", label: hs.tabs.hazards, roles: [], render: () => <HazardsTab /> },
-  { slug: "ifadeler", label: hs.tabs.statements, roles: [], render: () => <StatementsTab /> },
+  { slug: "gbf", label: hs.tabs.sds, sections: [PERM.HSE_SDS], render: () => <SdsTab /> },
+  {
+    slug: "tehlike",
+    label: hs.tabs.hazards,
+    sections: [PERM.HSE_HAZARDS],
+    render: () => <HazardsTab />,
+  },
+  {
+    slug: "ifadeler",
+    label: hs.tabs.statements,
+    sections: [PERM.HSE_HAZARDS],
+    render: () => <StatementsTab />,
+  },
   {
     slug: "depolama",
     label: hs.tabs.storage,
-    roles: STORAGE_READ_ROLES,
+    sections: [PERM.HSE_STORAGE],
     render: () => <StorageTab />,
   },
-  { slug: "atik", label: hs.tabs.waste, roles: HSE_ROLES, render: () => <WasteTab /> },
-  { slug: "ozet", label: hs.tabs.summary, roles: HSE_ROLES, render: () => <SummaryTab /> },
-  { slug: "ayarlar", label: hs.tabs.settings, roles: HSE_ROLES, render: () => <SettingsTab /> },
+  { slug: "atik", label: hs.tabs.waste, sections: [PERM.HSE_WASTE], render: () => <WasteTab /> },
+  {
+    slug: "ozet",
+    label: hs.tabs.summary,
+    sections: [PERM.HSE_SUMMARY],
+    render: () => <SummaryTab />,
+  },
+  {
+    slug: "ayarlar",
+    label: hs.tabs.settings,
+    sections: [PERM.HSE_SETTINGS],
+    render: () => <SettingsTab />,
+  },
 ];
 
 /** İSG: sekmeler (`/isg/<sekme>`). Olay bildirimi her rolde açıktır. */
 export function HsePage() {
   const { tab } = useParams();
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
-  const visible = TABS.filter((item) => hasAnyRole(user, item.roles));
+  const visible = TABS.filter((item) => item.sections.some((section) => can(section)));
+  // Sekmesiz adres ilk görünen sekmeyi açar; görünmeyen sekmenin adresi /isg'ye döner.
+  if (visible.length === 0) return <ForbiddenPage />;
   const current = tab ? visible.find((item) => item.slug === tab) : visible[0];
   if (!current) return <Navigate to={HSE_BASE} replace />;
 
@@ -1836,7 +1868,9 @@ export function HsePage() {
     <Stack>
       <Group justify="space-between">
         <Title order={2}>{hs.title}</Title>
-        <IncidentReportButton onSaved={(incident) => navigate(incidentPath(incident.id))} />
+        {can(PERM.HSE_INCIDENT_REPORT, "change") && (
+          <IncidentReportButton onSaved={(incident) => navigate(incidentPath(incident.id))} />
+        )}
       </Group>
       <Tabs value={current.slug} onChange={(value) => value && navigate(`${HSE_BASE}/${value}`)}>
         <Tabs.List style={{ overflowX: "auto", flexWrap: "nowrap" }}>

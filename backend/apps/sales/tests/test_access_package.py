@@ -2,7 +2,7 @@
 
 Bugünkü her rol denetimi (API, servis, kayıt türü, ön yüz) planın §3.7 tablosundaki yetkiye
 eşlenir. Kişiye özel ayar yokken eski ve yeni denetim, admin dışındaki 8 rolün bütün
-bileşimlerinde aynı kararı verir. `live=` satırları koddaki rol sabitine de bağlıdır.
+bileşimlerinde aynı kararı verir.
 
 Satır olmayanlar:
 - `SalesPage` varsayılan sekmesi (depo ve sipariş yazmayan kişi toplamaya düşer) rol
@@ -11,15 +11,15 @@ Satır olmayanlar:
   `services.release_unusable_lot`) bugün de denetimsizdir; plan §5.4 giriş noktası kuralı.
 
 5. adımda modül bölüm denetimine geçti: API ve servis satırlarının `live` bağlantısı kaldırıldı
-(sabitler yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar. Ön yüz
-sabitlerine bağlantı 8. adıma kadar kalır.
+(sabitler yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar.
+8. adımda ön yüz de bölüm denetimine geçti: ön yüz satırlarının `live` bağlantısı kaldırıldı;
+satırlar 8. adım öncesi rol listelerini dondurulmuş olarak tutar.
 """
 
 from apps.core.access import APPROVE, CHANGE, VIEW
 from apps.core.tests.access_helpers import Row, any_of, assert_rows, level, read
 from apps.sales.access import ORDERS, PICKING, SHIPMENTS, SHIPPED_LOTS
 
-CONFIG = "frontend:src/modules/sales/config.ts"
 # Eski api/views.py READ_ROLES; layout/menu.ts MENU "sales" ve routes.tsx `salesPage` koruması da
 # aynı.
 READERS = ("sevkiyat", "yonetim", "planlama", "depo")
@@ -251,86 +251,72 @@ ROWS = [
         "SalesPage TABS toplama (PICK_ROLES)",
         PICKERS,
         level(PICKING, VIEW),
-        live=f"{CONFIG}:PICK_ROLES",
     ),
     Row("SalesPage TABS musteriler (roles: [])", READERS, level(ORDERS, VIEW)),
     Row(
         "SalesPage OrdersTab yeni sipariş düğmesi (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage taslak düzenleme formu ve taslağı kaydet (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage onayla düğmesi (ORDER_WRITE_ROLES, taslak)",
         ORDER_WRITERS,
         level(ORDERS, APPROVE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage rezervasyon: eksikleri rezerve et, elle rezerve, bırak (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage siparişi kapat düğmesi (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage iptal düğmesi taslak siparişte (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage iptal düğmesi onaylı siparişte (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, APPROVE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage sevkiyat planla düğmesi (SHIPMENT_WRITE_ROLES)",
         SHIPPERS,
         level(SHIPMENTS, CHANGE),
-        live=f"{CONFIG}:SHIPMENT_WRITE_ROLES",
     ),
     Row(
         "ShipmentPage başlığı düzenle ve iptal düğmeleri (SHIPMENT_WRITE_ROLES)",
         SHIPPERS,
         level(SHIPMENTS, CHANGE),
-        live=f"{CONFIG}:SHIPMENT_WRITE_ROLES",
     ),
     Row(
         "ShipmentPage sevki onayla düğmesi (SHIPMENT_WRITE_ROLES)",
         SHIPPERS,
         level(SHIPMENTS, APPROVE),
-        live=f"{CONFIG}:SHIPMENT_WRITE_ROLES",
     ),
     Row(
         "ShipmentPage toplamayı aç, yükleme tamam, okutmayı geri al (PICK_ROLES)",
         PICKERS,
         level(PICKING, CHANGE),
-        live=f"{CONFIG}:PICK_ROLES",
     ),
     Row(
         "PickPage okutma, öneri sorgusu, okutmayı geri al, yükleme tamam (PICK_ROLES)",
         PICKERS,
         level(PICKING, CHANGE),
-        live=f"{CONFIG}:PICK_ROLES",
     ),
     Row(
         "CustomerPage sevk edilen lotlar paneli (SHIPPED_LOT_ROLES)",
         ("sevkiyat", "yonetim"),
         level(SHIPPED_LOTS, VIEW),
-        live=f"{CONFIG}:SHIPPED_LOT_ROLES",
     ),
 ]
 

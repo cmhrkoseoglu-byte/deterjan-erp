@@ -22,22 +22,21 @@ import {
   uploadRecipeImport,
   type Recipe,
 } from "../../api/recipes";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { ActiveBadge } from "../common/ActiveBadge";
 import { ImportModal } from "../common/ImportModal";
 import { RecordFormModal } from "../common/RecordFormModal";
 import { ct } from "../common/strings";
-import { RECIPE_WRITE_ROLES, RECIPES_BASE, recipeFields } from "./config";
+import { RECIPES_BASE, recipeFields } from "./config";
 import { rt } from "./strings";
 
 const PAGE_SIZE = 50;
 
 export function RecipeListPage() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const canWrite = hasAnyRole(user, RECIPE_WRITE_ROLES);
+  const canWrite = can("recipes.recipes", "change");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);

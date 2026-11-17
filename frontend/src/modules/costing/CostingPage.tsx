@@ -42,6 +42,9 @@ import {
   type TopMaterialRow,
 } from "../../api/costing";
 import type { MaterialType } from "../../api/masterdata";
+import { useCan } from "../../auth/access";
+import { PERM, type PermKey } from "../../auth/access.gen";
+import { ForbiddenPage } from "../../pages/ForbiddenPage";
 import { formatDate, formatMoney, formatNumber } from "../../i18n/format";
 import { ActiveBadge } from "../common/ActiveBadge";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
@@ -64,12 +67,20 @@ const TABS = {
   personnel: "personel",
 } as const;
 type TabKey = keyof typeof TABS;
+/** Sekmeyi açan bölüm (Görür). */
+const TAB_SECTIONS: Record<TabKey, PermKey> = {
+  lots: PERM.COSTING_LOT_COSTS,
+  reports: PERM.COSTING_LOT_COSTS,
+  rates: PERM.COSTING_RATES,
+  standard: PERM.COSTING_RATES,
+  personnel: PERM.COSTING_PERSONNEL_COST,
+};
 const PAGE_SIZE = 50;
 // Eski "Personel ücretleri" sekmesi: ücretler Personel > Ücretler'e taşındı (2026-11-01).
 const OLD_WAGES_TAB = "ucretler";
 
-function tabFromPath(value: string | undefined): TabKey {
-  return (Object.keys(TABS) as TabKey[]).find((key) => TABS[key] === value) ?? "lots";
+function tabFromPath(value: string | undefined): TabKey | undefined {
+  return (Object.keys(TABS) as TabKey[]).find((key) => TABS[key] === value);
 }
 
 /** Maliyet (yalnızca yönetim ve admin): lot maliyetleri, raporlar, gider oranları, standart
@@ -77,10 +88,17 @@ function tabFromPath(value: string | undefined): TabKey {
 export function CostingPage() {
   const param = useParams().tab;
   const { search } = useLocation();
-  const tab = tabFromPath(param);
+  const { can } = useCan();
   const navigate = useNavigate();
   // Yer imi ya da eski bağlantı: ayrılanlar süzgeciyle birlikte yeni sekmeye.
   if (param === OLD_WAGES_TAB) return <Navigate to={`${WAGES_BASE}${search}`} replace />;
+  const visible = (Object.keys(TABS) as TabKey[]).filter((key) => can(TAB_SECTIONS[key]));
+  // Varsayılan lot maliyetleri; görünmüyorsa ilk görünen sekme, hiçbiri yoksa "Yetkiniz yok".
+  const fallback = visible.includes("lots") ? "lots" : visible[0];
+  if (!fallback) return <ForbiddenPage />;
+  const requested = tabFromPath(param);
+  if (requested && !visible.includes(requested)) return <Navigate to={COSTING_BASE} replace />;
+  const tab = requested ?? fallback;
   return (
     <Stack>
       <Title order={2}>{kt.title}</Title>
@@ -89,7 +107,7 @@ export function CostingPage() {
         onChange={(value) => value && navigate(`${COSTING_BASE}/${TABS[value as TabKey]}`)}
       >
         <Tabs.List>
-          {(Object.keys(TABS) as TabKey[]).map((key) => (
+          {visible.map((key) => (
             <Tabs.Tab key={key} value={key}>
               {kt.tabs[key]}
             </Tabs.Tab>
@@ -499,6 +517,8 @@ function activeRateIds(rates: CostRate[]): Set<number> {
 }
 
 function RatesPanel() {
+  const { can } = useCan();
+  const writer = can(PERM.COSTING_RATES, "change");
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["costing", "rates"], queryFn: listRates });
   const [open, setOpen] = useState(false);
@@ -526,9 +546,11 @@ function RatesPanel() {
         <Text size="sm" c="dimmed" maw={720}>
           {kt.ratesHint}
         </Text>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setOpen(true)}>
-          {kt.addRate}
-        </Button>
+        {writer && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setOpen(true)}>
+            {kt.addRate}
+          </Button>
+        )}
       </Group>
       {query.isError && <ErrorAlert error={query.error} />}
       <ReportTable
@@ -617,6 +639,8 @@ function RatesPanel() {
 // --- standart maliyetler --------------------------------------------------------------------
 
 function StandardCostsPanel() {
+  const { can } = useCan();
+  const writer = can(PERM.COSTING_RATES, "change");
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const query = useQuery({
@@ -666,9 +690,11 @@ function StandardCostsPanel() {
         <Text size="sm" c="dimmed" maw={720}>
           {kt.standardHint}
         </Text>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => openForm("new")}>
-          {kt.addStandard}
-        </Button>
+        {writer && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => openForm("new")}>
+            {kt.addStandard}
+          </Button>
+        )}
       </Group>
       {query.isError && <ErrorAlert error={query.error} />}
       {toggle.isError && <ErrorAlert error={toggle.error} />}
@@ -684,19 +710,23 @@ function StandardCostsPanel() {
           },
           { label: kt.note, render: (r) => r.note },
           { label: "", render: (r) => <ActiveBadge active={r.is_active} /> },
-          {
-            label: " ",
-            render: (r) => (
-              <Group gap="xs" justify="flex-end" wrap="nowrap">
-                <Button size="xs" variant="subtle" onClick={() => openForm(r)}>
-                  {kt.edit}
-                </Button>
-                <Button size="xs" variant="subtle" onClick={() => toggle.mutate(r)}>
-                  {r.is_active ? kt.deactivate : kt.activate}
-                </Button>
-              </Group>
-            ),
-          },
+          ...(writer
+            ? [
+                {
+                  label: " ",
+                  render: (r: StandardCost) => (
+                    <Group gap="xs" justify="flex-end" wrap="nowrap">
+                      <Button size="xs" variant="subtle" onClick={() => openForm(r)}>
+                        {kt.edit}
+                      </Button>
+                      <Button size="xs" variant="subtle" onClick={() => toggle.mutate(r)}>
+                        {r.is_active ? kt.deactivate : kt.activate}
+                      </Button>
+                    </Group>
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
       {pages > 1 && <Pagination value={page} onChange={setPage} total={pages} />}

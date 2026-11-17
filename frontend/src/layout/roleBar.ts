@@ -1,7 +1,9 @@
 import type { CurrentUser, Role } from "../api/types";
+import { isAdminUser } from "../auth/access";
 
 export interface RoleBar {
-  role: Role;
+  /** Rol ya da rolü olmayan (admin olmayan) kullanıcı için "neutral". */
+  role: Role | "neutral";
   /** Degradenin başı (solda marka yazısının altı) ve sonu. */
   from: string;
   to: string;
@@ -25,7 +27,15 @@ export const ROLE_BARS: readonly RoleBar[] = [
   { role: "satin_alma", from: "#be185d", to: "#db2777" },
 ];
 
-/** Kullanıcının üst çubuk rengi; rolü olmayan süper kullanıcı sistem yöneticisi rengini alır. */
+/** Rolü olmayan kullanıcının nötr rengi (plan §8 madde 1). */
+export const NEUTRAL_BAR: RoleBar = { role: "neutral", from: "#374151", to: "#4b5563" };
+
+/**
+ * Kullanıcının üst çubuk rengi (rol görünümü). Rolü olmayan süper kullanıcı sistem yöneticisi
+ * rengini, rolü olmayan diğer kullanıcılar nötr rengi alır (plan §8 madde 1).
+ */
 export function roleBar(user: CurrentUser | null): RoleBar {
-  return ROLE_BARS.find((bar) => user?.roles.includes(bar.role)) ?? ROLE_BARS[0];
+  const bar = ROLE_BARS.find((item) => user?.roles.includes(item.role as Role));
+  if (bar) return bar;
+  return user && !isAdminUser(user) ? NEUTRAL_BAR : ROLE_BARS[0];
 }

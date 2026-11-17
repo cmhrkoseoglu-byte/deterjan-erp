@@ -2,7 +2,7 @@
 
 Bugünkü her rol denetimi (API, servis, kayıt türü, ön yüz) planın §3.4 tablosundaki yetkiye
 eşlenir. Kişiye özel ayar yokken eski ve yeni denetim, admin dışındaki 8 rolün bütün
-bileşimlerinde aynı kararı verir. `live=` satırları koddaki rol sabitine de bağlıdır.
+bileşimlerinde aynı kararı verir.
 
 Satır olmayanlar:
 - `ProductionPage` varsayılan sekme sırası rol görünümüdür (plan §5.9), rolle kalır.
@@ -14,15 +14,15 @@ Satır olmayanlar:
   satırı aşağıdadır.
 
 3. adımda modül bölüm denetimine geçti: servis satırlarının `live` bağlantısı kaldırıldı (sabitler
-yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar. Ön yüz sabitlerine
-bağlantı 8. adıma kadar kalır.
+yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar.
+8. adımda ön yüz de bölüm denetimine geçti: ön yüz satırlarının `live` bağlantısı kaldırıldı;
+satırlar 8. adım öncesi rol listelerini dondurulmuş olarak tutar.
 """
 
 from apps.core.access import APPROVE, CHANGE, VIEW
 from apps.core.tests.access_helpers import SIGNED_IN, Row, any_of, assert_rows, level, read
 from apps.production.access import BATCHES, ORDERS, PREP
 
-CONFIG = "frontend:src/modules/production/config.ts"
 # layout/menu.ts MENU "production": menü öğesi ve routes.tsx `productionPage` koruması.
 MENU_ROLES = ("uretim", "planlama", "depo", "yonetim")
 PLANNER = ("planlama",)
@@ -148,68 +148,57 @@ ROWS = [
         "ProductionPage TABS hazirlama (PREP_ROLES)",
         WAREHOUSE,
         level(PREP, VIEW),
-        live=f"{CONFIG}:PREP_ROLES",
     ),
     Row("ProductionPage TABS sarjlar (roles: [])", MENU_ROLES, level(BATCHES, VIEW)),
     Row(
         "ProductionPage OrdersTab yeni emir düğmesi (ORDER_ROLES)",
         PLANNER,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_ROLES",
     ),
     Row(
         "OrderPage onayla düğmesi (ORDER_ROLES, taslak)",
         PLANNER,
         level(ORDERS, APPROVE),
-        live=f"{CONFIG}:ORDER_ROLES",
     ),
     Row(
         "OrderPage taslak düzenleme formu (ORDER_ROLES)",
         PLANNER,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_ROLES",
     ),
     Row(
         "OrderPage iptal düğmesi taslak emirde (ORDER_ROLES)",
         PLANNER,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_ROLES",
     ),
     Row(
         "OrderPage iptal düğmesi onaylı ya da hazırlıktaki emirde (ORDER_ROLES)",
         PLANNER,
         level(ORDERS, APPROVE),
-        live=f"{CONFIG}:ORDER_ROLES",
     ),
     Row(
         "OrderPage hazırlama sayfası düğmesi (PREP_ROLES)",
         WAREHOUSE,
         level(PREP, VIEW),
-        live=f"{CONFIG}:PREP_ROLES",
     ),
     Row(
         "OrderPage şarj başlat düğmesi (BATCH_ROLES)",
         OPERATOR,
         level(BATCHES, CHANGE),
-        live=f"{CONFIG}:BATCH_ROLES",
     ),
     Row(
         "PrepPage okutma formu (PREP_ROLES)",
         WAREHOUSE,
         level(PREP, CHANGE),
-        live=f"{CONFIG}:PREP_ROLES",
     ),
     Row(
         "PrepPage hazır bildir düğmesi (PREP_ROLES)",
         WAREHOUSE,
         level(PREP, CHANGE),
-        live=f"{CONFIG}:PREP_ROLES",
     ),
     Row(
         "BatchPage tartım, bitir ve iptal (BATCH_ROLES)",
         OPERATOR,
         level(BATCHES, CHANGE),
-        live=f"{CONFIG}:BATCH_ROLES",
     ),
 ]
 

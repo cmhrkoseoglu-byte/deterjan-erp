@@ -15,9 +15,11 @@ aynı kararı verdiği kanıtlanır.
 
 6. adımda modül bölüm denetimine geçti: arka uç satırlarının koddaki rol sabitlerine bağlantısı
 kaldırıldı (sabitler yok); satırlar eski rollerin kataloğa denkliğini kayıt olarak tutar, koddaki
-bölümleri `test_code_uses_the_sections` denetler. Ön yüz sabitlerine bağlantı 8. adıma kadar
-kalır. `menuRoles(...)` satırları kabuğun `MENU_ROLES` tablosunu kullanır
-(`apps/core/tests/test_access_package_shell.py`).
+bölümleri `test_code_uses_the_sections` denetler. 8. adımda ön yüz de rol sabitlerini bıraktı
+(`APPROVAL_ROLES`, `ORDER_READ_ROLES`, `menuRoles`): satırlar dondurulmuş rol listeleriyle kalır,
+`menuRoles(...)` satırları kabuğun dondurulmuş `MENU_ROLES` tablosunu kullanır
+(`apps/core/tests/test_access_package_shell.py`); ön yüzün aynı kararı verdiğini ön yüz eşlik
+testi (`dashboardLinks`) kanıtlar.
 """
 
 from apps.core.access import APPROVE, COSTS, PRICES
@@ -168,19 +170,16 @@ ROWS: list[Row] = [
         "Dashboards.tsx Approvals /kalite/onay kartı (APPROVAL_ROLES)",
         ("yonetim",),
         page("quality", quality.CONDITIONAL),
-        live="frontend:src/modules/quality/config.ts:APPROVAL_ROLES",
     ),
     Row(
         "Dashboards.tsx Approvals /satin-alma/siparisler kartı (ORDER_READ_ROLES)",
         ("satin_alma", "yonetim", "depo"),
         page("purchasing", purchasing.ORDERS),
-        live="frontend:src/modules/purchasing/config.ts:ORDER_READ_ROLES",
     ),
     Row(
         "Dashboards.tsx ManagementView başlığı 'Onayınızı bekleyenler' (APPROVAL_ROLES)",
         ("yonetim",),
         any_of(level(quality.CONDITIONAL, APPROVE), level(purchasing.OVER_LIMIT, APPROVE)),
-        live="frontend:src/modules/quality/config.ts:APPROVAL_ROLES",
     ),
     # menuRoles("hse") giriş yapan herkes; bağlantı yalnız yönetim panosunda çizilir (rolsüz kişi
     # panoyu açamaz, §8 madde 1 burada görünmez).

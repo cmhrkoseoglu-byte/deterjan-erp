@@ -38,8 +38,8 @@ import {
   type ShipmentLine,
   type ShipmentPick,
 } from "../../api/sales";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
@@ -48,12 +48,10 @@ import { ExpiryText, Info, Qty } from "../inventory/shared";
 import {
   customerPath,
   OPEN_SHIPMENT_STATUSES,
-  PICK_ROLES,
   PICKABLE_STATUSES,
   pickPath,
   SALES_BASE,
   salesOrderPath,
-  SHIPMENT_WRITE_ROLES,
   UNDOABLE_STATUSES,
 } from "./config";
 import { ShipmentStatusBadge } from "./shared";
@@ -88,10 +86,13 @@ export function ShipmentPage() {
 }
 
 function ShipmentView({ shipment }: { shipment: ShipmentDetail }) {
-  const { user } = useAuth();
+  const { can, canRead } = useCan();
   const refresh = useShipmentRefresh();
-  const writer = hasAnyRole(user, SHIPMENT_WRITE_ROLES);
-  const picker = hasAnyRole(user, PICK_ROLES);
+  const writer = can(PERM.SALES_SHIPMENTS, "change");
+  const dispatcher = can(PERM.SALES_SHIPMENTS, "approve");
+  const picker = can(PERM.SALES_PICKING, "change");
+  // İrsaliye PDF'i Sevkiyatlar: Görür ister; sayfa yalnız toplamayla da açılır.
+  const waybill = can(PERM.SALES_SHIPMENTS);
   const open = OPEN_SHIPMENT_STATUSES.includes(shipment.status);
   const [error, setError] = useState("");
   const [editOpen, setEditOpen] = useState(false);
@@ -177,7 +178,7 @@ function ShipmentView({ shipment }: { shipment: ShipmentDetail }) {
               {st.load}
             </Button>
           )}
-          {writer && shipment.status === "LOADED" && (
+          {dispatcher && shipment.status === "LOADED" && (
             <Button
               color="green"
               leftSection={<IconTruckDelivery size={16} />}
@@ -186,7 +187,7 @@ function ShipmentView({ shipment }: { shipment: ShipmentDetail }) {
               {st.dispatch}
             </Button>
           )}
-          {["LOADED", "DISPATCHED"].includes(shipment.status) && (
+          {waybill && ["LOADED", "DISPATCHED"].includes(shipment.status) && (
             <Button
               component="a"
               href={waybillPdfUrl(shipment.id)}
@@ -229,9 +230,13 @@ function ShipmentView({ shipment }: { shipment: ShipmentDetail }) {
       <Paper withBorder p="md" radius="md">
         <SimpleGrid cols={{ base: 1, xs: 2, sm: 3 }}>
           <Info label={st.order}>
-            <Anchor component={Link} to={salesOrderPath(shipment.sales_order)} size="sm">
-              {shipment.order_number}
-            </Anchor>
+            {canRead(PERM.SALES_ORDERS) ? (
+              <Anchor component={Link} to={salesOrderPath(shipment.sales_order)} size="sm">
+                {shipment.order_number}
+              </Anchor>
+            ) : (
+              <Text size="sm">{shipment.order_number}</Text>
+            )}
           </Info>
           <Info label={st.customer}>
             <Anchor component={Link} to={customerPath(shipment.customer)} size="sm">

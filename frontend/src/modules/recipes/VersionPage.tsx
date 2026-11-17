@@ -50,8 +50,7 @@ import {
   type RecipeVersionDetail,
   type StepPayload,
 } from "../../api/recipes";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDateTime, formatNumber } from "../../i18n/format";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal } from "../common/forms";
@@ -59,7 +58,7 @@ import { RecordFormModal } from "../common/RecordFormModal";
 import { ct } from "../common/strings";
 import { useOptions } from "../common/useOptions";
 import { compareLines, type LineChange } from "./compare";
-import { RECIPE_WRITE_ROLES, RECIPES_BASE, lineFields, stepFields, versionFields } from "./config";
+import { RECIPES_BASE, lineFields, stepFields, versionFields } from "./config";
 import { StatusBadge } from "./StatusBadge";
 import { rt } from "./strings";
 
@@ -72,10 +71,10 @@ export function VersionPage() {
   const params = useParams();
   const recipeId = Number(params.recipeId);
   const versionId = Number(params.versionId);
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const canWrite = hasAnyRole(user, RECIPE_WRITE_ROLES);
+  const canWrite = can("recipes.recipes", "change");
 
   const [lineEdit, setLineEdit] = useState<{ open: boolean; line: RecipeLine | null }>({
     open: false,

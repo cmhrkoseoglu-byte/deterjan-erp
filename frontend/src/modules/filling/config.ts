@@ -1,10 +1,5 @@
 import type { FillingOrderStatus, FillingRunStatus, PackagingSpecStatus } from "../../api/filling";
-import type { Role } from "../../api/types";
 
-// Yetkiler backend ile aynıdır (apps/filling/api/views.py); arayüz yalnızca düğmeleri gizler.
-export const PLAN_ROLES: Role[] = ["planlama"];
-export const PREP_ROLES: Role[] = ["depo"];
-export const LINE_ROLES: Role[] = ["dolum"];
 export const FILLING_BASE = "/dolum";
 
 export const fillingOrderPath = (id: number | "yeni") => `${FILLING_BASE}/emirler/${id}`;

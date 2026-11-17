@@ -39,9 +39,10 @@ import {
   type PurchaseRequestStatus,
   type Suggestion,
 } from "../../api/purchasing";
-import type { Role } from "../../api/types";
-import { useAuth } from "../../auth/AuthContext";
+import { useCan } from "../../auth/access";
+import { PERM, type PermKey } from "../../auth/access.gen";
 import { hasAnyRole } from "../../auth/roles";
+import { ForbiddenPage } from "../../pages/ForbiddenPage";
 import { formatDate, formatDateTime, formatMoney, formatNumber } from "../../i18n/format";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { optionLabel } from "../common/useOptions";
@@ -50,16 +51,7 @@ import { CancelModal } from "../inventory/CancelModal";
 import { today } from "../inventory/config";
 import { idOrNull } from "../inventory/options";
 import { Qty } from "../inventory/shared";
-import {
-  ORDER_READ_ROLES,
-  ORDER_WRITE_ROLES,
-  PERFORMANCE_ROLES,
-  PURCHASING_BASE,
-  purchaseOrderPath,
-  REQUEST_ROLES,
-  SETTINGS_ROLES,
-  SUGGESTION_ROLES,
-} from "./config";
+import { PURCHASING_BASE, purchaseOrderPath } from "./config";
 import { usePurchasableMaterials } from "./options";
 import { PurchaseOrderStatusBadge, RequestStatusBadge } from "./shared";
 import { pt } from "./strings";
@@ -170,7 +162,7 @@ const REQUEST_STATUS_OPTIONS = (Object.keys(pt.requestStatus) as PurchaseRequest
 );
 
 function RequestsTab() {
-  const { user } = useAuth();
+  const { can, user } = useCan();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
@@ -185,9 +177,12 @@ function RequestsTab() {
     placeholderData: keepPreviousData,
   });
   const pages = Math.max(1, Math.ceil((query.data?.count ?? 0) / PAGE_SIZE));
-  const buyer = hasAnyRole(user, ORDER_WRITE_ROLES);
+  const requester = can(PERM.PURCHASING_REQUESTS, "change");
+  // Başkasının talebini Satın alma siparişleri: Değiştirir düzenler (backend `_can_edit_request`).
+  const buyer = can(PERM.PURCHASING_ORDERS, "change");
+  const showOrder = can(PERM.PURCHASING_ORDERS);
   const canEdit = (row: PurchaseRequest) =>
-    row.status === "OPEN" && (buyer || row.created_by === user?.id);
+    requester && row.status === "OPEN" && (buyer || row.created_by === user?.id);
 
   return (
     <Stack>
@@ -217,9 +212,11 @@ function RequestsTab() {
             }}
           />
         </Group>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing("new")}>
-          {pt.newRequest}
-        </Button>
+        {requester && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing("new")}>
+            {pt.newRequest}
+          </Button>
+        )}
       </Group>
       {query.error && (
         <Alert color="red" variant="light">
@@ -260,7 +257,7 @@ function RequestsTab() {
                 <Table.Td>
                   <Group gap={4} wrap="nowrap">
                     <RequestStatusBadge status={row.status} />
-                    {row.order_id && hasAnyRole(user, ORDER_READ_ROLES) && (
+                    {row.order_id && showOrder && (
                       <Anchor component={Link} to={purchaseOrderPath(row.order_id)} size="sm">
                         {row.order_number}
                       </Anchor>
@@ -314,6 +311,8 @@ function RequestsTab() {
 // --- öneriler ---
 
 function SuggestionsTab() {
+  const { can } = useCan();
+  const requester = can(PERM.PURCHASING_REQUESTS, "change");
   const [creating, setCreating] = useState<Suggestion | null>(null);
   const query = useQuery({
     queryKey: ["purchasing", "suggestions"],
@@ -374,9 +373,11 @@ function SuggestionsTab() {
                   </Table.Td>
                   <Table.Td>{formatDate(row.need_date)}</Table.Td>
                   <Table.Td>
-                    <Button size="compact-xs" variant="light" onClick={() => setCreating(row)}>
-                      {pt.createRequest}
-                    </Button>
+                    {requester && (
+                      <Button size="compact-xs" variant="light" onClick={() => setCreating(row)}>
+                        {pt.createRequest}
+                      </Button>
+                    )}
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -406,7 +407,7 @@ const ORDER_STATUS_OPTIONS = (Object.keys(pt.orderStatus) as PurchaseOrderStatus
 );
 
 function OrdersTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
@@ -419,13 +420,15 @@ function OrdersTab() {
     placeholderData: keepPreviousData,
   });
   const pages = Math.max(1, Math.ceil((query.data?.count ?? 0) / PAGE_SIZE));
-  const writer = hasAnyRole(user, ORDER_WRITE_ROLES);
+  const writer = can(PERM.PURCHASING_ORDERS, "change");
+  // Tutarlar Fiyatları görür'e bağlıdır; backend fiyatı yalnız onlara gönderir.
+  const showPrices = can(PERM.SENSITIVE_PRICES);
   const columns = [
     { header: pt.orderNumber, render: (r: PurchaseOrder) => r.number },
     { header: pt.supplier, render: (r: PurchaseOrder) => r.supplier_name },
     { header: pt.orderDate, render: (r: PurchaseOrder) => formatDate(r.order_date) },
     { header: pt.expectedDate, render: (r: PurchaseOrder) => formatDate(r.expected_date) },
-    ...(writer
+    ...(showPrices
       ? [
           {
             header: pt.total,
@@ -493,6 +496,9 @@ function OrdersTab() {
 
 function DeliveriesTab() {
   const navigate = useNavigate();
+  const { can } = useCan();
+  // Teslimat satırı siparişe gider; sipariş sayfası Satın alma siparişleri: Görür ister.
+  const openOrder = can(PERM.PURCHASING_ORDERS);
   const query = useQuery({
     queryKey: ["purchasing", "expected-deliveries"],
     queryFn: () => listExpectedDeliveries(),
@@ -531,8 +537,8 @@ function DeliveriesTab() {
               {rows.map((row) => (
                 <Table.Tr
                   key={row.order_line}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => navigate(purchaseOrderPath(row.order_id))}
+                  style={openOrder ? { cursor: "pointer" } : undefined}
+                  onClick={openOrder ? () => navigate(purchaseOrderPath(row.order_id)) : undefined}
                 >
                   <Table.Td>
                     <Group gap={4} wrap="nowrap">
@@ -649,6 +655,7 @@ function PerformanceTab() {
 // --- ayarlar (yönetim) ---
 
 function SettingsTab() {
+  const { can } = useCan();
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["purchasing", "settings"], queryFn: getPurchasingSettings });
   if (query.isLoading) return null;
@@ -668,6 +675,7 @@ function SettingsTab() {
           ? `${query.data.updated_by_name} · ${formatDateTime(query.data.updated_at)}`
           : ""
       }
+      editable={can(PERM.PURCHASING_SETTINGS, "change")}
       onSaved={(saved) => queryClient.setQueryData(["purchasing", "settings"], saved)}
     />
   );
@@ -677,11 +685,13 @@ function SettingsForm({
   limit,
   tolerance,
   updated,
+  editable,
   onSaved,
 }: {
   limit: string | null;
   tolerance: string;
   updated: string;
+  editable: boolean;
   onSaved: (saved: Awaited<ReturnType<typeof savePurchasingSettings>>) => void;
 }) {
   const [values, setValues] = useState({
@@ -709,6 +719,7 @@ function SettingsForm({
           label={pt.approvalLimit}
           description={pt.approvalLimitHint}
           inputMode="decimal"
+          readOnly={!editable}
           value={values.limit}
           onChange={(event) => setValues({ ...values, limit: event.currentTarget.value })}
         />
@@ -716,6 +727,7 @@ function SettingsForm({
           label={pt.tolerance}
           description={pt.toleranceHint}
           inputMode="decimal"
+          readOnly={!editable}
           value={values.tolerance}
           onChange={(event) => setValues({ ...values, tolerance: event.currentTarget.value })}
         />
@@ -725,11 +737,13 @@ function SettingsForm({
             {error}
           </Alert>
         )}
-        <Group justify="flex-end">
-          <Button loading={mutation.isPending} onClick={() => mutation.mutate()}>
-            {pt.save}
-          </Button>
-        </Group>
+        {editable && (
+          <Group justify="flex-end">
+            <Button loading={mutation.isPending} onClick={() => mutation.mutate()}>
+              {pt.save}
+            </Button>
+          </Group>
+        )}
       </Stack>
     </Paper>
   );
@@ -738,7 +752,8 @@ function SettingsForm({
 interface TabDef {
   slug: string;
   label: string;
-  roles: readonly Role[];
+  /** Sekmeyi açan bölüm (Görür). */
+  section: PermKey;
   render: () => ReactNode;
 }
 
@@ -746,37 +761,37 @@ const TABS: TabDef[] = [
   {
     slug: "siparisler",
     label: pt.tabs.orders,
-    roles: ORDER_READ_ROLES,
+    section: PERM.PURCHASING_ORDERS,
     render: () => <OrdersTab />,
   },
   {
     slug: "teslimatlar",
     label: pt.tabs.deliveries,
-    roles: ORDER_READ_ROLES,
+    section: PERM.PURCHASING_DELIVERIES,
     render: () => <DeliveriesTab />,
   },
   {
     slug: "talepler",
     label: pt.tabs.requests,
-    roles: REQUEST_ROLES,
+    section: PERM.PURCHASING_REQUESTS,
     render: () => <RequestsTab />,
   },
   {
     slug: "oneriler",
     label: pt.tabs.suggestions,
-    roles: SUGGESTION_ROLES,
+    section: PERM.PURCHASING_SUGGESTIONS,
     render: () => <SuggestionsTab />,
   },
   {
     slug: "performans",
     label: pt.tabs.performance,
-    roles: PERFORMANCE_ROLES,
+    section: PERM.PURCHASING_PERFORMANCE,
     render: () => <PerformanceTab />,
   },
   {
     slug: "ayarlar",
     label: pt.tabs.settings,
-    roles: SETTINGS_ROLES,
+    section: PERM.PURCHASING_SETTINGS,
     render: () => <SettingsTab />,
   },
 ];
@@ -785,15 +800,18 @@ const TABS: TabDef[] = [
  * (tutarsız); talep açan roller yalnızca talepler sekmesini görür. */
 export function PurchasingPage() {
   const { tab } = useParams();
-  const { user } = useAuth();
+  const { can, user } = useCan();
   const navigate = useNavigate();
-  const visible = TABS.filter((item) => hasAnyRole(user, item.roles));
-  const fallback = hasAnyRole(user, ORDER_WRITE_ROLES)
+  const visible = TABS.filter((item) => can(item.section));
+  // Varsayılan sekme sırası rol görünümüdür (plan §5.9); görünmüyorsa ilk görünen sekme.
+  const preferred = hasAnyRole(user, ["satin_alma", "yonetim"])
     ? "siparisler"
-    : hasAnyRole(user, ORDER_READ_ROLES)
+    : hasAnyRole(user, ["satin_alma", "yonetim", "depo"])
       ? "teslimatlar"
       : "talepler";
-  const current = visible.find((item) => item.slug === (tab ?? fallback));
+  const fallback = visible.find((item) => item.slug === preferred) ?? visible[0];
+  if (!fallback) return <ForbiddenPage />;
+  const current = tab ? visible.find((item) => item.slug === tab) : fallback;
   if (!current) return <Navigate to={PURCHASING_BASE} replace />;
 
   return (

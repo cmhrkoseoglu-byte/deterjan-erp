@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Badge,
   Button,
   Group,
@@ -14,15 +13,13 @@ import {
 import { IconSearch } from "@tabler/icons-react";
 import { useQueries } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { Paginated, Role } from "../api/types";
+import type { CurrentUser, Paginated } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { hasAnyRole } from "../auth/roles";
+import { can, canAny } from "../auth/access";
 import { tr } from "../i18n/tr";
-import { menuRoles } from "../layout/menu";
-import { ORDER_READ_ROLES } from "../modules/purchasing/config";
-import { RECORD_ROUTES } from "../workflow/recordLinks";
+import { RecordLink } from "../workflow/RecordLink";
 
 const MIN_LENGTH = 2;
 const PAGE_SIZE = 5;
@@ -33,8 +30,12 @@ interface Source {
   key: keyof typeof tr.search.groups;
   url: string;
   model: string;
-  /** Listeyi okuyabilen roller (asıl yetki backend'de; burada boşuna 403 almamak için). */
-  roles: readonly Role[];
+  /**
+   * Kaynakta kim arar: kayıt türünün okuma bölümlerinden birinde Görür (plan §5.9). Kayıt okuması
+   * (`r`) sayılmaz: açık okumalı listeler o zaman herkese açılırdı. Asıl yetki backend'de; burada
+   * boşuna 403 almamak için.
+   */
+  visible: (user: CurrentUser | null) => boolean;
   title: (row: Row) => string;
   detail: (row: Row) => string;
 }
@@ -48,7 +49,7 @@ function sources(): Source[] {
       key: "lots",
       url: "/inventory/lots/",
       model: "inventory.lot",
-      roles: menuRoles("inventory"),
+      visible: (user) => can(user, "inventory.lots"),
       title: (r) => String(r.lot_no),
       detail: (r) => text(`${r.material_code} — ${r.material_name}`, r.supplier_lot_no),
     },
@@ -56,7 +57,7 @@ function sources(): Source[] {
       key: "receipts",
       url: "/inventory/goods-receipts/",
       model: "inventory.goodsreceipt",
-      roles: ["depo", "planlama", "yonetim", "satin_alma", "laboratuvar"],
+      visible: (user) => can(user, "inventory.receipts"),
       title: (r) => String(r.number),
       detail: (r) => text(r.supplier_name, r.delivery_note_no),
     },
@@ -64,7 +65,13 @@ function sources(): Source[] {
       key: "productionOrders",
       url: "/production/orders/",
       model: "production.productionorder",
-      roles: menuRoles("production"),
+      visible: (user) =>
+        canAny(
+          user,
+          ["production.orders", "view"],
+          ["production.prep", "view"],
+          ["production.batches", "view"],
+        ),
       title: (r) => String(r.number),
       detail: (r) => `${r.product_code} — ${r.product_name}`,
     },
@@ -72,7 +79,13 @@ function sources(): Source[] {
       key: "batches",
       url: "/production/batches/",
       model: "production.productionbatch",
-      roles: menuRoles("production"),
+      visible: (user) =>
+        canAny(
+          user,
+          ["production.orders", "view"],
+          ["production.prep", "view"],
+          ["production.batches", "view"],
+        ),
       title: (r) => String(r.batch_no),
       detail: (r) => text(r.order_number, r.product_name, r.output_lot_no),
     },
@@ -80,7 +93,13 @@ function sources(): Source[] {
       key: "fillingOrders",
       url: "/filling/orders/",
       model: "filling.fillingorder",
-      roles: menuRoles("filling"),
+      visible: (user) =>
+        canAny(
+          user,
+          ["filling.orders", "view"],
+          ["filling.prep", "view"],
+          ["filling.runs", "view"],
+        ),
       title: (r) => String(r.number),
       detail: (r) => `${r.finished_product_code} — ${r.finished_product_name}`,
     },
@@ -88,7 +107,13 @@ function sources(): Source[] {
       key: "runs",
       url: "/filling/runs/",
       model: "filling.fillingrun",
-      roles: menuRoles("filling"),
+      visible: (user) =>
+        canAny(
+          user,
+          ["filling.orders", "view"],
+          ["filling.prep", "view"],
+          ["filling.runs", "view"],
+        ),
       title: (r) => String(r.output_lot_no),
       detail: (r) => text(r.order_number, r.finished_product_name),
     },
@@ -96,7 +121,7 @@ function sources(): Source[] {
       key: "salesOrders",
       url: "/sales/orders/",
       model: "sales.salesorder",
-      roles: menuRoles("sales"),
+      visible: (user) => can(user, "sales.orders"),
       title: (r) => String(r.number),
       detail: (r) => text(r.customer_name, r.customer_po_no),
     },
@@ -104,7 +129,7 @@ function sources(): Source[] {
       key: "shipments",
       url: "/sales/shipments/",
       model: "sales.shipment",
-      roles: menuRoles("sales"),
+      visible: (user) => canAny(user, ["sales.shipments", "view"], ["sales.picking", "view"]),
       title: (r) => String(r.number),
       detail: (r) => text(r.customer_name, r.order_number, r.vehicle_plate),
     },
@@ -112,7 +137,7 @@ function sources(): Source[] {
       key: "purchaseOrders",
       url: "/purchasing/orders/",
       model: "purchasing.purchaseorder",
-      roles: ORDER_READ_ROLES,
+      visible: (user) => can(user, "purchasing.orders"),
       title: (r) => String(r.number),
       detail: (r) => String(r.supplier_name ?? ""),
     },
@@ -120,7 +145,7 @@ function sources(): Source[] {
       key: "samples",
       url: "/quality/samples/",
       model: "quality.sample",
-      roles: menuRoles("quality"),
+      visible: (user) => canAny(user, ["quality.samples", "view"], ["quality.conditional", "view"]),
       title: (r) => String(r.number),
       detail: (r) => text(r.lot_no, r.material_name, r.stage_display),
     },
@@ -128,7 +153,7 @@ function sources(): Source[] {
       key: "returns",
       url: "/returns/",
       model: "returns.customerreturn",
-      roles: menuRoles("returns"),
+      visible: (user) => can(user, "returns.returns"),
       title: (r) => String(r.number),
       detail: (r) => text(r.customer_name, r.shipment_number),
     },
@@ -151,7 +176,7 @@ export function SearchPage() {
   // Bu sayfadayken üst çubuktan yeniden aranırsa kutu yeni aramayı göstersin.
   useEffect(() => setDraft(query), [query]);
   const ready = query.length >= MIN_LENGTH;
-  const visible = sources().filter((source) => hasAnyRole(user, source.roles));
+  const visible = sources().filter((source) => source.visible(user));
   const results = useQueries({
     queries: visible.map((source) => ({
       queryKey: ["search", source.key, query],
@@ -206,9 +231,9 @@ export function SearchPage() {
             {page!.results.map((row) => (
               <Group key={row.id} justify="space-between" wrap="nowrap" gap="sm">
                 <div style={{ minWidth: 0 }}>
-                  <Anchor component={Link} to={RECORD_ROUTES[source.model](row.id)} fw={600}>
+                  <RecordLink model={source.model} id={row.id} fw={600}>
                     {source.title(row)}
-                  </Anchor>
+                  </RecordLink>
                   <Text size="sm" c="dimmed" truncate>
                     {source.detail(row)}
                   </Text>

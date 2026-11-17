@@ -18,11 +18,10 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import { listReturns, type ReturnStatus } from "../../api/returns";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDate } from "../../i18n/format";
 import { ct } from "../common/strings";
-import { RETURN_EDIT_ROLES, RETURN_STATUS_COLOR, returnPath } from "./config";
+import { RETURN_STATUS_COLOR, returnPath } from "./config";
 import { rt } from "./strings";
 
 const PAGE_SIZE = 50;
@@ -41,7 +40,7 @@ export function ReturnStatusBadge({ status }: { status: ReturnStatus }) {
 
 /** Müşteri iadeleri listesi (sevkiyat yeni iade açar; laboratuvar ve depo izler). */
 export function ReturnsPage() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -65,7 +64,7 @@ export function ReturnsPage() {
     <Stack>
       <Group justify="space-between">
         <Title order={2}>{rt.title}</Title>
-        {hasAnyRole(user, RETURN_EDIT_ROLES) && (
+        {can("returns.returns", "change") && (
           <Button leftSection={<IconPlus size={16} />} onClick={() => navigate(returnPath("yeni"))}>
             {rt.newReturn}
           </Button>

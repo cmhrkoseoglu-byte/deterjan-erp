@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 import type { RouteObject } from "react-router-dom";
 import { DASHBOARD_PATH, SEARCH_PATH, TASKS_PATH } from "./auth/paths";
 import { RequireAuth } from "./auth/RequireAuth";
-import { RequireRole } from "./auth/RequireRole";
+import { RequireAccess, RequirePage } from "./auth/RequireAccess";
+import type { PageKey } from "./auth/pageAccess";
 import { AppLayout } from "./layout/AppLayout";
-import { MENU, menuRoles } from "./layout/menu";
+import { MENU } from "./layout/menu";
 import { AdjustmentPage } from "./modules/inventory/AdjustmentPage";
 import { GoodsReceiptPage } from "./modules/inventory/GoodsReceiptPage";
 import { InventoryPage } from "./modules/inventory/InventoryPage";
@@ -64,164 +65,94 @@ import { NotificationsPage } from "./pages/NotificationsPage";
 import { RouteErrorPage } from "./pages/RouteErrorPage";
 import { SearchPage } from "./pages/SearchPage";
 
-function recipesPage(page: ReactNode) {
-  return <RequireRole roles={menuRoles("recipes")}>{page}</RequireRole>;
+/** Sayfayı `auth/pageAccess.ts`'deki kuralıyla korur. */
+function guarded(page: PageKey, element: ReactNode) {
+  return <RequirePage page={page}>{element}</RequirePage>;
 }
 
-function productionPage(page: ReactNode) {
-  return <RequireRole roles={menuRoles("production")}>{page}</RequireRole>;
-}
-
-function fillingPage(page: ReactNode) {
-  return <RequireRole roles={menuRoles("filling")}>{page}</RequireRole>;
-}
-
-function salesPage(page: ReactNode) {
-  return <RequireRole roles={menuRoles("sales")}>{page}</RequireRole>;
-}
-
-function returnsPage(page: ReactNode) {
-  return <RequireRole roles={menuRoles("returns")}>{page}</RequireRole>;
-}
-
-function costingPage(page: ReactNode) {
-  return <RequireRole roles={menuRoles("costing")}>{page}</RequireRole>;
-}
-
-function maintenancePage(page: ReactNode) {
-  return <RequireRole roles={menuRoles("maintenance")}>{page}</RequireRole>;
-}
-
-function hsePage(page: ReactNode) {
-  return <RequireRole roles={menuRoles("hse")}>{page}</RequireRole>;
-}
-
-function personnelPage(page: ReactNode) {
-  return <RequireRole roles={menuRoles("personnel")}>{page}</RequireRole>;
-}
-
-function qualityPage(page: ReactNode) {
-  return <RequireRole roles={menuRoles("quality")}>{page}</RequireRole>;
-}
-
-// Hazır modül sayfaları. Erişim menüdeki rollerle aynıdır; asıl yetki backend'dedir.
+// Hazır modül sayfaları. Korumalar `auth/pageAccess.ts`'deki kurallardır (plan §5.9); asıl yetki
+// backend'dedir.
 const pageRoutes: RouteObject[] = [
+  { path: "ana-veriler/:tab?", element: guarded("masterdata", <MasterDataPage />) },
+  { path: "receteler", element: guarded("recipes", <RecipeListPage />) },
+  { path: "receteler/:recipeId", element: guarded("recipes", <RecipePage />) },
   {
-    path: "ana-veriler/:tab?",
-    element: (
-      <RequireRole roles={menuRoles("masterdata")}>
-        <MasterDataPage />
-      </RequireRole>
-    ),
+    path: "receteler/:recipeId/surumler/:versionId",
+    element: guarded("recipes", <VersionPage />),
   },
-  { path: "receteler", element: recipesPage(<RecipeListPage />) },
-  { path: "receteler/:recipeId", element: recipesPage(<RecipePage />) },
-  { path: "receteler/:recipeId/surumler/:versionId", element: recipesPage(<VersionPage />) },
-  // Depo: menü herkese açık; sekmeler ve düğmeler rolle daralır.
-  { path: "depo/lotlar/:lotId", element: <LotPage /> },
-  { path: "depo/mal-kabul/:receiptId", element: <GoodsReceiptPage /> },
-  { path: "depo/sayim/:adjustmentId", element: <AdjustmentPage /> },
-  { path: "depo/:tab?", element: <InventoryPage /> },
-  // Üretim: planlama emir açar, depo hazırlar, üretim tartar; düğmeler rolle daralır.
-  { path: "uretim/emirler/:orderId/hazirlama", element: productionPage(<PrepPage />) },
-  { path: "uretim/emirler/:orderId", element: productionPage(<OrderPage />) },
-  { path: "uretim/sarjlar/:batchId", element: productionPage(<BatchPage />) },
-  { path: "uretim/:tab?", element: productionPage(<ProductionPage />) },
-  // Kalite: laboratuvar numune ve spesifikasyon, yönetim şartlı kabul onayı.
-  { path: "kalite/numuneler/:sampleId", element: qualityPage(<SamplePage />) },
-  { path: "kalite/spesifikasyonlar/:specId", element: qualityPage(<SpecificationPage />) },
-  { path: "kalite/:tab?", element: qualityPage(<QualityPage />) },
-  // Dolum: planlama emir ve ambalaj reçetesi, depo ambalaj hazırlar, dolum hattı doldurur.
-  { path: "dolum/emirler/:orderId/hazirlama", element: fillingPage(<FillingPrepPage />) },
-  { path: "dolum/emirler/:orderId", element: fillingPage(<FillingOrderPage />) },
-  { path: "dolum/partiler/:runId", element: fillingPage(<RunPage />) },
-  { path: "dolum/ambalaj-receteleri/:specId", element: fillingPage(<SpecPage />) },
-  { path: "dolum/:tab?", element: fillingPage(<FillingPage />) },
-  // Sevkiyat: sevkiyat ve yönetim sipariş açar; planlama ve depo siparişleri ve rezervasyonu görür.
-  { path: "sevkiyat/siparisler/:orderId", element: salesPage(<SalesOrderPage />) },
-  { path: "sevkiyat/musteriler/:customerId", element: salesPage(<CustomerPage />) },
-  // Sevkiyat: sevkiyat planlar ve sevki onaylar; depo tablette lot okutur ve yüklemeyi bitirir.
-  { path: "sevkiyat/sevkiyatlar/:shipmentId", element: salesPage(<ShipmentPage />) },
-  { path: "sevkiyat/sevkiyatlar/:shipmentId/toplama", element: salesPage(<ShipmentPickPage />) },
-  { path: "sevkiyat/:tab?", element: salesPage(<SalesPage />) },
-  // İadeler: sevkiyat açar, sevkiyat ya da depo teslim alır, depo imha eder; laboratuvar izler.
-  { path: "iadeler", element: returnsPage(<ReturnsPage />) },
-  { path: "iadeler/:returnId", element: returnsPage(<ReturnPage />) },
-  // Satın alma: satın alma ve yönetim sipariş açar; depo siparişleri tutarsız görür ve mal kabul
-  // açar; planlama, depo ve üretim talep açar.
+  // Depo: stok, lot ve palet herkese açık; belge sayfaları kayıt okumasıyla açılır.
+  { path: "depo/lotlar/:lotId", element: guarded("inventoryLot", <LotPage />) },
+  { path: "depo/mal-kabul/:receiptId", element: guarded("inventoryReceipt", <GoodsReceiptPage />) },
+  { path: "depo/sayim/:adjustmentId", element: guarded("inventoryAdjustment", <AdjustmentPage />) },
+  { path: "depo/:tab?", element: guarded("inventory", <InventoryPage />) },
+  // Üretim: modül sayfaları bölümlerin birleşimiyle; yeni emir sayfası emir açabilene.
+  { path: "uretim/emirler/:orderId/hazirlama", element: guarded("production", <PrepPage />) },
+  { path: "uretim/emirler/:orderId", element: guarded("productionOrder", <OrderPage />) },
+  { path: "uretim/sarjlar/:batchId", element: guarded("production", <BatchPage />) },
+  { path: "uretim/:tab?", element: guarded("production", <ProductionPage />) },
+  // Kalite: numune sayfası modülün birleşimiyle, spesifikasyon kendi bölümüyle.
+  { path: "kalite/numuneler/:sampleId", element: guarded("quality", <SamplePage />) },
+  {
+    path: "kalite/spesifikasyonlar/:specId",
+    element: guarded("qualitySpec", <SpecificationPage />),
+  },
+  { path: "kalite/:tab?", element: guarded("quality", <QualityPage />) },
+  // Dolum: yeni emir sayfası emir açabilene; ambalaj reçetesi kendi bölümüyle.
+  {
+    path: "dolum/emirler/:orderId/hazirlama",
+    element: guarded("filling", <FillingPrepPage />),
+  },
+  { path: "dolum/emirler/:orderId", element: guarded("fillingOrder", <FillingOrderPage />) },
+  { path: "dolum/partiler/:runId", element: guarded("filling", <RunPage />) },
+  { path: "dolum/ambalaj-receteleri/:specId", element: guarded("fillingSpec", <SpecPage />) },
+  { path: "dolum/:tab?", element: guarded("filling", <FillingPage />) },
+  // Sevkiyat: sipariş, müşteri, sevkiyat ve toplama sayfaları modülün birleşimiyle.
+  { path: "sevkiyat/siparisler/:orderId", element: guarded("sales", <SalesOrderPage />) },
+  { path: "sevkiyat/musteriler/:customerId", element: guarded("sales", <CustomerPage />) },
+  { path: "sevkiyat/sevkiyatlar/:shipmentId", element: guarded("sales", <ShipmentPage />) },
+  {
+    path: "sevkiyat/sevkiyatlar/:shipmentId/toplama",
+    element: guarded("sales", <ShipmentPickPage />),
+  },
+  { path: "sevkiyat/:tab?", element: guarded("sales", <SalesPage />) },
+  // İadeler.
+  { path: "iadeler", element: guarded("returns", <ReturnsPage />) },
+  { path: "iadeler/:returnId", element: guarded("returns", <ReturnPage />) },
+  // Satın alma: sipariş ayrıntısı (yeni dahil) siparişleri görebilene (§8 madde 3).
   {
     path: "satin-alma/siparisler/:orderId",
-    element: (
-      <RequireRole roles={menuRoles("purchasing")}>
-        <PurchaseOrderPage />
-      </RequireRole>
-    ),
+    element: guarded("purchaseOrder", <PurchaseOrderPage />),
   },
-  {
-    path: "satin-alma/:tab?",
-    element: (
-      <RequireRole roles={menuRoles("purchasing")}>
-        <PurchasingPage />
-      </RequireRole>
-    ),
-  },
-  // İzlenebilirlik ve geri çağırma: laboratuvar ve yönetim.
-  {
-    path: "izlenebilirlik/:tab?",
-    element: (
-      <RequireRole roles={menuRoles("traceability")}>
-        <TracePage />
-      </RequireRole>
-    ),
-  },
-  // Maliyet: yalnızca yönetim (ve admin); tutarlar backend'de de yalnızca bu rollere döner.
-  { path: "maliyet/lotlar/:lotId", element: costingPage(<LotCostPage />) },
-  { path: "maliyet/:tab?", element: costingPage(<CostingPage />) },
-  // Bakım: üretim, dolum, laboratuvar ve yönetim plan ve iş emri açar; iş emrini sorumlu birim
-  // yürütür; planlama duruşları görür ve girer. Arıza bildirimi her rolde (ana sayfa).
-  { path: "bakim/is-emirleri/:workOrderId", element: maintenancePage(<WorkOrderPage />) },
-  { path: "bakim/:tab?", element: maintenancePage(<MaintenancePage />) },
-  // İSG: olay bildirimi herkese; GBF depo ve laboratuvara, depolama limitleri depoya da açık;
-  // atık, olay incelemesi ve ayarlar yönetimde. Sekmeler rolle daralır.
-  { path: "isg/olaylar/:incidentId", element: hsePage(<IncidentPage />) },
-  { path: "isg/:tab?", element: hsePage(<HsePage />) },
-  // Personel: kişisel veri, yalnızca yönetim ve admin (backend de aynı rolle süzer).
-  { path: "personel", element: personnelPage(<PersonnelPage />) },
-  { path: "personel/puantaj", element: personnelPage(<AttendancePage />) },
-  { path: "personel/ucretler", element: personnelPage(<WagesPage />) },
-  { path: "personel/bordro", element: personnelPage(<PayrollPage />) },
-  { path: "personel/tatiller", element: personnelPage(<HolidaysPage />) },
-  { path: "personel/:employeeId", element: personnelPage(<EmployeePage />) },
-  // Panolar ve raporlar: menü herkese açık; panolar ve raporlar rolle daralır (backend listesi).
-  { path: "raporlar/:tab?", element: <ReportingPage /> },
+  { path: "satin-alma/:tab?", element: guarded("purchasing", <PurchasingPage />) },
+  // İzlenebilirlik ve geri çağırma.
+  { path: "izlenebilirlik/:tab?", element: guarded("traceability", <TracePage />) },
+  // Maliyet: lot maliyeti kendi bölümüyle; tutarlar backend'de de yetkiyle süzülür.
+  { path: "maliyet/lotlar/:lotId", element: guarded("lotCost", <LotCostPage />) },
+  { path: "maliyet/:tab?", element: guarded("costing", <CostingPage />) },
+  // Bakım: arıza bildirimi her rolde (ana sayfadaki düğme); bakım ekranları modülün birleşimiyle.
+  { path: "bakim/is-emirleri/:workOrderId", element: guarded("maintenance", <WorkOrderPage />) },
+  { path: "bakim/:tab?", element: guarded("maintenance", <MaintenancePage />) },
+  // İSG: olay bildirimi ve tehlike bilgileri rolü olan herkese; sekmeler yetkiyle daralır.
+  { path: "isg/olaylar/:incidentId", element: guarded("hse", <IncidentPage />) },
+  { path: "isg/:tab?", element: guarded("hse", <HsePage />) },
+  // Personel: kişisel veri (KVKK); her alt sayfa kendi bölümüyle.
+  { path: "personel", element: guarded("personnelCards", <PersonnelPage />) },
+  { path: "personel/puantaj", element: guarded("personnelAttendance", <AttendancePage />) },
+  { path: "personel/ucretler", element: guarded("personnelWages", <WagesPage />) },
+  { path: "personel/bordro", element: guarded("personnelPayroll", <PayrollPage />) },
+  { path: "personel/tatiller", element: guarded("personnelAttendance", <HolidaysPage />) },
+  { path: "personel/:employeeId", element: guarded("personnelCards", <EmployeePage />) },
+  // Panolar ve raporlar: İndirmeler herkese açık; panolar ve raporlar yetkiyle daralır.
+  { path: "raporlar/:tab?", element: guarded("reporting", <ReportingPage />) },
   // Sistem: yalnızca admin (sistem durumu, yedekler, kullanıcı kilidi/2FA, saha tableti).
-  {
-    path: "sistem/:tab?",
-    element: (
-      <RequireRole roles={menuRoles("system")}>
-        <SystemPage />
-      </RequireRole>
-    ),
-  },
-  // Canlıya geçiş: hazırlık ve stok karşılaştırması yönetim, planlama ve depoya; sorun
-  // bildirimini bildiren ve admin açar (backend süzer).
+  { path: "sistem/:tab?", element: guarded("system", <SystemPage />) },
+  // Canlıya geçiş: sorun bildirimini bildiren ve admin açar (backend süzer).
   {
     path: "gecis/karsilastirma/:comparisonId",
-    element: (
-      <RequireRole roles={menuRoles("golive")}>
-        <ComparisonPage />
-      </RequireRole>
-    ),
+    element: guarded("goliveComparison", <ComparisonPage />),
   },
   { path: "gecis/sorunlar/:problemId", element: <ProblemPage /> },
-  {
-    path: "gecis/:tab?",
-    element: (
-      <RequireRole roles={menuRoles("golive")}>
-        <GoLivePage />
-      </RequireRole>
-    ),
-  },
+  { path: "gecis/:tab?", element: guarded("golive", <GoLivePage />) },
   // Yardım: rol bazında kılavuzlar ve sayım günü planı; herkese açık.
   { path: "yardim/:guide?", element: <HelpPage /> },
 ];
@@ -248,15 +179,15 @@ const IMPLEMENTED = new Set([
   "help",
 ]);
 
-// Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar rol korumalı bir yer tutucuya gider.
+// Modül sayfaları hazır olana kadar menüdeki diğer iç bağlantılar korumalı bir yer tutucuya gider.
 const moduleRoutes: RouteObject[] = MENU.filter(
   (item) => item.path !== "/" && !item.external && !IMPLEMENTED.has(item.key),
 ).map((item) => ({
   path: `${item.path.slice(1)}/*`,
   element: (
-    <RequireRole roles={item.roles}>
+    <RequireAccess allow={item.visible}>
       <ModulePlaceholderPage title={item.label} phase={item.phase} />
-    </RequireRole>
+    </RequireAccess>
   ),
 }));
 
@@ -276,11 +207,7 @@ export const routes: RouteObject[] = [
           { path: TASKS_PATH.slice(1), element: <HomePage /> },
           {
             path: DASHBOARD_PATH.slice(1),
-            element: (
-              <RequireRole roles={menuRoles("dashboard")}>
-                <ManagementHomePage />
-              </RequireRole>
-            ),
+            element: guarded("dashboard", <ManagementHomePage />),
           },
           { path: "bildirimler", element: <NotificationsPage /> },
           // Lot ve belge no araması: herkese açık; her rol yalnızca okuyabildiği listelerde arar.

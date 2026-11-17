@@ -35,6 +35,8 @@ import {
   type PayrollGate,
   type PayrollMonth,
 } from "../../api/payroll";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate, formatDateTime, formatMoney } from "../../i18n/format";
 import { ErrorAlert } from "../costing/ReportTable";
 import { gateLabel, paymentBounds } from "./payrollFormat";
@@ -489,6 +491,8 @@ export function HistoryModal({ payroll, onClose }: { payroll: PayrollMonth; onCl
  * kartın bugünkü işaretlerine geçirmek ayrıca seçilir. */
 export function CardChanges({ payroll }: { payroll: PayrollMonth }) {
   const queryClient = useQueryClient();
+  // Karta geçirme Bordro: Değiştirir ister (backend `PayrollFollowCardView`).
+  const writer = useCan().can(PERM.PERSONNEL_PAYROLL, "change");
   const follow = useMutation({
     mutationFn: (change: CardChange) =>
       setFollowCard(payroll.year, payroll.month, {
@@ -533,7 +537,9 @@ export function CardChanges({ payroll }: { payroll: PayrollMonth }) {
                 </Text>
               )}
             </div>
-            <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+            <div
+              style={{ flexShrink: 0, whiteSpace: "nowrap", display: writer ? undefined : "none" }}
+            >
               <Button
                 size="compact-xs"
                 variant="light"

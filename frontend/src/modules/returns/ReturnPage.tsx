@@ -45,10 +45,9 @@ import {
   type ReturnLine,
   type ReturnPayload,
 } from "../../api/returns";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDate, formatDateTime } from "../../i18n/format";
-import { MENU } from "../../layout/menu";
+import { RecordLink } from "../../workflow/RecordLink";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
@@ -58,16 +57,7 @@ import { CancelModal } from "../inventory/CancelModal";
 import { lotPath, today } from "../inventory/config";
 import { idOrNull, useLocations } from "../inventory/options";
 import { Info, LotStatusBadge, Qty } from "../inventory/shared";
-import { samplePath } from "../quality/config";
-import { shipmentPath } from "../sales/config";
-import {
-  DISPOSITION_COLOR,
-  RETURN_EDIT_ROLES,
-  RETURN_RECEIVE_ROLES,
-  RETURN_SCRAP_ROLES,
-  RETURNS_BASE,
-  returnPath,
-} from "./config";
+import { DISPOSITION_COLOR, RETURNS_BASE, returnPath } from "./config";
 import { ReturnStatusBadge } from "./ReturnsPage";
 import { rt } from "./strings";
 
@@ -88,9 +78,6 @@ interface HeaderDraft {
   quarantine_location: string | null;
   note: string;
 }
-
-/** Sevkiyat detayını açabilen roller: sevkiyat menüsünün rolleri (routes.tsx `salesPage`). */
-const SHIPMENT_VIEW_ROLES = MENU.find((item) => item.key === "sales")!.roles;
 
 let lineSeq = 0;
 const newKey = () => `n${++lineSeq}`;
@@ -325,14 +312,15 @@ function LineEditor({
 }
 
 function ReturnForm({ doc }: { doc: CustomerReturnDetail | null }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const editable = hasAnyRole(user, RETURN_EDIT_ROLES) && (!doc || doc.status === "DRAFT");
-  const canReceive = hasAnyRole(user, RETURN_RECEIVE_ROLES) && doc?.status === "DRAFT";
-  const canCancel = hasAnyRole(user, RETURN_EDIT_ROLES) && doc?.status === "DRAFT";
-  const canScrap = hasAnyRole(user, RETURN_SCRAP_ROLES) && doc?.status === "RECEIVED";
-  const canOpenShipment = hasAnyRole(user, SHIPMENT_VIEW_ROLES);
+  const canChange = can("returns.returns", "change");
+  const canHandle = can("returns.receiving", "change");
+  const editable = canChange && (!doc || doc.status === "DRAFT");
+  const canReceive = canHandle && doc?.status === "DRAFT";
+  const canCancel = canChange && doc?.status === "DRAFT";
+  const canScrap = canHandle && doc?.status === "RECEIVED";
   const [{ header, lines }, setDraft] = useState(() => toDraft(doc));
   const [error, setError] = useState("");
   const [confirmReceive, setConfirmReceive] = useState(false);
@@ -508,13 +496,11 @@ function ReturnForm({ doc }: { doc: CustomerReturnDetail | null }) {
               </Info>
               {doc.shipment && (
                 <Info label={rt.shipment}>
-                  {canOpenShipment ? (
-                    <Anchor component={Link} to={shipmentPath(doc.shipment)} size="sm">
+                  <Text size="sm">
+                    <RecordLink model="sales.shipment" id={doc.shipment}>
                       {doc.shipment_number}
-                    </Anchor>
-                  ) : (
-                    <Text size="sm">{doc.shipment_number}</Text>
-                  )}
+                    </RecordLink>
+                  </Text>
                 </Info>
               )}
               <Info label={rt.returnDate}>
@@ -621,10 +607,13 @@ function ReturnForm({ doc }: { doc: CustomerReturnDetail | null }) {
                       <Qty value={line.quantity} unit={line.unit_code} />
                     </Table.Td>
                     <Table.Td>
+                      {/* Numune sayfasını açamayana numara düz metindir (plan §8 madde 2). */}
                       {line.sample && (
-                        <Anchor component={Link} to={samplePath(line.sample)} size="sm">
-                          {line.sample_number}
-                        </Anchor>
+                        <Text size="sm">
+                          <RecordLink model="quality.sample" id={line.sample}>
+                            {line.sample_number}
+                          </RecordLink>
+                        </Text>
                       )}
                     </Table.Td>
                     <Table.Td>

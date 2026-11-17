@@ -24,8 +24,8 @@ import {
   type ProductionBatch,
   type ProductionOrder,
 } from "../../api/production";
-import type { Role } from "../../api/types";
-import { useAuth } from "../../auth/AuthContext";
+import { useCan } from "../../auth/access";
+import { RequireAccess } from "../../auth/RequireAccess";
 import { hasAnyRole } from "../../auth/roles";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { ct } from "../common/strings";
@@ -33,9 +33,7 @@ import { Qty } from "../inventory/shared";
 import {
   BATCHABLE_STATUSES,
   batchPath,
-  ORDER_ROLES,
   orderPath,
-  PREP_ROLES,
   PREP_STATUSES,
   prepPath,
   PRODUCTION_BASE,
@@ -152,7 +150,7 @@ function SearchBox(props: { value: string; placeholder: string; onChange: (v: st
 }
 
 function OrdersTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<OrderStatus | null>(null);
@@ -185,7 +183,7 @@ function OrdersTab() {
             }}
           />
         </Group>
-        {hasAnyRole(user, ORDER_ROLES) && (
+        {can("production.orders", "change") && (
           <Button leftSection={<IconPlus size={16} />} onClick={() => navigate(orderPath("yeni"))}>
             {pt.newOrder}
           </Button>
@@ -272,28 +270,48 @@ function BatchesTab() {
 interface TabDef {
   slug: string;
   label: string;
-  roles: readonly Role[];
+  /** Sekmeyi gösteren bölüm (Görür). */
+  section: string;
   render: () => ReactNode;
 }
 
 const TABS: TabDef[] = [
-  { slug: "emirler", label: pt.tabs.orders, roles: [], render: () => <OrdersTab /> },
-  { slug: "hazirlama", label: pt.tabs.prep, roles: PREP_ROLES, render: () => <PrepTab /> },
-  { slug: "sarjlar", label: pt.tabs.batches, roles: [], render: () => <BatchesTab /> },
+  {
+    slug: "emirler",
+    label: pt.tabs.orders,
+    section: "production.orders",
+    render: () => <OrdersTab />,
+  },
+  { slug: "hazirlama", label: pt.tabs.prep, section: "production.prep", render: () => <PrepTab /> },
+  {
+    slug: "sarjlar",
+    label: pt.tabs.batches,
+    section: "production.batches",
+    render: () => <BatchesTab />,
+  },
 ];
 
 /** Üretim: sekmeler (`/uretim/<sekme>`). Depo hazırlamaya, üretim şarjlara düşer. */
 export function ProductionPage() {
   const { tab } = useParams();
-  const { user } = useAuth();
+  const { user, can } = useCan();
   const navigate = useNavigate();
-  const visible = TABS.filter((item) => hasAnyRole(user, item.roles));
-  const fallback =
-    hasAnyRole(user, PREP_ROLES) && !hasAnyRole(user, ORDER_ROLES)
+  const visible = TABS.filter((item) => can(item.section, "view"));
+  if (visible.length === 0) {
+    return (
+      <RequireAccess allow={() => false} need={[{ key: "production", level: "view" }]}>
+        {null}
+      </RequireAccess>
+    );
+  }
+  // Varsayılan sekme rol görünümüdür (plan §5.9): bugünkü tercih, görünmüyorsa ilk görünür sekme.
+  const preferred =
+    hasAnyRole(user, ["depo"]) && !hasAnyRole(user, ["planlama"])
       ? "hazirlama"
       : user?.roles.includes("uretim")
         ? "sarjlar"
         : "emirler";
+  const fallback = visible.some((item) => item.slug === preferred) ? preferred : visible[0].slug;
   const current = visible.find((item) => item.slug === (tab ?? fallback));
   if (!current) return <Navigate to={PRODUCTION_BASE} replace />;
 

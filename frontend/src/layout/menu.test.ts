@@ -1,22 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { CurrentUser, Role } from "../api/types";
+import { superuser, userWith as makeUser, withAccess, withoutAccess } from "../test/fixtures";
 import { MENU, visibleMenu } from "./menu";
 
 function userWith(roles: Role[], extra: Partial<CurrentUser> = {}): CurrentUser {
-  return {
-    id: 1,
-    username: "u",
-    full_name: "",
-    email: "",
-    roles,
-    is_superuser: false,
-    otp_enabled: false,
-    password_change_required: false,
-    otp_setup_required: false,
-    field_device: false,
-    idle_timeout_seconds: 3600,
-    ...extra,
-  };
+  const base = extra.is_superuser ? superuser() : makeUser(...roles);
+  return { ...base, ...extra };
 }
 
 const keys = (user: CurrentUser | null) => visibleMenu(user).map((item) => item.key);
@@ -126,6 +115,39 @@ describe("visibleMenu", () => {
     expect(admin).toContain("system");
     expect(admin.indexOf("system")).toBe(admin.indexOf("admin") - 1);
     expect(keys(userWith([], { is_superuser: true }))).toContain("system");
+  });
+
+  it("rolü olmayan kullanıcı İSG'yi ve Panolar ve raporlar'ı görmez (plan §8 madde 1)", () => {
+    expect(keys(userWith([]))).toEqual(["home", "inventory", "help"]);
+  });
+
+  it("kişiden kaldırılan yetki menüden düşer, eklenen menüye girer", () => {
+    const depo = makeUser("depo");
+    const noProduction = withoutAccess(depo, {
+      "production.orders": "v",
+      "production.prep": "vc",
+      "production.batches": "v",
+    });
+    expect(keys(noProduction)).not.toContain("production");
+    expect(keys(withAccess(depo, { "traceability.trace": "v" }))).toContain("traceability");
+  });
+
+  it("Personel kartları'nı göremeyen yönetim personel menüsünde puantaja gider", () => {
+    const user = withoutAccess(makeUser("yonetim"), { "personnel.cards": "vc" });
+    expect(visibleMenu(user).find((item) => item.key === "personnel")?.path).toBe(
+      "/personel/puantaj",
+    );
+  });
+
+  it("yalnız Personel ayarları'nı gören kişi personel menüsünü görmez (açılacak sayfa yok)", () => {
+    const user = withoutAccess(makeUser("yonetim"), {
+      "personnel.cards": "rvca",
+      "personnel.attendance": "rvca",
+      "personnel.wages": "rvca",
+      "personnel.payroll": "rvca",
+    });
+    expect(user.access["personnel.settings"]).toBeTruthy();
+    expect(keys(user)).not.toContain("personnel");
   });
 
   it("oturum yoksa menü boştur", () => {

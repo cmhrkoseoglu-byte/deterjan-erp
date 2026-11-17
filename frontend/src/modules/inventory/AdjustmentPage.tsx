@@ -32,15 +32,14 @@ import {
   type AdjustmentPayload,
   type StockAdjustmentDetail,
 } from "../../api/inventory";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ct } from "../common/strings";
 import { CancelModal } from "./CancelModal";
-import { adjustmentPath, INVENTORY_BASE, lotPath, STOCK_WRITE_ROLES, today } from "./config";
+import { adjustmentPath, INVENTORY_BASE, lotPath, today } from "./config";
 import { idOrNull, useLocations } from "./options";
 import { DocStatusBadge, Info } from "./shared";
 import { it } from "./strings";
@@ -185,10 +184,13 @@ function LotSelect({
 }
 
 function AdjustmentForm({ doc }: { doc: StockAdjustmentDetail | null }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const editable = hasAnyRole(user, STOCK_WRITE_ROLES) && (!doc || doc.status === "DRAFT");
+  const isDraft = !doc || doc.status === "DRAFT";
+  const editable = can("inventory.adjustments", "change") && isDraft;
+  // Stoka almak Onaylar'dır (plan §5.9): Değiştirir'i olmayan onaylayan taslağı yeniden kaydetmez.
+  const canPost = can("inventory.adjustments", "approve") && isDraft;
   const [{ date, note, lines }, setDraft] = useState(() => toDraft(doc));
   const [error, setError] = useState("");
   const [confirmPost, setConfirmPost] = useState(false);
@@ -220,6 +222,7 @@ function AdjustmentForm({ doc }: { doc: StockAdjustmentDetail | null }) {
   });
   const post = useMutation({
     mutationFn: async () => {
+      if (!editable) return postAdjustment(doc!.id);
       const saved = await saveAdjustment(doc!.id, toPayload(date, note, lines));
       return postAdjustment(saved.id);
     },
@@ -254,7 +257,7 @@ function AdjustmentForm({ doc }: { doc: StockAdjustmentDetail | null }) {
               {it.saveDraft}
             </Button>
           )}
-          {editable && doc && (
+          {canPost && doc && (
             <Button
               color="green"
               leftSection={<IconCheck size={16} />}

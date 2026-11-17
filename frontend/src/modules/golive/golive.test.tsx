@@ -104,7 +104,7 @@ describe("canlıya geçiş ekranı", () => {
   it("dolum rolü canlıya geçiş ekranına giremez", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("dolum"));
     renderApp("/gecis");
-    expect(await screen.findByText(/yetkiniz yok/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Yetkiniz yok" })).toBeInTheDocument();
   });
 
   it("stok karşılaştırması: hatalı satırları gösterir, başarılıysa sonuca gider", async () => {

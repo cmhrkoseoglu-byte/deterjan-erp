@@ -1952,3 +1952,36 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   `access.gen.ts` temiz. Alan doğrulayıcıları eski ve yeni kodu karşılaştırdı; farklar yalnız
   izin listesindeki §8 madde 6 ve 10 hücreleri ve sahip kararları. Bağımsız çapraz inceleme
   (olay akışları, görev arayüzü, kapsama ve olay yayını) bulgu çıkarmadı.
+
+## 2026-11-17 — Kişiye özel yetkiler: 8. adım (ön yüz)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-17).
+- **Tek kaynak:** ekrandaki her karar (menü, rota, sekme, düğme, alan, kayıt bağlantısı, arama,
+  panolar) kişinin etkin yetkisinden (`me.access`) `can`, `canRead`, `useCan` ve `moduleVisible`
+  ile verilir (`frontend/src/auth/access.ts`). Sayfa korumaları tek tabloda
+  (`auth/pageAccess.ts`); rotalar ve kayıt bağlantıları aynı kurala bakar. Rol denetimi yalnız rol
+  görünümünde kaldı: varsayılan sekme tercihi, bakımda sorumlu birim, yönetim panosu.
+- **Yetkiniz yok sayfası** gereken yetkiyi "Modül › Bölüm (Düzey)" olarak söyler; yalnız rol
+  eksikse satır çıkmaz.
+- **Kayıt bağlantıları:** kişinin açamayacağı sayfaya giden bağlantı düz metin olur, "Kayda git"
+  ve bildirim tıklaması yalnız açılabilen sayfaya gider (§8 madde 2).
+- **Oturum tazeleme:** yetki değişince (`access.changed`) bütün sorgular yenilenir; pencereye
+  dönünce ve 403 gelince `me` en fazla bir kez yenilenir.
+- **Kişiye özel yetkide gizli 403 yok:** sekmesi görünmeyen sayfa ilk görünen sekmeye düşer,
+  hiçbiri yoksa "Yetkiniz yok"; düğmeler backend'in istediği düzeyi ister (ör. satış siparişini
+  onaylamak Onaylar); yalnız Değiştirir ya da yalnız Onaylar'ı olan kişi taslağı yeniden
+  kaydetmeden onaylar; kendi ekranı olmayan bir bölüm (ör. Personel ayarları) modülün menüsünü
+  tek başına açmaz.
+- **Rapor indirme:** iş listesindeki indirme bağlantısı, dosyayı indirmek için eksik yetki yoksa
+  görünür (`download_required`).
+- **Plan §8 maddeleri 1-3:** rolsüz kullanıcı İSG ve Panolar ve raporlar'ı görmez (İndirmeler
+  hariç), üst bandı nötr; yeni üretim ve dolum emri sayfaları yalnız emir açabilene açılır.
+  İzin listesinde sabitlendi.
+- **CLAUDE.md:** kural 12'deki geçiş cümlesi silindi; geçiş tamamlandı.
+- **Doğrulama:** ön yüz 701, backend 2703 test yeşil; ESLint (uyarısız), Prettier, tsc,
+  build, mypy, ruff, `manage.py check`, göç, şema ve `access.gen.ts` temiz. Alan doğrulayıcıları
+  eski ve yeni kararları bütün rol birleşimleri için karşılaştırdı: fark yalnız izin listesindeki
+  §8 maddeleri. Kişiye özel yetki denemelerinde bulunan beş sorun düzeltildi ve testlendi.
+  Bağımsız çapraz inceleme (varsayılan rollerde eşdeğerlik, kişiye özel
+  yetkide gizli 403, oturum tazeleme, backend ve sözleşmeler) tek bir bulgu sınıfı çıkardı: kendi
+  ekranı olmayan bölümler menüyü açıyordu; düzeltildi (DECISIONS).

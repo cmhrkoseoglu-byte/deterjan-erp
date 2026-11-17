@@ -26,6 +26,8 @@ import {
   listEmployees,
   type Employee,
 } from "../../api/personnel";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate } from "../../i18n/format";
 import { EmployeeFormModal } from "./EmployeeFormModal";
 import { PersonnelTabs } from "./PersonnelTabs";
@@ -56,6 +58,7 @@ export function EmployeeStatus({ employee }: { employee: Employee }) {
 /** Personel listesi: arama, birim ve durum süzgeci, yeni kart; satıra basınca kart açılır. */
 export function PersonnelPage() {
   const navigate = useNavigate();
+  const { can } = useCan();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search.trim(), 300);
@@ -92,9 +95,11 @@ export function PersonnelPage() {
     <Stack>
       <Group justify="space-between" align="flex-end">
         <Title order={2}>{pe.title}</Title>
-        <Button leftSection={<IconUserPlus size={18} />} onClick={() => setCreating(true)}>
-          {pe.newEmployee}
-        </Button>
+        {can(PERM.PERSONNEL_CARDS, "change") && (
+          <Button leftSection={<IconUserPlus size={18} />} onClick={() => setCreating(true)}>
+            {pe.newEmployee}
+          </Button>
+        )}
       </Group>
       <PersonnelTabs active={PERSONNEL_BASE} />
       <Alert color="blue" variant="light" icon={<IconInfoCircle size={18} />}>

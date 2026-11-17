@@ -6,6 +6,7 @@ import * as authApi from "../api/auth";
 import type { CurrentUser } from "../api/types";
 import * as workflowApi from "../api/workflow";
 import { FakeWebSocket } from "../test/fakeWebSocket";
+import { userWith } from "../test/fixtures";
 import { renderApp, renderWithProviders } from "../test/render";
 import { makeComment, makeNotification, makeTask, page } from "../test/workflowFixtures";
 import { RecordPanel } from "./RecordPanel";
@@ -15,17 +16,10 @@ vi.mock("../api/auth");
 vi.mock("../api/workflow");
 
 const depoUser: CurrentUser = {
+  ...userWith("depo"),
   id: 7,
   username: "depo1",
   full_name: "Ayşe Yılmaz",
-  email: "",
-  roles: ["depo"],
-  is_superuser: false,
-  otp_enabled: false,
-  password_change_required: false,
-  otp_setup_required: false,
-  field_device: false,
-  idle_timeout_seconds: 3600,
 };
 
 beforeEach(() => {

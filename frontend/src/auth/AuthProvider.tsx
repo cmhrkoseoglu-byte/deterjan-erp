@@ -5,6 +5,7 @@ import {
   api,
   isOtpSetupRequired,
   isPasswordChangeRequired,
+  isPermissionDenied,
   isSessionExpired,
   isUnauthenticated,
 } from "../api/client";
@@ -19,6 +20,16 @@ export const ME_QUERY_KEY = ["auth", "me"] as const;
 const IDLE_CHECK_MS = 15_000;
 /** Sunucu saatindeki küçük farklara rağmen bu kadar geç kalınırsa oturum yerelde kapatılır (sn). */
 const IDLE_GRACE_SECONDS = 120;
+/**
+ * Yetki değişikliğini yakalamak için `me` yeniden sorulur (plan §5.9, §8 madde 11): pencereye
+ * dönünce (son yenilemeden en az bu kadar sonra, ms) ...
+ */
+export const FOCUS_REFRESH_MS = 30_000;
+/**
+ * ... ve yetki hatası (403 permission_denied) alınca. Aynı anda gelen 403'ler tek bir yenileme
+ * yapar; yenilemeden hemen sonra gelenler yeniden sormaz (ms).
+ */
+export const DENIED_REFRESH_MS = 5_000;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -43,6 +54,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const user = meQuery.data ?? null;
   const userRef = useRef(user);
   userRef.current = user;
+
+  /** `me` son yenilemeden bu yana `minAge` ms geçtiyse (ve yenilenmiyorsa) yeniden sorar. */
+  const refreshIfStale = useCallback(
+    (minAge: number) => {
+      const state = queryClient.getQueryState(ME_QUERY_KEY);
+      if (!state?.data || state.fetchStatus === "fetching") return;
+      if (Date.now() - state.dataUpdatedAt < minAge) return;
+      void queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
+    },
+    [queryClient],
+  );
 
   const expire = useCallback(() => {
     setSessionExpired(true);
@@ -70,11 +92,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Geçici şifreyle girdi ya da rol 2FA istiyor ama kurulmamış: `me` yenilenince
         // RequireAuth Güvenlik sayfasına götürür.
         queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
+      } else if (isPermissionDenied(error)) {
+        // Yetki sayfa açıkken değişmiş olabilir: menü, sekme ve düğmeler yeni `me` ile çizilir;
+        // açık sayfa artık izinli değilse koruması "Yetkiniz yok" gösterir (plan §6.5).
+        refreshIfStale(DENIED_REFRESH_MS);
       }
       return Promise.reject(error);
     });
     return () => api.interceptors.response.eject(id);
-  }, [queryClient, expire]);
+  }, [queryClient, expire, refreshIfStale]);
+
+  // Pencereye dönünce `me` yenilenir: başka sekmede ya da yöneticinin değiştirdiği yetki görünür.
+  useEffect(() => {
+    const onFocus = () => {
+      if (document.visibilityState !== "hidden") refreshIfStale(FOCUS_REFRESH_MS);
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [refreshIfStale]);
 
   useEffect(() => {
     setClientErrorReporting(Boolean(user));

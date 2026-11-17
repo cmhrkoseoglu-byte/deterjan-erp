@@ -35,6 +35,8 @@ import {
   type Employee,
 } from "../../api/personnel";
 import type { AuditEntry } from "../../api/workflow";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { Info } from "../inventory/shared";
@@ -123,6 +125,7 @@ function TerminateModal({
   const confirming = removal !== null && removal.date === date;
   const code = mutation.isError ? getErrorCode(mutation.error) : "";
   // Sunucunun bildirdiği ilk onaylı ay; yoksa çıkıştan sonraki günün ayı.
+  const openAttendance = useCan().can(PERM.PERSONNEL_ATTENDANCE);
   const lockedMonth =
     code === "approved_attendance_after_exit"
       ? (getErrorList(mutation.error, "months")[0] ??
@@ -151,7 +154,7 @@ function TerminateModal({
             <Alert color="red" variant="light" role="alert">
               <Stack gap={4}>
                 <Text size="sm">{getErrorMessage(mutation.error)}</Text>
-                {lockedMonth && (
+                {lockedMonth && openAttendance && (
                   <Anchor component={Link} to={`${ATTENDANCE_BASE}?ay=${lockedMonth}`} size="sm">
                     {pe.openAttendance}
                   </Anchor>
@@ -206,6 +209,8 @@ function TerminateModal({
 export function EmployeePage() {
   const employeeId = Number(useParams().employeeId);
   const queryClient = useQueryClient();
+  const { can } = useCan();
+  const writer = can(PERM.PERSONNEL_CARDS, "change");
   const [editing, setEditing] = useState(false);
   const [terminating, setTerminating] = useState(false);
   const [reinstating, setReinstating] = useState(false);
@@ -254,33 +259,35 @@ export function EmployeePage() {
           <Title order={2}>{employee.full_name}</Title>
           <EmployeeStatus employee={employee} />
         </Group>
-        <Group gap="xs">
-          <Button
-            variant="default"
-            leftSection={<IconEdit size={16} />}
-            onClick={() => setEditing(true)}
-          >
-            {pe.edit}
-          </Button>
-          {employee.is_active ? (
+        {writer && (
+          <Group gap="xs">
             <Button
-              variant="light"
-              color="red"
-              leftSection={<IconUserOff size={16} />}
-              onClick={() => setTerminating(true)}
+              variant="default"
+              leftSection={<IconEdit size={16} />}
+              onClick={() => setEditing(true)}
             >
-              {pe.terminate}
+              {pe.edit}
             </Button>
-          ) : (
-            <Button
-              variant="light"
-              leftSection={<IconUserCheck size={16} />}
-              onClick={() => setReinstating(true)}
-            >
-              {pe.reinstate}
-            </Button>
-          )}
-        </Group>
+            {employee.is_active ? (
+              <Button
+                variant="light"
+                color="red"
+                leftSection={<IconUserOff size={16} />}
+                onClick={() => setTerminating(true)}
+              >
+                {pe.terminate}
+              </Button>
+            ) : (
+              <Button
+                variant="light"
+                leftSection={<IconUserCheck size={16} />}
+                onClick={() => setReinstating(true)}
+              >
+                {pe.reinstate}
+              </Button>
+            )}
+          </Group>
+        )}
       </Group>
       {!employee.is_active && account?.is_active && (
         <Alert color="orange" variant="light" icon={<IconAlertTriangle size={18} />}>

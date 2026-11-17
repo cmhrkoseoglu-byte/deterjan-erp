@@ -10,6 +10,8 @@ import {
   type CostCenter,
   type CostCenterStage,
 } from "../../api/costing";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { stageLabel } from "./personnelCostFormat";
 import { ErrorAlert, ReportTable } from "./ReportTable";
 import { kt } from "./strings";
@@ -23,6 +25,8 @@ const STAGE_OPTIONS = (["", "PRODUCTION", "FILLING"] as CostCenterStage[]).map((
 
 /** Birimin maliyet aşaması: eşleştirme değişince rapor ve birimler yeniden okunur. */
 export function CostCentersSection() {
+  const { can } = useCan();
+  const editable = can(PERM.COSTING_PERSONNEL_COST, "change");
   const queryClient = useQueryClient();
   const centers = useQuery({ queryKey: personnelCostKeys.costCenters, queryFn: listCostCenters });
   const save = useMutation({
@@ -58,7 +62,7 @@ export function CostCentersSection() {
                   data={STAGE_OPTIONS}
                   value={center.stage || GENERAL}
                   allowDeselect={false}
-                  disabled={save.isPending}
+                  disabled={save.isPending || !editable}
                   w={220}
                   onChange={(value) => {
                     if (!value || value === (center.stage || GENERAL)) return;

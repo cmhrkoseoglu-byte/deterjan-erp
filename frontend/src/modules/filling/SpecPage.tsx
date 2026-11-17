@@ -30,8 +30,7 @@ import {
   type PackagingSpecDetail,
   type PackagingSpecLine,
 } from "../../api/filling";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
@@ -39,7 +38,7 @@ import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { useOptions } from "../common/useOptions";
 import { idOrNull } from "../inventory/options";
 import { Info } from "../inventory/shared";
-import { FILLING_BASE, PLAN_ROLES, specPath } from "./config";
+import { FILLING_BASE, specPath } from "./config";
 import { SpecStatusBadge } from "./shared";
 import { ft } from "./strings";
 
@@ -142,11 +141,13 @@ async function syncLines(spec: PackagingSpecDetail, lines: LineDraft[]) {
 }
 
 function SpecView({ spec }: { spec: PackagingSpecDetail | null }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const canPlan = hasAnyRole(user, PLAN_ROLES);
-  const editable = canPlan && (spec === null || spec.is_editable);
+  const canEdit = can("filling.specs", "change");
+  // Onaylar'ı olan ama Değiştirir'i olmayan kişi yalnız onay adımını çağırır (plan §5.9).
+  const canApprove = can("filling.specs", "approve");
+  const editable = canEdit && (spec === null || spec.is_editable);
   const [draft, setDraft] = useState(() => toDraft(spec));
   const [error, setError] = useState("");
   const [confirmApprove, setConfirmApprove] = useState(false);
@@ -209,9 +210,9 @@ function SpecView({ spec }: { spec: PackagingSpecDetail | null }) {
           </Title>
           {spec && <SpecStatusBadge status={spec.status} />}
         </Group>
-        {canPlan && spec && (
+        {(canEdit || canApprove) && spec && (
           <Group gap="xs">
-            {spec.is_editable && (
+            {canApprove && spec.is_editable && (
               <Button
                 color="green"
                 leftSection={<IconCheck size={16} />}
@@ -220,7 +221,7 @@ function SpecView({ spec }: { spec: PackagingSpecDetail | null }) {
                 {ft.approveSpec}
               </Button>
             )}
-            {spec.status !== "DRAFT" && (
+            {canEdit && spec.status !== "DRAFT" && (
               <Button
                 variant="light"
                 leftSection={<IconCopy size={16} />}

@@ -1,5 +1,5 @@
 import { ROLES, type CurrentUser, type Role } from "../../api/types";
-import { userWith } from "../../test/fixtures";
+import { superuser, userWith } from "../../test/fixtures";
 
 /**
  * Ön yüz eşlik testinin kullanıcı tipleri (persona); backend sözleşme testindeki 14 personayla
@@ -29,7 +29,8 @@ export const PERSONAS: readonly string[] = [
  * - `superuser`: rolü olmayan süper kullanıcı;
  * - `depo+sevkiyat`: iki rollü kullanıcı.
  *
- * `me` yanıtına alan eklenirse (ör. kişiye özel yetkiler) `userWith` onları da doldurmalıdır.
+ * `me` yanıtına alan eklenirse `userWith` onları da doldurmalıdır: yetki harfleri (`access`) ve
+ * `is_admin` backend'in `compute_access` sonucudur (`ROLE_ACCESS`, `export_access`).
  */
 export function makePersonas(): Map<string, CurrentUser | null> {
   const users = new Map<string, CurrentUser | null>();
@@ -38,7 +39,7 @@ export function makePersonas(): Map<string, CurrentUser | null> {
   users.set("no_role", userWith());
   for (const role of PERSONA_ROLES) users.set(role, userWith(role));
   users.set("admin", userWith("admin"));
-  users.set("superuser", { ...userWith(), is_superuser: true });
+  users.set("superuser", superuser());
   users.set("depo+sevkiyat", userWith("depo", "sevkiyat"));
   if ([...users.keys()].join() !== PERSONAS.join()) {
     throw new Error("Persona listesi ile kullanıcılar aynı sırada değil.");

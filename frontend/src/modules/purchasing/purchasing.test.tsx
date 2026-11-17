@@ -7,7 +7,7 @@ import * as purchasingApi from "../../api/purchasing";
 import type { PurchaseOrder, PurchaseOrderDetail, PurchaseRequest } from "../../api/purchasing";
 import * as workflowApi from "../../api/workflow";
 import { visibleMenu } from "../../layout/menu";
-import { page, userWith } from "../../test/fixtures";
+import { page, userWith, withoutAccess } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
 import { recordPath } from "../../workflow/recordLinks";
 
@@ -230,6 +230,19 @@ describe("satın alma", () => {
     ]);
   });
 
+  it("talepleri göremeyen taslak siparişte açık talepleri sormaz (gizli 403 yok)", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(
+      withoutAccess(userWith("satin_alma"), { "purchasing.requests": "rvca" }),
+    );
+    vi.mocked(purchasingApi.getPurchaseOrder).mockResolvedValue(
+      detail({ status: "DRAFT", can_approve: false }),
+    );
+    renderApp("/satin-alma/siparisler/5");
+
+    expect(await screen.findAllByTestId("purchase-line")).toHaveLength(1);
+    expect(purchasingApi.listPurchaseRequests).not.toHaveBeenCalled();
+  });
+
   it("limit dışındaki taslak yönetim onayına gönderilir", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("satin_alma"));
     const draft = detail({ status: "DRAFT", can_approve: false });
@@ -280,6 +293,26 @@ describe("satın alma", () => {
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: "Onayla" }));
     await waitFor(() => expect(purchasingApi.approvePurchaseOrder).toHaveBeenCalledWith(5));
+  });
+
+  it("Değiştirir'i olmayan onaycı taslağı yeniden kaydetmeden onaylar", async () => {
+    const base = userWith("satin_alma");
+    vi.mocked(authApi.fetchMe).mockResolvedValue({
+      ...base,
+      access: { ...base.access, "purchasing.orders": "va" },
+    });
+    vi.mocked(purchasingApi.getPurchaseOrder).mockResolvedValue(
+      detail({ status: "DRAFT", can_approve: true }),
+    );
+    vi.mocked(purchasingApi.approvePurchaseOrder).mockResolvedValue(detail());
+    renderApp("/satin-alma/siparisler/5");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Onayla" }));
+    expect(screen.queryByRole("button", { name: "Taslağı kaydet" })).toBeNull();
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Onayla" }));
+    await waitFor(() => expect(purchasingApi.approvePurchaseOrder).toHaveBeenCalledWith(5));
+    expect(purchasingApi.savePurchaseOrder).not.toHaveBeenCalled();
   });
 
   it("gönderimde tedarikçi e-postası onaylanır", async () => {

@@ -99,7 +99,7 @@ export function BreakdownModal({
   );
 }
 
-/** "Arıza bildir" düğmesi: her rol arıza bildirebilir (backend BREAKDOWN_ROLES = tüm roller). */
+/** "Arıza bildir" düğmesi; gösteren yer Arıza bildirimi: Değiştirir'e bakar (rolü olan herkes). */
 export function BreakdownButton({ equipmentId }: { equipmentId?: number }) {
   const [open, setOpen] = useState(false);
   return (

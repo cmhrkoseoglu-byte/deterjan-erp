@@ -30,6 +30,8 @@ import {
   type ParameterSetValues,
   type PayrollValues,
 } from "../../api/payroll";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDateTime, formatMoney, formatNumber } from "../../i18n/format";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { parseMoney } from "../costing/personnelCostFormat";
@@ -212,6 +214,8 @@ function ParametersForm({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  // Görür'ü olan değerleri okur; kaydetme ve kaldırma Personel ayarları: Değiştirir ister.
+  const writer = useCan().can(PERM.PERSONNEL_SETTINGS, "change");
   const [draft, setDraft] = useState<Draft>(initial);
   const [notice, setNotice] = useState<string | null>(initialNotice);
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
@@ -340,16 +344,18 @@ function ParametersForm({
           onChange={(event) => change("valid_from", event.currentTarget.value)}
           w={200}
         />
-        <Button
-          variant="light"
-          onClick={fill}
-          loading={monthOk && draftDefaults.isLoading}
-          disabled={!monthOk || !draftDefaults.data || busy}
-        >
-          {yearUnknown && draftDefaults.data
-            ? py.fillNearest(draftDefaults.data.values_year)
-            : py.fillLegal(draftYear)}
-        </Button>
+        {writer && (
+          <Button
+            variant="light"
+            onClick={fill}
+            loading={monthOk && draftDefaults.isLoading}
+            disabled={!monthOk || !draftDefaults.data || busy}
+          >
+            {yearUnknown && draftDefaults.data
+              ? py.fillNearest(draftDefaults.data.values_year)
+              : py.fillLegal(draftYear)}
+          </Button>
+        )}
       </Group>
       {notice ? (
         <Alert
@@ -461,7 +467,7 @@ function ParametersForm({
         </Alert>
       )}
       <Group justify="space-between">
-        {setId !== null ? (
+        {setId !== null && writer ? (
           <Button variant="subtle" color="red" onClick={() => setRemoving(true)} disabled={busy}>
             {py.removeSet}
           </Button>
@@ -472,13 +478,15 @@ function ParametersForm({
           <Button variant="default" onClick={onClose} disabled={busy}>
             {py.cancel}
           </Button>
-          <Button
-            onClick={() => save.mutate(undefined, { onSuccess: onClose })}
-            loading={save.isPending}
-            disabled={invalid}
-          >
-            {py.checkedAndSave}
-          </Button>
+          {writer && (
+            <Button
+              onClick={() => save.mutate(undefined, { onSuccess: onClose })}
+              loading={save.isPending}
+              disabled={invalid}
+            >
+              {py.checkedAndSave}
+            </Button>
+          )}
         </Group>
       </Group>
     </Stack>

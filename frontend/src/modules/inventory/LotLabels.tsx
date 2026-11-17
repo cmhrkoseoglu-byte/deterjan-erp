@@ -15,8 +15,7 @@ import {
   labelQueryKeys,
   type PalletLabel,
 } from "../../api/labels";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import {
   LabelPrintModal,
   UnitsPerCaseWarning,
@@ -24,7 +23,6 @@ import {
 } from "../../components/labels/LabelPrintModal";
 import { formatDateTime } from "../../i18n/format";
 import { tr } from "../../i18n/tr";
-import { PALLET_ROLES } from "./config";
 
 const t = tr.labels;
 
@@ -159,9 +157,9 @@ function palletOption(pallet: PalletLabel, lot: LabelLot): LabelKindOption {
 
 /** Mamul lotunun palet etiketleri: liste, yeni SSCC, yazdırma. GS1 öneki yoksa gizli. */
 export function PalletSection({ lot }: { lot: Lot }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const queryClient = useQueryClient();
-  const canCreate = hasAnyRole(user, PALLET_ROLES);
+  const canCreate = can("inventory.pallets", "change");
   const [cases, setCases] = useState<number | "">("");
   // Koli içi adet; yazılmadıkça (null) lotun koli içi miktarı gösterilir ve gönderilir.
   const [units, setUnits] = useState<number | "" | null>(null);

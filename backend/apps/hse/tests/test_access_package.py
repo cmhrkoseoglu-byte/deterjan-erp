@@ -2,7 +2,9 @@
 
 Bugünkü her rol denetimi (API, servis, ek kuralı, kayıt türü, ön yüz) planın §3.13 tablosundaki
 yetkiye eşlenir. Kişiye özel ayar yokken eski ve yeni denetim, admin dışındaki 8 rolün bütün
-bileşimlerinde aynı kararı verir. `live=` satırları koddaki rol sabitine de bağlıdır.
+bileşimlerinde aynı kararı verir.
+8. adımda ön yüz de bölüm denetimine geçti: ön yüz satırlarının `live` bağlantısı kaldırıldı;
+satırlar 8. adım öncesi rol listelerini dondurulmuş olarak tutar.
 
 Rolsüz kullanıcı farkı (plan §8 madde 1): İSG menüsü ve sayfası, "olaylar", "tehlike" ve
 "ifadeler" sekmeleri ve "Olay bildir" düğmesi bugün giriş yapan herkese açıktır (`roles: []`);
@@ -23,7 +25,6 @@ from apps.core.tests.access_helpers import (
     all_of,
     any_of,
     assert_rows,
-    frontend_roles,
     level,
     read,
     row_errors,
@@ -39,7 +40,6 @@ from apps.hse.access import (
     WASTE,
 )
 
-CONFIG = "frontend:src/modules/hse/config.ts"
 MANAGEMENT = ("yonetim",)  # HSE_ROLES, SETTINGS_ROLES
 HAZARD_WRITERS = ("yonetim", "laboratuvar")  # HAZARD_ROLES
 SDS_READERS = ("yonetim", "depo", "laboratuvar")  # SDS_READ_ROLES
@@ -373,69 +373,58 @@ ROWS = [
         "HsePage TABS gbf (SDS_READ_ROLES)",
         SDS_READERS,
         level(SDS),
-        live=f"{CONFIG}:SDS_READ_ROLES",
     ),
     Row(
         "HsePage TABS depolama (STORAGE_READ_ROLES)",
         STORAGE_READERS,
         level(STORAGE),
-        live=f"{CONFIG}:STORAGE_READ_ROLES",
     ),
-    Row("HsePage TABS atik (HSE_ROLES)", MANAGEMENT, level(WASTE), live=f"{CONFIG}:HSE_ROLES"),
-    Row("HsePage TABS ozet (HSE_ROLES)", MANAGEMENT, level(SUMMARY), live=f"{CONFIG}:HSE_ROLES"),
+    Row("HsePage TABS atik (HSE_ROLES)", MANAGEMENT, level(WASTE)),
+    Row("HsePage TABS ozet (HSE_ROLES)", MANAGEMENT, level(SUMMARY)),
     Row(
         "HsePage TABS ayarlar (HSE_ROLES)",
         MANAGEMENT,
         level(SETTINGS),
-        live=f"{CONFIG}:HSE_ROLES",
     ),
     Row(
         "HsePage IncidentsTab yalnız kendi bildirdikleri notu (HSE_ROLES değilse)",
         MANAGEMENT,
         level(INCIDENTS),
-        live=f"{CONFIG}:HSE_ROLES",
     ),
     Row(
         "HsePage SdsTab yeni GBF düğmesi (HSE_ROLES)",
         MANAGEMENT,
         level(SDS, CHANGE),
-        live=f"{CONFIG}:HSE_ROLES",
     ),
     Row(
         "HsePage SdsModal düzenlenebilir form (HSE_ROLES)",
         MANAGEMENT,
         level(SDS, CHANGE),
-        live=f"{CONFIG}:HSE_ROLES",
     ),
     Row(
         "HsePage HazardsTab tehlike bilgisi girilecek malzeme seçimi (HAZARD_ROLES)",
         HAZARD_WRITERS,
         level(HAZARDS, CHANGE),
-        live=f"{CONFIG}:HAZARD_ROLES",
     ),
     Row(
         "HsePage StatementsTab yeni ifade, düzelt, etkinleştir ve pasife al (HAZARD_ROLES)",
         HAZARD_WRITERS,
         level(HAZARDS, CHANGE),
-        live=f"{CONFIG}:HAZARD_ROLES",
     ),
     Row(
         "HsePage StorageTab limit ekle, düzelt, etkinleştir ve pasife al (HSE_ROLES)",
         MANAGEMENT,
         level(STORAGE, CHANGE),
-        live=f"{CONFIG}:HSE_ROLES",
     ),
     Row(
         "IncidentPage incele, kapat, iptal ve inceleme formu (HSE_ROLES)",
         MANAGEMENT,
         level(INCIDENTS, CHANGE),
-        live=f"{CONFIG}:HSE_ROLES",
     ),
     Row(
         "MaterialHazardModal düzenle düğmesi (HAZARD_ROLES; ana veriler malzeme satırı)",
         HAZARD_WRITERS,
         level(HAZARDS, CHANGE),
-        live=f"{CONFIG}:HAZARD_ROLES",
     ),
 ]
 
@@ -474,9 +463,3 @@ def test_roleless_day_one_change() -> None:
         assert row.roles == SIGNED_IN, row.source
         assert row_errors([row]), f"{row.source}: fark kalmadı; satırı ROWS'a taşıyın."
     assert_rows([replace(row, roles=ANY_ROLE) for row in ROLELESS_CHANGES])
-
-
-def test_open_role_constants() -> None:
-    """`ANY_ROLE` ve `SIGNED_IN` satırları `live` taşıyamaz; bugünkü sabitler burada sabitlenir.
-    Ön yüzde boş rol listesi giriş yapan herkes demektir (`hasAnyRole`)."""
-    assert frontend_roles("src/modules/hse/config.ts", "INCIDENT_ROLES") == ()

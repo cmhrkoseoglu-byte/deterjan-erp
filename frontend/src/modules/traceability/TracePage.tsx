@@ -33,7 +33,8 @@ import {
   type RecallResult,
 } from "../../api/traceability";
 import { formatDate, formatDateTime } from "../../i18n/format";
-import { lotPath, receiptPath } from "../inventory/config";
+import { RecordLink } from "../../workflow/RecordLink";
+import { lotPath } from "../inventory/config";
 import { LotStatusBadge, Qty } from "../inventory/shared";
 import { LotMultiPicker, LotPicker } from "./LotPicker";
 import { tt } from "./strings";
@@ -209,9 +210,9 @@ function BackwardInfo({ node }: { node: BackwardNode }) {
       {node.supplier_lot_no && <Tag label={tt.supplierLot}>{node.supplier_lot_no}</Tag>}
       {node.receipt_id && (
         <Tag label={tt.receipt}>
-          <Anchor component={Link} to={receiptPath(node.receipt_id)} size="xs">
+          <RecordLink model="inventory.goodsreceipt" id={node.receipt_id}>
             {`${node.receipt_number} (${formatDate(node.receipt_date)})`}
-          </Anchor>
+          </RecordLink>
         </Tag>
       )}
     </>

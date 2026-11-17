@@ -2,9 +2,9 @@
 
 Bugünkü her rol denetimi (API, servis, fiyat görünürlüğü, kayıt türü, ön yüz) planın §3.10
 tablosundaki yetkiye eşlenir; onay ve D-13 §5.4'teki gibi çevrilir. Kişiye özel ayar yokken eski
-ve yeni denetim, admin dışındaki 8 rolün bütün bileşimlerinde aynı kararı verir. `live=`
-satırları koddaki rol sabitine de bağlıdır; 5. adımda backend sabitleri kalktı, satırlar
-dondurulmuş rol listeleriyle kalır (ön yüz sabitleri 8. adıma kadar `live=`).
+ve yeni denetim, admin dışındaki 8 rolün bütün bileşimlerinde aynı kararı verir. 5. adımda
+backend sabitleri, 8. adımda ön yüz sabitleri kalktı; satırlar dondurulmuş rol listeleriyle
+kalır.
 
 Satır olmayanlar:
 - `PurchasingPage` varsayılan sekme sırası (siparişler, teslimatlar, talepler) rol görünümüdür
@@ -27,7 +27,6 @@ from apps.purchasing.access import (
     SUGGESTIONS,
 )
 
-CONFIG = "frontend:src/modules/purchasing/config.ts"
 # layout/menu.ts MENU "purchasing" ve routes.tsx `satin-alma/:tab?` koruması.
 MENU_ROLES = ("satin_alma", "yonetim", "depo", "planlama", "uretim")
 # 4. adım sonundaki backend sabitleri (5. adımda kaldırıldı): services.ORDER_ROLES,
@@ -293,104 +292,87 @@ ROWS = [
         "pages/SearchPage.tsx kaynak purchaseOrders (ORDER_READ_ROLES)",
         ORDER_READERS,
         read(ORDERS),
-        live=f"{CONFIG}:ORDER_READ_ROLES",
     ),
     # --- ön yüz: frontend/src/modules/purchasing ------------------------------------------------
     Row(
         "PurchasingPage TABS siparisler (ORDER_READ_ROLES)",
         ORDER_READERS,
         level(ORDERS, VIEW),
-        live=f"{CONFIG}:ORDER_READ_ROLES",
     ),
     Row(
         "PurchasingPage TABS teslimatlar (ORDER_READ_ROLES)",
         ORDER_READERS,
         level(DELIVERIES, VIEW),
-        live=f"{CONFIG}:ORDER_READ_ROLES",
     ),
     Row(
         "PurchasingPage TABS talepler (REQUEST_ROLES)",
         REQUESTERS,
         level(REQUESTS, VIEW),
-        live=f"{CONFIG}:REQUEST_ROLES",
     ),
     Row(
         "PurchasingPage TABS oneriler (SUGGESTION_ROLES)",
         SUGGESTION_READERS,
         level(SUGGESTIONS, VIEW),
-        live=f"{CONFIG}:SUGGESTION_ROLES",
     ),
     Row(
         "PurchasingPage TABS performans (PERFORMANCE_ROLES)",
         PERFORMANCE_READERS,
         level(PERFORMANCE, VIEW),
-        live=f"{CONFIG}:PERFORMANCE_ROLES",
     ),
     Row(
         "PurchasingPage TABS ayarlar (SETTINGS_ROLES)",
         APPROVERS,
         level(SETTINGS, VIEW),
-        live=f"{CONFIG}:SETTINGS_ROLES",
     ),
     Row(
         "PurchasingPage SettingsTab kaydet düğmesi (sekme: SETTINGS_ROLES)",
         APPROVERS,
         level(SETTINGS, CHANGE),
-        live=f"{CONFIG}:SETTINGS_ROLES",
     ),
     Row(
         "PurchasingPage RequestsTab yeni talep düğmesi (sekme: REQUEST_ROLES)",
         REQUESTERS,
         level(REQUESTS, CHANGE),
-        live=f"{CONFIG}:REQUEST_ROLES",
     ),
     Row(
         "PurchasingPage RequestsTab başkasının talebini düzenle ve iptal et (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "PurchasingPage RequestsTab sipariş bağlantısı (ORDER_READ_ROLES)",
         ORDER_READERS,
         level(ORDERS, VIEW),
-        live=f"{CONFIG}:ORDER_READ_ROLES",
     ),
     Row(
         "PurchasingPage SuggestionsTab talep aç düğmesi (sekme: SUGGESTION_ROLES)",
         SUGGESTION_READERS,
         all_of(level(SUGGESTIONS, VIEW), level(REQUESTS, CHANGE)),
-        live=f"{CONFIG}:SUGGESTION_ROLES",
     ),
     Row(
         "PurchasingPage OrdersTab tutar sütunu (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         SEES_PRICES,
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "PurchasingPage OrdersTab yeni sipariş düğmesi (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "PurchasingPage DeliveriesTab satırdan sipariş sayfası (sekme: ORDER_READ_ROLES)",
         ORDER_READERS,
         level(ORDERS, VIEW),
-        live=f"{CONFIG}:ORDER_READ_ROLES",
     ),
     Row(
         "OrderPage taslak düzenleme formu ve taslağı kaydet (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage yönetim onayına gönder düğmesi ve notu (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage taslağa geri gönder düğmesi hasAnyRole(['yonetim'])",
@@ -401,43 +383,36 @@ ROWS = [
         "OrderPage gönderildi düğmesi (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage mal kabul aç düğmesi (RECEIVE_ROLES)",
         RECEIVERS,
         level(DELIVERIES, CHANGE),
-        live=f"{CONFIG}:RECEIVE_ROLES",
     ),
     Row(
         "OrderPage PDF düğmesi (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         ORDER_PDF,
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage kalanı kapat düğmesi (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage iptal düğmesi taslak ya da onay bekleyen siparişte (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage iptal düğmesi onaylı ya da gönderilmiş siparişte (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         level(ORDERS, APPROVE),
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
     Row(
         "OrderPage showPrices: birim fiyat, satır tutarı ve toplam (ORDER_WRITE_ROLES)",
         ORDER_WRITERS,
         SEES_PRICES,
-        live=f"{CONFIG}:ORDER_WRITE_ROLES",
     ),
 ]
 

@@ -4,8 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import { getProblem, problemScreenshotUrl } from "../../api/golive";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { safeAppPath } from "../../auth/safePath";
 import { formatDateTime } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
@@ -14,7 +14,8 @@ import { gt } from "./strings";
 /** Sorun bildirimi: bildiren ve admin görür; admin yorumla yanıtlar. */
 export function ProblemPage() {
   const id = Number(useParams().problemId);
-  const { user } = useAuth();
+  // Sorun bildirimleri listesi yalnız admin bölümüdür (Görür = admin).
+  const showList = useCan().can(PERM.GOLIVE_PROBLEMS);
   const query = useQuery({ queryKey: ["golive", "problem", id], queryFn: () => getProblem(id) });
   const report = query.data;
   // Bildirimdeki adres yalnızca uygulama içi bir yolsa bağlantıdır; başka siteye giden adres düz
@@ -23,7 +24,7 @@ export function ProblemPage() {
 
   return (
     <Stack>
-      {hasAnyRole(user, ["admin"]) && (
+      {showList && (
         <Anchor component={Link} to="/gecis/sorunlar" size="sm">
           <Group gap={4}>
             <IconArrowLeft size={16} />

@@ -35,6 +35,8 @@ import {
   type PayrollRow,
   type PayrollWarning,
 } from "../../api/payroll";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDateTime, formatMoney } from "../../i18n/format";
 import { monthLabel, shiftMonth } from "../costing/personnelCostFormat";
 import { ErrorAlert } from "../costing/ReportTable";
@@ -104,14 +106,17 @@ export function PayrollChecklist({
   onPrevious,
 }: {
   payroll: PayrollMonth;
-  onParameters: () => void;
-  /** Devir penceresi: devri eksik kişilerin giriş ayı (verilmezse en erken eksik ay). */
-  onOpenings: (target?: number) => void;
+  /** Bordro parametreleri penceresi; Personel ayarları: Görür yoksa verilmez. */
+  onParameters?: () => void;
+  /** Devir penceresi: devri eksik kişilerin giriş ayı (verilmezse en erken eksik ay). Bordro:
+   * Değiştirir yoksa verilmez. */
+  onOpenings?: (target?: number) => void;
   onEmployerCost: () => void;
   onItems: () => void;
   /** Bir önceki aya git (aylar sırayla onaylanır). */
   onPrevious?: () => void;
 }) {
+  const openAttendance = useCan().can(PERM.PERSONNEL_ATTENDANCE);
   const state = payroll.payroll;
   if (state.approved)
     return (
@@ -149,7 +154,8 @@ export function PayrollChecklist({
         <CheckLine
           tone={payroll.attendance_approved ? "ok" : "warn"}
           action={
-            !payroll.attendance_approved && (
+            !payroll.attendance_approved &&
+            openAttendance && (
               <Anchor component={Link} to={`${ATTENDANCE_BASE}?ay=${ay}`} size="sm">
                 {py.openAttendance}
               </Anchor>
@@ -163,7 +169,8 @@ export function PayrollChecklist({
         <CheckLine
           tone={origin === "saved" ? "ok" : origin === "fallback" ? "error" : "warn"}
           action={
-            origin !== "saved" && (
+            origin !== "saved" &&
+            onParameters && (
               <Anchor component="button" type="button" size="sm" onClick={onParameters}>
                 {py.openParameters}
               </Anchor>
@@ -190,15 +197,17 @@ export function PayrollChecklist({
                     {pn.futureOpeningLater}
                   </Text>
                 ) : (
-                  <Anchor
-                    component="button"
-                    type="button"
-                    size="sm"
-                    aria-label={`${pn.openingEnter}: ${monthLabel(payroll.year, entry)}`}
-                    onClick={() => onOpenings(entry)}
-                  >
-                    {pn.openingEnter}
-                  </Anchor>
+                  onOpenings && (
+                    <Anchor
+                      component="button"
+                      type="button"
+                      size="sm"
+                      aria-label={`${pn.openingEnter}: ${monthLabel(payroll.year, entry)}`}
+                      onClick={() => onOpenings(entry)}
+                    >
+                      {pn.openingEnter}
+                    </Anchor>
+                  )
                 )
               }
             >
@@ -211,15 +220,17 @@ export function PayrollChecklist({
               key={`stale-${month}`}
               tone="warn"
               action={
-                <Anchor
-                  component="button"
-                  type="button"
-                  size="sm"
-                  aria-label={`${pn.staleOpeningAction}: ${monthLabel(payroll.year, month)}`}
-                  onClick={() => onOpenings(month)}
-                >
-                  {pn.staleOpeningAction}
-                </Anchor>
+                onOpenings && (
+                  <Anchor
+                    component="button"
+                    type="button"
+                    size="sm"
+                    aria-label={`${pn.staleOpeningAction}: ${monthLabel(payroll.year, month)}`}
+                    onClick={() => onOpenings(month)}
+                  >
+                    {pn.staleOpeningAction}
+                  </Anchor>
+                )
               }
             >
               {pn.checkStaleOpenings(count, monthLabel(payroll.year, month))}
@@ -623,6 +634,8 @@ export function PayrollItemsView({
     if (!orphans.has(item.id) && !external.has(item.id))
       totals.set(item.category, (totals.get(item.category) ?? 0) + Number(item.amount));
   const closed = future || locked;
+  // Kalemleri Bordro: Değiştirir'i olan yazar; öteki kişi yalnızca okur.
+  const writer = useCan().can(PERM.PERSONNEL_PAYROLL, "change");
   return (
     <Stack>
       {locked && (
@@ -662,7 +675,7 @@ export function PayrollItemsView({
             onChange={(event) => setShowRemoved(event.currentTarget.checked)}
           />
         </Group>
-        <Group gap="xs" wrap="wrap">
+        <Group gap="xs" wrap="wrap" display={writer ? undefined : "none"}>
           <Button variant="default" onClick={onCopy} disabled={closed}>
             {pn.copyPrevious}
           </Button>
@@ -745,7 +758,7 @@ export function PayrollItemsView({
                     </Text>
                   </Table.Td>
                   <Table.Td>
-                    {item.is_active && !locked && (
+                    {item.is_active && !locked && writer && (
                       <Group gap={4} justify="flex-end" wrap="nowrap">
                         <Button
                           size="compact-xs"

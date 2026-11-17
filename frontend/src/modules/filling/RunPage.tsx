@@ -34,8 +34,7 @@ import {
   type ScrapKind,
   type ScrapReason,
 } from "../../api/filling";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { errorFeedback } from "../../components/scan/feedback";
 import { ScanInput, type ScanInputHandle } from "../../components/scan/ScanInput";
 import { formatDateTime, formatNumber } from "../../i18n/format";
@@ -45,7 +44,7 @@ import { lotPath } from "../inventory/config";
 import { LotLabelButton } from "../inventory/LotLabels";
 import { ExpiryText, Info, Qty } from "../inventory/shared";
 import { ReasonModal } from "../production/shared";
-import { fillingOrderPath, LINE_ROLES } from "./config";
+import { fillingOrderPath } from "./config";
 import { ReportTable } from "./ReportTable";
 import { RunStatusBadge } from "./shared";
 import { ft } from "./strings";
@@ -89,8 +88,8 @@ function useRunUpdate(runId: number) {
 }
 
 function Run({ run }: { run: FillingRunDetail }) {
-  const { user } = useAuth();
-  const canFill = hasAnyRole(user, LINE_ROLES);
+  const { can } = useCan();
+  const canFill = can("filling.runs", "change");
   const open = run.status === "IN_PROGRESS";
   const editable = canFill && open;
   const [cancelOpen, setCancelOpen] = useState(false);
