@@ -223,6 +223,7 @@ def test_status_endpoint_admin_only(client_for, backups_enabled):
         "cpu",
         "queue",
         "celery",
+        "task_coverage",
     }
     assert body["runs"][0]["run_id"] == "20261017T020000"
     assert client_for(YONETIM).get("/api/v1/ops/status/").status_code == 403
@@ -283,3 +284,35 @@ def test_purge_expired_personal_data(make_user, settings):
     assert old.ip_address is None
     assert recent.ip_address == "10.0.0.2"
     assert other.ip_address == "10.0.0.3"  # yalnızca giriş/çıkış kayıtları
+
+
+def test_task_coverage_row_is_display_only(make_user, backups_enabled, quiet_system):
+    """ "Her görevi alabilecek biri var" yalnız Sistem durumu ekranında görünür: periyodik
+    kontrollere, uyarı bildirimlerine ve dış izleme ucuna girmez (plan §8 madde 9)."""
+    make_user(ADMIN)
+    rows = {c["check"]: c for c in selectors.system_status()["checks"]}
+    assert rows["task_coverage"]["status"] == "error"  # boş roller var
+    assert "kimse yok" in rows["task_coverage"]["detail"]
+    assert "task_coverage" not in {c.check for c in selectors.evaluate_checks()}
+    assert "task_coverage" not in selectors.health_summary()
+
+    services.run_checks()
+    assert not CheckState.objects.filter(code="task_coverage").exists()
+    assert not Notification.objects.filter(title__icontains="görev").exists()
+
+    from apps.core.roles import ALL_ROLES
+
+    for role in ALL_ROLES:
+        make_user(role)
+    rows = {c["check"]: c for c in selectors.system_status()["checks"]}
+    assert rows["task_coverage"]["status"] == "ok"
+
+
+def test_task_coverage_row_unknown_when_it_cannot_be_computed(monkeypatch):
+    from apps.core import coverage
+
+    def broken():
+        raise RuntimeError("hesaplanamadı")
+
+    monkeypatch.setattr(coverage, "current_gaps", broken)
+    assert selectors.check_task_coverage().status == "unknown"

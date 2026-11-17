@@ -41,6 +41,7 @@ ENFORCED_APPS: frozenset[str] = frozenset(
         "returns",
         "sales",
         "traceability",
+        "workflow",
     }
 )
 

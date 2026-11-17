@@ -6,6 +6,13 @@ kurallarını (bu olayla kapanan açık görevler), sonra açılış kuralların
 Olay payload sözleşmesi `docs/DECISIONS.md` ("İş akışı olay sözleşmesi") bölümündedir. Kısaca:
 bir kaydı anlatan her sözlük (`Subject`) en az `{"model": "app_label.model", "id": <pk>}` içerir;
 kullanıcıya görünen ad için `number`, `lot_no` ya da `repr` alanlarından biri bulunur.
+
+Her kural gerektirdiği yetkiyi `requires=(bölüm anahtarı, düzey)` alanında bildirir
+(docs/plan/kisi-yetkileri.md §5.1, §5.7): görev ve bildirim role gitmeye devam eder, ama roldeki
+kişilerden yalnız bu yetkisi olanlara gider (karar 5). Görev kuralında işin kendisinin yetkisi
+(ör. Malzeme hazırlama: Değiştirir), bildirim kuralında kuralın bölümünde Görür, iptal kuralında
+iptal edilen kaydın bölümünde Görür istenir. `None` yalnız rapor isteyene giden iki bildirimdedir
+(rapor isteyen süzülmez). workflow `ready()`'de her kuralı core'un kayıt defterine yazar.
 """
 
 from collections.abc import Callable, Mapping
@@ -13,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from apps.core import event_names as ev
+from apps.core.access import APPROVE, CHANGE, VIEW
 from apps.core.formatting import format_money
 from apps.core.roles import (
     ADMIN,
@@ -29,6 +37,7 @@ from apps.core.roles import (
 Payload = Mapping[str, Any]
 Subject = Mapping[str, Any]
 Text = str | Callable[[Subject], str]
+Requirement = tuple[str, str]
 
 
 def _self(payload: Payload) -> list[Subject]:
@@ -56,6 +65,8 @@ class TaskRule:
     description: Text = ""
     subjects: Callable[[Payload], list[Subject]] = _self
     close_on: tuple[CloseOn, ...] = ()
+    # Görevi almak, görmek, üstlenmek ve tamamlamak için gereken yetki (karar 5).
+    requires: Requirement | None = field(kw_only=True)
 
 
 def _no_users(payload: Payload) -> list[int]:
@@ -65,7 +76,9 @@ def _no_users(payload: Payload) -> list[int]:
 @dataclass(frozen=True)
 class NotifyRule:
     """Olay gelince rollere bildirim gönderir (`when` koşulu sağlanırsa). `users` payload'dan
-    ayrıca bildirim alacak kullanıcı kimliklerini çıkarır (ör. siparişi oluşturan)."""
+    ayrıca bildirim alacak kullanıcı kimliklerini çıkarır (ör. siparişi oluşturan); onlar da
+    `requires` ile süzülür (§8 madde 10). `subject` bildirimin bağlandığı kaydı bulur
+    (varsayılan: payload'ın kendisi)."""
 
     code: str
     event: str
@@ -75,12 +88,16 @@ class NotifyRule:
     level: str = "INFO"
     when: Callable[[Payload], bool] = lambda payload: True
     users: Callable[[Payload], list[int]] = _no_users
+    subject: Callable[[Payload], Subject | None] = lambda payload: payload
+    # Kuralın bölümünde Görür; `None` yalnız rapor isteyene gidenlerde (süzülmez).
+    requires: Requirement | None = field(kw_only=True)
 
 
 @dataclass(frozen=True)
 class CancelTasksRule:
     """Olayın kaydına bağlı açık görevleri iptal eder; iptal edilen görevlerin rollerine ve
-    `notify_roles`'a bildirim gönderir."""
+    `notify_roles`'a bildirim gönderir. Bildirim alanlar (rol üyeleri, atanan ve üstlenen kişi)
+    iptal edilen kaydın bölümünde Görür'ü olanlardır (`requires`)."""
 
     code: str
     event: str
@@ -88,6 +105,7 @@ class CancelTasksRule:
     body: Text = ""
     notify_roles: tuple[str, ...] = field(default_factory=tuple)
     level: str = "WARNING"
+    requires: Requirement | None = field(kw_only=True)
 
 
 Rule = TaskRule | NotifyRule | CancelTasksRule
@@ -264,11 +282,29 @@ def _overdue_plans_body(payload: Payload) -> str:
     return "\n".join(rows)
 
 
+# Admin rolüne giden kurallar: kataloğun yalnız admine verilebilen Görür'ü (admin her yetkiye
+# sahiptir; rolde admin olmayan kimse yoktur). "Kimse kalmıyor" denetimi bu kurallarda admin
+# rolündeki aktif kişilere bakar.
+ADMIN_ONLY: Requirement = ("golive.problems", VIEW)
+
+
+def _deviation_lot(payload: Payload) -> Subject | None:
+    """Tartım sapması lot sayfasına bağlanır: şarjın çıktı (bulk) lotu (sahip kararı
+    2026-11-17; alıcılar şarj sayfasını açamıyor)."""
+    return payload.get("output_lot")
+
+
+def _sample_lot(payload: Payload) -> Subject | None:
+    """Ara kontrol reddi numunenin lotunun sayfasına bağlanır (sahip kararı 2026-11-17)."""
+    return payload.get("lot")
+
+
 RULES: tuple[Rule, ...] = (
     # Faz 2: mal kabul ve şarj bitişinde quality numune açar; görev numuneye bağlıdır ve numune
     # karara bağlanınca (ya da iptal edilince) kapanır.
     TaskRule(
         code="incoming_qc",
+        requires=("quality.samples", CHANGE),
         event=ev.SAMPLE_CREATED,
         role=LABORATUVAR,
         title="Giriş kontrolü: {lot_no}",
@@ -278,6 +314,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="lot_rejected",
+        requires=("inventory.receipts", VIEW),
         event=ev.LOT_REJECTED,
         roles=(DEPO, SATIN_ALMA),
         level="WARNING",
@@ -286,6 +323,7 @@ RULES: tuple[Rule, ...] = (
     ),
     TaskRule(
         code="material_prep",
+        requires=("production.prep", CHANGE),
         event=ev.PRODUCTION_ORDER_APPROVED,
         role=DEPO,
         title="Malzeme hazırla: {number}",
@@ -294,6 +332,7 @@ RULES: tuple[Rule, ...] = (
     ),
     TaskRule(
         code="start_batch",
+        requires=("production.batches", CHANGE),
         event=ev.PRODUCTION_ORDER_MATERIAL_READY,
         role=URETIM,
         title="Şarjı başlat: {number}",
@@ -302,6 +341,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="production_deviation",
+        requires=("inventory.lots", VIEW),
         event=ev.PRODUCTION_DEVIATION,
         roles=(PLANLAMA, LABORATUVAR),
         level="WARNING",
@@ -310,9 +350,11 @@ RULES: tuple[Rule, ...] = (
             "Şarj {batch_no}, {material_code} lot {lot_no}: planlanan {planned_quantity}, "
             "tartılan {actual_quantity} (%{deviation_pct}). {note}"
         ),
+        subject=_deviation_lot,
     ),
     TaskRule(
         code="batch_sample_analysis",
+        requires=("quality.samples", CHANGE),
         event=ev.SAMPLE_CREATED,
         role=LABORATUVAR,
         title="Numune analizi: {lot_no}",
@@ -322,6 +364,7 @@ RULES: tuple[Rule, ...] = (
     ),
     TaskRule(
         code="conditional_release_approval",
+        requires=("quality.conditional", APPROVE),
         event=ev.SAMPLE_AWAITING_APPROVAL,
         role=YONETIM,
         title="Şartlı kabul onayı: {lot_no}",
@@ -330,6 +373,7 @@ RULES: tuple[Rule, ...] = (
     ),
     TaskRule(
         code="rework_order",
+        requires=("production.orders", CHANGE),
         event=ev.SAMPLE_DECIDED,
         role=PLANLAMA,
         title="Yeniden işleme emri aç: {lot_no}",
@@ -341,15 +385,18 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="in_process_out_of_spec",
+        requires=("inventory.lots", VIEW),
         event=ev.SAMPLE_DECIDED,
         roles=(URETIM, PLANLAMA),
         level="WARNING",
         title="Ara kontrol uygun değil: {lot_no}",
         body="{material_code} {material_name} — numune {number}. {reason}",
         when=_in_process_rejected,
+        subject=_sample_lot,
     ),
     NotifyRule(
         code="bulk_lot_released",
+        requires=("production.orders", VIEW),
         event=ev.LOT_RELEASED,
         roles=(PLANLAMA, URETIM),
         title="Bulk lot serbest bırakıldı: {lot_no}",
@@ -358,6 +405,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="bulk_lot_rejected",
+        requires=("production.orders", VIEW),
         event=ev.LOT_REJECTED,
         roles=(PLANLAMA, URETIM),
         level="WARNING",
@@ -367,6 +415,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="production_low_yield",
+        requires=("production.batches", VIEW),
         event=ev.PRODUCTION_LOW_YIELD,
         roles=(PLANLAMA, YONETIM),
         level="WARNING",
@@ -375,6 +424,7 @@ RULES: tuple[Rule, ...] = (
     ),
     CancelTasksRule(
         code="production_order_cancelled",
+        requires=("production.orders", VIEW),
         event=ev.PRODUCTION_ORDER_CANCELLED,
         notify_roles=(PLANLAMA,),
         title="Üretim emri iptal edildi: {number}",
@@ -383,6 +433,7 @@ RULES: tuple[Rule, ...] = (
     # Faz 2, Adım 2.2: dolum.
     TaskRule(
         code="packaging_prep",
+        requires=("filling.prep", CHANGE),
         event=ev.FILLING_ORDER_APPROVED,
         role=DEPO,
         title="Ambalaj malzemesi hazırla: {number}",
@@ -392,6 +443,7 @@ RULES: tuple[Rule, ...] = (
     ),
     TaskRule(
         code="start_filling",
+        requires=("filling.runs", CHANGE),
         event=ev.FILLING_ORDER_MATERIAL_READY,
         role=DOLUM,
         title="Dolumu başlat: {number}",
@@ -400,6 +452,7 @@ RULES: tuple[Rule, ...] = (
     ),
     TaskRule(
         code="finished_qc",
+        requires=("quality.samples", CHANGE),
         event=ev.FILLING_RUN_COMPLETED,
         role=LABORATUVAR,
         title="Mamul kontrolü: {lot_no}",
@@ -415,6 +468,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="filling_bulk_variance",
+        requires=("filling.orders", VIEW),
         event=ev.FILLING_BULK_VARIANCE,
         roles=(PLANLAMA, YONETIM),
         level="WARNING",
@@ -427,6 +481,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="finished_lot_released",
+        requires=("sales.orders", VIEW),
         event=ev.LOT_RELEASED,
         roles=(SEVKIYAT, PLANLAMA),
         title="Sevke hazır: {lot_no}",
@@ -435,6 +490,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="finished_lot_rejected",
+        requires=("filling.orders", VIEW),
         event=ev.LOT_REJECTED,
         roles=(PLANLAMA, DOLUM),
         level="WARNING",
@@ -444,6 +500,7 @@ RULES: tuple[Rule, ...] = (
     ),
     CancelTasksRule(
         code="filling_order_cancelled",
+        requires=("filling.orders", VIEW),
         event=ev.FILLING_ORDER_CANCELLED,
         notify_roles=(PLANLAMA,),
         title="Dolum emri iptal edildi: {number}",
@@ -452,6 +509,7 @@ RULES: tuple[Rule, ...] = (
     # Faz 3, Adım 3.3: müşteri iadesi.
     TaskRule(
         code="return_qc",
+        requires=("quality.samples", CHANGE),
         event=ev.SAMPLE_CREATED,
         role=LABORATUVAR,
         title="İade kontrolü: {lot_no}",
@@ -461,6 +519,7 @@ RULES: tuple[Rule, ...] = (
     ),
     TaskRule(
         code="return_rework",
+        requires=("production.orders", CHANGE),
         event=ev.SAMPLE_DECIDED,
         role=PLANLAMA,
         title="İade lotu yeniden işlenecek: {lot_no}",
@@ -469,6 +528,7 @@ RULES: tuple[Rule, ...] = (
     ),
     TaskRule(
         code="return_scrap",
+        requires=("returns.receiving", CHANGE),
         event=ev.CUSTOMER_RETURN_SCRAP_REQUIRED,
         role=DEPO,
         title="İade imha et: {number}",
@@ -477,6 +537,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="return_closed",
+        requires=("returns.returns", VIEW),
         event=ev.CUSTOMER_RETURN_CLOSED,
         roles=(SEVKIYAT,),
         title="İade sonuçlandı: {number}",
@@ -484,6 +545,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="lots_expiring",
+        requires=("inventory.stock", VIEW),
         event=ev.LOTS_EXPIRING,
         roles=(DEPO, PLANLAMA),
         level="WARNING",
@@ -493,6 +555,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="below_min_stock",
+        requires=("inventory.stock", VIEW),
         event=ev.BELOW_MIN_STOCK,
         roles=(DEPO, PLANLAMA),
         level="WARNING",
@@ -504,6 +567,7 @@ RULES: tuple[Rule, ...] = (
     # ya da sipariş kapanınca kapanır; eksik görevi eksik tamamen rezerve edilince kapanır.
     TaskRule(
         code="plan_shipment",
+        requires=("sales.shipments", CHANGE),
         event=ev.SALES_ORDER_CONFIRMED,
         role=SEVKIYAT,
         title="Sevkiyat planla: {number}",
@@ -515,6 +579,7 @@ RULES: tuple[Rule, ...] = (
     ),
     TaskRule(
         code="sales_shortage",
+        requires=("production.orders", CHANGE),
         event=ev.SALES_ORDER_SHORTAGE,
         role=PLANLAMA,
         title="Eksik ürün için üretim/dolum planla: {number}",
@@ -523,12 +588,14 @@ RULES: tuple[Rule, ...] = (
     ),
     CancelTasksRule(
         code="sales_order_cancelled",
+        requires=("sales.orders", VIEW),
         event=ev.SALES_ORDER_CANCELLED,
         title="Satış siparişi iptal edildi: {number}",
         body="Siparişe bağlı açık görevler iptal edildi.",
     ),
     NotifyRule(
         code="reserved_lots_expiring",
+        requires=("sales.orders", VIEW),
         event=ev.RESERVED_LOTS_EXPIRING,
         roles=(SEVKIYAT, PLANLAMA),
         level="WARNING",
@@ -539,6 +606,7 @@ RULES: tuple[Rule, ...] = (
     # Faz 3, Adım 3.2: sevkiyat.
     TaskRule(
         code="pick_shipment",
+        requires=("sales.picking", CHANGE),
         event=ev.SHIPMENT_PLANNED,
         role=DEPO,
         title="Toplama yap: {number}",
@@ -547,6 +615,7 @@ RULES: tuple[Rule, ...] = (
     ),
     TaskRule(
         code="dispatch_shipment",
+        requires=("sales.shipments", APPROVE),
         event=ev.SHIPMENT_LOADED,
         role=SEVKIYAT,
         title="Sevki onayla / irsaliye kes: {number}",
@@ -555,6 +624,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="shipment_dispatched",
+        requires=("sales.shipments", VIEW),
         event=ev.SHIPMENT_DISPATCHED,
         roles=(YONETIM,),
         title="Sevk edildi: {number}",
@@ -563,6 +633,7 @@ RULES: tuple[Rule, ...] = (
     ),
     CancelTasksRule(
         code="shipment_cancelled",
+        requires=("sales.shipments", VIEW),
         event=ev.SHIPMENT_CANCELLED,
         title="Sevkiyat iptal edildi: {number}",
         body="Sevkiyata bağlı açık görevler iptal edildi; toplanan lotlar yerine döndü.",
@@ -570,6 +641,7 @@ RULES: tuple[Rule, ...] = (
     # --- satın alma (Faz 4, Adım 4.2) ---
     TaskRule(
         code="purchase_request",
+        requires=("purchasing.orders", CHANGE),
         event=ev.PURCHASE_REQUEST_CREATED,
         role=SATIN_ALMA,
         title="Satın alma talebi: {number} — {material_code} {material_name}",
@@ -578,6 +650,7 @@ RULES: tuple[Rule, ...] = (
     ),
     TaskRule(
         code="purchase_order_approval",
+        requires=("purchasing.over_limit", APPROVE),
         event=ev.PURCHASE_ORDER_PENDING_APPROVAL,
         role=YONETIM,
         title="Satın alma siparişini onayla: {number}",
@@ -589,6 +662,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="purchase_order_returned",
+        requires=("purchasing.orders", VIEW),
         event=ev.PURCHASE_ORDER_RETURNED,
         roles=(SATIN_ALMA,),
         level="WARNING",
@@ -597,6 +671,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="expected_delivery",
+        requires=("purchasing.deliveries", VIEW),
         event=ev.PURCHASE_ORDER_APPROVED,
         roles=(DEPO,),
         title="Beklenen teslimat: {number} ({expected_date})",
@@ -604,6 +679,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="purchase_order_received",
+        requires=("purchasing.orders", VIEW),
         event=ev.PURCHASE_ORDER_RECEIVED,
         roles=(SATIN_ALMA,),
         title="Sipariş teslim alındı: {number}",
@@ -611,6 +687,7 @@ RULES: tuple[Rule, ...] = (
     ),
     CancelTasksRule(
         code="purchase_order_cancelled",
+        requires=("purchasing.orders", VIEW),
         event=ev.PURCHASE_ORDER_CANCELLED,
         title="Satın alma siparişi iptal edildi: {number}",
         body="Siparişe bağlı açık görevler iptal edildi.",
@@ -619,6 +696,7 @@ RULES: tuple[Rule, ...] = (
     *(
         TaskRule(
             code=f"maintenance_work_order_{role}",
+            requires=("maintenance.work_orders", CHANGE),
             event=ev.MAINTENANCE_WORK_ORDER_CREATED,
             role=role,
             title="Bakım iş emri: {number} — {equipment_code} {title}",
@@ -633,6 +711,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="equipment_down",
+        requires=("maintenance.downtimes", VIEW),
         event=ev.DOWNTIME_STARTED,
         roles=(PLANLAMA, YONETIM),
         level="WARNING",
@@ -641,6 +720,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="equipment_up",
+        requires=("maintenance.downtimes", VIEW),
         event=ev.DOWNTIME_ENDED,
         roles=(PLANLAMA,),
         title="Ekipman yeniden çalışıyor: {equipment_code}",
@@ -648,6 +728,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="maintenance_overdue",
+        requires=("maintenance.plans", VIEW),
         event=ev.MAINTENANCE_OVERDUE,
         roles=(YONETIM,),
         level="WARNING",
@@ -657,6 +738,7 @@ RULES: tuple[Rule, ...] = (
     # Faz 4 (İSG): olay kaydı yönetime inceleme görevi açar; kapanınca ya da iptalde kapanır.
     TaskRule(
         code="incident_review",
+        requires=("hse.incidents", CHANGE),
         event=ev.INCIDENT_CREATED,
         role=YONETIM,
         title="Olay kaydı: {number} — {incident_type_display}",
@@ -665,6 +747,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="incident_injury",
+        requires=("hse.incidents", VIEW),
         event=ev.INCIDENT_CREATED,
         roles=(YONETIM,),
         level="WARNING",
@@ -674,6 +757,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="storage_limit_exceeded",
+        requires=("hse.storage", VIEW),
         event=ev.STORAGE_LIMIT_EXCEEDED,
         roles=(DEPO, YONETIM),
         level="WARNING",
@@ -683,6 +767,7 @@ RULES: tuple[Rule, ...] = (
     # Raporlama (Faz 4, Adım 4.3): arka planda hazırlanan rapor yalnızca isteyene bildirilir.
     NotifyRule(
         code="report_ready",
+        requires=None,
         event=ev.REPORT_JOB_DONE,
         roles=(),
         title="Rapor hazır: {title}",
@@ -691,6 +776,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="report_failed",
+        requires=None,
         event=ev.REPORT_JOB_FAILED,
         roles=(),
         title="Rapor hazırlanamadı: {title}",
@@ -701,6 +787,7 @@ RULES: tuple[Rule, ...] = (
     # Faz 5 (Adım 5.5): hesap kilidi ve sistem izleme uyarıları sistem yöneticisine.
     NotifyRule(
         code="user_locked",
+        requires=ADMIN_ONLY,
         event=ev.USER_LOCKED,
         roles=(ADMIN,),
         level="WARNING",
@@ -710,6 +797,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="ops_alert",
+        requires=ADMIN_ONLY,
         event=ev.OPS_ALERT,
         roles=(ADMIN,),
         level="WARNING",
@@ -718,6 +806,7 @@ RULES: tuple[Rule, ...] = (
     ),
     NotifyRule(
         code="ops_recovered",
+        requires=ADMIN_ONLY,
         event=ev.OPS_RECOVERED,
         roles=(ADMIN,),
         title="Sistem normale döndü: {title}",
@@ -727,12 +816,21 @@ RULES: tuple[Rule, ...] = (
     # tamamlayınca kapanır.
     TaskRule(
         code="problem_reported",
+        requires=ADMIN_ONLY,
         event=ev.PROBLEM_REPORTED,
         role=ADMIN,
         title="Sorun bildirimi: {number}",
         description="{reporter}: {summary} — sayfa: {page_title} {page_url}",
     ),
 )
+
+
+_BY_CODE: dict[str, Rule] = {rule.code: rule for rule in RULES}
+
+
+def rule_by_code(code: str) -> Rule | None:
+    """Kod ile kural (görevin `rule_code`'u; kuralsız ya da artık olmayan kodda None)."""
+    return _BY_CODE.get(code) if code else None
 
 
 def rules_for(event_name: str) -> list[Rule]:

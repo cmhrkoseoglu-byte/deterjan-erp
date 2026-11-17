@@ -1918,3 +1918,37 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   ve kayıt paneli 26.468, sistem 20.974 durum); farklar yalnız izin listesi ve sahibin onayladığı
   madde. Bağımsız çapraz incelemenin bulgusu (tarayıcının atladığı dosya) düzeltildi.
 - Açık iş: indirilemeyen dosyanın bağlantısı ön yüzde hâlâ görünür (8. adım).
+
+## 2026-11-17 — Kişiye özel yetkiler: 7. adım (iş akışı)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-17). Önce iki karar
+  alındı (DECISIONS): kayda bağlı görevlerin denetim günlüğü kayıtları bağlı kaydı izler; tartım
+  sapması ve ara kontrol reddi bildirimleri lot sayfasına bağlanır.
+- **Kural yetkileri:** her görev, bildirim ve iptal kuralı gerektirdiği bölümü ve düzeyi
+  bildirir (`workflow/rules.py`, `requires=`); iş akışı bunları açılışta çekirdeğin kayıt
+  defterine yazar, çekirdek iş akışını import etmez. Kural kapsama testi her rolün paketinin
+  kuralının yetkisini taşıdığını denetler.
+- **Alıcılar:** görev ve bildirim alıcıları kuralın rolünün üyelerinden yetkisi olanlardır;
+  yükten gelen kişiler (ör. siparişi açan) de süzülür (§8 madde 10), rapor isteyen süzülmez.
+  İptal bildirimleri iptal edilen kaydın bölümünde Görür ister. Anlık (WebSocket) kitlesi aynı
+  süzgeci kullanır.
+- **Görevler (karar 5, §8 madde 6):** görevi görmek ve tamamlamak rol üyeliği ile kuralın
+  yetkisini birlikte ister; üstlenmek tek başına hak vermez. "Tüm birimlerin görevleri" başka
+  rollerin görevlerini gösterir ama tamamlatmaz. Satın alma onayı görevinin açıklaması Fiyatları
+  görür'ü olmayana boş görünür, aramada da eşleşmez.
+- **Sahip kararları:** görev kayıtları denetim günlüğünde bağlı kaydı izler (ör. olay); tartım
+  sapması şarjın bulk lotuna, ara kontrol reddi numunenin lotuna bağlanır (olay sözleşmesine
+  `output_lot` eklendi).
+- **Kimse kalmıyor (§8 madde 9):** kullanıcının rolü kaydedilirken bir kuralı alabilecek kimse
+  kalmıyorsa uyarı çıkar (kaydı engellemez); canlıya geçiş hazırlık listesine "Her görevi
+  alabilecek biri var" maddesi ve sistem durumuna aynı satır eklendi (yalnız gösterilir, uyarı
+  bildirimi göndermez).
+- **Yetki değişti olayı (§8 madde 11):** rol gerçekten değiştiğinde (kullanıcı penceresi,
+  komutlar, Django yönetim paneli) yayınlanır ve kişinin açık oturumlarına iletilir; ön yüzün
+  buna göre yenilenmesi 8. adımdadır.
+- **Denetimler:** iş akışı da girdi; 19 modülün hepsi uç nokta denetiminde ve rol denetimi
+  tarayıcısında (plan §5.1). Kuralların rolleri görev yönlendirmesi olarak izinli.
+- **Doğrulama:** backend 2704, ön yüz 655 test yeşil; mypy, ruff, `manage.py check`, göç, şema ve
+  `access.gen.ts` temiz. Alan doğrulayıcıları eski ve yeni kodu karşılaştırdı; farklar yalnız
+  izin listesindeki §8 madde 6 ve 10 hücreleri ve sahip kararları. Bağımsız çapraz inceleme
+  (olay akışları, görev arayüzü, kapsama ve olay yayını) bulgu çıkarmadı.

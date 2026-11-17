@@ -356,3 +356,29 @@ def test_websocket_rejects_anonymous():
     connected, code = async_to_sync(scenario)()
     assert connected is False
     assert code == 4401
+
+
+# --- Bölüm denetimi işaretleri (plan §4, 7. adım) -----------------------------------------------
+
+
+def test_every_workflow_endpoint_is_marked_signed_in():
+    """Görevlerim, bildirimler, yorum, geçmiş ve @bahsetme herkese açık: E003 temiz."""
+    from apps.core import checks
+
+    assert checks.endpoint_errors({"workflow"}) == []
+
+
+@pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
+def test_unrouted_task_methods_keep_405(make_user, tasks, method):
+    depo_task, _ = tasks
+    client = client_as(make_user("depo"))
+
+    assert getattr(client, method)(f"{BASE}/tasks/").status_code == 405
+    if method != "post":
+        assert getattr(client, method)(f"{BASE}/tasks/{depo_task.pk}/").status_code == 405
+
+
+def test_comment_delete_keeps_405(make_user):
+    response = client_as(make_user("depo")).delete(f"{BASE}/comments/1/")
+
+    assert response.status_code == 405

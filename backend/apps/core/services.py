@@ -21,7 +21,7 @@ from django.db.models import F, Q, QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 
-from apps.core import access, attachments, events, records, security
+from apps.core import access, attachments, event_names, events, records, security
 from apps.core.audit import EXCLUDED_FIELDS, diff, log_change
 from apps.core.coding import formats as coding_formats
 from apps.core.coding import registry as coding_registry
@@ -315,6 +315,14 @@ def set_user_roles(user: User, roles: Iterable[str], actor: User | None, *, note
         log_change(
             _real_actor(actor), user, AuditLog.Action.UPDATE, {"roles": [before, wanted]}, note
         )
+        publish_access_changed(user, actor)
+
+
+def publish_access_changed(user: User, actor: User | None = None) -> None:
+    """Kullanıcının geçerli yetkisi değişti: commit sonrası `access.changed` olayını yayınlar
+    (açık sayfaları menüyü ve düğmeleri yeniler; plan §8 madde 11). Bildirim ve denetim kaydı
+    üretmez; değişikliğin kaydını çağıran yazar."""
+    events.publish(event_names.ACCESS_CHANGED, {"user_id": user.pk}, _real_actor(actor))
 
 
 # --- kullanıcı yönetimi (Sistem > Kullanıcılar; API yalnızca admin'e açık) ----------------------

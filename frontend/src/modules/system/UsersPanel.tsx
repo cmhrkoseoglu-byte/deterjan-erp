@@ -327,6 +327,27 @@ export function UsersPanel() {
           onSaved={(saved) => {
             setEditing(undefined);
             notifications.show({ color: "green", message: sy.saved(nameOf(saved)) });
+            const warnings = saved.coverage_warnings ?? [];
+            if (warnings.length > 0) {
+              // Kayıt engellenmez; uyarı kapatılana kadar kalır (plan §8 madde 9).
+              notifications.show({
+                color: "orange",
+                title: sy.coverageWarningTitle,
+                autoClose: false,
+                message: (
+                  <Stack gap={4} data-testid="coverage-warnings">
+                    {warnings.map((warning) => (
+                      <Text size="sm" key={warning}>
+                        {warning}
+                      </Text>
+                    ))}
+                    <Text size="xs" c="dimmed">
+                      {sy.coverageWarningHint}
+                    </Text>
+                  </Stack>
+                ),
+              });
+            }
             reload();
           }}
         />

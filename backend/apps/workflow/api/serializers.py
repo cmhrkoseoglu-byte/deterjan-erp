@@ -3,8 +3,11 @@ from typing import Any
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.core.access import PRICES
 from apps.core.api.serializers import AttachmentSerializer, AuditLogSerializer, ContentTypeField
 from apps.core.models import User
+from apps.core.permissions import has_access
+from apps.workflow.access import PURCHASE_ORDER_APPROVAL
 from apps.workflow.models import Comment, Notification, Task
 from apps.workflow.selectors import user_can_act_on_task
 
@@ -34,7 +37,15 @@ def _related(content_type: Any, object_id: int | None, label: str) -> dict[str, 
     }
 
 
+def hides_task_description(user: Any, task: Task) -> bool:
+    """Satın alma onayı görevinin açıklaması (tedarikçi ve tutarlar) Fiyatları görür'ü olmayana
+    boş görünür (plan §5.6, §5.7)."""
+    return task.rule_code == PURCHASE_ORDER_APPROVAL and not has_access(user, PRICES)
+
+
 class TaskSerializer(serializers.ModelSerializer):
+    """Görev. Satın alma onayı görevinin açıklaması Fiyatları görür'ü olmayana boş döner."""
+
     assigned_role: serializers.SlugRelatedField = serializers.SlugRelatedField(
         slug_field="name", read_only=True
     )
@@ -72,6 +83,13 @@ class TaskSerializer(serializers.ModelSerializer):
             "can_act",
         ]
         read_only_fields = fields
+
+    def to_representation(self, instance: Task) -> dict[str, Any]:
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        if hides_task_description(getattr(request, "user", None), instance):
+            data["description"] = ""
+        return data
 
     @extend_schema_field(RelatedRecordSerializer(allow_null=True))
     def get_related(self, obj: Task) -> dict[str, Any] | None:

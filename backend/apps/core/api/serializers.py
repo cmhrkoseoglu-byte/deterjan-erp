@@ -204,6 +204,17 @@ class UserUpdateSerializer(serializers.Serializer):
     roles = serializers.ListField(child=serializers.ChoiceField(choices=ALL_ROLES), required=False)
 
 
+class UserUpdateResultSerializer(UserSerializer):
+    """Kullanıcı güncelleme yanıtı: kullanıcı ve kaydı engellemeyen uyarılar (ör. rol değişince
+    görevi alacak kimse kalmıyor; plan §8 madde 9)."""
+
+    coverage_warnings = serializers.ListField(child=serializers.CharField(), read_only=True)
+
+    class Meta(UserSerializer.Meta):
+        fields = [*UserSerializer.Meta.fields, "coverage_warnings"]
+        read_only_fields = fields
+
+
 class IssuedPasswordSerializer(serializers.Serializer):
     """Yeni kullanıcı ya da şifre sıfırlama yanıtı: geçici şifre yalnızca bu yanıtta görünür."""
 

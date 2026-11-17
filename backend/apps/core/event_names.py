@@ -11,6 +11,11 @@ USER_LOGGED_OUT = "user.logged_out"
 USER_LOGIN_FAILED = "user.login_failed"
 # Faz 5: hatalı denemelerle kilitlenen hesap (yalnızca var olan kullanıcılar için).
 USER_LOCKED = "user.locked"
+# Kişiye özel yetkiler (docs/plan/kisi-yetkileri.md §8 madde 11): kullanıcının geçerli yetkisi
+# değişti (rol değişikliği; Django panelinde roller, süper kullanıcı ya da etkinlik). Payload:
+# `{"user_id": int}`. workflow kişinin açık sayfalarına WebSocket iletisi gönderir; bildirim ve
+# denetim kaydı üretmez (iş akışı kural tablosunda değildir).
+ACCESS_CHANGED = "access.changed"
 
 # core — zamanlanmış işler (Celery Beat). Her sabah 07:00'de yayınlanır; modüller kendi günlük
 # kontrollerini bu olaya bağlar (ör. inventory: SKT'si yaklaşan lotlar, minimum stok altı).

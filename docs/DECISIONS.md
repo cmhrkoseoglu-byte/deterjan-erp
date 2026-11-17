@@ -192,7 +192,7 @@ gelince kendiliğinden `DONE` olur. Eksik alan şablonda boş kalır, hata verme
 | `production_order.<durum>` | `transition_status` / `cancel_document` payload'ı (`model, id, number, from_status, to_status`); onayda isteğe bağlı `priority` (1–4) |
 | `production_batch.started` | `model, id, batch_no, order: {model, id, number}` |
 | `production_batch.completed` | `model, id, batch_no, order: {model, id, number}, output_lot: {model, id, lot_no, material_code, material_name}` |
-| `production.deviation` | `model, id` (şarj), `batch_no, order_number, material_code, lot_no, planned_quantity, actual_quantity, deviation_pct, note` |
+| `production.deviation` | `model, id` (şarj), `batch_no, order_number, material_code, lot_no, planned_quantity, actual_quantity, deviation_pct, note, output_lot: {model, id, lot_no, material_code, material_name}` (2026-11-17: bildirim `output_lot`'a bağlanır) |
 | `production.low_yield` | `model, id` (şarj), `batch_no, order_number, yield_pct, threshold_pct` |
 | `inventory.lots_expiring` | `days, lots: [{lot_no, material_code, material_name, expiry_date}]` |
 | `inventory.below_min_stock` | `materials: [{code, name, quantity, min_stock, unit}]` |
@@ -2750,3 +2750,26 @@ değiştirme zorunlu, yalnızca admin):
 - **Gerekçe:** olayı göremeyen kişi ona bağlı görevden de olayı öğrenmemeli (§9 riski: verinin
   başka yoldan sızması). Bildirimin bağlantısı alıcının açabildiği sayfaya gitmeli; yeni okuma
   hakkı vermek yerine lot sayfası seçildi.
+
+## 2026-11-17 — Kişiye özel yetkiler: 7. adımın uygulama kararları
+
+- **Bağlam:** 7. adımda (iş akışı) her kural gerektirdiği yetkiyi bildirir; alıcılar ve görev
+  görünürlüğü bu yetkiyle süzülür (plan §5.7, karar 5). Planın harfiyen söylemediği noktalar.
+- **Kararlar (uygulamada, plan ve sahip kararlarıyla uyumlu):**
+  - Tartım sapması bildirimi şarjın çıktı (bulk) lotuna bağlanır: sapmanın tek ve belirli lotu
+    odur (girdi lotu kısa tartımda birden çok olabilir). Bildirim metni girdi lotunu söylemeye
+    devam eder. Var olan bildirimler geriye dönük değiştirilmez.
+  - Bu iki bildirimin yetkisi Lotlar: Görür'dür (herkese açık ve kilitli): alıcılar bugünkü gibi.
+  - Görev görmek ve tamamlamak rol üyeliği ile kuralın yetkisini birlikte ister; iptal ve yükten
+    gelen kişi bildirimleri ise iptal edilen ya da bildirilen kaydın bölümünde Görür ister.
+    Rapor isteyen süzülmez. Kuralı olmayan (elle açılmış) görevler bugünkü rol kuralını izler.
+  - "Tüm birimlerin görevleri" başka rollerin görevlerini gösterir ama kişinin kendi rolünde
+    yetkisini kaybettiği görevi geri getirmez.
+  - **Kimse kalmıyor:** görev, bildirim ve bildirim rolü olan iptal kuralları sayılır; iptal
+    kurallarında yalnız bildirim rolleri denetlenir (iptal edilen görevin rolü o an açık olan
+    göreve bağlıdır). Admin rolünün kuralları admin grubundaki etkin kişilerle karşılanır; grupta
+    olmayan süper kullanıcı sayılmaz. Hazırlık listesinde görevi alacak kimse yoksa madde eksik,
+    yalnız bildirim kimseye gitmiyorsa uyarı olur. Sistem durumunda yalnız gösterilir.
+  - **Yetki değişti olayı:** rol gerçekten değiştiğinde (kullanıcı penceresi, yönetim komutları,
+    Django yönetim paneli) yayınlanır ve kişinin açık oturumlarına iletilir; bildirim ya da
+    denetim kaydı yazmaz. Ön yüzün buna göre yenilenmesi 8. adımdadır.

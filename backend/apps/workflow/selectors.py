@@ -6,7 +6,9 @@ from django.db.models import Q, QuerySet
 
 from apps.core import records
 from apps.core.models import AuditLog, User
-from apps.core.roles import YONETIM
+from apps.core.permissions import has_access, is_admin
+from apps.workflow import rules
+from apps.workflow.access import ALL_TASKS
 from apps.workflow.models import Comment, Notification, Task
 
 
@@ -21,37 +23,78 @@ def visible_record_for(user: User, content_type: ContentType, object_id: int) ->
     return records.visible_record(user, content_type, object_id)
 
 
+def task_requirement(task: Task) -> tuple[str, str] | None:
+    """Görevin kuralının gerektirdiği yetki: `(bölüm anahtarı, düzey)`.
+
+    Kuralsız görev (`rule_code` boş) ya da artık tabloda olmayan kuralın görevi yetki istemez;
+    bunlarda bugünkü gibi yalnız rol ya da atanan kişi bakılır."""
+    if not task.rule_code:
+        return None
+    rule = rules.rule_by_code(task.rule_code)
+    if not isinstance(rule, rules.TaskRule):
+        return None
+    return rule.requires
+
+
+def _lacked_rule_codes(user: User) -> list[str]:
+    """Kişinin gerektirdiği yetkisi olmadığı görev kurallarının kodları (admin için boş)."""
+    return [
+        rule.code
+        for rule in rules.RULES
+        if isinstance(rule, rules.TaskRule)
+        and rule.requires is not None
+        and not has_access(user, *rule.requires)
+    ]
+
+
 def user_can_act_on_task(user: User, task: Task) -> bool:
-    """Görevi üstlenebilir/tamamlayabilir mi: admin, atanan kişi, üstlenen ya da görevin rolünde."""
+    """Görevi üstlenebilir/tamamlayabilir mi (karar 5, plan §5.7)?
+
+    Admin her görevde. Öteki kişi görevin rolündeyse ya da görev ona atanmışsa, ve kuralın
+    gerektirdiği yetkisi varsa. Görevi üstlenmiş olmak tek başına yetmez: rolünü ya da yetkisini
+    kaybeden üstlenen tamamlayamaz, yetkili başka bir üye tamamlar."""
     if not user.is_authenticated or not user.is_active:
         return False
-    if user.is_admin or user.pk in (task.assigned_user_id, task.claimed_by_id):
+    if is_admin(user):
+        return True
+    requirement = task_requirement(task)
+    if requirement is not None and not has_access(user, *requirement):
+        return False
+    if user.pk == task.assigned_user_id:
         return True
     return task.assigned_role is not None and user.has_role(task.assigned_role.name)
 
 
 def assigned_to_q(user: User) -> Q:
-    """Bana, rollerimden birine atanmış ya da üstlendiğim görevler."""
-    return (
-        Q(assigned_role__name__in=list(user.role_names))
-        | Q(assigned_user=user)
-        | Q(claimed_by=user)
-    )
+    """Görevlerim: bana atanmış görevler ve rollerimden birine atanmış, kuralın gerektirdiği
+    yetkisi olduğum görevler (karar 5). Üstlenmiş olmak tek başına görev göstermez."""
+    own_roles = Q(assigned_role__name__in=list(user.role_names))
+    lacked = _lacked_rule_codes(user)
+    if lacked:
+        own_roles &= ~Q(rule_code__in=lacked)
+    return own_roles | Q(assigned_user=user)
 
 
 def tasks_visible_to(user: User) -> QuerySet[Task]:
-    """Kullanıcının görebildiği görevler: `yonetim` ve admin hepsini, diğerleri kendine,
-    rollerine atanmış ya da üstlendiği görevleri."""
+    """Kullanıcının görebildiği görevler (plan §5.7).
+
+    Admin hepsini görür. Öteki kişi Görevlerim'deki görevleri (`assigned_to_q`) görür; "Tüm
+    birimlerin görevleri: Görür" yetkisi olan, rollerinde olmayan görevleri de bağlı kayda göre
+    süzülmeden görür (rolsüz, kişiye atanmış görevler dahil). Kişinin kendi rollerinin
+    görevlerinde karar 5 geçerlidir: kuralın yetkisi yoksa görmez."""
     queryset = Task.objects.select_related(
         "assigned_role", "assigned_user", "claimed_by", "completed_by", "related_content_type"
     )
-    if user.is_admin or user.has_role(YONETIM):
+    if is_admin(user):
         return queryset
-    return queryset.filter(assigned_to_q(user))
+    visible = assigned_to_q(user)
+    if has_access(user, ALL_TASKS):
+        visible |= Q(assigned_role__isnull=True) | ~Q(assigned_role__name__in=list(user.role_names))
+    return queryset.filter(visible)
 
 
 def my_tasks(user: User) -> QuerySet[Task]:
-    """Görevlerim: bana ya da rollerime atanmış, ya da üstlendiğim görevler (her rol için)."""
+    """Görevlerim: bana atanmış ve rollerime atanmış, yetkisi olduğum görevler."""
     return tasks_visible_to(user).filter(assigned_to_q(user))
 
 

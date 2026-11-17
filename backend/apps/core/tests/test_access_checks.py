@@ -77,15 +77,14 @@ def test_dependency_check_counts_section_keys_given_as_text(tmp_path: Path) -> N
 def test_endpoint_check_only_for_enforced_apps() -> None:
     assert checks.endpoint_errors(set()) == []
 
-    # 6. adımda core geçti (denetim günlüğü: Denetim günlüğü: Görür); iş akışı 7. adımda geçer.
+    # 6. adımda core geçti (denetim günlüğü: Denetim günlüğü: Görür); 7. adımda iş akışı da geçti:
+    # 7. adımın sonunda bütün modüller denetlenir (plan §5.1).
     errors = checks.endpoint_errors({"core"})
     assert not any("/api/v1/audit-log/" in error for error in errors)
     assert not any("/api/v1/access/catalog/" in error for error in errors)
-
-    pending = checks.endpoint_errors({"workflow"})
-    assert any(
-        "/api/v1/workflow/comments/" in error and "(IsAuthenticated)" in error for error in pending
-    )
+    assert checks.endpoint_errors({"workflow"}) == []
+    every_app = {path.name for path in checks.APPS_DIR.iterdir() if (path / "apps.py").exists()}
+    assert every_app == set(checks.ENFORCED_APPS)
 
 
 def test_access_permission_recognition() -> None:

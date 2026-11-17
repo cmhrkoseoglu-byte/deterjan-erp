@@ -1,9 +1,11 @@
 """İş akışı API'si: görevler, bildirimler, yorumlar.
 
-Tüm uç noktalar giriş yapmış her kullanıcıya açıktır (her rolün görevi/bildirimi vardır); kimin
-neyi göreceği satır düzeyinde süzülür: bildirimler yalnızca alıcısına, görevler
-`selectors.tasks_visible_to` kuralına göre. Görev üstlenme/tamamlama yetkisi servis katmanında
-denetlenir (yetkisizse 403). Kayda bağlı yorum ve geçmiş, kaydın kendi ekranındaki okuma kuralına
+Tüm uç noktalar giriş yapmış her kullanıcıya açıktır (`SignedIn` işareti; plan §4: Görevlerim,
+bildirimler, kayda bağlı yorum ve @bahsetme herkese açık); kimin neyi göreceği satır düzeyinde
+süzülür: bildirimler yalnızca alıcısına, görevler `selectors.tasks_visible_to` kuralına göre
+(görevin rolü ve kuralın gerektirdiği yetki, karar 5; "Tüm birimlerin görevleri"). Görev
+üstlenme/tamamlama yetkisi servis katmanında denetlenir: görmediği görevde 404, gördüğü ama
+üstlenemediği görevde 403. Kayda bağlı yorum ve geçmiş, kaydın kendi ekranındaki okuma kuralına
 uyar (`core.records`): kaydı göremeyen için kayıt yokmuş gibi davranılır.
 """
 
@@ -11,17 +13,22 @@ from typing import Any
 
 import django_filters
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import QuerySet
+from django.db.models import Case, CharField, F, QuerySet, Value, When
+from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
+from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.request import Request
 from rest_framework.response import Response
 
 from apps.core import records
+from apps.core.access import PRICES
 from apps.core.models import AuditLog, User
+from apps.core.permissions import SignedIn, has_access
 from apps.workflow import selectors, services
+from apps.workflow.access import PURCHASE_ORDER_APPROVAL
 from apps.workflow.api.serializers import (
     CommentCreateSerializer,
     CommentEditSerializer,
@@ -95,11 +102,43 @@ class TaskFilter(_ContentTypeFilterMixin, django_filters.FilterSet):
         return queryset.exclude(status__in=Task.OPEN_STATUSES)
 
 
+class TaskSearchFilter(SearchFilter):
+    """Görev araması. Fiyatları görür'ü olmayan kişi satın alma onayı görevinin açıklamasında
+    (tedarikçi ve tutarlar) aramaz; açıklama ona boş görünür (plan §5.6, §5.7)."""
+
+    MASKED = "searchable_description"
+
+    def get_search_fields(self, view: Any, request: Request) -> Any:
+        fields = super().get_search_fields(view, request)
+        if has_access(request.user, PRICES):
+            return fields
+        return [self.MASKED if name == "description" else name for name in fields or ()]
+
+    def filter_queryset(self, request: Request, queryset: QuerySet, view: Any) -> QuerySet:
+        if self.get_search_terms(request) and not has_access(request.user, PRICES):
+            queryset = queryset.annotate(
+                **{
+                    self.MASKED: Case(
+                        When(rule_code=PURCHASE_ORDER_APPROVAL, then=Value("")),
+                        default=F("description"),
+                        output_field=CharField(),
+                    )
+                }
+            )
+        return super().filter_queryset(request, queryset, view)
+
+
 class TaskViewSet(viewsets.ReadOnlyModelViewSet):
     """Görevler. `?mine=true&open=true` → Görevlerim. Görev elle oluşturulmaz, kurallardan doğar."""
 
+    permission_classes = [
+        SignedIn(
+            "Görevlerim herkese açık; görevler görevin rolüne ve kuralın yetkisine göre süzülür"
+        )
+    ]
     queryset = Task.objects.none()  # şema için; gerçek sorgu get_queryset'te
     serializer_class = TaskSerializer
+    filter_backends = [DjangoFilterBackend, TaskSearchFilter, OrderingFilter]
     filterset_class = TaskFilter
     search_fields = ["title", "description", "related_repr"]
     ordering_fields = ["created_at", "priority", "due_at", "status"]
@@ -138,6 +177,7 @@ class NotificationFilter(django_filters.FilterSet):
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     """Bana gelen bildirimler (yeniden eskiye)."""
 
+    permission_classes = [SignedIn("kişinin kendi bildirimleri")]
     queryset = Notification.objects.none()  # şema için; gerçek sorgu get_queryset'te
     serializer_class = NotificationSerializer
     filterset_class = NotificationFilter
@@ -179,6 +219,9 @@ class CommentViewSet(
     """Kayda bağlı yorumlar. Liste için `content_type` ve `object_id` zorunludur.
     Yorum silinmez; yalnızca yazarı düzenleyebilir (PATCH/PUT `{"body": ...}`)."""
 
+    permission_classes = [
+        SignedIn("kayda bağlı yorumlar; kaydın kendi ekranındaki okuma kuralı uygulanır")
+    ]
     queryset = Comment.objects.none()  # şema için; gerçek sorgu get_queryset'te
     serializer_class = CommentSerializer
     filter_backends: list = []
@@ -231,6 +274,9 @@ class RecordHistoryView(generics.ListAPIView):
     geçmişte de gösterilmez; yalnızca bu alanları değiştiren kayıtlar (notlarıyla) hiç listelenmez.
     """
 
+    permission_classes = [
+        SignedIn("kayda bağlı geçmiş; kaydın kendi ekranındaki okuma kuralı uygulanır")
+    ]
     serializer_class = RecordHistorySerializer
     filter_backends: list = []
 
@@ -259,6 +305,7 @@ class MentionableUserView(generics.ListAPIView):
     """@bahsetme önerisi: kullanıcı adı ya da ad soyadla arama, en fazla 10 kişi (sayfasız).
     `content_type` ve `object_id` verilirse yalnızca o kaydı görebilen kişiler önerilir."""
 
+    permission_classes = [SignedIn("@bahsetme önerisi; kayıt verilirse yalnız kaydı görebilenler")]
     serializer_class = UserBriefSerializer
     filter_backends: list = []
     pagination_class = None

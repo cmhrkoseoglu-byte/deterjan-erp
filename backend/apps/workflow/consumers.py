@@ -2,6 +2,8 @@
 
 Oturum çereziyle kimlik doğrulanır (aynı origin). Giriş yapmamış bağlantı 4401 koduyla kapatılır.
 Sunucu yalnızca mesaj gönderir; istemciden gelen mesajlar yok sayılır (yalnızca `ping` → `pong`).
+Kitleyi sunucu belirler (`realtime.push_to_users`): bildirim ve görev mesajları yetkiyle süzülmüş
+alıcılara, `access.changed` yalnızca rolü değişen kişiye gider (plan §5.7, §8 madde 11).
 """
 
 from typing import Any

@@ -621,7 +621,8 @@ sahibin onayını ve DECISIONS kaydını ister.
   - Yükten gelen kişiler (ör. siparişi açan) de aynı denetimden geçer (§8 madde 10); rapor
     isteyen süzülmez.
   - İptal bildirimleri ve görevlerin anlık (WebSocket) kitlesi aynı süzgeci kullanır.
-  - Tartım sapması ve ara kontrol reddi §12'deki karara kadar süzülmez; bugünkü gibi gider.
+  - Tartım sapması ve ara kontrol reddi bugünkü alıcılara gider ve lot sayfasına bağlanır (§12,
+    karar 2026-11-17).
 - Satın alma onayı görevinin açıklamasındaki tutarlar, Fiyatları görür'ü olmayana boş görünür.
 - **Kimse kalmıyor uyarısı:** bir kural için rolde yetkili kimse kalmıyorsa yetki ya da rol
   kaydedilirken uyarı çıkar. Canlıya geçiş hazırlık listesine ve sistem durumuna aynı denetim

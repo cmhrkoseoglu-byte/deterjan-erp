@@ -20,7 +20,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
-from apps.core import audit_filter, health, ratelimit, records, security, services
+from apps.core import audit_filter, coverage, health, ratelimit, records, security, services
 from apps.core.access import AUDIT_LOG
 from apps.core.api.filters import AuditLogFilter, UserFilter
 from apps.core.api.serializers import (
@@ -43,6 +43,7 @@ from apps.core.api.serializers import (
     SiteInfoSerializer,
     UserCreateSerializer,
     UserSerializer,
+    UserUpdateResultSerializer,
     UserUpdateSerializer,
 )
 from apps.core.attachments import INLINE_TYPES
@@ -357,13 +358,22 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         user, password = services.create_user(_actor(request), **body.validated_data)
         return self._issued(user, password, status.HTTP_201_CREATED)
 
-    @extend_schema(request=UserUpdateSerializer, responses=UserSerializer)
+    @extend_schema(request=UserUpdateSerializer, responses=UserUpdateResultSerializer)
     def partial_update(self, request: Request, pk: str | None = None) -> Response:
+        """Bilgi ve rol güncelleme. Rol değişikliği bir iş akışı kuralını alabilecek kimse
+        bırakmıyorsa yanıtta `coverage_warnings` uyarısı döner; kayıt engellenmez."""
         user = self.get_object()
         body = UserUpdateSerializer(data=request.data, partial=True)
         body.is_valid(raise_exception=True)
+        before = [group.name for group in user.groups.all()]
         services.update_user(_actor(request), user, **body.validated_data)
-        return Response(self._fresh(user))
+        data = dict(self._fresh(user))
+        data["coverage_warnings"] = (
+            coverage.role_change_warnings(user, before, data["roles"])
+            if "roles" in body.validated_data
+            else []
+        )
+        return Response(data)
 
     @extend_schema(request=None, responses=UserSerializer)
     @action(detail=True, methods=["post"])

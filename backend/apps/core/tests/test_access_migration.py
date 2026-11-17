@@ -30,6 +30,9 @@ ROLE_SEED = "rolleri ve ilk kullanıcıları kuran komut; rol denetimi değil"
 ROLE_PRIMITIVE = (
     "rol ilkeli: is_admin, iki aşamalı doğrulama, son admin kuralı, görev yönlendirme (plan §10)"
 )
+ROUTING = (
+    "görev yönlendirme: kuralın rolü alıcıyı ve görevin birimini seçer (plan §5.7, §10 izinli)"
+)
 ALLOWED: dict[str, str] = {
     "production/management/commands/seed_demo.py: from apps.core.roles import PLANLAMA": DEMO_USER,
     "filling/management/commands/seed_filling_demo.py: "
@@ -121,6 +124,37 @@ ALLOWED: dict[str, str] = {
     (
         "reporting/selectors.py: from apps.core.roles import ROLE_LABELS"
     ): "görev süreleri raporunun rol sütunu etiketleri; rol denetimi değil",
+    "core/coverage.py: from apps.core.roles import ADMIN, ROLE_LABELS": ROLE_PRIMITIVE,
+    "workflow/rules.py: from apps.core.roles import (": ROUTING,
+    "workflow/rules.py: roles=(DEPO, SATIN_ALMA),": ROUTING,
+    "workflow/rules.py: roles=(PLANLAMA, LABORATUVAR),": ROUTING,
+    "workflow/rules.py: roles=(URETIM, PLANLAMA),": ROUTING,
+    "workflow/rules.py: roles=(PLANLAMA, URETIM),": ROUTING,
+    "workflow/rules.py: roles=(PLANLAMA, YONETIM),": ROUTING,
+    "workflow/rules.py: roles=(SEVKIYAT, PLANLAMA),": ROUTING,
+    "workflow/rules.py: roles=(PLANLAMA, DOLUM),": ROUTING,
+    "workflow/rules.py: roles=(SEVKIYAT,),": ROUTING,
+    "workflow/rules.py: roles=(DEPO, PLANLAMA),": ROUTING,
+    "workflow/rules.py: roles=(YONETIM,),": ROUTING,
+    "workflow/rules.py: roles=(SATIN_ALMA,),": ROUTING,
+    "workflow/rules.py: roles=(DEPO,),": ROUTING,
+    "workflow/rules.py: roles=(PLANLAMA,),": ROUTING,
+    "workflow/rules.py: roles=(DEPO, YONETIM),": ROUTING,
+    "workflow/rules.py: roles=(),": ROUTING,
+    "workflow/rules.py: roles=(ADMIN,),": ROUTING,
+    (
+        "workflow/selectors.py: return task.assigned_role is not None and "
+        "user.has_role(task.assigned_role.name)"
+    ): ROUTING,
+    "workflow/selectors.py: own_roles = Q(assigned_role__name__in=list(user.role_names))": ROUTING,
+    (
+        "workflow/selectors.py: visible |= Q(assigned_role__isnull=True) | "
+        "~Q(assigned_role__name__in=list(user.role_names))"
+    ): ROUTING,
+    (
+        "workflow/services.py: members = User.objects.filter(is_active=True, "
+        "groups__name__in=list(roles)).distinct()"
+    ): ROUTING,
 }
 
 

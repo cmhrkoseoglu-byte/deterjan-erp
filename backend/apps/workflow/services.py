@@ -11,17 +11,23 @@ from django.contrib.auth.models import Group
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Prefetch, Q, QuerySet
 from django.utils import timezone
 
 from apps.core import events, records
 from apps.core.audit import log_change
+from apps.core.effective_access import active_overrides
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
+from apps.core.permissions import has_access
 from apps.core.services import save_with_audit
 from apps.workflow import realtime, rules
 from apps.workflow.models import Comment, Notification, Task
-from apps.workflow.selectors import commentable_content_type, user_can_act_on_task
+from apps.workflow.selectors import (
+    commentable_content_type,
+    task_requirement,
+    user_can_act_on_task,
+)
 from apps.workflow.state import task_states
 
 logger = logging.getLogger(__name__)
@@ -57,9 +63,35 @@ def _related_filter(content_type: ContentType, object_id: int) -> Q:
 # --- Bildirim -----------------------------------------------------------------------------------
 
 
-def role_members(roles: Iterable[str]) -> list[User]:
-    """Rollere gerçekten atanmış aktif kullanıcılar (admin ayrıcalığı alıcı yapmaz)."""
-    return list(User.objects.filter(is_active=True, groups__name__in=list(roles)).distinct())
+Requirement = tuple[str, str]
+
+
+def holds(user: User, requires: Requirement | None) -> bool:
+    """Kişinin kuralın gerektirdiği yetkisi var mı (`None`: yetki istenmez; admin her zaman)?"""
+    return requires is None or has_access(user, *requires)
+
+
+def _holding(users: QuerySet[User], requires: Requirement | None) -> list[User]:
+    """Kullanıcılardan yetkisi olanlar. Roller ve kişiye özel ayarlar önceden yüklenir (plan
+    §5.3); kişi başına sorgu yapılmaz."""
+    if requires is None:
+        return list(users)
+    users = users.prefetch_related(
+        "groups", Prefetch("access_overrides", queryset=active_overrides())
+    )
+    return [user for user in users if holds(user, requires)]
+
+
+def role_members(roles: Iterable[str], requires: Requirement | None = None) -> list[User]:
+    """Rollere gerçekten atanmış aktif kullanıcılar (admin ayrıcalığı alıcı yapmaz); `requires`
+    verilirse yalnız o yetkisi olanlar (karar 5)."""
+    members = User.objects.filter(is_active=True, groups__name__in=list(roles)).distinct()
+    return _holding(members, requires)
+
+
+def users_holding(user_ids: Iterable[int], requires: Requirement | None) -> list[User]:
+    """Kimlikleri verilen kullanıcılardan yetkisi olanlar (yükten gelen alıcılar, §8 madde 10)."""
+    return _holding(User.objects.filter(pk__in=list(user_ids)), requires)
 
 
 def notify(
@@ -139,15 +171,18 @@ def mark_notifications_read(user: User, ids: Iterable[int] | None = None) -> int
 
 
 def _task_audience(task: Task) -> set[int]:
-    """Görevi ekranında görecek kullanıcılar (WebSocket ile haber verilecekler)."""
+    """Görevi ekranında görecek kullanıcılar (WebSocket ile haber verilecekler): rolün
+    kuralın gerektirdiği yetkisi olan üyeleri, atanan kişi ve hâlâ yetkili olan üstlenen
+    (plan §5.7; alıcılarla aynı süzgeç)."""
     ids: set[int] = set()
     if task.assigned_role_id:
-        ids.update(
-            User.objects.filter(is_active=True, groups=task.assigned_role_id).values_list(
-                "pk", flat=True
-            )
-        )
-    ids.update(pk for pk in (task.assigned_user_id, task.claimed_by_id) if pk)
+        members = User.objects.filter(is_active=True, groups=task.assigned_role_id)
+        ids.update(user.pk for user in _holding(members, task_requirement(task)))
+    if task.assigned_user_id:
+        ids.add(task.assigned_user_id)
+    claimer = task.claimed_by if task.claimed_by_id else None
+    if claimer is not None and user_can_act_on_task(claimer, task):
+        ids.add(claimer.pk)
     return ids
 
 
@@ -199,7 +234,9 @@ def create_task(
             ),
             actor,
         )
-        recipients = role_members([role]) if role else []
+        # Rolün üyelerinden kuralın gerektirdiği yetkisi olanlar (karar 5); kişiye atanan görev
+        # atanan kişiye görünür, bildirimi de ona gider.
+        recipients = role_members([role], task_requirement(task)) if role else []
         if user is not None:
             recipients.append(user)
         notify(
@@ -373,13 +410,16 @@ def _apply_rule(rule: rules.Rule, event: events.Event, actor: User | None) -> No
             _open_task_from_rule(rule, subject, event, actor)
     elif isinstance(rule, rules.NotifyRule):
         if rule.when(payload):
-            extra = list(User.objects.filter(pk__in=rule.users(payload)))
+            # Rol üyeleri ve yükten gelen kişiler (ör. siparişi açan) kuralın bölümünde Görür'le
+            # süzülür (plan §5.7, §8 madde 10); rapor isteyen kuralı yetki istemez.
+            recipients = role_members(rule.roles, rule.requires)
+            recipients += users_holding(rule.users(payload), rule.requires)
             notify(
-                role_members(rule.roles) + extra,
+                recipients,
                 title=rules.render(rule.title, payload),
                 body=rules.render(rule.body, payload),
                 level=rule.level,
-                related=resolve_subject(payload),
+                related=resolve_subject(rule.subject(payload)),
                 event_name=event.name,
                 rule_code=rule.code,
                 exclude_user_id=event.actor_id,
@@ -432,12 +472,8 @@ def _cancel_related_tasks(
     reason = rules.render(rule.title, event.payload)
     for task in open_tasks:
         cancel_task(actor, task, reason=reason)
-    roles = {t.assigned_role.name for t in open_tasks if t.assigned_role} | set(rule.notify_roles)
-    recipients = role_members(roles)
-    recipients += [t.assigned_user for t in open_tasks if t.assigned_user]
-    recipients += [t.claimed_by for t in open_tasks if t.claimed_by]
     notify(
-        recipients,
+        _cancel_recipients(rule, open_tasks),
         title=reason,
         body=rules.render(rule.body, event.payload),
         level=rule.level,
@@ -446,6 +482,18 @@ def _cancel_related_tasks(
         rule_code=rule.code,
         exclude_user_id=event.actor_id,
     )
+
+
+def _cancel_recipients(rule: rules.CancelTasksRule, open_tasks: list[Task]) -> list[User]:
+    """İptal bildiriminin alıcıları (plan §5.7, §8 madde 6): iptal edilen görevlerin rollerinin
+    aktif üyeleri, `notify_roles` üyeleri, atanan ve üstlenen kişiler; hepsinden iptal edilen
+    kaydın bölümünde Görür'ü olanlar (`rule.requires`). Görevin kendi kuralının yetkisi burada
+    aranmaz: ör. Malzeme hazırla görevini üstlenmiş üretim üyesi, emri görebildiği için iptali
+    öğrenir."""
+    task_groups = {t.assigned_role.name for t in open_tasks if t.assigned_role is not None}
+    candidates = {user.pk for user in role_members(task_groups | set(rule.notify_roles))}
+    candidates.update(pk for t in open_tasks for pk in (t.assigned_user_id, t.claimed_by_id) if pk)
+    return users_holding(candidates, rule.requires)
 
 
 # --- Yorum --------------------------------------------------------------------------------------

@@ -24,7 +24,7 @@ MISSING = "<yok>"  # durum anlık görüntüde (ya da bugünkü kodda) yok
 ANY = "<her>"  # eski ya da yeni değer ne olursa olsun
 
 # Uygulanan adım (plan §10). Her adım bu sayıyı artırır ve kendi kayıtlarını ekler.
-CURRENT_STEP = 6
+CURRENT_STEP = 7
 
 
 def matches(pattern: str, text: str) -> bool:
@@ -1064,13 +1064,13 @@ ALLOWED: tuple[Allowed, ...] = (
         old=True,
         new=False,
     ),
+    # Görevi göremeyen üstlenen (rolünü ya da kuralın yetkisini taşımayan) 404 alır.
     *_cells(
         "§8 madde 6",
         "probe_workflow",
         {
             "task batch_sample_analysis: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1092,7 +1092,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task dispatch_shipment: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1102,7 +1101,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task finished_qc: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1124,7 +1122,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task incoming_qc: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1135,7 +1132,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task maintenance_work_order_dolum: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1146,7 +1142,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task maintenance_work_order_laboratuvar: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1157,7 +1152,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task maintenance_work_order_planlama: claimer complete": (
                 "no_role",
-                "yonetim",
                 "depo",
                 "uretim",
                 "laboratuvar",
@@ -1168,7 +1162,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task maintenance_work_order_uretim: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "laboratuvar",
@@ -1190,7 +1183,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task material_prep: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "uretim",
                 "laboratuvar",
@@ -1200,7 +1192,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task packaging_prep: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "uretim",
                 "laboratuvar",
@@ -1210,7 +1201,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task pick_shipment: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "uretim",
                 "laboratuvar",
@@ -1220,7 +1210,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task plan_shipment: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1230,7 +1219,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task problem_reported: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1253,7 +1241,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task purchase_request: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1264,7 +1251,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task return_qc: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1275,7 +1261,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task return_rework: claimer complete": (
                 "no_role",
-                "yonetim",
                 "depo",
                 "uretim",
                 "laboratuvar",
@@ -1286,7 +1271,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task return_scrap: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "uretim",
                 "laboratuvar",
@@ -1296,7 +1280,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task rework_order: claimer complete": (
                 "no_role",
-                "yonetim",
                 "depo",
                 "uretim",
                 "laboratuvar",
@@ -1307,7 +1290,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task sales_shortage: claimer complete": (
                 "no_role",
-                "yonetim",
                 "depo",
                 "uretim",
                 "laboratuvar",
@@ -1318,7 +1300,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task start_batch: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "laboratuvar",
@@ -1329,7 +1310,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task start_filling: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1341,6 +1321,39 @@ ALLOWED: tuple[Allowed, ...] = (
         },
         step=7,
         old=200,
+        new=404,
+    ),
+    # Yönetim, Tüm birimlerin görevleri ile görevi görür ama kendi rolünün görevi olmadığından
+    # tamamlayamaz (karar 5): 403.
+    *_cells(
+        "§8 madde 6",
+        "probe_workflow",
+        {
+            "task batch_sample_analysis: claimer complete": ("yonetim",),
+            "task dispatch_shipment: claimer complete": ("yonetim",),
+            "task finished_qc: claimer complete": ("yonetim",),
+            "task incoming_qc: claimer complete": ("yonetim",),
+            "task maintenance_work_order_dolum: claimer complete": ("yonetim",),
+            "task maintenance_work_order_laboratuvar: claimer complete": ("yonetim",),
+            "task maintenance_work_order_planlama: claimer complete": ("yonetim",),
+            "task maintenance_work_order_uretim: claimer complete": ("yonetim",),
+            "task material_prep: claimer complete": ("yonetim",),
+            "task packaging_prep: claimer complete": ("yonetim",),
+            "task pick_shipment: claimer complete": ("yonetim",),
+            "task plan_shipment: claimer complete": ("yonetim",),
+            "task problem_reported: claimer complete": ("yonetim",),
+            "task purchase_request: claimer complete": ("yonetim",),
+            "task return_qc: claimer complete": ("yonetim",),
+            "task return_rework: claimer complete": ("yonetim",),
+            "task return_scrap: claimer complete": ("yonetim",),
+            "task rework_order: claimer complete": ("yonetim",),
+            "task sales_shortage: claimer complete": ("yonetim",),
+            "task start_batch: claimer complete": ("yonetim",),
+            "task start_filling: claimer complete": ("yonetim",),
+        },
+        step=7,
+        old=200,
+        new=403,
     ),
     # 9. adım — "Kim neyi görür" raporu ve Excel'i: yalnız admin (plan §5.10).
     *_cells(

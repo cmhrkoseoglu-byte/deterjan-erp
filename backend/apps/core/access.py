@@ -432,6 +432,64 @@ def audit_parents() -> dict[str, tuple[str, str]]:
     return dict(_AUDIT_PARENTS)
 
 
+# --- iş akışı kurallarının gerektirdiği yetkiler (plan §5.1, §5.7) -------------------------------
+
+TASK = "task"
+NOTIFY = "notify"
+CANCEL = "cancel"
+RULE_KINDS: tuple[str, ...] = (TASK, NOTIFY, CANCEL)
+
+
+@dataclass(frozen=True)
+class RuleRequirement:
+    """Bir iş akışı kuralının alıcıları: kuralın rollerinin etkin üyelerinden `requires`
+    (`(bölüm anahtarı, düzey)`) yetkisi olanlar. `roles` boşsa kural role gitmez (ör. raporu
+    isteyen kişiye giden bildirim); `requires` yalnız planın muaf tuttuğu kurallarda `None`'dır.
+
+    workflow her kuralı `ready()`'de kaydeder; "kimse kalmıyor" denetimi (`core.coverage`), canlıya
+    geçiş hazırlık listesi ve sistem durumu bu kayıttan okur, workflow'u import etmez. Katalogun
+    parçası değildir (`catalog()` ve özeti değişmez).
+    """
+
+    code: str
+    kind: str
+    roles: tuple[str, ...]
+    requires: tuple[str, str] | None
+
+
+_RULES: dict[str, RuleRequirement] = {}
+
+
+def register_rule(
+    code: str, kind: str, roles: tuple[str, ...], requires: tuple[str, str] | None
+) -> None:
+    """İş akışı kuralının rollerini ve gerektirdiği yetkiyi kaydeder (`kind`: `"task"`, `"notify"`
+    ya da `"cancel"`; iptal kuralında roller bildirim alan rollerdir). Bölüm anahtarı yüklenme
+    sırasından bağımsız olsun diye burada değil `validate()`'te denetlenir."""
+    if not code:
+        raise ValueError("Kural kodu boş olamaz.")
+    if code in _RULES:
+        raise ValueError(f"Kural iki kez kaydedildi: {code}")
+    if kind not in RULE_KINDS:
+        raise ValueError(f"{code}: geçersiz kural türü {kind!r}.")
+    unknown = [role for role in roles if role not in ALL_ROLES]
+    if unknown:
+        raise ValueError(f"{code}: tanımsız rol {', '.join(unknown)}.")
+    if requires is not None and (len(requires) != 2 or not all(requires)):
+        raise ValueError(f"{code}: gereken yetki (bölüm, düzey) çifti olmalıdır.")
+    _RULES[code] = RuleRequirement(
+        code=code,
+        kind=kind,
+        roles=tuple(dict.fromkeys(roles)),
+        requires=None if requires is None else (requires[0], requires[1]),
+    )
+
+
+def rules() -> tuple[RuleRequirement, ...]:
+    """Kayıtlı iş akışı kuralları, kayıt sırasıyla."""
+    return tuple(_RULES.values())
+
+
 def _ordered(keys: Iterable[str]) -> tuple[str, ...]:
     """Bölüm anahtarları katalog sırasıyla: kayıt sırası (hangi modülün önce yüklendiği) çıktıyı
     ve katalog özetini değiştirmez."""
@@ -597,6 +655,17 @@ def validate() -> list[str]:
                 errors.append(f"{name}: denetim günlüğü kuralı tanımsız bölüm ({key}).")
             elif level not in target.levels:
                 errors.append(f"{name}: denetim günlüğü kuralının düzeyi {key}'de yok ({level}).")
+    for requirement in _RULES.values():
+        if requirement.requires is None:
+            continue
+        key, level = requirement.requires
+        target = _SECTIONS.get(key)
+        if target is None:
+            errors.append(f"{requirement.code}: iş akışı kuralı tanımsız bölüm ister ({key}).")
+        elif level not in GRANT_LEVELS or level not in target.levels:
+            errors.append(
+                f"{requirement.code}: iş akışı kuralının düzeyi {key} bölümünde yok ({level})."
+            )
     errors.extend(_requirement_cycles())
     return errors
 
@@ -624,8 +693,8 @@ def _requirement_cycles() -> list[str]:
 
 @contextmanager
 def temporary_catalog() -> Iterator[None]:
-    """Yalnız testler için: blok içinde kaydedilen modül, bölüm, paket ve denetim günlüğü kuralları
-    blok bitince silinir."""
+    """Yalnız testler için: blok içinde kaydedilen modül, bölüm, paket, denetim günlüğü ve iş
+    akışı kuralları blok bitince silinir."""
     saved = (
         dict(_MODULES),
         dict(_SECTIONS),
@@ -634,6 +703,7 @@ def temporary_catalog() -> Iterator[None]:
         dict(_FIELD_OPENERS),
         list(_AUDIT_RULES),
         dict(_AUDIT_PARENTS),
+        dict(_RULES),
     )
     try:
         yield
@@ -651,6 +721,8 @@ def temporary_catalog() -> Iterator[None]:
         _AUDIT_RULES[:] = saved[5]
         _AUDIT_PARENTS.clear()
         _AUDIT_PARENTS.update(saved[6])
+        _RULES.clear()
+        _RULES.update(saved[7])
 
 
 # --- core'un bölümleri: hassas veriler ve sistem --------------------------------------------------
