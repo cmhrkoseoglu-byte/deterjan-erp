@@ -1,30 +1,30 @@
-"""Rapor tanımları (Faz 4, Adım 4.3): sütunlar, filtreler, roller.
+"""Rapor tanımları (Faz 4, Adım 4.3): sütunlar, filtreler, yetki bölümleri.
 
 Ekran, Excel ve PDF aynı tanımı kullanır: API sütunları ve satırları buradan alır, dosya
-çıktısı aynı sütunları yazar. Tutar sütunları (`sensitive`) yetkisi olmayan kullanıcıda hem
+çıktısı aynı sütunları yazar. Her rapor bir yetki bölümüne bağlıdır (`reporting.access`,
+docs/plan/kisi-yetkileri.md §3.15). Tutar sütunları (`sensitive`) yetkisi olmayan kullanıcıda hem
 sütun listesinden hem satırlardan çıkarılır:
 
-- `cost`: lot maliyeti ve stok değeri — yalnızca yonetim ve admin (Karar D-15).
-- `price`: alış fiyatı — satin_alma, yonetim ve admin (depo hiçbir zaman görmez).
+- `cost`: lot maliyeti ve stok değeri — Maliyetleri görür (Karar D-15).
+- `price`: alış fiyatı — Fiyatları görür (depo hiçbir zaman görmez).
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from apps.core.access import COSTS, PRICES, Section
 from apps.core.models import User
-from apps.core.permissions import user_has_role
-from apps.core.roles import (
-    DEPO,
-    DOLUM,
-    LABORATUVAR,
-    PLANLAMA,
-    SATIN_ALMA,
-    SEVKIYAT,
-    URETIM,
-    YONETIM,
-)
+from apps.core.permissions import has_access
 from apps.reporting import selectors
+from apps.reporting.access import (
+    FILLING,
+    LAB,
+    MANAGEMENT,
+    PRODUCTION,
+    SHIPPING_REPORT,
+    STOCK,
+)
 from apps.reporting.selectors import Rows
 
 ColumnKind = Literal[
@@ -32,10 +32,8 @@ ColumnKind = Literal[
 ]
 Sensitive = Literal["cost", "price"]
 
-SENSITIVE_ROLES: dict[str, tuple[str, ...]] = {
-    "cost": (YONETIM,),
-    "price": (SATIN_ALMA, YONETIM),
-}
+# Hassas sütun türü → onu gösteren yetki bölümü.
+SENSITIVE_SECTIONS: dict[str, Section] = {"cost": COSTS, "price": PRICES}
 
 
 @dataclass(frozen=True)
@@ -53,7 +51,8 @@ class ReportDefinition:
     code: str
     title: str
     description: str
-    roles: tuple[str, ...]
+    # Raporu açan yetki bölümü (Görür): liste, ekran, dışa aktarma, arka plan işi ve indirme.
+    section: Section
     columns: tuple[Column, ...]
     rows: Callable[[dict[str, Any]], Rows]
     # Kabul edilen filtre anahtarları (`api.serializers.ReportFilterSerializer` alanları).
@@ -69,7 +68,7 @@ class ReportDefinition:
 def can_see(user: User, sensitive: str | None) -> bool:
     if sensitive is None:
         return True
-    return user_has_role(user, SENSITIVE_ROLES[sensitive])
+    return has_access(user, SENSITIVE_SECTIONS[sensitive])
 
 
 def visible_columns(definition: ReportDefinition, user: User) -> list[Column]:
@@ -88,10 +87,8 @@ def visible_summary(
 
 
 def can_view(definition: ReportDefinition, user: User) -> bool:
-    return user_has_role(user, definition.roles)
+    return has_access(user, definition.section)
 
-
-STOCK_ROLES = (DEPO, PLANLAMA, YONETIM, SATIN_ALMA)
 
 REPORTS: dict[str, ReportDefinition] = {
     d.code: d
@@ -100,7 +97,7 @@ REPORTS: dict[str, ReportDefinition] = {
             code="stock-status",
             title="Stok durumu",
             description="Lot ve lokasyon bazında bakiye, rezerve ve kullanılabilir miktar.",
-            roles=STOCK_ROLES,
+            section=STOCK,
             default_days=None,
             filters=(
                 "material",
@@ -138,7 +135,7 @@ REPORTS: dict[str, ReportDefinition] = {
             code="stock-movements",
             title="Stok hareketleri",
             description="Hareket defteri: giriş, çıkış, transfer, sayım, fire ve sevkiyat.",
-            roles=STOCK_ROLES,
+            section=STOCK,
             filters=(
                 "date_from",
                 "date_to",
@@ -174,7 +171,7 @@ REPORTS: dict[str, ReportDefinition] = {
             code="production",
             title="Üretim raporu",
             description="Biten şarjlar: plan ve gerçek çıktı, verim, tolerans dışı tartımlar.",
-            roles=(URETIM, PLANLAMA, YONETIM),
+            section=PRODUCTION,
             filters=("date_from", "date_to", "material", "equipment"),
             columns=(
                 Column("batch_no", "Şarj no", width=16),
@@ -206,7 +203,7 @@ REPORTS: dict[str, ReportDefinition] = {
             code="filling",
             title="Dolum raporu",
             description="Biten dolum partileri: teorik ve gerçek bulk tüketimi, sağlam adet, fire.",
-            roles=(DOLUM, PLANLAMA, YONETIM),
+            section=FILLING,
             filters=("date_from", "date_to", "material", "equipment"),
             columns=(
                 Column("lot_no", "Mamul lot", width=16),
@@ -236,7 +233,7 @@ REPORTS: dict[str, ReportDefinition] = {
             title="QC raporu",
             description="Karar verilen numuneler: bekleme süresi, red oranı, spesifikasyon dışı "
             "sonuçlar.",
-            roles=(LABORATUVAR, PLANLAMA, YONETIM),
+            section=LAB,
             filters=("date_from", "date_to", "material", "stage", "decision"),
             columns=(
                 Column("number", "Numune no", width=16),
@@ -265,7 +262,7 @@ REPORTS: dict[str, ReportDefinition] = {
             title="Sevkiyat raporu",
             description="Sevk edilen satırlar: müşteri, ürün, lotlar, istenen tarihe göre "
             "zamanında mı.",
-            roles=(SEVKIYAT, PLANLAMA, YONETIM),
+            section=SHIPPING_REPORT,
             filters=("date_from", "date_to", "customer", "material"),
             columns=(
                 Column("number", "Sevkiyat no", width=16),
@@ -294,7 +291,7 @@ REPORTS: dict[str, ReportDefinition] = {
             title="Görev süreleri",
             description="Hangi adım ne kadar bekliyor: görev türü ve birim bazında üstlenme ve "
             "kapanma süreleri, açık ve gecikmiş görevler.",
-            roles=(PLANLAMA, YONETIM),
+            section=MANAGEMENT,
             filters=("date_from", "date_to", "role"),
             landscape=True,
             columns=(

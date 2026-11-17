@@ -1,4 +1,7 @@
-"""Maliyet API'si: yalnızca yonetim ve admin (Karar D-15: tutarları diğer roller görmez)."""
+"""Maliyet API'si (Karar D-15): bölümler Lot maliyetleri ve maliyet raporları, Gider oranları ve
+standart maliyetler, Personel maliyeti (docs/plan/kisi-yetkileri.md §3.11). Her bölüm Maliyetleri
+görür'ü ister. Bugünkü gibi her metot (HEAD, OPTIONS ve karşılanmayan metotlar dahil) bölümün
+yetkisiyle denetlenir."""
 
 from collections.abc import Callable
 from typing import Any
@@ -12,31 +15,25 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.exceptions import NotFound
-from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 from rest_framework.views import APIView
 
-from apps.core.permissions import HasRole
-from apps.core.roles import YONETIM
+from apps.core.access import CHANGE, VIEW
+from apps.core.permissions import AccessMixin, HasAccess
 from apps.costing import exports, selectors, services
+from apps.costing.access import LOT_COSTS, PERSONNEL_COST, RATES
 from apps.costing.api import serializers as s
 from apps.costing.models import CostRate, LotCost, StandardCost
 from apps.inventory.models import Lot
 from apps.personnel import services as personnel_services
 
-COST_ROLES = (YONETIM,)
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _user(request: Request) -> Any:
     return request.user
-
-
-class CostPermissionMixin:
-    def get_permissions(self) -> list[BasePermission]:
-        return [HasRole(*COST_ROLES)()]
 
 
 class LotCostFilter(django_filters.FilterSet):
@@ -50,9 +47,12 @@ class LotCostFilter(django_filters.FilterSet):
         fields = ["material", "method", "is_estimated", "has_missing", "lot"]
 
 
-class LotCostViewSet(CostPermissionMixin, viewsets.ReadOnlyModelViewSet):
+class LotCostViewSet(AccessMixin, viewsets.ReadOnlyModelViewSet):
     """Lotların güncel maliyetleri; detayda kalem kalem döküm. `lots/{lot_id}/` tüm sürümleri
     verir, `lots/{lot_id}/recalculate/` yeniden hesaplar."""
+
+    read_access = HasAccess(LOT_COSTS, VIEW)
+    unhandled_access = HasAccess(LOT_COSTS, VIEW)
 
     filterset_class = LotCostFilter
     search_fields = ["lot__lot_no", "material__code", "material__name"]
@@ -90,7 +90,10 @@ def _history(lot: Lot) -> dict[str, Any]:
     }
 
 
-class LotCostHistoryView(CostPermissionMixin, APIView):
+class LotCostHistoryView(AccessMixin, APIView):
+    read_access = HasAccess(LOT_COSTS, VIEW)
+    unhandled_access = HasAccess(LOT_COSTS, VIEW)
+
     def _lot(self, pk: int) -> Lot:
         return get_object_or_404(Lot.objects.select_related("material"), pk=pk)
 
@@ -101,6 +104,10 @@ class LotCostHistoryView(CostPermissionMixin, APIView):
 
 
 class LotRecalculateView(LotCostHistoryView):
+    # GET (geçmiş) okumadır; yeniden hesap Değiştirir ister. Servisin kendi denetimi yoktur.
+    unhandled_access = HasAccess(LOT_COSTS, CHANGE)
+    action_access = {"post": HasAccess(LOT_COSTS, CHANGE)}
+
     @extend_schema(request=s.RecalculateSerializer, responses=s.LotCostHistorySerializer)
     def post(self, request: Request, pk: int) -> Response:
         """Lotun maliyetini yeniden hesaplar (yeni sürüm, not zorunlu). `cascade`: soy ağacında
@@ -118,14 +125,23 @@ class LotRecalculateView(LotCostHistoryView):
 
 
 class _MasterViewSet(
-    CostPermissionMixin,
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Silme yok (CLAUDE.md §4.6); yazma servis üzerinden."""
+    """Silme yok (CLAUDE.md §4.6); yazma servis üzerinden. Gider oranları ve standart maliyetler:
+    okuma Görür, yazma Değiştirir (servislerin kendi denetimi yoktur)."""
+
+    read_access = HasAccess(RATES, VIEW)
+    unhandled_access = HasAccess(RATES, CHANGE)
+    action_access = {
+        "create": HasAccess(RATES, CHANGE),
+        "update": HasAccess(RATES, CHANGE),
+        "partial_update": HasAccess(RATES, CHANGE),
+    }
 
     create_service: Callable[..., Any]
     update_service: Callable[..., Any]
@@ -178,7 +194,11 @@ def _xlsx(content: bytes, name: str) -> HttpResponse:
     return response
 
 
-class ReportView(CostPermissionMixin, APIView):
+class ReportView(AccessMixin, APIView):
+    """Maliyet raporları ve Excel'leri: Lot maliyetleri ve maliyet raporları: Görür."""
+
+    read_access = HasAccess(LOT_COSTS, VIEW)
+    unhandled_access = HasAccess(LOT_COSTS, VIEW)
     query_serializer: type[Serializer] = s.ReportQuerySerializer
 
     def query(self, request: Request) -> dict[str, Any]:
@@ -348,8 +368,11 @@ def _check_month(year: int, month: int) -> None:
         raise NotFound("Geçersiz ay.")
 
 
-class PersonnelCostView(CostPermissionMixin, APIView):
+class PersonnelCostView(AccessMixin, APIView):
     """Ayın personel maliyeti: kişiler, aşama toplamları ve işçilik oranı önerisi."""
+
+    read_access = HasAccess(PERSONNEL_COST, VIEW)
+    unhandled_access = HasAccess(PERSONNEL_COST, VIEW)
 
     @extend_schema(responses=s.PersonnelCostReportSerializer)
     def get(self, request: Request, year: int, month: int) -> Response:
@@ -358,16 +381,20 @@ class PersonnelCostView(CostPermissionMixin, APIView):
         return Response(s.PersonnelCostReportSerializer(report).data)
 
 
-class PersonnelCostExcelView(CostPermissionMixin, APIView):
+class PersonnelCostExcelView(AccessMixin, APIView):
     """Personel maliyeti Excel'i. Kişi başına ön bordro rakamları taşıdığı için bordro çıktıları
-    gibi tarayıcı önbelleğine alınmaz ve açılışı denetim günlüğüne yazılır (docs/KVKK.md)."""
+    gibi tarayıcı önbelleğine alınmaz ve açılışı denetim günlüğüne yazılır (docs/KVKK.md).
+    Maliyet kendi bölümüyle (Personel maliyeti: Görür) denetler (plan §5.4)."""
+
+    read_access = HasAccess(PERSONNEL_COST, VIEW)
+    unhandled_access = HasAccess(PERSONNEL_COST, VIEW)
 
     @extend_schema(responses={(200, XLSX): OpenApiTypes.BINARY})
     def get(self, request: Request, year: int, month: int) -> HttpResponse:
         _check_month(year, month)
         report = selectors.personnel_cost_report(year, month)
         content = exports.personnel_cost_xlsx(report)
-        personnel_services.record_payroll_access(
+        personnel_services.log_payroll_access(
             _user(request), year, month, "Personel maliyeti (Excel)"
         )
         response = _xlsx(content, f"personel-maliyeti-{year}-{month:02d}")
@@ -375,8 +402,13 @@ class PersonnelCostExcelView(CostPermissionMixin, APIView):
         return response
 
 
-class PersonnelLaborRateView(CostPermissionMixin, APIView):
-    """Onaylı ayın gerçekleşen işçiliğinden yeni işçilik oranı açar."""
+class PersonnelLaborRateView(AccessMixin, APIView):
+    """Onaylı ayın gerçekleşen işçiliğinden yeni işçilik oranı açar (Personel maliyeti:
+    Değiştirir ve Gider oranları: Değiştirir). OPTIONS bugünkü gibi bölümü görene açıktır."""
+
+    read_access = HasAccess(PERSONNEL_COST, VIEW)
+    unhandled_access = HasAccess(PERSONNEL_COST, CHANGE)
+    action_access = {"post": HasAccess(PERSONNEL_COST, CHANGE) & HasAccess(RATES, CHANGE)}
 
     @extend_schema(
         request=s.LaborRateFromPersonnelSerializer, responses={201: s.CostRateSerializer}
@@ -392,11 +424,16 @@ class PersonnelLaborRateView(CostPermissionMixin, APIView):
             body.validated_data["stage"],
             body.validated_data["valid_from"],
         )
-        return Response(s.CostRateSerializer(rate).data, status=status.HTTP_201_CREATED)
+        data = s.CostRateSerializer(rate, context={"request": request}).data
+        return Response(data, status=status.HTTP_201_CREATED)
 
 
-class CostCenterView(CostPermissionMixin, APIView):
+class CostCenterView(AccessMixin, APIView):
     """Personel birimlerinin maliyet aşaması (eşleştirilmemiş birim genel giderdir)."""
+
+    read_access = HasAccess(PERSONNEL_COST, VIEW)
+    unhandled_access = HasAccess(PERSONNEL_COST, CHANGE)
+    action_access = {"put": HasAccess(PERSONNEL_COST, CHANGE)}
 
     @extend_schema(responses=s.CostCenterSerializer(many=True))
     def get(self, request: Request) -> Response:

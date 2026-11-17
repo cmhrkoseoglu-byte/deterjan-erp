@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import { getDashboard, listDashboards, type DashboardCode } from "../../api/reporting";
+import { useCan } from "../../auth/access";
 import { formatDateTime } from "../../i18n/format";
 import { REPORTING_BASE, TABS, type TabKey } from "./config";
 import { LabView, ManagementView, ProductionView, ShippingView, WarehouseView } from "./Dashboards";
@@ -16,10 +17,18 @@ function tabFromPath(value: string | undefined): TabKey {
   return (Object.keys(TABS) as TabKey[]).find((key) => TABS[key] === value) ?? "dashboards";
 }
 
-/** Panolar ve raporlar: menü herkese açık; panolar ve raporlar rolle daralır (backend listesi). */
+/**
+ * Panolar ve raporlar: modülün bir bölümünü gören herkese üç sekme; panolar ve raporlar yetkiyle
+ * daralır (backend listesi). İndirmeler (kişinin kendi dosyaları) herkese açıktır: modülü
+ * göremeyen kişi yalnız İndirmeler'i görür (rota koruması öteki sekmeleri kapatır, §8 madde 1).
+ */
 export function ReportingPage() {
   const tab = tabFromPath(useParams().tab);
   const navigate = useNavigate();
+  const access = useCan();
+  const tabs: TabKey[] = access.moduleVisible("reporting")
+    ? (Object.keys(TABS) as TabKey[])
+    : ["jobs"];
   return (
     <Stack>
       <Title order={2}>{rt.title}</Title>
@@ -28,7 +37,7 @@ export function ReportingPage() {
         onChange={(value) => value && navigate(`${REPORTING_BASE}/${TABS[value as TabKey]}`)}
       >
         <Tabs.List>
-          {(Object.keys(TABS) as TabKey[]).map((key) => (
+          {tabs.map((key) => (
             <Tabs.Tab key={key} value={key}>
               {rt.tabs[key]}
             </Tabs.Tab>

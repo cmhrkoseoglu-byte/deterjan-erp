@@ -138,10 +138,9 @@ describe("iade detayı", () => {
     renderApp("/iadeler/4");
     const row = (await screen.findByText("D-261017-001")).closest("tr")!;
     expect(within(row).getByText("İmha")).toBeInTheDocument();
-    expect(within(row).getByRole("link", { name: "NM-2026-00009" })).toHaveAttribute(
-      "href",
-      "/kalite/numuneler/31",
-    );
+    // Depo numune sayfasını açamaz: numara düz metindir (plan §8 madde 2).
+    expect(within(row).getByText("NM-2026-00009")).toBeInTheDocument();
+    expect(within(row).queryByRole("link", { name: "NM-2026-00009" })).not.toBeInTheDocument();
     await userEvent.click(within(row).getByRole("button", { name: "İmha et" }));
     const dialog = await screen.findByRole("dialog");
     await userEvent.type(within(dialog).getByLabelText("Not"), "Atık firmasına verildi");
@@ -157,6 +156,11 @@ describe("iade detayı", () => {
     renderApp("/iadeler/4");
     await screen.findByText("D-261017-001");
     expect(screen.queryByRole("button", { name: "İmha et" })).not.toBeInTheDocument();
+    // Laboratuvar numune sayfasını açar: numara bağlantıdır.
+    expect(screen.getByRole("link", { name: "NM-2026-00009" })).toHaveAttribute(
+      "href",
+      "/kalite/numuneler/31",
+    );
   });
 
   it("taslak iade onayla teslim alınır", async () => {

@@ -9,18 +9,20 @@ class TestAppConfig(AppConfig):
     verbose_name = "Çekirdek test uygulaması"
 
     def ready(self) -> None:
+        from apps.core.access import CHANGE
         from apps.core.coding.registry import (
             register_document_type,
             register_lot_type,
             register_master_code,
         )
         from apps.core.records import register_record_type
-        from apps.core.roles import PLANLAMA
+        from apps.masterdata.access import CARDS
 
         # Yorum ve geçmiş testleri: giriş yapmış herkesin okuyabildiği bir kayıt türü.
         register_record_type("core_testapp.widget")
 
-        # Kodlama testleri (core/tests/test_coding.py).
+        # Kodlama testleri (core/tests/test_coding.py). Kod önerisi "Ana veri kartları:
+        # Değiştirir" ile açılır (planlamada var, depoda yok); türlü parçada yazma yetkisi yok.
         register_master_code(
             "core_testapp.widget",
             label="Deneme parçası",
@@ -28,7 +30,7 @@ class TestAppConfig(AppConfig):
             default_prefix="WDG",
             default_width=4,
             max_length=20,
-            write_roles=(PLANLAMA,),
+            write_access=(CARDS.key, CHANGE),
             recode=_test_recode,
         )
         register_master_code(

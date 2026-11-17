@@ -53,9 +53,7 @@ class CodeType:
     scanned: bool = False  # barkodla okutulur: harfle başlamalı
     allow_underscore: bool = False
     max_length: int = 32
-    write_roles: tuple[str, ...] = ()
-    # Kod önerisini açan yetki: (bölüm anahtarı, düzey). Verilmezse `write_roles` (geçiş sürerken
-    # rolle denetlenen modüller) ya da yalnız admin.
+    # Kod önerisini açan yetki: (bölüm anahtarı, düzey). Verilmezse yalnız admin.
     write_access: tuple[str, str] | None = None
     recode: Recode | None = dataclasses.field(default=None, compare=False)
     # Belge
@@ -97,14 +95,13 @@ def register_master_code(
     scanned: bool = False,
     allow_underscore: bool = False,
     max_length: int = 32,
-    write_roles: Sequence[str] = (),
     write_access: tuple[str, str] | None = None,
     recode: Recode | None = None,
 ) -> CodeType:
     """Ana veri kod türünü kaydeder. `free=True`: serbest kod (yalnızca karakter kuralı).
     `type_field` verilirse önek kaydın türünden gelir (`default_type_prefixes`). `recode` verilen
     türün mevcut kodları kod göçüyle yeni biçime taşınabilir. Kod önerisini `write_access`
-    (bölüm, düzey) açar; bölüm denetimine geçmemiş modül `write_roles` verir."""
+    (bölüm, düzey) açar; verilmezse öneri yalnız admin'e açıktır."""
     if not free and not type_field and not default_prefix:
         raise ValueError(f"{key}: sıralı kodun varsayılan öneki olmalıdır.")
     return _register(
@@ -123,7 +120,6 @@ def register_master_code(
             scanned=scanned,
             allow_underscore=allow_underscore,
             max_length=max_length,
-            write_roles=tuple(write_roles),
             write_access=write_access,
             recode=recode,
         )

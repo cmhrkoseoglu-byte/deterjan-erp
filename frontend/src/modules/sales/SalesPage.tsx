@@ -27,17 +27,16 @@ import {
   type Shipment,
   type ShipmentStatus,
 } from "../../api/sales";
-import type { Role } from "../../api/types";
-import { useAuth } from "../../auth/AuthContext";
+import { useCan } from "../../auth/access";
+import { PERM, type PermKey } from "../../auth/access.gen";
 import { hasAnyRole } from "../../auth/roles";
+import { ForbiddenPage } from "../../pages/ForbiddenPage";
 import { ct } from "../common/strings";
 import { RowsTable } from "../filling/FillingPage";
 import { orderColumns, shipmentColumns } from "./columns";
 import { formatDate } from "../../i18n/format";
 import {
   customerPath,
-  ORDER_WRITE_ROLES,
-  PICK_ROLES,
   PICKABLE_STATUSES,
   pickPath,
   SALES_BASE,
@@ -54,7 +53,7 @@ const STATUS_OPTIONS = (Object.keys(st.orderStatus) as SalesOrderStatus[]).map((
 }));
 
 function OrdersTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
@@ -110,7 +109,7 @@ function OrdersTab() {
             }}
           />
         </Group>
-        {hasAnyRole(user, ORDER_WRITE_ROLES) && (
+        {can(PERM.SALES_ORDERS, "change") && (
           <Button
             leftSection={<IconPlus size={16} />}
             onClick={() => navigate(salesOrderPath("yeni"))}
@@ -284,27 +283,53 @@ function CustomersTab() {
 interface TabDef {
   slug: string;
   label: string;
-  roles: readonly Role[];
+  /** Sekmeyi açan bölüm (Görür). */
+  section: PermKey;
   render: () => ReactNode;
 }
 
 const TABS: TabDef[] = [
-  { slug: "siparisler", label: st.tabs.orders, roles: [], render: () => <OrdersTab /> },
-  { slug: "sevkiyatlar", label: st.tabs.shipments, roles: [], render: () => <ShipmentsTab /> },
-  { slug: "toplama", label: st.tabs.picking, roles: PICK_ROLES, render: () => <PickingTab /> },
-  { slug: "musteriler", label: st.tabs.customers, roles: [], render: () => <CustomersTab /> },
+  {
+    slug: "siparisler",
+    label: st.tabs.orders,
+    section: PERM.SALES_ORDERS,
+    render: () => <OrdersTab />,
+  },
+  {
+    slug: "sevkiyatlar",
+    label: st.tabs.shipments,
+    section: PERM.SALES_SHIPMENTS,
+    render: () => <ShipmentsTab />,
+  },
+  {
+    slug: "toplama",
+    label: st.tabs.picking,
+    section: PERM.SALES_PICKING,
+    render: () => <PickingTab />,
+  },
+  {
+    slug: "musteriler",
+    label: st.tabs.customers,
+    section: PERM.SALES_ORDERS,
+    render: () => <CustomersTab />,
+  },
 ];
 
 /** Sevkiyat: sekmeler (`/sevkiyat/<sekme>`). Toplama sekmesi depoya (tablet) açılır. */
 export function SalesPage() {
   const { tab } = useParams();
-  const { user } = useAuth();
+  const { can, user } = useCan();
   const navigate = useNavigate();
-  const visible = TABS.filter((item) => hasAnyRole(user, item.roles));
-  // Depo tablette doğrudan toplama listesine düşer.
-  const fallback =
-    hasAnyRole(user, PICK_ROLES) && !hasAnyRole(user, ORDER_WRITE_ROLES) ? "toplama" : "siparisler";
-  const current = visible.find((item) => item.slug === (tab ?? fallback));
+  const visible = TABS.filter((item) => can(item.section));
+  // Varsayılan sekme rol görünümüdür (plan §5.9): depo tablette doğrudan toplama listesine düşer.
+  // Tercih edilen sekme görünmüyorsa ilk görünen sekme açılır, hiçbiri yoksa "Yetkiniz yok".
+  const preferred =
+    hasAnyRole(user, ["depo"]) && !hasAnyRole(user, ["sevkiyat", "yonetim"])
+      ? "toplama"
+      : "siparisler";
+  const fallback = visible.find((item) => item.slug === preferred) ?? visible[0];
+  if (!fallback) return <ForbiddenPage />;
+  const current = tab ? visible.find((item) => item.slug === tab) : fallback;
   if (!current) return <Navigate to={SALES_BASE} replace />;
 
   return (

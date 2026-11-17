@@ -2,10 +2,21 @@
 
 "Tüm birimlerin görevleri" başka rollerin görevlerini bugünkü gibi gösterir; kişinin kendi
 rollerinin görevlerinde karar 5 geçerlidir. Görev ve bildirim kurallarının gerektirdiği yetkiler
-`rules.py`'de kuralın alanıdır (7. adım).
+`rules.py`'de kuralın alanıdır (`requires=`); workflow onları `apps.py`'de core'un kayıt defterine
+yazar.
 """
 
-from apps.core.access import VIEW, grant, register_module, register_section
+from django.db.models import Q
+
+from apps.core.access import (
+    PRICES,
+    VIEW,
+    grant,
+    register_audit_model,
+    register_audit_parent,
+    register_module,
+    register_section,
+)
 from apps.core.roles import YONETIM
 
 # Görevlerim herkese açıktır; "Tüm birimlerin görevleri" menüde modül açmaz.
@@ -19,3 +30,29 @@ ALL_TASKS = register_section(
 )
 
 grant(YONETIM, ALL_TASKS, VIEW)
+
+# Denetim günlüğü (plan §5.6): yorum ve kayda bağlı görev bağlı olduğu kaydı izler (görev: sahip
+# kararı 2026-11-17; ör. olay inceleme görevi "Olaylar ve kazalar: Görür" ister); satın alma onayı
+# görevinin açıklaması (tutarlar) Fiyatları görür ister.
+register_audit_parent("workflow.comment")
+register_audit_parent(
+    "workflow.task",
+    content_type_field="related_content_type",
+    object_id_field="related_object_id",
+)
+PURCHASE_ORDER_APPROVAL = "purchase_order_approval"
+
+
+def _purchase_order_approval_tasks() -> Q:
+    from apps.workflow.models import Task
+
+    tasks = Task.objects.filter(rule_code=PURCHASE_ORDER_APPROVAL).values("pk")
+    return Q(object_id__in=tasks) | Q(changes__rule_code__1=PURCHASE_ORDER_APPROVAL)
+
+
+register_audit_model(
+    "workflow.task",
+    requires=[PRICES],
+    rows=_purchase_order_approval_tasks,
+    fields=("description",),
+)

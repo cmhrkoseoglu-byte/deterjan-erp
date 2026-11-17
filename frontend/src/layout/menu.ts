@@ -22,9 +22,10 @@ import {
   IconUsers,
   type Icon,
 } from "@tabler/icons-react";
-import type { CurrentUser, Role } from "../api/types";
+import type { CurrentUser } from "../api/types";
+import { can, isAdminUser, moduleVisible } from "../auth/access";
+import { canOpenAnyPersonnelPage, canOpenPage, personnelPath } from "../auth/pageAccess";
 import { DASHBOARD_PATH, TASKS_PATH } from "../auth/paths";
-import { hasAnyRole } from "../auth/roles";
 import { tr } from "../i18n/tr";
 
 export interface MenuItem {
@@ -32,15 +33,25 @@ export interface MenuItem {
   label: string;
   path: string;
   icon: Icon;
-  /** Boşsa her giriş yapmış kullanıcı görür. `admin` her öğeyi görür. */
-  roles: readonly Role[];
+  /**
+   * Öğeyi kim görür (plan §2, §5.9): modül, ekranı olan bölümlerinden birinde Görür'ü olana
+   * (`moduleVisible`); Görevlerim ve Yardım herkese; Sistem ve yönetim paneli yalnız admine.
+   */
+  visible: (user: CurrentUser) => boolean;
   /** Modülün ekleneceği faz; sayfa hazır olana kadar yer tutucu gösterilir. */
   phase?: number;
   /** Uygulama dışı bağlantı (Django yönetim paneli gibi). */
   external?: boolean;
 }
 
-// Menünün tek kaynağı. Rol listesi CLAUDE.md §5'teki rollerdir.
+// Menünün tek kaynağı. Görünürlük `me.access`'ten (`auth/access.ts`).
+const everyone = () => true;
+
+/** Modülün menü öğesi: ekranı olan bölümlerinden birinde Görür. */
+function module(key: string) {
+  return (user: CurrentUser) => moduleVisible(user, key);
+}
+
 export const MENU: readonly MenuItem[] = [
   {
     key: "dashboard",
@@ -48,15 +59,15 @@ export const MENU: readonly MenuItem[] = [
     path: DASHBOARD_PATH,
     icon: IconLayoutDashboard,
     // Yönetimin açılış ekranı. Aynı pano planlamaya Panolar ve raporlar'da açıktır.
-    roles: ["yonetim"],
+    visible: (user) => canOpenPage(user, "dashboard"),
   },
-  { key: "home", label: tr.menu.home, path: TASKS_PATH, icon: IconChecklist, roles: [] },
+  { key: "home", label: tr.menu.home, path: TASKS_PATH, icon: IconChecklist, visible: everyone },
   {
     key: "masterdata",
     label: tr.menu.masterdata,
     path: "/ana-veriler",
     icon: IconDatabase,
-    roles: ["planlama", "yonetim"],
+    visible: module("masterdata"),
     phase: 1,
   },
   {
@@ -64,7 +75,7 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.recipes,
     path: "/receteler",
     icon: IconListDetails,
-    roles: ["planlama", "laboratuvar"],
+    visible: (user) => can(user, "recipes.recipes"),
     phase: 1,
   },
   {
@@ -72,8 +83,8 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.inventory,
     path: "/depo",
     icon: IconPackages,
-    // Stok sorgu ve lot detayı herkese açık; sekmeler rolle daralır (InventoryPage).
-    roles: [],
+    // Stok sorgu, lot ve palet herkese açık; sekmeler yetkiyle daralır (InventoryPage).
+    visible: module("inventory"),
     phase: 1,
   },
   {
@@ -81,7 +92,7 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.production,
     path: "/uretim",
     icon: IconBuildingFactory2,
-    roles: ["uretim", "planlama", "depo", "yonetim"],
+    visible: module("production"),
     phase: 1,
   },
   {
@@ -89,7 +100,7 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.quality,
     path: "/kalite",
     icon: IconFlask,
-    roles: ["laboratuvar", "yonetim"],
+    visible: module("quality"),
     phase: 2,
   },
   {
@@ -97,7 +108,7 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.filling,
     path: "/dolum",
     icon: IconBottle,
-    roles: ["dolum", "planlama", "depo", "yonetim"],
+    visible: module("filling"),
     phase: 2,
   },
   {
@@ -106,7 +117,7 @@ export const MENU: readonly MenuItem[] = [
     path: "/sevkiyat",
     icon: IconTruckDelivery,
     // Planlama ve depo siparişleri ve rezervasyonları görür (yazma sevkiyat ve yönetimde).
-    roles: ["sevkiyat", "yonetim", "planlama", "depo"],
+    visible: module("sales"),
     phase: 3,
   },
   {
@@ -115,7 +126,7 @@ export const MENU: readonly MenuItem[] = [
     path: "/iadeler",
     icon: IconArrowBackUp,
     // Depo da görür: teslim alır ve imha eder.
-    roles: ["sevkiyat", "laboratuvar", "depo", "yonetim"],
+    visible: module("returns"),
     phase: 3,
   },
   {
@@ -123,7 +134,7 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.traceability,
     path: "/izlenebilirlik",
     icon: IconRoute,
-    roles: ["laboratuvar", "yonetim"],
+    visible: (user) => can(user, "traceability.trace"),
     phase: 3,
   },
   {
@@ -132,7 +143,7 @@ export const MENU: readonly MenuItem[] = [
     path: "/satin-alma",
     icon: IconShoppingCart,
     // Depo siparişleri (tutarsız) ve beklenen teslimatları görür; planlama ve üretim talep açar.
-    roles: ["satin_alma", "yonetim", "depo", "planlama", "uretim"],
+    visible: module("purchasing"),
     phase: 4,
   },
   {
@@ -141,7 +152,7 @@ export const MENU: readonly MenuItem[] = [
     path: "/maliyet",
     icon: IconCoin,
     // Maliyet tutarlarını yalnızca yönetim (ve admin) görür (Karar D-15).
-    roles: ["yonetim"],
+    visible: module("costing"),
     phase: 4,
   },
   {
@@ -150,7 +161,7 @@ export const MENU: readonly MenuItem[] = [
     path: "/bakim",
     icon: IconTool,
     // Arıza bildirimi her rolde açıktır (ana sayfadaki düğme); bakım ekranları bu birimlere.
-    roles: ["uretim", "dolum", "laboratuvar", "planlama", "yonetim"],
+    visible: module("maintenance"),
     phase: 4,
   },
   {
@@ -158,8 +169,8 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.hse,
     path: "/isg",
     icon: IconShieldCheck,
-    // Olay / ramak kala bildirimi herkese açık.
-    roles: [],
+    // Olay / ramak kala bildirimi ve tehlike bilgileri rolü olan herkese açık (rolsüzde yok).
+    visible: module("hse"),
     phase: 4,
   },
   {
@@ -167,16 +178,17 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.personnel,
     path: "/personel",
     icon: IconUsers,
-    // Personel kartları kişisel veri: yalnızca yönetim (ve admin) görür (docs/KVKK.md).
-    roles: ["yonetim"],
+    // Personel bilgileri kişisel veri: yalnızca yönetim rolündekilere verilebilir (docs/KVKK.md).
+    // Personel ayarları'nın kendi sayfası yok: menü açılabilen bir personel sayfası ister.
+    visible: canOpenAnyPersonnelPage,
   },
   {
     key: "reporting",
     label: tr.menu.reporting,
     path: "/raporlar",
     icon: IconChartBar,
-    // Her rolün en az bir panosu ya da raporu var; sekme içerikleri rolle daralır.
-    roles: [],
+    // Her rolün en az bir panosu ya da raporu var (rolsüzde yok; İndirmeler herkese açık).
+    visible: module("reporting"),
     phase: 4,
   },
   {
@@ -185,7 +197,7 @@ export const MENU: readonly MenuItem[] = [
     path: "/gecis",
     icon: IconRocket,
     // Hazırlık listesi ve paralel çalışma stok karşılaştırması (Faz 5, Adım 5.6).
-    roles: ["yonetim", "planlama", "depo"],
+    visible: module("golive"),
     phase: 5,
   },
   {
@@ -194,7 +206,7 @@ export const MENU: readonly MenuItem[] = [
     path: "/yardim",
     icon: IconHelp,
     // Rol bazında kullanım kılavuzları; herkes kendi rolünün kılavuzunu görür.
-    roles: [],
+    visible: everyone,
     phase: 5,
   },
   {
@@ -203,7 +215,7 @@ export const MENU: readonly MenuItem[] = [
     path: "/sistem",
     icon: IconServer,
     // Sistem durumu, yedekler, kullanıcı kilidi ve 2FA sıfırlama, saha tableti işareti.
-    roles: ["admin"],
+    visible: isAdminUser,
     phase: 5,
   },
   {
@@ -211,16 +223,15 @@ export const MENU: readonly MenuItem[] = [
     label: tr.menu.adminPanel,
     path: "/admin/",
     icon: IconSettings,
-    roles: ["admin"],
+    visible: isAdminUser,
     external: true,
   },
 ];
 
 export function visibleMenu(user: CurrentUser | null): MenuItem[] {
-  return MENU.filter((item) => hasAnyRole(user, item.roles));
-}
-
-/** Menü öğesinin rolleri: rotalar ve sayfalar arası bağlantılar aynı listeyle korunur. */
-export function menuRoles(key: string): readonly Role[] {
-  return MENU.find((item) => item.key === key)!.roles;
+  if (!user) return [];
+  return MENU.filter((item) => item.visible(user)).map((item) =>
+    // Personel kartları'nı göremeyen kişi açabildiği ilk personel sayfasına gider (plan §5.9).
+    item.key === "personnel" ? { ...item, path: personnelPath(user) } : item,
+  );
 }

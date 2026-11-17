@@ -5,11 +5,7 @@ import type {
   SampleStatus,
   SpecStatus,
 } from "../../api/quality";
-import type { Role } from "../../api/types";
 
-// Yetkiler backend ile aynıdır (apps/quality/api/views.py); arayüz yalnızca düğmeleri gizler.
-export const LAB_ROLES: Role[] = ["laboratuvar"];
-export const APPROVAL_ROLES: Role[] = ["yonetim"];
 export const QUALITY_BASE = "/kalite";
 
 export const samplePath = (id: number) => `${QUALITY_BASE}/numuneler/${id}`;

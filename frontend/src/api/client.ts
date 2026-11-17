@@ -1,7 +1,7 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { tr } from "../i18n/tr";
 import { IDLE_HEADER, idleSeconds } from "./idle";
-import type { ApiError } from "./types";
+import type { ApiError, RequiredAccess } from "./types";
 
 // SPA ve API aynı origin'de (nginx). Django session + CSRF çerezi kullanılır;
 // axios "csrftoken" çerezini okuyup X-CSRFToken başlığını otomatik ekler.
@@ -57,6 +57,25 @@ export function isPasswordChangeRequired(error: unknown): boolean {
   return (
     (error as AxiosError | undefined)?.response?.status === 403 &&
     getErrorCode(error) === "password_change_required"
+  );
+}
+
+/** Yetki eksik mi? (403 permission_denied; gövdede eksik yetkiler `required` olabilir.) */
+export function isPermissionDenied(error: unknown): boolean {
+  return (
+    (error as AxiosError | undefined)?.response?.status === 403 &&
+    getErrorCode(error) === "permission_denied"
+  );
+}
+
+/** 403 yanıtındaki eksik yetkiler (`required`: bölüm ve düzey); yoksa boş liste. */
+export function getErrorRequired(error: unknown): RequiredAccess[] {
+  if (!axios.isAxiosError(error)) return [];
+  const data = error.response?.data as ApiError | undefined;
+  if (!data || typeof data !== "object" || !Array.isArray(data.required)) return [];
+  return data.required.filter(
+    (item): item is RequiredAccess =>
+      Boolean(item) && typeof item.key === "string" && typeof item.level === "string",
   );
 }
 

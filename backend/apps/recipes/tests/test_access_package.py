@@ -5,8 +5,9 @@ Reçeteyi ve sürümlerini bugün planlama ve laboratuvar yazar ve onaylar; plan
 (açık okuma; üretim emri formunun reçete seçimi dahil, §5.3).
 
 2. adımda modül bölüm denetimine geçti: backend satırlarının `live` bağlantısı kaldırıldı (sabitler
-yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar. Ön yüz sabitlerine bağlantı
-8. adıma kadar kalır.
+yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar.
+8. adımda ön yüz de bölüm denetimine geçti: ön yüz satırlarının `live` bağlantısı kaldırıldı;
+satırlar 8. adım öncesi rol listelerini dondurulmuş olarak tutar.
 """
 
 from apps.core.access import APPROVE, CHANGE
@@ -15,7 +16,6 @@ from apps.core.tests.access_helpers import SIGNED_IN, Row, assert_rows, level, r
 from apps.recipes.access import RECIPES
 
 APPROVER_ROLES = "apps.recipes.services:APPROVER_ROLES"
-FRONTEND_WRITE_ROLES = "frontend:src/modules/recipes/config.ts:RECIPE_WRITE_ROLES"
 RECIPE_ROLES = ("planlama", "laboratuvar")
 
 ROWS: list[Row] = [
@@ -90,21 +90,18 @@ ROWS: list[Row] = [
         "frontend config.ts RECIPE_WRITE_ROLES (RecipeListPage canWrite: yeni reçete, içe aktarma)",
         RECIPE_ROLES,
         level(RECIPES, CHANGE),
-        live=FRONTEND_WRITE_ROLES,
     ),
     Row(
         "frontend config.ts RECIPE_WRITE_ROLES (RecipePage canWrite: düzenle, pasife al, yeni "
         "sürüm)",
         RECIPE_ROLES,
         level(RECIPES, CHANGE),
-        live=FRONTEND_WRITE_ROLES,
     ),
     Row(
         "frontend config.ts RECIPE_WRITE_ROLES (VersionPage canWrite: satır ve adım düzenleme, "
         "kopyala)",
         RECIPE_ROLES,
         level(RECIPES, CHANGE),
-        live=FRONTEND_WRITE_ROLES,
     ),
     # Menü ve sayfa korumaları (menuRoles('recipes')) test_access_package_shell.py'dedir.
 ]

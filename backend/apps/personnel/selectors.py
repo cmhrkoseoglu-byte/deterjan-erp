@@ -81,14 +81,40 @@ def canonical_department(name: str) -> str:
     return next((existing for existing in departments() if fold(existing) == key), name)
 
 
-def employee_history(employee: Employee) -> QuerySet[AuditLog]:
-    """Kartın denetim geçmişi (en yenisi önce)."""
+# Bordro kayıtlarının kartın geçmişine yazılan özetleri (services._card_note): ek ödeme, kesinti,
+# devir, pusula, mali müşavir işareti ve ayın kartı izlemesi. Bordro bölümünün verisidir; kartı
+# görüp Bordro: Görür'ü olmayana gösterilmez (plan kisi-yetkileri §3.14, §5.6).
+PAYROLL_CARD_NOTE_PREFIXES = (
+    "Ücret hesap pusulası açıldı:",
+    "Devir girildi:",
+    "Devir düzeltildi:",
+    "Devir kaldırıldı:",
+    "Ek ödeme eklendi:",
+    "Ek ödeme düzeltildi:",
+    "Ek ödeme kaldırıldı:",
+    "Kesinti eklendi:",
+    "Kesinti düzeltildi:",
+    "Kesinti kaldırıldı:",
+    'Kartı "Bordrosu mali müşavirde" işaretlendi;',
+)
+PAYROLL_CARD_NOTE_PATTERN = r"^\S+ [0-9]{4} bordrosu: "
+
+
+def payroll_card_notes() -> Q:
+    """Kartın geçmişindeki bordro özetleri (yalnız sistemin yazdığı açıklamasız notlar)."""
+    condition = Q(note__regex=PAYROLL_CARD_NOTE_PATTERN)
+    for prefix in PAYROLL_CARD_NOTE_PREFIXES:
+        condition |= Q(note__startswith=prefix)
+    return Q(action=AuditLog.Action.CUSTOM) & condition
+
+
+def employee_history(employee: Employee, *, with_payroll: bool = True) -> QuerySet[AuditLog]:
+    """Kartın denetim geçmişi (en yenisi önce). `with_payroll=False`: bordro özetleri çıkarılır."""
     content_type = ContentType.objects.get_for_model(Employee)
-    return (
-        AuditLog.objects.filter(content_type=content_type, object_id=employee.pk)
-        .select_related("actor")
-        .order_by("-timestamp", "-id")
-    )
+    entries = AuditLog.objects.filter(content_type=content_type, object_id=employee.pk)
+    if not with_payroll:
+        entries = entries.exclude(payroll_card_notes())
+    return entries.select_related("actor").order_by("-timestamp", "-id")
 
 
 def employee_documents(employee: Employee) -> QuerySet[EmployeeDocument]:
@@ -1844,7 +1870,7 @@ def carry_snapshot(row: PayrollRow) -> dict[str, Any]:
 
 
 def item_snapshot(item: PayrollItem) -> dict[str, Any]:
-    """Onayda saklanan kalem (açıklama dahil; yalnızca yönetim ve admin görür)."""
+    """Onayda saklanan kalem (açıklama dahil; Bordro: Görür ile görülür)."""
     return {
         "id": item.pk,
         "kind": item.kind,

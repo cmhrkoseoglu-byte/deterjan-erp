@@ -6,10 +6,12 @@ from typing import Any
 import pytest
 
 from apps.core import records
+from apps.core.access import AUDIT_LOG, VIEW, register_readers, temporary_catalog
 from apps.core.exceptions import BusinessRuleError
-from apps.core.models import User
-from apps.core.permissions import user_has_role
+from apps.core.models import AccessOverride, User
+from apps.core.permissions import has_access
 from apps.core.tests.testapp.models import Widget
+from apps.purchasing.access import ORDERS
 
 pytestmark = pytest.mark.django_db
 WIDGET = "core_testapp.widget"
@@ -39,22 +41,22 @@ def test_unregistered_type_is_rejected(registry: dict[str, Any]) -> None:
     assert not records.can_view(None, _widget())
 
 
-def test_roles_filter_and_hidden_fields(
+def test_readers_filter_and_hidden_fields(
     registry: dict[str, Any], make_user: Callable[..., User]
 ) -> None:
     owner, other = make_user("depo"), make_user("depo")
     manager, outsider, admin = make_user("yonetim"), make_user("sevkiyat"), make_user("admin")
     records.register_record_type(
         WIDGET,
-        roles=("depo", "yonetim"),
-        visible=lambda user, qs: qs if user_has_role(user, ("yonetim",)) else qs.filter(owner=user),
-        hidden_fields=lambda user: set() if user_has_role(user, ("yonetim",)) else {"quantity"},
+        readers=(ORDERS,),  # depo ve yönetimde Görür var, sevkiyatta yok
+        visible=lambda user, qs: qs if has_access(user, AUDIT_LOG) else qs.filter(owner=user),
+        hidden_fields=lambda user: set() if has_access(user, AUDIT_LOG) else {"quantity"},
     )
     widget = _widget(owner=owner)
     assert records.can_view(owner, widget)
     assert records.can_view(manager, widget) and records.can_view(admin, widget)
-    assert not records.can_view(other, widget)  # rolü var ama kayıt başkasının
-    assert not records.can_view(outsider, widget)  # rolü yok
+    assert not records.can_view(other, widget)  # okur ama kayıt başkasının
+    assert not records.can_view(outsider, widget)  # okuma bölümü yok
     owner.is_active = False
     assert not records.can_view(owner, widget)
     assert records.hidden_fields_for(other, WIDGET) == {"quantity"}
@@ -65,7 +67,7 @@ def test_roles_filter_and_hidden_fields(
 def test_missing_and_invisible_records_look_the_same(
     registry: dict[str, Any], make_user: Callable[..., User]
 ) -> None:
-    records.register_record_type(WIDGET, roles=("yonetim",))
+    records.register_record_type(WIDGET, readers=(AUDIT_LOG,))
     content_type = records.content_type_for(WIDGET)
     widget = _widget()
     assert records.visible_record(make_user("yonetim"), content_type, widget.pk) == widget
@@ -82,3 +84,28 @@ def test_attachment_only_types_are_not_commentable(registry: dict[str, Any]) -> 
     with pytest.raises(BusinessRuleError):
         records.content_type_for("core_testapp.sampledocument", commentable=True)
     assert records.content_type_for("core_testapp.sampledocument").model == "sampledocument"
+
+
+def test_catalog_readers_are_used_when_the_type_gives_none(
+    registry: dict[str, Any], make_user: Callable[..., User]
+) -> None:
+    """Okuma bölümü verilmeyen tür katalogdaki okuma bölümlerini izler (plan §5.1, §5.8); kişiye
+    özel kaldırma kayıt panelini de kapatır."""
+    widget = _widget()
+    manager, depo = make_user("yonetim"), make_user("depo")
+    with temporary_catalog():
+        assert records.can_view(depo, widget)  # katalogda okuma bölümü yok: herkes
+        register_readers(WIDGET, AUDIT_LOG)
+        assert records.can_view(manager, widget)
+        assert not records.can_view(depo, widget)
+        AccessOverride.objects.create(
+            user=manager, key=AUDIT_LOG.key, level=VIEW, effect="revoke", note="deneme"
+        )
+        manager.refresh_access()
+        assert not records.can_view(manager, widget)
+        AccessOverride.objects.create(
+            user=depo, key=AUDIT_LOG.key, level=VIEW, effect="grant", note="deneme"
+        )
+        depo.refresh_access()
+        assert not records.can_view(depo, widget)  # KVKK: yalnız yönetim rolünde geçerli
+    assert records.can_view(depo, widget)

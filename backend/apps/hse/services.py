@@ -10,8 +10,10 @@ Kurallar:
   `hse.storage_limit_exceeded` yayınlanır (işlem durmaz, uyarıdır).
 - Atık kaydı (`AT-`): EWC kodu `07 06 01*` biçiminde; yıldızlı kod tehlikeli atıktır. Pasif ya da
   lisansı teslim tarihinde geçmiş firmaya teslim kaydedilemez.
-- Olay kaydı (`OL-`): herkes açar, yönetim inceler ve kapatır. Kapatmak için kök neden ve
-  düzeltici faaliyet zorunludur.
+- Olay kaydı (`OL-`): rolü olan herkes açar (Olay bildirimi); Olaylar ve kazalar: Değiştirir'i
+  olan inceler ve kapatır. Kapatmak için kök neden ve düzeltici faaliyet zorunludur.
+
+Yetki denetimleri bölüm ve düzeyle yapılır (`apps.hse.access`, docs/plan/kisi-yetkileri.md §3.13).
 """
 
 import re
@@ -20,20 +22,20 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
 from apps.core import event_names as ev
 from apps.core import events, standards
+from apps.core.access import CHANGE
 from apps.core.audit import log_change
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
-from apps.core.permissions import user_has_role
-from apps.core.roles import ALL_ROLES, DEPO, LABORATUVAR, YONETIM
+from apps.core.permissions import has_access, require_access
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
 from apps.hse import selectors
+from apps.hse.access import HAZARDS, INCIDENT_REPORT, INCIDENTS, SDS, SETTINGS, STORAGE, WASTE
 from apps.hse.models import (
     HazardClass,
     HazardStatement,
@@ -53,19 +55,6 @@ from apps.masterdata import services as masterdata
 from apps.masterdata.models import Location, Material
 
 IncidentStatus = Incident.Status
-
-# İSG kayıtlarını yönetim tutar.
-HSE_ROLES = (YONETIM,)
-SETTINGS_ROLES = (YONETIM,)
-# Tehlike bilgisini (piktogram, ifadeler) yönetim ve laboratuvar girer; herkes okur.
-HAZARD_ROLES = (YONETIM, LABORATUVAR)
-HAZARD_READ_ROLES = ALL_ROLES
-# GBF'leri depo ve laboratuvar da görür ve indirir.
-SDS_READ_ROLES = (YONETIM, DEPO, LABORATUVAR)
-# Depolama limitlerini ve doluluğu depo da görür.
-STORAGE_READ_ROLES = (YONETIM, DEPO)
-# Olayı herkes bildirir.
-INCIDENT_REPORT_ROLES = ALL_ROLES
 
 SETTINGS_FIELDS = ("sds_max_age_months",)
 STATEMENT_FIELDS = ("code", "kind", "text")
@@ -104,17 +93,12 @@ INVESTIGATION_FIELDS = (
 )
 CLOSE_FIELDS = (*INVESTIGATION_FIELDS, "closed_note")
 
-STATEMENT_DENIED = "Tehlike ifadelerini yalnızca yönetim ve laboratuvar yönetir."
+STATEMENT_DENIED = "Tehlike ifadelerini değiştirme yetkiniz yok."
 WASTE_CODE_RE = re.compile(r"^\d{2} \d{2} \d{2}\*?$")
 
 
 def _actor(actor: User | None) -> User | None:
     return actor if actor is not None and actor.is_authenticated else None
-
-
-def _require_role(actor: User | None, roles: Sequence[str], message: str) -> None:
-    if not user_has_role(actor, tuple(roles)):
-        raise PermissionDenied(message)
 
 
 def _pick(data: Mapping[str, Any], allowed: Sequence[str]) -> dict[str, Any]:
@@ -137,26 +121,29 @@ def _require_active(obj: Any, label: str) -> None:
 
 
 def can_attach_sds(user: User, sheet: Any) -> bool:
-    """GBF dosyasını yönetim yükler."""
-    return user_has_role(user, HSE_ROLES)
+    """GBF dosyasını GBF arşivi: Değiştirir'i olan yükler."""
+    return has_access(user, SDS, CHANGE)
 
 
 def can_attach_waste(user: User, record: Any) -> bool:
-    """Atık belgesini yönetim yükler."""
-    return user_has_role(user, HSE_ROLES)
+    """Atık belgesini Atık: Değiştirir'i olan yükler."""
+    return has_access(user, WASTE, CHANGE)
 
 
 def can_attach_incident(user: User, incident: Any) -> bool:
-    """Olay fotoğrafını bildiren kişi ya da yönetim ekler."""
-    return user_has_role(user, HSE_ROLES) or (
+    """Olay fotoğrafını bildiren kişi (satır kuralı, plan §4) ya da Olaylar ve kazalar:
+    Değiştirir'i olan ekler."""
+    return has_access(user, INCIDENTS, CHANGE) or (
         user.is_authenticated and getattr(incident, "created_by_id", None) == user.pk
     )
 
 
 def incidents_visible_to(user: Any, queryset: QuerySet[Incident]) -> QuerySet[Incident]:
-    """Olay görünürlüğü (olay ekranı ve kayda bağlı yorum, geçmiş, ek için aynı kural): yönetim ve
-    admin bütün olayları, diğer roller yalnızca kendi bildirdiklerini görür."""
-    if user_has_role(user, HSE_ROLES):
+    """Olay görünürlüğü (olay ekranı ve kayda bağlı yorum, geçmiş, ek için aynı kural): Olaylar ve
+    kazalar: Görür'ü olan (ve admin) bütün olayları, öteki kişi yalnızca kendi bildirdiklerini
+    görür (satır kuralı, plan §4). Olay kaydını okuyamayanı kayıt türünün okuma kuralı
+    (`readers`) ve olay ekranı ayrıca keser."""
+    if has_access(user, INCIDENTS):
         return queryset
     return queryset.filter(created_by=getattr(user, "pk", None))
 
@@ -166,8 +153,8 @@ def incidents_visible_to(user: Any, queryset: QuerySet[Incident]) -> QuerySet[In
 
 @transaction.atomic
 def update_settings(actor: User, data: Mapping[str, Any]) -> HseSettings:
-    """GBF en çok yaşını (ay) günceller (rol: yonetim)."""
-    _require_role(actor, SETTINGS_ROLES, "İSG ayarlarını yalnızca yönetim değiştirir.")
+    """GBF en çok yaşını (ay) günceller (İSG ayarları: Değiştirir)."""
+    require_access(actor, SETTINGS, CHANGE, "İSG ayarlarını değiştirme yetkiniz yok.")
     values = _pick(data, SETTINGS_FIELDS)
     if "sds_max_age_months" in values and int(values["sds_max_age_months"]) <= 0:
         raise BusinessRuleError("invalid_months", "GBF en çok yaşı sıfırdan büyük olmalıdır.")
@@ -191,8 +178,9 @@ def statement_code(value: Any, kind: str) -> str:
 
 @transaction.atomic
 def create_statement(actor: User, data: Mapping[str, Any]) -> HazardStatement:
-    """Yeni H / P / EUH ifadesi tanımlar (rol: yönetim, laboratuvar). Kod türüyle başlamalıdır."""
-    _require_role(actor, HAZARD_ROLES, STATEMENT_DENIED)
+    """Yeni H / P / EUH ifadesi tanımlar (Tehlike bilgileri: Değiştirir). Kod türüyle
+    başlamalıdır."""
+    require_access(actor, HAZARDS, CHANGE, STATEMENT_DENIED)
     values = _pick(data, STATEMENT_FIELDS)
     kind = values.get("kind", "")
     code = statement_code(values.get("code"), kind)
@@ -214,7 +202,7 @@ def update_statement(
     actor: User, statement: HazardStatement, data: Mapping[str, Any]
 ) -> HazardStatement:
     """İfade metnini günceller (kod ve tür değişmez)."""
-    _require_role(actor, HAZARD_ROLES, STATEMENT_DENIED)
+    require_access(actor, HAZARDS, CHANGE, STATEMENT_DENIED)
     values = _pick(data, ("text",))
     text = _text(values.get("text"))
     if not text:
@@ -225,7 +213,7 @@ def update_statement(
 @transaction.atomic
 def set_statement_active(actor: User, statement: HazardStatement, active: bool) -> HazardStatement:
     """İfadeyi aktif / pasif yapar (silinmez)."""
-    _require_role(actor, HAZARD_ROLES, STATEMENT_DENIED)
+    require_access(actor, HAZARDS, CHANGE, STATEMENT_DENIED)
     return masterdata.set_active(actor, statement, active)
 
 
@@ -243,11 +231,11 @@ def _clean_pictograms(value: Any) -> list[str]:
 
 @transaction.atomic
 def set_material_hazard(actor: User, material: Material, data: Mapping[str, Any]) -> MaterialHazard:
-    """Malzemenin tehlike bilgisini oluşturur ya da günceller (rol: yönetim, laboratuvar).
+    """Malzemenin tehlike bilgisini oluşturur ya da günceller (Tehlike bilgileri: Değiştirir).
 
     Piktogram varsa uyarı kelimesi zorunludur; piktogram yoksa uyarı kelimesi boşaltılır.
     `Material.is_hazardous` piktogram olup olmamasına göre (değişmişse) güncellenir."""
-    _require_role(actor, HAZARD_ROLES, "Tehlike bilgisini yalnızca yönetim ve laboratuvar girer.")
+    require_access(actor, HAZARDS, CHANGE, "Tehlike bilgisini değiştirme yetkiniz yok.")
     values = _pick(data, HAZARD_FIELDS)
     hazard = MaterialHazard.objects.select_for_update().filter(material=material).first()
     if hazard is None:
@@ -305,9 +293,10 @@ def _language(value: Any) -> str:
 
 @transaction.atomic
 def create_sds(actor: User, data: Mapping[str, Any]) -> SafetyDataSheet:
-    """Yeni GBF revizyonu girer (rol: yonetim). Malzemenin önceki geçerli GBF'si arşive geçer.
-    PDF, kayıttan sonra ek olarak yüklenir (dosyasız GBF raporda "Dosya yok" görünür)."""
-    _require_role(actor, HSE_ROLES, "GBF kaydını yalnızca yönetim girer.")
+    """Yeni GBF revizyonu girer (GBF arşivi: Değiştirir). Malzemenin önceki geçerli GBF'si
+    arşive geçer. PDF, kayıttan sonra ek olarak yüklenir (dosyasız GBF raporda "Dosya yok"
+    görünür)."""
+    require_access(actor, SDS, CHANGE, "GBF girme yetkiniz yok.")
     values = _pick(data, SDS_FIELDS_ALL)
     sheet = SafetyDataSheet(**values)
     sheet.revision_no = _text(sheet.revision_no)
@@ -341,8 +330,8 @@ def create_sds(actor: User, data: Mapping[str, Any]) -> SafetyDataSheet:
 
 @transaction.atomic
 def update_sds(actor: User, sheet: SafetyDataSheet, data: Mapping[str, Any]) -> SafetyDataSheet:
-    """GBF bilgilerini düzeltir (malzeme değişmez; rol: yonetim)."""
-    _require_role(actor, HSE_ROLES, "GBF kaydını yalnızca yönetim değiştirir.")
+    """GBF bilgilerini düzeltir (malzeme değişmez; GBF arşivi: Değiştirir)."""
+    require_access(actor, SDS, CHANGE, "GBF kaydını değiştirme yetkiniz yok.")
     values = _pick(data, tuple(f for f in SDS_FIELDS_ALL if f != "material"))
     locked = SafetyDataSheet.objects.select_for_update().get(pk=sheet.pk)
     for name, value in values.items():
@@ -375,8 +364,8 @@ def _validate_limit(values: Mapping[str, Any]) -> None:
 
 @transaction.atomic
 def create_storage_limit(actor: User, data: Mapping[str, Any]) -> StorageLimit:
-    """Lokasyon × tehlike sınıfı için kg limiti tanımlar (rol: yonetim)."""
-    _require_role(actor, HSE_ROLES, "Depolama limitini yalnızca yönetim tanımlar.")
+    """Lokasyon × tehlike sınıfı için kg limiti tanımlar (Depolama limitleri: Değiştirir)."""
+    require_access(actor, STORAGE, CHANGE, "Depolama limiti tanımlama yetkiniz yok.")
     values = _pick(data, STORAGE_LIMIT_FIELDS)
     _validate_limit(values)
     return masterdata.create_record(actor, StorageLimit, values)
@@ -384,8 +373,8 @@ def create_storage_limit(actor: User, data: Mapping[str, Any]) -> StorageLimit:
 
 @transaction.atomic
 def update_storage_limit(actor: User, limit: StorageLimit, data: Mapping[str, Any]) -> StorageLimit:
-    """Limiti günceller (rol: yonetim)."""
-    _require_role(actor, HSE_ROLES, "Depolama limitini yalnızca yönetim değiştirir.")
+    """Limiti günceller (Depolama limitleri: Değiştirir)."""
+    require_access(actor, STORAGE, CHANGE, "Depolama limitini değiştirme yetkiniz yok.")
     values = _pick(data, STORAGE_LIMIT_FIELDS)
     _validate_limit(values)
     return masterdata.update_record(actor, limit, values)
@@ -394,7 +383,7 @@ def update_storage_limit(actor: User, limit: StorageLimit, data: Mapping[str, An
 @transaction.atomic
 def set_storage_limit_active(actor: User, limit: StorageLimit, active: bool) -> StorageLimit:
     """Limiti aktif / pasif yapar."""
-    _require_role(actor, HSE_ROLES, "Depolama limitini yalnızca yönetim değiştirir.")
+    require_access(actor, STORAGE, CHANGE, "Depolama limitini değiştirme yetkiniz yok.")
     return masterdata.set_active(actor, limit, active)
 
 
@@ -480,8 +469,8 @@ def _validate_contractor(values: Mapping[str, Any]) -> dict[str, Any]:
 
 @transaction.atomic
 def create_contractor(actor: User, data: Mapping[str, Any]) -> WasteContractor:
-    """Lisanslı atık firması tanımlar (rol: yonetim)."""
-    _require_role(actor, HSE_ROLES, "Atık firmasını yalnızca yönetim tanımlar.")
+    """Lisanslı atık firması tanımlar (Atık: Değiştirir)."""
+    require_access(actor, WASTE, CHANGE, "Atık firması tanımlama yetkiniz yok.")
     values = _validate_contractor(_pick(data, CONTRACTOR_FIELDS))
     return masterdata.create_record(actor, WasteContractor, values)
 
@@ -490,8 +479,8 @@ def create_contractor(actor: User, data: Mapping[str, Any]) -> WasteContractor:
 def update_contractor(
     actor: User, contractor: WasteContractor, data: Mapping[str, Any]
 ) -> WasteContractor:
-    """Firmayı günceller (ör. lisans yenileme; rol: yonetim)."""
-    _require_role(actor, HSE_ROLES, "Atık firmasını yalnızca yönetim değiştirir.")
+    """Firmayı günceller (ör. lisans yenileme; Atık: Değiştirir)."""
+    require_access(actor, WASTE, CHANGE, "Atık firmasını değiştirme yetkiniz yok.")
     values = _validate_contractor(_pick(data, CONTRACTOR_FIELDS))
     return masterdata.update_record(actor, contractor, values)
 
@@ -501,7 +490,7 @@ def set_contractor_active(
     actor: User, contractor: WasteContractor, active: bool
 ) -> WasteContractor:
     """Firmayı aktif / pasif yapar."""
-    _require_role(actor, HSE_ROLES, "Atık firmasını yalnızca yönetim değiştirir.")
+    require_access(actor, WASTE, CHANGE, "Atık firmasını değiştirme yetkiniz yok.")
     return masterdata.set_active(actor, contractor, active)
 
 
@@ -522,9 +511,9 @@ def normalize_waste_code(value: str) -> str:
 
 @transaction.atomic
 def record_waste(actor: User, data: Mapping[str, Any]) -> WasteRecord:
-    """Atık teslimini kaydeder (`AT-`, rol: yonetim). Yıldızlı kod tehlikeli atıktır. Pasif ya da
-    lisansı teslim tarihinde geçmiş firmaya teslim kaydedilemez."""
-    _require_role(actor, HSE_ROLES, "Atık kaydını yalnızca yönetim girer.")
+    """Atık teslimini kaydeder (`AT-`, Atık: Değiştirir). Yıldızlı kod tehlikeli atıktır. Pasif
+    ya da lisansı teslim tarihinde geçmiş firmaya teslim kaydedilemez."""
+    require_access(actor, WASTE, CHANGE, "Atık kaydı girme yetkiniz yok.")
     values = _pick(data, WASTE_FIELDS)
     code = normalize_waste_code(values.get("waste_code", ""))
     contractor: WasteContractor = values["contractor"]
@@ -570,8 +559,8 @@ def record_waste(actor: User, data: Mapping[str, Any]) -> WasteRecord:
 
 @transaction.atomic
 def cancel_waste_record(actor: User, record: WasteRecord, reason: str) -> WasteRecord:
-    """Atık kaydını iptal eder (neden zorunlu; rol: yonetim)."""
-    _require_role(actor, HSE_ROLES, "Atık kaydını yalnızca yönetim iptal eder.")
+    """Atık kaydını iptal eder (neden zorunlu; Atık: Değiştirir)."""
+    require_access(actor, WASTE, CHANGE, "Atık kaydını iptal etme yetkiniz yok.")
     return cancel_document(record, _actor(actor), reason=reason, machine=waste_record_states)
 
 
@@ -595,9 +584,9 @@ def _lock(incident: Incident) -> Incident:
 
 @transaction.atomic
 def report_incident(actor: User, data: Mapping[str, Any]) -> Incident:
-    """Olay / kaza bildirir (her rol). Kayıt açılınca yönetime inceleme görevi düşer; yaralanma
-    varsa ayrıca uyarı bildirimi gider."""
-    _require_role(actor, INCIDENT_REPORT_ROLES, "Olay bildirmek için bir rolünüz olmalı.")
+    """Olay / kaza bildirir (Olay bildirimi: rolü olan herkes). Kayıt açılınca yönetime inceleme
+    görevi düşer; yaralanma varsa ayrıca uyarı bildirimi gider."""
+    require_access(actor, INCIDENT_REPORT, CHANGE, "Olay bildirme yetkiniz yok.")
     values = _pick(data, INCIDENT_FIELDS)
     incident = Incident(**values)
     incident.place = _text(incident.place)
@@ -641,9 +630,9 @@ def _apply_fields(incident: Incident, data: Mapping[str, Any], allowed: Sequence
 def start_investigation(
     actor: User, incident: Incident, data: Mapping[str, Any] | None = None
 ) -> Incident:
-    """Olayı incelemeye alır (rol: yonetim); kök neden, ağırlık ve faaliyet bilgileri
-    isteğe bağlı girilir."""
-    _require_role(actor, HSE_ROLES, "Olayı yalnızca yönetim inceler.")
+    """Olayı incelemeye alır (Olaylar ve kazalar: Değiştirir); kök neden, ağırlık ve faaliyet
+    bilgileri isteğe bağlı girilir."""
+    require_access(actor, INCIDENTS, CHANGE, "Olayı inceleme yetkiniz yok.")
     incident = _lock(incident)
     incident_states.assert_can_transition(incident.status, IncidentStatus.INVESTIGATING)
     _apply_fields(incident, data or {}, INVESTIGATION_FIELDS)
@@ -659,8 +648,9 @@ def start_investigation(
 
 @transaction.atomic
 def update_investigation(actor: User, incident: Incident, data: Mapping[str, Any]) -> Incident:
-    """İncelemedeki olayın kök neden / faaliyet bilgilerini günceller (rol: yonetim)."""
-    _require_role(actor, HSE_ROLES, "Olayı yalnızca yönetim inceler.")
+    """İncelemedeki olayın kök neden / faaliyet bilgilerini günceller (Olaylar ve kazalar:
+    Değiştirir)."""
+    require_access(actor, INCIDENTS, CHANGE, "Olayı inceleme yetkiniz yok.")
     incident = _lock(incident)
     if incident.status not in selectors.OPEN_INCIDENT_STATUSES:
         raise BusinessRuleError("incident_not_open", "Kapanmış ya da iptal olay değiştirilemez.")
@@ -670,8 +660,9 @@ def update_investigation(actor: User, incident: Incident, data: Mapping[str, Any
 
 @transaction.atomic
 def close_incident(actor: User, incident: Incident, data: Mapping[str, Any]) -> Incident:
-    """İncelenen olayı kapatır (rol: yonetim). Kök neden ve düzeltici faaliyet zorunludur."""
-    _require_role(actor, HSE_ROLES, "Olayı yalnızca yönetim kapatır.")
+    """İncelenen olayı kapatır (Olaylar ve kazalar: Değiştirir). Kök neden ve düzeltici faaliyet
+    zorunludur."""
+    require_access(actor, INCIDENTS, CHANGE, "Olayı kapatma yetkiniz yok.")
     incident = _lock(incident)
     incident_states.assert_can_transition(incident.status, IncidentStatus.CLOSED)
     _apply_fields(incident, data, CLOSE_FIELDS)
@@ -693,6 +684,7 @@ def close_incident(actor: User, incident: Incident, data: Mapping[str, Any]) -> 
 
 @transaction.atomic
 def cancel_incident(actor: User, incident: Incident, reason: str) -> Incident:
-    """Olay kaydını iptal eder (ör. mükerrer kayıt; neden zorunlu, rol: yonetim)."""
-    _require_role(actor, HSE_ROLES, "Olay kaydını yalnızca yönetim iptal eder.")
+    """Olay kaydını iptal eder (ör. mükerrer kayıt; neden zorunlu; Olaylar ve kazalar:
+    Değiştirir)."""
+    require_access(actor, INCIDENTS, CHANGE, "Olay kaydını iptal etme yetkiniz yok.")
     return cancel_document(_lock(incident), _actor(actor), reason=reason, machine=incident_states)

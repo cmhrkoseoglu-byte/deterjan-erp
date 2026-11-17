@@ -22,6 +22,8 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import { getLotCostHistory, recalculateLotCost, type LotCostDetail } from "../../api/costing";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate, formatDateTime, formatMoney, formatNumber } from "../../i18n/format";
 import { lotPath } from "../inventory/config";
 import { Info, Qty } from "../inventory/shared";
@@ -37,6 +39,7 @@ export function LotCostPage() {
     queryKey: ["costing", "lot", lotId],
     queryFn: () => getLotCostHistory(lotId),
   });
+  const { can } = useCan();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [cascade, setCascade] = useState(false);
@@ -80,7 +83,7 @@ export function LotCostPage() {
             </Anchor>
           </Text>
         </div>
-        {history.is_costable && (
+        {history.is_costable && can(PERM.COSTING_LOT_COSTS, "change") && (
           <Button leftSection={<IconRefresh size={16} />} onClick={() => setOpen(true)}>
             {kt.recalculate}
           </Button>

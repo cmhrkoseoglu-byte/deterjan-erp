@@ -26,8 +26,8 @@ import {
   type FillingRun,
   type PackagingSpec,
 } from "../../api/filling";
-import type { Role } from "../../api/types";
-import { useAuth } from "../../auth/AuthContext";
+import { useCan } from "../../auth/access";
+import { RequireAccess } from "../../auth/RequireAccess";
 import { hasAnyRole } from "../../auth/roles";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
 import { ct } from "../common/strings";
@@ -35,9 +35,6 @@ import {
   FILLING_BASE,
   fillingOrderPath,
   fillingPrepPath,
-  LINE_ROLES,
-  PLAN_ROLES,
-  PREP_ROLES,
   PREP_STATUSES,
   runPath,
   specPath,
@@ -141,7 +138,7 @@ function useOrders(statuses: FillingOrderStatus[], search: string, page: number)
 }
 
 function OrdersTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<FillingOrderStatus | null>(null);
@@ -177,7 +174,7 @@ function OrdersTab() {
             }}
           />
         </Group>
-        {hasAnyRole(user, PLAN_ROLES) && (
+        {can("filling.orders", "change") && (
           <Button
             leftSection={<IconPlus size={16} />}
             onClick={() => navigate(fillingOrderPath("yeni"))}
@@ -258,7 +255,7 @@ function LineTab() {
 }
 
 function SpecsTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
@@ -296,7 +293,7 @@ function SpecsTab() {
           w={300}
           onChange={(event) => setSearch(event.currentTarget.value)}
         />
-        {hasAnyRole(user, PLAN_ROLES) && (
+        {can("filling.specs", "change") && (
           <Button leftSection={<IconPlus size={16} />} onClick={() => navigate(specPath("yeni"))}>
             {ft.newSpec}
           </Button>
@@ -317,29 +314,49 @@ function SpecsTab() {
 interface TabDef {
   slug: string;
   label: string;
-  roles: readonly Role[];
+  /** Sekmeyi gösteren bölüm (Görür). */
+  section: string;
   render: () => ReactNode;
 }
 
 const TABS: TabDef[] = [
-  { slug: "emirler", label: ft.tabs.orders, roles: [], render: () => <OrdersTab /> },
-  { slug: "hazirlama", label: ft.tabs.prep, roles: PREP_ROLES, render: () => <PrepTab /> },
-  { slug: "hat", label: ft.tabs.line, roles: [], render: () => <LineTab /> },
-  { slug: "ambalaj-receteleri", label: ft.tabs.specs, roles: [], render: () => <SpecsTab /> },
+  {
+    slug: "emirler",
+    label: ft.tabs.orders,
+    section: "filling.orders",
+    render: () => <OrdersTab />,
+  },
+  { slug: "hazirlama", label: ft.tabs.prep, section: "filling.prep", render: () => <PrepTab /> },
+  { slug: "hat", label: ft.tabs.line, section: "filling.runs", render: () => <LineTab /> },
+  {
+    slug: "ambalaj-receteleri",
+    label: ft.tabs.specs,
+    section: "filling.specs",
+    render: () => <SpecsTab />,
+  },
 ];
 
 /** Dolum: sekmeler (`/dolum/<sekme>`). Depo hazırlamaya, dolum rolü hatta düşer. */
 export function FillingPage() {
   const { tab } = useParams();
-  const { user } = useAuth();
+  const { user, can } = useCan();
   const navigate = useNavigate();
-  const visible = TABS.filter((item) => hasAnyRole(user, item.roles));
-  const fallback =
-    hasAnyRole(user, PREP_ROLES) && !hasAnyRole(user, PLAN_ROLES)
+  const visible = TABS.filter((item) => can(item.section, "view"));
+  if (visible.length === 0) {
+    return (
+      <RequireAccess allow={() => false} need={[{ key: "filling", level: "view" }]}>
+        {null}
+      </RequireAccess>
+    );
+  }
+  // Varsayılan sekme rol görünümüdür (plan §5.9): bugünkü tercih, görünmüyorsa ilk görünür sekme.
+  const preferred =
+    hasAnyRole(user, ["depo"]) && !hasAnyRole(user, ["planlama"])
       ? "hazirlama"
-      : user?.roles.some((role) => LINE_ROLES.includes(role))
+      : user?.roles.includes("dolum")
         ? "hat"
         : "emirler";
+  const fallback = visible.some((item) => item.slug === preferred) ? preferred : visible[0].slug;
   const current = visible.find((item) => item.slug === (tab ?? fallback));
   if (!current) return <Navigate to={FILLING_BASE} replace />;
 

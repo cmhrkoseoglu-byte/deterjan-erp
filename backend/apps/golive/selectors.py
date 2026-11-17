@@ -8,8 +8,11 @@ from typing import Any
 from django.contrib.auth.models import Group
 from django.db.models import Count, Q, QuerySet, Sum
 
+from apps.core import coverage
+from apps.core.permissions import has_access
 from apps.core.roles import ADMIN, ALL_ROLES, ROLE_LABELS
 from apps.filling.models import PackagingSpec
+from apps.golive.access import PROBLEMS
 from apps.golive.models import ProblemReport
 from apps.inventory import services as inventory
 from apps.inventory.models import StockMovement
@@ -29,9 +32,10 @@ from apps.recipes.models import RecipeVersion
 def problem_reports_visible_to(
     user: Any, queryset: QuerySet[ProblemReport]
 ) -> QuerySet[ProblemReport]:
-    """Sorun bildirimi görünürlüğü (ekran ve kayda bağlı yorum, geçmiş, ek için aynı kural): admin
-    hepsini, diğer kullanıcılar yalnızca kendi bildirimlerini görür."""
-    if getattr(user, "is_admin", False):
+    """Sorun bildirimi görünürlüğü (ekran ve kayda bağlı yorum, geçmiş, ek için aynı kural): Sorun
+    bildirimleri listesi (yalnız admin) hepsini, diğer kullanıcılar yalnızca kendi bildirimlerini
+    görür (satır kuralı, plan §4)."""
+    if has_access(user, PROBLEMS):
         return queryset
     return queryset.filter(created_by=getattr(user, "pk", None))
 
@@ -124,6 +128,24 @@ def readiness() -> list[dict[str, Any]]:
             count=sum(counts.get(role, 0) for role in ALL_ROLES),
             link="/admin/core/user/",
             items=empty,
+        )
+    )
+
+    # Görevler: her iş akışı kuralının rolünde kuralın yetkisi olan etkin biri (plan §8 madde 9).
+    # Kapsanmayan görev MISSING (kimseye düşmez), yalnız bildirim kapsanmıyorsa WARNING.
+    gaps = coverage.current_gaps()
+    checks.append(
+        _check(
+            "task_coverage",
+            "Kullanıcılar",
+            "Her görevi alabilecek biri var",
+            MISSING if any(gap.tasks for gap in gaps) else WARNING if gaps else OK,
+            "Rolünde yetkili etkin kimse olmayan görev ya da bildirimler var."
+            if gaps
+            else "Her görev ve bildirimin rolünde yetkili etkin biri var.",
+            count=sum(len(gap.tasks) + len(gap.notifications) for gap in gaps),
+            link="/sistem/kullanicilar",
+            items=[gap.text for gap in gaps],
         )
     )
 

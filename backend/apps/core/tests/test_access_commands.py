@@ -1,6 +1,7 @@
 """Yetki kataloğu komutları: paket sürümü kopyası ve dışa aktarım."""
 
 from io import StringIO
+from itertools import combinations
 from pathlib import Path
 
 import pytest
@@ -8,7 +9,8 @@ from django.core.management import CommandError, call_command
 
 from apps.core import access, services
 from apps.core.access import VIEW, grant, register_module, register_section, temporary_catalog
-from apps.core.access_export import perm_name, to_markdown, to_typescript
+from apps.core.access_export import perm_name, role_access, to_markdown, to_typescript
+from apps.core.effective_access import compute_access
 from apps.core.models import AccessCatalogSnapshot, AuditLog
 from apps.core.roles import DEPO
 
@@ -60,6 +62,38 @@ def test_typescript_export_contains_catalog() -> None:
     assert perm_name("inventory.open_records") == "INVENTORY_OPEN_RECORDS"
     assert "export const FIELD_OPENERS" in text
     assert "docker compose exec -T backend python manage.py export_access --format=ts" in text
+
+
+def test_typescript_export_contains_role_access() -> None:
+    text = to_typescript()
+    table = role_access()
+
+    assert "export const ROLE_ACCESS" in text
+    assert list(table) == ["", *access.ROLES, "admin"]
+    assert table[""]["inventory.stock"] == "rv"
+    assert "hse.incident_report" not in table[""]
+    assert table["planlama"]["production.orders"] == "rvca"
+    assert table["admin"]["masterdata.reference"] == "rvc"
+    assert "personnel.cards" not in table["planlama"]
+
+
+def _union(*tables: dict[str, str]) -> dict[str, str]:
+    merged: dict[str, set[str]] = {}
+    for table in tables:
+        for key, text in table.items():
+            merged.setdefault(key, set()).update(text)
+    return {key: "".join(c for c in "rvca" if c in letters) for key, letters in merged.items()}
+
+
+def test_role_access_union_matches_compute_access() -> None:
+    """Ön yüzün `userWith(...roller)` yardımcısı rollerin tablolarını birleştirir: her rol bileşimi
+    için sonuç, `me`'nin döndüğü `compute_access` harfleriyle aynı olmalıdır (ön koşullar, KVKK ve
+    okuma kapsamları dahil)."""
+    table = role_access()
+    for size in range(2, len(access.ROLES) + 1):
+        for roles in combinations(access.ROLES, size):
+            expected = compute_access(roles).letters()
+            assert _union(table[""], *(table[role] for role in roles)) == expected, roles
 
 
 def test_markdown_export_has_one_row_per_section() -> None:

@@ -65,6 +65,7 @@ export const tr = {
       dolum: "Dolum paneli",
       sevkiyat: "Sevkiyat paneli",
       satin_alma: "Satın alma paneli",
+      neutral: "Kullanıcı paneli",
     } as Record<string, string>,
   },
   search: {
@@ -282,7 +283,12 @@ export const tr = {
     notFoundTitle: "Sayfa bulunamadı",
     notFoundText: "Aradığınız sayfa yok ya da taşınmış olabilir.",
     forbiddenTitle: "Yetkiniz yok",
-    forbiddenText: "Bu sayfayı görüntülemek için gerekli role sahip değilsiniz.",
+    forbiddenText:
+      "Bu sayfayı görme yetkiniz yok. Gerekiyorsa sistem yöneticinizden yetki isteyin.",
+    /** Eksik yetki: "Gerekli yetki: Üretim › Üretim emirleri (Görür)". */
+    requiredAccess: (text: string) => `Gerekli yetki: ${text}`,
+    /** Modül sayfasının yetkisi: modülün bölümlerinden birinde Görür. */
+    anySection: "bölümlerinden biri",
     crashTitle: "Bir şeyler ters gitti",
     crashText:
       "Ekran beklenmeyen bir hatayla karşılaştı. Hata sistem yöneticilerine iletildi. Sayfayı yenileyip tekrar deneyin.",

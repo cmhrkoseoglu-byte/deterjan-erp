@@ -1,4 +1,5 @@
 import type { CurrentUser } from "../api/types";
+import { can } from "./access";
 
 /** Güvenlik sayfası (şifre, iki aşamalı doğrulama). Her giriş yapmış kullanıcıya açık. */
 export const SECURITY_PATH = "/guvenlik";
@@ -15,8 +16,12 @@ export function searchPath(query: string): string {
 
 /**
  * Açılış ekranı (`/`, girişten sonra ve logoya basınca): yönetim rolü panoyla, diğer herkes
- * Görevlerim'le açılır. Yalnızca açıkça atanmış yönetim rolü sayılır; admin Görevlerim'de kalır.
+ * Görevlerim'le açılır. Yalnızca açıkça atanmış yönetim rolü sayılır (rol görünümü); admin
+ * Görevlerim'de kalır. Panoyu göremeyen (Yönetim panosu: Görür'ü kaldırılmış) yönetim de
+ * Görevlerim'le açılır (plan §3.15, §5.9).
  */
 export function landingPath(user: CurrentUser | null): string {
-  return user?.roles.includes("yonetim") ? DASHBOARD_PATH : TASKS_PATH;
+  return user?.roles.includes("yonetim") && can(user, "reporting.management", "view")
+    ? DASHBOARD_PATH
+    : TASKS_PATH;
 }

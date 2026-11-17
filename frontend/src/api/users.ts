@@ -53,9 +53,19 @@ export async function createUser(input: NewUser): Promise<IssuedPassword> {
   return data;
 }
 
+/** Güncelleme yanıtı: kullanıcı ve kaydı engellemeyen uyarılar. */
+export interface SavedUser extends UserRecord {
+  /**
+   * Rol değişikliği bir görevi ya da bildirimi alabilecek kimse bırakmıyorsa her biri için bir
+   * Türkçe uyarı (ör. "Depo rolünde … yetkisi olan etkin kimse yok; 2 görev kimseye düşmez.").
+   * Kayıt yine de yapılmıştır.
+   */
+  coverage_warnings: string[];
+}
+
 /** Hata kodları: cannot_remove_own_admin, last_admin, full_name_required, validation_error. */
-export async function updateUser(id: number, changes: UserChanges): Promise<UserRecord> {
-  const { data } = await api.patch<UserRecord>(`/users/${id}/`, changes);
+export async function updateUser(id: number, changes: UserChanges): Promise<SavedUser> {
+  const { data } = await api.patch<SavedUser>(`/users/${id}/`, changes);
   return data;
 }
 

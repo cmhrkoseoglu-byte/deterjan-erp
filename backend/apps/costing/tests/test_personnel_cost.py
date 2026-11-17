@@ -362,7 +362,8 @@ def test_produced_kg_and_labor_rate_from_approved_month(
         D("54.5281"),
         start,
     )
-    assert rate.note == f"Personel maliyeti {report.label} ({run.number}): 53.437,50 TL / 980,00 kg"
+    # Notta tutar yok, yalnız bordro numarası (plan §8 madde 8).
+    assert rate.note == f"Personel maliyetinden ({run.number})"
     assert rate.created_by == manager
     assert _code(add()) == "duplicate_rate"
     assert _code(add(CostStage.FILLING)) == "no_labor_rate"  # dolumda personel yok

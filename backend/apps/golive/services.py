@@ -22,8 +22,10 @@ from apps.core import event_names as ev
 from apps.core import events
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import User
+from apps.core.permissions import has_access
 from apps.core.services import next_document_number, save_with_audit
 from apps.golive import selectors
+from apps.golive.access import PROBLEMS
 from apps.golive.models import ProblemReport, StockComparison, StockComparisonLine
 from apps.inventory import services as inventory
 from apps.inventory.models import InventorySettings
@@ -234,7 +236,8 @@ def create_stock_comparison(
 
 
 def can_view_problem(user: User, report: ProblemReport) -> bool:
-    return user.is_admin or report.created_by_id == user.pk
+    """Sorun bildirimini bildiren (satır kuralı) ya da Sorun bildirimleri listesi (admin) görür."""
+    return has_access(user, PROBLEMS) or report.created_by_id == user.pk
 
 
 @transaction.atomic

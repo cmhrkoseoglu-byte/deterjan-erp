@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { markNotificationsRead, type AppNotification } from "../api/workflow";
+import { useAuth } from "../auth/AuthContext";
 import { workflowKeys } from "./queryKeys";
-import { recordPath } from "./recordLinks";
+import { openableRecordPath } from "./recordLinks";
 
 /** Bildirimleri okundu işaretler (`ids` yoksa tümünü). */
 export function useMarkRead() {
@@ -13,13 +14,17 @@ export function useMarkRead() {
   });
 }
 
-/** Bildirime tıklanınca: okundu işaretle, ilgili kayda (yoksa görev ise Görevlerim'e) git. */
+/**
+ * Bildirime tıklanınca: okundu işaretle, ilgili kayda (kişi açamıyorsa ya da kayıt yoksa, görev ise
+ * Görevlerim'e) git (plan §5.7, §8 madde 2).
+ */
 export function useOpenNotification(after?: () => void) {
   const markRead = useMarkRead();
   const navigate = useNavigate();
+  const { user } = useAuth();
   return (notification: AppNotification) => {
     if (!notification.is_read) markRead.mutate([notification.id]);
-    const path = recordPath(notification.related) ?? (notification.task ? "/" : null);
+    const path = openableRecordPath(user, notification.related) ?? (notification.task ? "/" : null);
     after?.();
     if (path) navigate(path);
   };

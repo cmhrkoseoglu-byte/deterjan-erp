@@ -1,20 +1,18 @@
 """Kodlama sistematiği uç noktaları (`/api/v1/coding/`).
 
-Biçimleri okuma ve değiştirme yalnız admin içindir; kod önerisi türün yazma rollerine açıktır.
+Biçimleri okuma ve değiştirme yalnız admin içindir; kod önerisi türün yazma yetkisine açıktır.
 Görünümler incedir: doğrula → `core.coding.services` / `selectors` → yanıt.
 """
 
 from typing import Any, cast
 
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import PermissionDenied
 from django.db import models
 from django.db.models import Q, QuerySet
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, serializers
 from rest_framework.exceptions import NotFound
 from rest_framework.filters import SearchFilter
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -31,10 +29,10 @@ from apps.core.coding.registry import (
 )
 from apps.core.models import CodeHistory, CodeMigrationRun, CodeSchemeRevision, User
 from apps.core.pagination import StandardPagination
-from apps.core.permissions import HasRole, require_access, user_has_role
-from apps.core.roles import ADMIN
+from apps.core.permissions import AdminOnly, SignedIn, require_access, require_admin
 
 CODE_KINDS = [(kind, kind) for kind in KINDS]
+SUGGEST_DENIED_MESSAGE = "Bu kayıt türünü yazma yetkiniz yok."
 YEAR_FORMAT_CHOICES = list(formats.YEAR_FORMATS.items())
 DATE_FORMAT_CHOICES = list(formats.DATE_FORMATS.items())
 
@@ -218,7 +216,7 @@ class CodeTypeListView(generics.ListAPIView):
     """Kayıtlı bütün kod türleri: biçim, örnek, sıradaki ve verilen son numara (yalnız admin).
     `?kind=master|document|lot|standard` ile süzülür; sayfalıdır."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
     serializer_class = CodeTypeSerializer
     pagination_class = StandardPagination
     filter_backends: list[Any] = []
@@ -238,7 +236,7 @@ class CodeTypeListView(generics.ListAPIView):
 class CodeTypeDetailView(APIView):
     """Tek kod türü: oku ya da biçimini değiştir (yalnız admin; not zorunlu)."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
 
     @extend_schema(responses=CodeTypeSerializer)
     def get(self, request: Request, key: str) -> Response:
@@ -259,7 +257,7 @@ class CodeTypePreviewView(APIView):
     (sıradaki numara) biçim değiştirmedeki gibi denetlenir; örnek sayaç düzeltilmiş gibi
     gösterilir. Hiçbir şey yazılmaz."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
 
     @extend_schema(request=CodePreviewRequestSerializer, responses=CodePreviewSerializer)
     def post(self, request: Request, key: str) -> Response:
@@ -272,7 +270,7 @@ class CodeTypePreviewView(APIView):
 class CodeSchemeRevisionListView(generics.ListAPIView):
     """Bir kod türünün biçim revizyonları, en yeniden eskiye (yalnız admin)."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
     serializer_class = CodeSchemeRevisionSerializer
     filter_backends: list[Any] = []
 
@@ -287,7 +285,7 @@ class AllRevisionsListView(generics.ListAPIView):
     """Bütün kod türlerinin biçim revizyonları, en yeniden eskiye (yalnız admin): kodlama
     ekranının Geçmiş bölümü."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
     serializer_class = CodeSchemeRevisionSerializer
     filter_backends: list[Any] = []
 
@@ -296,10 +294,12 @@ class AllRevisionsListView(generics.ListAPIView):
 
 
 class CodeSuggestView(APIView):
-    """Yeni kayıt için sıradaki kod (biçim etkinse). Türün yazma rollerine ve admin'e açık;
-    `?type=` türe göre önekli kodda kaydın türü (ekipman türü)."""
+    """Yeni kayıt için sıradaki kod (biçim etkinse). Türün yazma yetkisine (`write_access`) açık;
+    yazma yetkisi tanımlanmamış tür yalnız admin'e. `?type=` türe göre önekli kodda kaydın türü
+    (ekipman türü)."""
 
-    permission_classes = [IsAuthenticated]
+    # Karar türe göre gövdede verilir: türün yazma yetkisi ya da yalnız admin.
+    permission_classes = [SignedIn("kod önerisi türün yazma yetkisiyle gövdede denetlenir")]
 
     @extend_schema(
         parameters=[OpenApiParameter("type", str, required=False)],
@@ -309,9 +309,9 @@ class CodeSuggestView(APIView):
         item = _type_or_404(key)
         if item.write_access is not None:
             section, level = item.write_access
-            require_access(request.user, section, level, "Bu kayıt türünü yazma yetkiniz yok.")
-        elif not user_has_role(request.user, item.write_roles or (ADMIN,)):
-            raise PermissionDenied("Bu kayıt türünü yazma yetkiniz yok.")
+            require_access(request.user, section, level, SUGGEST_DENIED_MESSAGE)
+        else:
+            require_admin(request.user, SUGGEST_DENIED_MESSAGE)
         type_value = request.query_params.get("type") or None
         fmt = selectors.effective_format(item)
         body = {
@@ -414,7 +414,7 @@ class RevertPreviewSerializer(serializers.Serializer):
 class RecodePreviewView(APIView):
     """Kod göçü önizlemesi (yalnız admin, salt okunur): her kaydın eski ve yeni kodu."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
 
     @extend_schema(responses=RecodePreviewSerializer)
     def get(self, request: Request, key: str) -> Response:
@@ -426,7 +426,7 @@ class RecodeApplyView(APIView):
     """Önizlemedeki göçü uygular (yalnız admin; not zorunlu; önizlemeden sonra kayıt değiştiyse
     `recode_stale`)."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
 
     @extend_schema(request=RecodeApplySerializer, responses={201: CodeMigrationRunSerializer})
     def post(self, request: Request, key: str) -> Response:
@@ -440,7 +440,7 @@ class RecodeApplyView(APIView):
 class CodeMigrationRunListView(generics.ListAPIView):
     """Uygulanan kod göçleri ve geri almaları, en yeniden eskiye (yalnız admin)."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
     serializer_class = CodeMigrationRunSerializer
     filter_backends: list[Any] = []
 
@@ -451,7 +451,7 @@ class CodeMigrationRunListView(generics.ListAPIView):
 class RevertPreviewView(APIView):
     """Geri alma önizlemesi (yalnız admin): hangi kayıt eski koduna döner, hangisi kalır."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
 
     @extend_schema(responses=RevertPreviewSerializer)
     def get(self, request: Request, run_id: int) -> Response:
@@ -461,7 +461,7 @@ class RevertPreviewView(APIView):
 class RevertView(APIView):
     """Göçü geri alır (yalnız admin; not zorunlu; bir göç bir kez geri alınır)."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
 
     @extend_schema(request=RecodeNoteSerializer, responses={201: CodeMigrationRunSerializer})
     def post(self, request: Request, run_id: int) -> Response:
@@ -551,7 +551,7 @@ def _output_or_404(key: str) -> OutputType:
 class OutputDocumentListView(generics.ListAPIView):
     """Basılı çıktılar (PDF, Excel) ve doküman kontrol bilgileri (yalnız admin; sayfalı)."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
     serializer_class = OutputDocumentSerializer
     pagination_class = StandardPagination
     filter_backends: list[Any] = []
@@ -568,7 +568,7 @@ class OutputDocumentDetailView(APIView):
     doküman no, ilk yayın tarihi ve en az bir revizyon gerekir; açmak ya da kapatmak bugünden
     geçerlidir."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
 
     @extend_schema(responses=OutputDocumentSerializer)
     def get(self, request: Request, key: str) -> Response:
@@ -590,7 +590,7 @@ class OutputRevisionCreateView(APIView):
     çıktıda da değişir, verilmeyen değişmez. İlk revizyonda ikisi de kayıtlı olmalı ya da bu
     istekte verilmelidir (`revision_needs_doc`). Tarihler 01.01.2000'den önce olamaz."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
 
     @extend_schema(
         request=OutputRevisionCreateSerializer, responses={201: OutputDocumentSerializer}

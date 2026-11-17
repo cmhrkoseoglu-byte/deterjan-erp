@@ -394,6 +394,40 @@ describe("puantaj tablosu", () => {
     expect(screen.getByRole("button", { name: "Yeniden aç" })).toBeDisabled();
   });
 
+  it("ayarları göremeyen kişi tatilleri salt okur; ayarlar sorgulanmaz", async () => {
+    const base = userWith("yonetim");
+    const access: Record<string, string> = { ...base.access, "personnel.attendance": "v" };
+    delete access["personnel.settings"];
+    vi.mocked(authApi.fetchMe).mockResolvedValue({ ...base, access });
+    vi.mocked(attendanceApi.getAttendanceSettings).mockClear();
+    vi.mocked(attendanceApi.listHolidays).mockResolvedValue([
+      { id: 1, date: "2027-01-01", name: "Yılbaşı", half_day: false },
+    ]);
+    renderApp("/personel/tatiller?yil=2027");
+    const table = await screen.findByTestId("holidays");
+    expect(within(table).getByText("Yılbaşı")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Tatil ekle" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Yılın sabit tatillerini ekle" })).toBeNull();
+    expect(within(table).queryByRole("button")).toBeNull();
+    expect(attendanceApi.getAttendanceSettings).not.toHaveBeenCalled();
+  });
+
+  it("sekmeler yalnız görülen bölümleri gösterir", async () => {
+    const base = userWith("yonetim");
+    const access: Record<string, string> = { ...base.access };
+    delete access["personnel.wages"];
+    delete access["personnel.payroll"];
+    vi.mocked(authApi.fetchMe).mockResolvedValue({ ...base, access });
+    vi.mocked(attendanceApi.listHolidays).mockResolvedValue([
+      { id: 1, date: "2027-01-01", name: "Yılbaşı", half_day: false },
+    ]);
+    renderApp("/personel/tatiller?yil=2027");
+    await screen.findByTestId("holidays");
+    expect(screen.getByRole("tab", { name: "Puantaj" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Ücretler" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Bordro" })).toBeNull();
+  });
+
   it("personel sekmelerinden puantaja geçilir; diğer roller açamaz", async () => {
     const user = userEvent.setup();
     const { router } = renderApp("/personel");

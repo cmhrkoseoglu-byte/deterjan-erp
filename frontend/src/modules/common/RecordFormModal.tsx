@@ -8,7 +8,7 @@ import { getErrorCode } from "../../api/client";
 import { suggestCode } from "../../api/coding";
 import type { ApiError } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
-import { isAdmin } from "../../auth/roles";
+import { isAdminUser } from "../../auth/access";
 import { FieldInput } from "./FieldInput";
 import { applyApiErrors, toFormValues, toPayload, type FieldDef, type FormValues } from "./forms";
 import { ct } from "./strings";
@@ -69,7 +69,7 @@ export function RecordFormModal<T extends object>({
   const suggested = useRef("");
   const hasCode = Boolean(codeType) && fields.some((field) => field.name === CODE);
   // Kayıt açıldıktan sonra kodu yalnızca admin değiştirir (sunucu da denetler).
-  const codeLocked = hasCode && Boolean(record) && !isAdmin(user);
+  const codeLocked = hasCode && Boolean(record) && !isAdminUser(user);
   const typeValue = codeTypeField ? String(form.values[codeTypeField] ?? "") : "";
   const recordValues = record as Record<string, unknown> | null;
 

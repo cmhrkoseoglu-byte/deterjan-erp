@@ -1,14 +1,6 @@
-import type { Role } from "../../api/types";
 import type { SalesOrderStatus, ShipmentStatus } from "../../api/sales";
 
-// Yetkiler backend ile aynıdır (apps/sales/api/views.py); arayüz yalnızca düğmeleri gizler.
-export const ORDER_WRITE_ROLES: Role[] = ["sevkiyat", "yonetim"];
-/** Sevkiyat planlama, iptal ve sevk onayı (backend `SHIPMENT_ROLES`). */
-export const SHIPMENT_WRITE_ROLES: Role[] = ["sevkiyat"];
-/** Lot okutma ve "Yükleme tamam" (backend `PICK_ROLES`). */
-export const PICK_ROLES: Role[] = ["depo"];
-/** Müşteri kartındaki sevk edilen lotlar (backend `ShippedLotViewSet`). */
-export const SHIPPED_LOT_ROLES: Role[] = ["sevkiyat", "yonetim"];
+// Düğme ve sekmeler bölüm yetkisine bakar (`auth/access`); asıl denetim backend'dedir.
 export const SALES_BASE = "/sevkiyat";
 
 export const salesOrderPath = (id: number | "yeni") => `${SALES_BASE}/siparisler/${id}`;

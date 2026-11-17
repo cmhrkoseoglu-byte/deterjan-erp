@@ -21,8 +21,7 @@ import {
   saveCompanyProfile,
   type CompanyProfileInput,
 } from "../../api/masterdata";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 
 const COMPANY_KEY = ["masterdata", "company"] as const;
 
@@ -62,8 +61,8 @@ const digits = (value: string) => value.replace(/\s+/g, "");
 /** Ana veriler > Firma bilgileri: ticari unvan, adres ve vergi/sicil bilgileri (yönetim ve admin
  * düzenler; diğer roller okur). */
 export function CompanyProfilePanel() {
-  const { user } = useAuth();
-  const canEdit = hasAnyRole(user, ["yonetim"]);
+  const { can } = useCan();
+  const canEdit = can("masterdata.company", "change");
   const queryClient = useQueryClient();
   const profile = useQuery({ queryKey: COMPANY_KEY, queryFn: getCompanyProfile });
   const [form, setForm] = useState<CompanyProfileInput>(EMPTY);

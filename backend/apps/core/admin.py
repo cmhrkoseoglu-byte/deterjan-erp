@@ -17,7 +17,7 @@ from apps.core.models import (
     User,
 )
 from apps.core.roles import ROLE_LABELS
-from apps.core.services import save_with_audit
+from apps.core.services import publish_access_changed, save_with_audit
 
 # Roller (Group) seed_roles ile oluşturulur ve sabittir; panelden eklenemez, yeniden
 # adlandırılamaz, silinemez (adı yetkinin kendisidir). Rol ataması kullanıcı ekranından yapılır.
@@ -107,6 +107,11 @@ class UserAdmin(AuditedAdminMixin, DjangoUserAdmin):
                 {"roles": [before, after]},
                 "Yönetim paneli",
             )
+        # Geçerli yetkiyi değiştiren alanlar: roller, süper kullanıcı, etkinlik (plan §8 madde 11).
+        if change and (
+            before != after or {"is_superuser", "is_active"} & set(form.changed_data or ())
+        ):
+            publish_access_changed(user, request.user)  # type: ignore[arg-type]
 
 
 class ReadOnlyAdmin(admin.ModelAdmin):

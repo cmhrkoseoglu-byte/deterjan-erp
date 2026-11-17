@@ -45,9 +45,9 @@ import {
   type SampleDetail,
   type SampleLine,
 } from "../../api/quality";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDateTime } from "../../i18n/format";
+import { RecordLink } from "../../workflow/RecordLink";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { AttachmentPanel } from "../../components/attachments/AttachmentPanel";
 import { ct } from "../common/strings";
@@ -57,15 +57,7 @@ import { idOrNull, useLocations } from "../inventory/options";
 import { Info, LotStatusBadge } from "../inventory/shared";
 import { ReasonModal } from "../production/shared";
 import type { LotStatus } from "../../api/inventory";
-import {
-  APPROVAL_ROLES,
-  DECISIONS,
-  IN_PROCESS_DECISIONS,
-  LAB_ROLES,
-  OPEN_SAMPLE_STATUSES,
-  QUALITY_BASE,
-  specPath,
-} from "./config";
+import { DECISIONS, IN_PROCESS_DECISIONS, OPEN_SAMPLE_STATUSES, QUALITY_BASE } from "./config";
 import { limitText, numericOutOfSpec, resultText } from "./limits";
 import { ReviewModal } from "./QualityPage";
 import { ApprovalBadge, DecisionBadge, SampleStatusBadge } from "./shared";
@@ -114,11 +106,14 @@ function useRefresh() {
 }
 
 function SampleDetailView({ sample }: { sample: SampleDetail }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const refresh = useRefresh();
-  const isLab = hasAnyRole(user, LAB_ROLES);
+  // Sonuç girmek, şartname atamak ve iptal Değiştirir; karar vermek Onaylar'dır.
+  const isLab = can("quality.samples", "change");
   const isOpen = OPEN_SAMPLE_STATUSES.includes(sample.status);
-  const canEnter = isLab && (sample.status === "PENDING" || sample.status === "IN_TEST");
+  const inTest = sample.status === "PENDING" || sample.status === "IN_TEST";
+  const canEnter = isLab && inTest;
+  const canDecide = can("quality.samples", "approve") && inTest;
   const [deciding, setDeciding] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [review, setReview] = useState<{ row: QualityDecision; approve: boolean } | null>(null);
@@ -138,12 +133,12 @@ function SampleDetailView({ sample }: { sample: SampleDetail }) {
           <SampleStatusBadge status={sample.status} />
         </Group>
         <Group gap="xs">
-          {canEnter && sample.specification && (
+          {canDecide && sample.specification && (
             <Button leftSection={<IconGavel size={16} />} onClick={() => setDeciding(true)}>
               {qt.decide}
             </Button>
           )}
-          {pending && hasAnyRole(user, APPROVAL_ROLES) && (
+          {pending && can("quality.conditional", "approve") && (
             <>
               <Button color="green" onClick={() => setReview({ row: pending, approve: true })}>
                 {qt.approve}
@@ -197,9 +192,11 @@ function SampleDetailView({ sample }: { sample: SampleDetail }) {
           </Info>
           <Info label={qt.spec}>
             {sample.specification ? (
-              <Anchor component={Link} to={specPath(sample.specification)} size="sm">
-                {sample.specification_label}
-              </Anchor>
+              <Text size="sm">
+                <RecordLink model="quality.specification" id={sample.specification}>
+                  {sample.specification_label}
+                </RecordLink>
+              </Text>
             ) : null}
           </Info>
           <Info label={qt.origin}>

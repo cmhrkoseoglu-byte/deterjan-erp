@@ -14,7 +14,13 @@ import { useMutation } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { getErrorMessage } from "../../api/client";
 import { ROLES, type Role } from "../../api/types";
-import { createUser, updateUser, type IssuedPassword, type UserRecord } from "../../api/users";
+import {
+  createUser,
+  updateUser,
+  type IssuedPassword,
+  type SavedUser,
+  type UserRecord,
+} from "../../api/users";
 import { tr } from "../../i18n/tr";
 import { sy } from "./strings";
 import { normalizeUsernameInput, suggestUsername, USERNAME_RE } from "./usernames";
@@ -28,7 +34,8 @@ interface Props {
   selfId: number | undefined;
   onClose: () => void;
   onCreated: (issued: IssuedPassword) => void;
-  onSaved: (user: UserRecord) => void;
+  /** Kayıt yapıldı; pencere kapanır, yanıttaki uyarıları üst bileşen gösterir. */
+  onSaved: (user: SavedUser) => void;
 }
 
 type Errors = Partial<Record<"username" | "fullName" | "email", string>>;

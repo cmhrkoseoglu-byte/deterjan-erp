@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Button,
   Group,
   Modal,
@@ -16,16 +15,16 @@ import { notifications } from "@mantine/notifications";
 import { IconFlask, IconRecycle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import type { Lot } from "../../api/inventory";
 import { createSample, listSamples, type SampleStage } from "../../api/quality";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDateTime } from "../../i18n/format";
+import { RecordLink } from "../../workflow/RecordLink";
 import { ct } from "../common/strings";
-import { ORDER_ROLES, reworkOrderPath } from "../production/config";
-import { LAB_ROLES, OPEN_SAMPLE_STATUSES, samplePath, STAGES } from "./config";
+import { reworkOrderPath } from "../production/config";
+import { OPEN_SAMPLE_STATUSES, samplePath, STAGES } from "./config";
 import { SampleStatusBadge } from "./shared";
 import { qt } from "./strings";
 
@@ -33,7 +32,7 @@ const SAMPLEABLE = ["QUARANTINE", "BLOCKED"];
 
 /** Lot detayındaki kalite bölümü: lotun numuneleri, numune açma ve yeniden işleme emri. */
 export function LotQualitySection({ lot }: { lot: Lot }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const [opening, setOpening] = useState(false);
   const samples = useQuery({
@@ -42,9 +41,10 @@ export function LotQualitySection({ lot }: { lot: Lot }) {
   });
   const rows = samples.data?.results ?? [];
   const hasOpen = rows.some((row) => OPEN_SAMPLE_STATUSES.includes(row.status));
-  const canOpen = hasAnyRole(user, LAB_ROLES) && SAMPLEABLE.includes(lot.status) && !hasOpen;
+  const canOpen = can("quality.samples", "change") && SAMPLEABLE.includes(lot.status) && !hasOpen;
+  // Düğme yeni üretim emri formunu açar; o sayfa emir açabilene açılır (plan §8 madde 3).
   const canRework =
-    hasAnyRole(user, ORDER_ROLES) && lot.status === "BLOCKED" && lot.material_type === "BULK";
+    can("production.orders", "change") && lot.status === "BLOCKED" && lot.material_type === "BULK";
 
   return (
     <Stack gap="xs">
@@ -85,9 +85,12 @@ export function LotQualitySection({ lot }: { lot: Lot }) {
               {rows.map((row) => (
                 <Table.Tr key={row.id}>
                   <Table.Td>
-                    <Anchor component={Link} to={samplePath(row.id)} size="sm">
-                      {row.number}
-                    </Anchor>
+                    {/* Numune sayfasını açamayana numara düz metindir (plan §8 madde 2). */}
+                    <Text size="sm">
+                      <RecordLink model="quality.sample" id={row.id}>
+                        {row.number}
+                      </RecordLink>
+                    </Text>
                   </Table.Td>
                   <Table.Td>{qt.stage[row.stage]}</Table.Td>
                   <Table.Td>{row.specification_label ?? "—"}</Table.Td>

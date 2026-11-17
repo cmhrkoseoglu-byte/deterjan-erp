@@ -57,6 +57,8 @@ import {
   type PayrollOpening,
   type PayrollRow,
 } from "../../api/payroll";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatMoney, formatNumber } from "../../i18n/format";
 import { monthLabel, parseMoney, parseMonth, shiftMonth } from "../costing/personnelCostFormat";
 import { ErrorAlert } from "../costing/ReportTable";
@@ -215,6 +217,8 @@ function EmployerCostTable({
   onFigure: (row: PayrollRow) => void;
   locked: boolean;
 }) {
+  // Mali müşavir rakamlarını Bordro: Değiştirir'i olan girer.
+  const writer = useCan().can(PERM.PERSONNEL_PAYROLL, "change");
   const values = payroll.parameters.values;
   const { totals } = payroll;
   const headers = [
@@ -260,7 +264,7 @@ function EmployerCostTable({
                   <Group gap={6} wrap="wrap">
                     <span>{row.employee.full_name}</span>
                     <RowBadges row={row} />
-                    {external && !locked && (
+                    {external && !locked && writer && (
                       <Button
                         size="compact-xs"
                         variant="light"
@@ -515,6 +519,11 @@ type Opened<T> = { key: string } & T;
  * rakamları. */
 export function PayrollPage() {
   const queryClient = useQueryClient();
+  const { can } = useCan();
+  const writer = can(PERM.PERSONNEL_PAYROLL, "change");
+  const approver = can(PERM.PERSONNEL_PAYROLL, "approve");
+  // Bordro parametreleri Personel ayarları bölümündedir (sayfa Bordro: Görür ile açılır).
+  const showParameters = can(PERM.PERSONNEL_SETTINGS);
   const [params, setParams] = useSearchParams();
   const { year, month } = parseMonth(params.get("ay"));
   const requested = params.get("gorunum");
@@ -659,14 +668,16 @@ export function PayrollPage() {
           {payroll && <StatusBadges payroll={payroll} />}
         </Group>
         <Group gap="xs" wrap="wrap">
-          <Button
-            variant="default"
-            leftSection={<IconSettings size={16} />}
-            onClick={() => setParametersOpen(true)}
-          >
-            {py.parameters}
-          </Button>
-          {net && payroll && (
+          {showParameters && (
+            <Button
+              variant="default"
+              leftSection={<IconSettings size={16} />}
+              onClick={() => setParametersOpen(true)}
+            >
+              {py.parameters}
+            </Button>
+          )}
+          {net && payroll && writer && (
             <Tooltip label={pa.locked} disabled={!locked}>
               <span>
                 <Button
@@ -733,7 +744,7 @@ export function PayrollPage() {
               {pa.history}
             </Button>
           )}
-          {locked && (
+          {locked && approver && (
             <Button
               variant="default"
               leftSection={<IconCalendarEvent size={16} />}
@@ -742,7 +753,7 @@ export function PayrollPage() {
               {pa.paymentFix}
             </Button>
           )}
-          {locked && state && (
+          {locked && state && approver && (
             <Tooltip label={pa.reopenOnlyLatest} disabled={state.can_reopen}>
               <span>
                 <Button
@@ -757,7 +768,7 @@ export function PayrollPage() {
               </span>
             </Tooltip>
           )}
-          {net && !locked && state && (
+          {net && !locked && state && approver && (
             <Button
               leftSection={<IconLock size={16} />}
               disabled={state.gates === null}
@@ -779,8 +790,8 @@ export function PayrollPage() {
           )}
           <PayrollChecklist
             payroll={payroll}
-            onParameters={() => setParametersOpen(true)}
-            onOpenings={(target) => setOpenings({ key, target })}
+            onParameters={showParameters ? () => setParametersOpen(true) : undefined}
+            onOpenings={writer ? (target) => setOpenings({ key, target }) : undefined}
             onEmployerCost={() => go({ gorunum: "maliyet" })}
             onItems={() => go({ gorunum: "kalemler" })}
             onPrevious={() => go({ ay: shiftMonth(year, month, -1) })}

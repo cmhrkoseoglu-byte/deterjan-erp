@@ -27,9 +27,9 @@ import {
   type MaterialHazard,
   type SignalWord,
 } from "../../api/hse";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
-import { HAZARD_CLASSES, HAZARD_ROLES } from "./config";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
+import { HAZARD_CLASSES } from "./config";
 import { ErrorAlert, PictogramBadges, SignalWordBadge } from "./shared";
 import { hs } from "./strings";
 
@@ -175,9 +175,8 @@ export function MaterialHazardModal({
   title: string;
   onClose: () => void;
 }) {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
-  const writer = hasAnyRole(user, HAZARD_ROLES);
+  const writer = useCan().can(PERM.HSE_HAZARDS, "change");
   const [editing, setEditing] = useState(false);
   const key = ["hse", "material-hazard", materialId];
   const query = useQuery({ queryKey: key, queryFn: () => getMaterialHazard(materialId) });

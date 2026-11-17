@@ -15,7 +15,7 @@ import type {
   RequirementRow,
 } from "../../api/production";
 import * as workflowApi from "../../api/workflow";
-import { httpError, page, userWith } from "../../test/fixtures";
+import { httpError, page, userWith, withoutAccess } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
 import { recordPath } from "../../workflow/recordLinks";
 import { deviationPct, gaugeValue, lineState, remaining } from "./calc";
@@ -302,7 +302,24 @@ describe("üretim sekmeleri", () => {
   it("satın alma üretim sayfasına giremez", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("satin_alma"));
     renderApp("/uretim");
-    expect(await screen.findByText(/yetkiniz yok/i));
+    expect(await screen.findByRole("heading", { name: "Yetkiniz yok" })).toBeInTheDocument();
+  });
+
+  it("malzeme hazırlaması kaldırılan depo ilk görünür sekmeye düşer (kişiye özel)", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(
+      withoutAccess(userWith("depo"), { "production.prep": "vc" }),
+    );
+    renderApp("/uretim");
+    expect(await screen.findByRole("tab", { name: "Üretim emirleri", selected: true }));
+    const names = screen.getAllByRole("tab").map((tab) => tab.textContent);
+    expect(names).not.toContain("Malzeme hazırlama");
+  });
+
+  it("yeni emir sayfası emir açamayana kapalıdır ve gereken yetkiyi söyler (§8 madde 3)", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));
+    renderApp("/uretim/emirler/yeni");
+    expect(await screen.findByRole("heading", { name: "Yetkiniz yok" })).toBeInTheDocument();
+    expect(screen.getByText(/Üretim › Üretim emirleri \(Değiştirir\)/)).toBeInTheDocument();
   });
 
   it("görevdeki üretim kayıtları detay sayfasına gider", () => {

@@ -14,6 +14,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import connection, models, transaction
 from django.utils import timezone
 
+from apps.core import permissions
 from apps.core.audit import log_change
 from apps.core.coding import formats, selectors
 from apps.core.coding.registry import DOCUMENT, LOT, MASTER, CodeType, code_type
@@ -26,8 +27,6 @@ from apps.core.models import (
     CodeSequence,
     User,
 )
-from apps.core.permissions import user_has_role
-from apps.core.roles import ADMIN
 from apps.core.services import save_with_audit
 
 ADMIN_ONLY_MESSAGE = "Kodlama ayarlarını yalnızca sistem yöneticisi değiştirir."
@@ -44,8 +43,7 @@ def _real_actor(actor: User | None) -> User | None:
 
 def require_admin(actor: User | None) -> None:
     """Admin değilse `PermissionDenied` (API'de 403)."""
-    if not user_has_role(actor, (ADMIN,)):
-        raise PermissionDenied(ADMIN_ONLY_MESSAGE)
+    permissions.require_admin(actor, ADMIN_ONLY_MESSAGE)
 
 
 def get_type(key: str) -> CodeType:
@@ -207,7 +205,7 @@ def save_scheme_row(row: CodeScheme, actor: User | None, *, note: str) -> CodeSc
 
 def can_change_code(actor: User | None) -> bool:
     """Kayıt açıldıktan sonra kodu yalnızca admin değiştirir (CUMHUR, 2026-11-04)."""
-    return user_has_role(actor, (ADMIN,))
+    return permissions.is_admin(actor)
 
 
 def ensure_can_change_code(actor: User | None) -> None:

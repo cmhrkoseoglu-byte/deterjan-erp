@@ -38,21 +38,16 @@ import {
   type StockMovement,
   type TraceDirection,
 } from "../../api/inventory";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { canOpenPage } from "../../auth/pageAccess";
 import { lotCostPath } from "../costing/config";
 import { AttachmentPanel } from "../../components/attachments/AttachmentPanel";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
+import { RecordLink } from "../../workflow/RecordLink";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ct } from "../common/strings";
 import { LotQualitySection } from "../quality/LotQualitySection";
-import {
-  INVENTORY_BASE,
-  LOT_BLOCK_ROLES,
-  MANUAL_RELEASE_ROLES,
-  receiptPath,
-  STOCK_WRITE_ROLES,
-} from "./config";
+import { INVENTORY_BASE } from "./config";
 import { LotDecisionModal, type LotDecision } from "./LotDecisionModal";
 import { LotLabelButton, PalletSection } from "./LotLabels";
 import { ExpiryText, Info, LotStatusBadge, Qty } from "./shared";
@@ -63,13 +58,14 @@ import { TransferModal } from "./TransferModal";
 /** Lot detay: durum, lokasyon bakiyeleri, soy ağacı (geri/ileri), hareketler, yorum paneli. */
 export function LotPage() {
   const lotId = Number(useParams().lotId);
-  const { user } = useAuth();
+  const { user, can } = useCan();
   const queryClient = useQueryClient();
-  const canBlock = hasAnyRole(user, LOT_BLOCK_ROLES);
-  const canRelease = hasAnyRole(user, MANUAL_RELEASE_ROLES);
-  const canMove = hasAnyRole(user, STOCK_WRITE_ROLES);
-  // Maliyet tutarlarını yalnızca yönetim görür (Karar D-15).
-  const canSeeCost = hasAnyRole(user, ["yonetim"]);
+  const canBlock = can("inventory.lot_block", "approve");
+  // Elle serbest bırakma (Karar D-5) yalnız admine verilebilir.
+  const canRelease = can("inventory.manual_release", "approve");
+  const canMove = can("inventory.stock", "change");
+  // Düğme lot maliyeti sayfasına gider; o sayfa açılabiliyorsa görünür (Karar D-15).
+  const canSeeCost = canOpenPage(user, "lotCost");
   const [direction, setDirection] = useState<TraceDirection>("backward");
   const [decision, setDecision] = useState<LotDecision | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -173,9 +169,11 @@ export function LotPage() {
               <Info label={it.source}>
                 <Text size="sm">{data.source_display}</Text>
                 {data.receipt && (
-                  <Anchor component={Link} to={receiptPath(data.receipt.id)} size="sm">
-                    {data.receipt.number}
-                  </Anchor>
+                  <Text size="sm">
+                    <RecordLink model="inventory.goodsreceipt" id={data.receipt.id}>
+                      {data.receipt.number}
+                    </RecordLink>
+                  </Text>
                 )}
               </Info>
               <Info label={it.expiry}>

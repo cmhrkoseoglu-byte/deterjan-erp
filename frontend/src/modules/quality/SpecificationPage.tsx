@@ -44,15 +44,14 @@ import {
   type SpecLinePayload,
   type TestDefinition,
 } from "../../api/quality";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDateTime } from "../../i18n/format";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { ct } from "../common/strings";
 import { optionLabel } from "../common/useOptions";
 import { Info } from "../inventory/shared";
-import { LAB_ROLES, QUALITY_BASE, specPath } from "./config";
+import { QUALITY_BASE, specPath } from "./config";
 import { limitText } from "./limits";
 import { SpecStatusBadge } from "./shared";
 import { qt } from "./strings";
@@ -60,10 +59,11 @@ import { qt } from "./strings";
 /** Spesifikasyon sürümü: taslakta satır ekle/düzenle/kaldır ve onayla; onaylıdan yeni sürüm aç. */
 export function SpecificationPage() {
   const specId = Number(useParams().specId);
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isLab = hasAnyRole(user, LAB_ROLES);
+  const isLab = can("quality.specs", "change");
+  const isApprover = can("quality.specs", "approve");
   const [editing, setEditing] = useState<SpecLine | "new" | null>(null);
   const [confirmApprove, setConfirmApprove] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -124,6 +124,7 @@ export function SpecificationPage() {
     );
   const spec = query.data;
   const canEdit = isLab && spec.is_editable;
+  const canApprove = isApprover && spec.is_editable;
 
   return (
     <Stack>
@@ -141,7 +142,7 @@ export function SpecificationPage() {
           <SpecStatusBadge status={spec.status} />
         </Group>
         <Group gap="xs">
-          {canEdit && (
+          {canApprove && (
             <Button
               color="green"
               leftSection={<IconCheck size={16} />}

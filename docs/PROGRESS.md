@@ -1811,6 +1811,38 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
 - Açık iş: kuralın mali müşavirle teyidi (iki YG'nin bir eksik gün sayılıp sayılmadığı; aynı
   haftada YG ve fazla mesai).
 
+## 2026-11-14 — Kişiye özel yetkiler: 5. adım (sevkiyat, satın alma, maliyet, personel, bakım, İSG, canlıya geçiş)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-13). Önce §12 sorusu
+  cevaplandı: bordrosu olmayan ayın işçilik oranı notu yalnız "Personel maliyetinden" yazar
+  (DECISIONS). Dal sonra main'le birleştirildi (bordroda yarım gün kesintisi).
+- **Geçiş:** sevkiyat, satın alma, maliyet, personel, bakım, İSG ve canlıya geçişin API'si ve
+  servisleri rol denetimini bıraktı; bölüm denetimine geçti. Kişiye özel ayar yokken kararlar
+  bugünküyle aynıdır; anlık görüntü yalnız izin listesinin 5. adım kayıtları kadar değişti.
+- **Kayıt paneli:** `register_record_type(readers=...)` kayıt türünü bölüm okumasına bağlar
+  (`can_view`'da); satır kuralı (`visible=`) olmayan türler satır kuralı sayılmaz. Sevkiyat,
+  satın alma, İSG ve bakım bunu kullanır; İSG olaylarında satır kuralı (kendi bildirdiği) kalır.
+- **İlk gün değişikliği (§8 madde 7):** satın alma siparişinin onay geçişi denetim kaydına onay
+  tutarını, limiti ve kuru alan olarak yazar (`transition_status(changes=)`); tutarlar Fiyatları
+  görür'ü olmayana gösterilmez, eski tutarlı notlar da gizlenir.
+- **§12:** işçilik oranı notu "Personel maliyetinden" (onaylı bordrosu olan ayda bordro numarası
+  eklenir); eski tutarlı notlar Personel maliyeti: Görür'ü olmayana gösterilmez. Personel maliyeti
+  Excel'i bordro erişim günlüğünü personelin yardımcısıyla yazar.
+- **Mesajlar** rol adı yerine yetkiyi söyler (§8 madde 4); satın almanın onay limiti reddi
+  (D-13) de artık "yönetim onaylar" değil, "Limit üstü sipariş onayı yetkisi olan onaylar" der
+  (kod `approval_limit_exceeded` aynı; ekrandaki ipucu da).
+- **KVKK:** personel bölümleri ve personel maliyeti yalnız yönetim rolündekilere verilebilir.
+- **Rol denetimi tarayıcısı:** demo komutları, canlıya geçiş hazırlık listesinin rol sayımı ve
+  bakımda sorumlu birim kuralı (plan §4, §10) izinli.
+- **Kişiye özel ayar ve bağ testleri:** yedi modülde yeni `test_access_overrides.py`
+  (kaldırma/verme, gereken bölüm ve düzey, karşılanmayan metotlar, giriş noktaları).
+- **Doğrulama:** backend 2444, ön yüz 649 test yeşil; mypy, ruff, `manage.py check`, göç ve şema
+  temiz. Bağımsız inceleme eski ve yeni kodu her yol, metot ve kişide karşılaştırdı (sevkiyat
+  9.899, satın alma 7.840, maliyet ve personel 10.780, bakım/İSG/canlıya geçiş 14.839 durum;
+  0 fark). İncelemenin iki bulgusu kişiye özel ayarla ilgiliydi ve düzeltildi: kartın geçmişindeki
+  bordro özetleri ve kartı "mali müşavirde" işaretlerken listelenen ERP kayıtları artık Bordro:
+  Görür'e bağlı (plan §3.14, §5.6); D-13 reddi yetkiyi söylüyor.
+
 ## 2026-11-14 — Dolum emrini geri alma
 
 - Karar ve kurallar DECISIONS'ta ("2026-11-14 — Dolum emrini geri alma"): sahibin cevapları ("Hiç
@@ -1851,3 +1883,105 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
     ambalaj depoda; mamul kontrolü görevi kapanmış. Açık sekmeler yenilenir.
 - İzin listesine eklenen yeni uç nokta kaydı sahibin onayladığı plana dayanır (yalnız admin ve
   yönetim).
+
+## 2026-11-17 — Kişiye özel yetkiler: 6. adım (ortak parçalar)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-17). Önce dal canlı kodla
+  eşitlendi (main birleştirmesi: dolum emrini geri alma).
+- **Panolar ve raporlar:** pano ve rapor listeleri kişinin bölümleriyle daralır; maliyet sütunları
+  ve stok değeri Maliyetleri görür'e, yönetim panosundaki onay bekleyen satın alma TL toplamı
+  Fiyatları görür'e bağlıdır (sahip onayı 2026-11-11; ör. planlama ve satın alma rollerini birlikte
+  taşıyan kişi artık toplamı görür).
+- **Rapor dosyaları (§8 madde 12):** iş kaydı raporun bölümünü ve dosyada maliyet ya da fiyat
+  sütunu olup olmadığını tutar (göç reporting 0002; eski dosyalar için isteyenin bugünkü hakkından
+  hesaplanır, bugün indirilen hiçbir dosya kapanmaz). İndirmede yeniden denetlenir; yetki yoksa
+  "Bu dosyayı indirme yetkiniz artık yok." döner. İş listesi ve ayrıntısı değişmez.
+- **Denetim günlüğü süzmesi (§5.6):** her modül `access.py`'sinde kendi modelleri için gereken
+  bölümü ve gizli alanları bildirir; süzme veritabanında yapılır (sayfa sayısı, arama, kayıt
+  açma tutarlı), gizlenen notlar aramada eşleşmez. Personel kayıtları kendi bölümünü, olaylar
+  Olaylar ve kazalar'ı, maliyet kayıtları Maliyetleri görür'ü, fiyat alanları ve satın alma onayı
+  görevinin açıklaması Fiyatları görür'ü ister; yorum ve ekler bağlı oldukları kaydı izler.
+  Kişiye özel ayar ve paket sürümü kayıtları yalnız admine görünür (izin listesindeki tek fark).
+- **Kayıt paneli:** rol yolu kalktı; kendi okuma bölümünü bildirmeyen kayıt türü katalogdaki
+  okuma bölümlerini izler (§5.1 tablosu), @bahsetme önerisi de.
+- **Sistem:** kullanıcılar, saha tableti, sistem durumu ve kodlama sistematiği yalnız admin
+  (`AdminOnly`). Giriş yapan herkese açık uçlar `SignedIn("neden")`, giriş istemeyen uçlar (sağlık,
+  site bilgisi, giriş, çıkış, CSRF) yeni `Public("neden")` işaretini taşır. `HasRole`,
+  `user_has_role` ve kod türlerinin `write_roles` alanı kaldırıldı.
+- **Denetimler:** çekirdek, sistem durumu ve raporlar rol denetimi tarayıcısına ve uç nokta
+  denetimine girdi; izinli satırlar gerekçeli (rol etiketleri, kullanıcının rol verisi, yetki
+  hesabı, iki aşamalı doğrulama, son admin kuralı). Tarayıcı artık yalnız modülün kök
+  `access.py`'sini atlar. Denetim günlüğü kuralında olmayan model `manage.py check`'te hata verir.
+- **Kişiye özel ayar ve bağ testleri:** raporlar, denetim günlüğü, kayıt paneli ve sistem için.
+- **Doğrulama:** backend 2513, ön yüz 654 test yeşil; mypy, ruff, `manage.py check`, göç ve şema
+  temiz. Alan doğrulayıcıları eski ve yeni kodu karşılaştırdı (raporlar 8.523, denetim günlüğü
+  ve kayıt paneli 26.468, sistem 20.974 durum); farklar yalnız izin listesi ve sahibin onayladığı
+  madde. Bağımsız çapraz incelemenin bulgusu (tarayıcının atladığı dosya) düzeltildi.
+- Açık iş: indirilemeyen dosyanın bağlantısı ön yüzde hâlâ görünür (8. adım).
+
+## 2026-11-17 — Kişiye özel yetkiler: 7. adım (iş akışı)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-17). Önce iki karar
+  alındı (DECISIONS): kayda bağlı görevlerin denetim günlüğü kayıtları bağlı kaydı izler; tartım
+  sapması ve ara kontrol reddi bildirimleri lot sayfasına bağlanır.
+- **Kural yetkileri:** her görev, bildirim ve iptal kuralı gerektirdiği bölümü ve düzeyi
+  bildirir (`workflow/rules.py`, `requires=`); iş akışı bunları açılışta çekirdeğin kayıt
+  defterine yazar, çekirdek iş akışını import etmez. Kural kapsama testi her rolün paketinin
+  kuralının yetkisini taşıdığını denetler.
+- **Alıcılar:** görev ve bildirim alıcıları kuralın rolünün üyelerinden yetkisi olanlardır;
+  yükten gelen kişiler (ör. siparişi açan) de süzülür (§8 madde 10), rapor isteyen süzülmez.
+  İptal bildirimleri iptal edilen kaydın bölümünde Görür ister. Anlık (WebSocket) kitlesi aynı
+  süzgeci kullanır.
+- **Görevler (karar 5, §8 madde 6):** görevi görmek ve tamamlamak rol üyeliği ile kuralın
+  yetkisini birlikte ister; üstlenmek tek başına hak vermez. "Tüm birimlerin görevleri" başka
+  rollerin görevlerini gösterir ama tamamlatmaz. Satın alma onayı görevinin açıklaması Fiyatları
+  görür'ü olmayana boş görünür, aramada da eşleşmez.
+- **Sahip kararları:** görev kayıtları denetim günlüğünde bağlı kaydı izler (ör. olay); tartım
+  sapması şarjın bulk lotuna, ara kontrol reddi numunenin lotuna bağlanır (olay sözleşmesine
+  `output_lot` eklendi).
+- **Kimse kalmıyor (§8 madde 9):** kullanıcının rolü kaydedilirken bir kuralı alabilecek kimse
+  kalmıyorsa uyarı çıkar (kaydı engellemez); canlıya geçiş hazırlık listesine "Her görevi
+  alabilecek biri var" maddesi ve sistem durumuna aynı satır eklendi (yalnız gösterilir, uyarı
+  bildirimi göndermez).
+- **Yetki değişti olayı (§8 madde 11):** rol gerçekten değiştiğinde (kullanıcı penceresi,
+  komutlar, Django yönetim paneli) yayınlanır ve kişinin açık oturumlarına iletilir; ön yüzün
+  buna göre yenilenmesi 8. adımdadır.
+- **Denetimler:** iş akışı da girdi; 19 modülün hepsi uç nokta denetiminde ve rol denetimi
+  tarayıcısında (plan §5.1). Kuralların rolleri görev yönlendirmesi olarak izinli.
+- **Doğrulama:** backend 2704, ön yüz 655 test yeşil; mypy, ruff, `manage.py check`, göç, şema ve
+  `access.gen.ts` temiz. Alan doğrulayıcıları eski ve yeni kodu karşılaştırdı; farklar yalnız
+  izin listesindeki §8 madde 6 ve 10 hücreleri ve sahip kararları. Bağımsız çapraz inceleme
+  (olay akışları, görev arayüzü, kapsama ve olay yayını) bulgu çıkarmadı.
+
+## 2026-11-17 — Kişiye özel yetkiler: 8. adım (ön yüz)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-17).
+- **Tek kaynak:** ekrandaki her karar (menü, rota, sekme, düğme, alan, kayıt bağlantısı, arama,
+  panolar) kişinin etkin yetkisinden (`me.access`) `can`, `canRead`, `useCan` ve `moduleVisible`
+  ile verilir (`frontend/src/auth/access.ts`). Sayfa korumaları tek tabloda
+  (`auth/pageAccess.ts`); rotalar ve kayıt bağlantıları aynı kurala bakar. Rol denetimi yalnız rol
+  görünümünde kaldı: varsayılan sekme tercihi, bakımda sorumlu birim, yönetim panosu.
+- **Yetkiniz yok sayfası** gereken yetkiyi "Modül › Bölüm (Düzey)" olarak söyler; yalnız rol
+  eksikse satır çıkmaz.
+- **Kayıt bağlantıları:** kişinin açamayacağı sayfaya giden bağlantı düz metin olur, "Kayda git"
+  ve bildirim tıklaması yalnız açılabilen sayfaya gider (§8 madde 2).
+- **Oturum tazeleme:** yetki değişince (`access.changed`) bütün sorgular yenilenir; pencereye
+  dönünce ve 403 gelince `me` en fazla bir kez yenilenir.
+- **Kişiye özel yetkide gizli 403 yok:** sekmesi görünmeyen sayfa ilk görünen sekmeye düşer,
+  hiçbiri yoksa "Yetkiniz yok"; düğmeler backend'in istediği düzeyi ister (ör. satış siparişini
+  onaylamak Onaylar); yalnız Değiştirir ya da yalnız Onaylar'ı olan kişi taslağı yeniden
+  kaydetmeden onaylar; kendi ekranı olmayan bir bölüm (ör. Personel ayarları) modülün menüsünü
+  tek başına açmaz.
+- **Rapor indirme:** iş listesindeki indirme bağlantısı, dosyayı indirmek için eksik yetki yoksa
+  görünür (`download_required`).
+- **Plan §8 maddeleri 1-3:** rolsüz kullanıcı İSG ve Panolar ve raporlar'ı görmez (İndirmeler
+  hariç), üst bandı nötr; yeni üretim ve dolum emri sayfaları yalnız emir açabilene açılır.
+  İzin listesinde sabitlendi.
+- **CLAUDE.md:** kural 12'deki geçiş cümlesi silindi; geçiş tamamlandı.
+- **Doğrulama:** ön yüz 701, backend 2703 test yeşil; ESLint (uyarısız), Prettier, tsc,
+  build, mypy, ruff, `manage.py check`, göç, şema ve `access.gen.ts` temiz. Alan doğrulayıcıları
+  eski ve yeni kararları bütün rol birleşimleri için karşılaştırdı: fark yalnız izin listesindeki
+  §8 maddeleri. Kişiye özel yetki denemelerinde bulunan beş sorun düzeltildi ve testlendi.
+  Bağımsız çapraz inceleme (varsayılan rollerde eşdeğerlik, kişiye özel
+  yetkide gizli 403, oturum tazeleme, backend ve sözleşmeler) tek bir bulgu sınıfı çıkardı: kendi
+  ekranı olmayan bölümler menüyü açıyordu; düzeltildi (DECISIONS).

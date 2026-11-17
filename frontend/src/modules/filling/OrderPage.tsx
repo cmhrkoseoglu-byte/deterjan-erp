@@ -40,8 +40,7 @@ import {
   type FillingOrderDetail,
 } from "../../api/filling";
 import { listRecords, type Equipment } from "../../api/masterdata";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
@@ -54,9 +53,6 @@ import {
   FILLING_BASE,
   fillingOrderPath,
   fillingPrepPath,
-  LINE_ROLES,
-  PLAN_ROLES,
-  PREP_ROLES,
   PREP_STATUSES,
   runPath,
   STARTABLE_STATUSES,
@@ -263,17 +259,21 @@ function OrderForm({
 }
 
 function OrderDetail({ order }: { order: FillingOrderDetail }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const [confirm, setConfirm] = useState<"approve" | "finish" | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [revertOpen, setRevertOpen] = useState(false);
-  const canPlan = hasAnyRole(user, PLAN_ROLES);
-  const canPrep = hasAnyRole(user, PREP_ROLES);
-  const canFill = hasAnyRole(user, LINE_ROLES);
   const isDraft = order.status === "DRAFT";
+  const canEdit = can("filling.orders", "change");
+  const canApprove = can("filling.orders", "approve");
+  // Taslak emri iptal etmek Değiştirir, onaylı ya da hazırlıktaki emri iptal etmek Onaylar'dır.
+  const canCancel = isDraft ? canEdit : canApprove;
+  // Hazırlama sayfası düğmesi salt okunur sayfayı da açar (Görür); okutma Değiştirir ister.
+  const canPrep = can("filling.prep", "view");
+  const canFill = can("filling.runs", "change");
   const openRun = order.runs.find((run) => run.status === "IN_PROGRESS");
   const hasFinishedRun = order.runs.some((run) => run.status === "COMPLETED");
   const report = useQuery({
@@ -317,7 +317,7 @@ function OrderDetail({ order }: { order: FillingOrderDetail }) {
           <FillingOrderStatusBadge status={order.status} />
         </Group>
         <Group gap="xs">
-          {canPlan && isDraft && (
+          {canApprove && isDraft && (
             <Button
               color="green"
               leftSection={<IconCheck size={16} />}
@@ -353,7 +353,7 @@ function OrderDetail({ order }: { order: FillingOrderDetail }) {
               {ft.finishFilling}
             </Button>
           )}
-          {canPlan && order.allowed_transitions.includes("CANCELLED") && (
+          {canCancel && order.allowed_transitions.includes("CANCELLED") && (
             <Button
               color="red"
               variant="light"
@@ -382,7 +382,7 @@ function OrderDetail({ order }: { order: FillingOrderDetail }) {
         </Alert>
       )}
 
-      {canPlan && isDraft ? (
+      {canEdit && isDraft ? (
         <OrderForm key={order.id} order={order} onSaved={refresh} />
       ) : (
         <Paper withBorder p="md" radius="md">

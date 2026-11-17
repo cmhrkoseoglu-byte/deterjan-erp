@@ -30,6 +30,8 @@ describe("üst çubuk", () => {
     [["depo", "sevkiyat"], "depo", "Depo paneli"],
     [["laboratuvar"], "laboratuvar", "Laboratuvar paneli"],
     [["admin"], "admin", "Sistem yönetimi"],
+    // Rolü olmayan kullanıcı nötr renk (plan §8 madde 1).
+    [[], "neutral", "Kullanıcı paneli"],
   ])("rengi ve panel adı role göre: %j", async (roles, barRole, panel) => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith(...roles));
     renderApp("/gorevlerim");

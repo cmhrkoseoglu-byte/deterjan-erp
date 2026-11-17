@@ -50,8 +50,7 @@ import {
   type ReworkAddition,
 } from "../../api/production";
 import { listRecipes } from "../../api/recipes";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDate, formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
@@ -62,12 +61,9 @@ import { lotPath, today } from "../inventory/config";
 import { idOrNull, useLocations } from "../inventory/options";
 import { Info, Qty } from "../inventory/shared";
 import {
-  BATCH_ROLES,
   BATCHABLE_STATUSES,
   batchPath,
-  ORDER_ROLES,
   orderPath,
-  PREP_ROLES,
   prepPath,
   PRODUCTION_BASE,
   REWORK_PARAM,
@@ -485,17 +481,21 @@ function AdditionsEditor({
 }
 
 function OrderDetail({ order }: { order: ProductionOrderDetail }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const [confirmApprove, setConfirmApprove] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
-  const canPlan = hasAnyRole(user, ORDER_ROLES);
-  const canPrep = hasAnyRole(user, PREP_ROLES);
-  const canBatch = hasAnyRole(user, BATCH_ROLES);
   const isDraft = order.status === "DRAFT";
+  const canEdit = can("production.orders", "change");
+  const canApprove = can("production.orders", "approve");
+  // Taslak emri iptal etmek Değiştirir, onaylı ya da hazırlıktaki emri iptal etmek Onaylar'dır.
+  const canCancel = isDraft ? canEdit : canApprove;
+  // Hazırlama sayfası düğmesi salt okunur sayfayı da açar (Görür); okutma Değiştirir ister.
+  const canPrep = can("production.prep", "view");
+  const canBatch = can("production.batches", "change");
   const remaining = Number(order.remaining_quantity);
 
   const refresh = (saved: ProductionOrderDetail) => {
@@ -530,7 +530,7 @@ function OrderDetail({ order }: { order: ProductionOrderDetail }) {
           )}
         </Group>
         <Group gap="xs">
-          {canPlan && isDraft && (
+          {canApprove && isDraft && (
             <Button
               color="green"
               leftSection={<IconCheck size={16} />}
@@ -556,7 +556,7 @@ function OrderDetail({ order }: { order: ProductionOrderDetail }) {
               {pt.startBatch}
             </Button>
           )}
-          {canPlan && order.allowed_transitions.includes("CANCELLED") && (
+          {canCancel && order.allowed_transitions.includes("CANCELLED") && (
             <Button
               color="red"
               variant="light"
@@ -575,7 +575,7 @@ function OrderDetail({ order }: { order: ProductionOrderDetail }) {
         </Alert>
       )}
 
-      {canPlan && isDraft ? (
+      {canEdit && isDraft ? (
         <OrderForm key={order.id} order={order} onSaved={refresh} />
       ) : (
         <Paper withBorder p="md" radius="md">
@@ -845,6 +845,7 @@ function StartBatchModal({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { can } = useCan();
   const tanks = useMixingTanks();
   const [equipment, setEquipment] = useState<string | null>(String(order.equipment));
   const [quantity, setQuantity] = useState(trimDecimal(order.suggested_batch_quantity));
@@ -907,11 +908,13 @@ function StartBatchModal({
               <Text size="sm">
                 {pt.cleaningRequired(tankCode, check.data.previous_product_code ?? "")}
               </Text>
-              <Group>
-                <Button size="xs" color="orange" onClick={() => setCleaning(true)}>
-                  {pt.cleaningRecord}
-                </Button>
-              </Group>
+              {can("maintenance.cleanings", "change") && (
+                <Group>
+                  <Button size="xs" color="orange" onClick={() => setCleaning(true)}>
+                    {pt.cleaningRecord}
+                  </Button>
+                </Group>
+              )}
             </Stack>
           </Alert>
         )}

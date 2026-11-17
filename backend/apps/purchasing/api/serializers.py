@@ -3,8 +3,9 @@ from typing import Any
 
 from rest_framework import serializers
 
+from apps.core.access import PRICES
 from apps.core.models import Currency
-from apps.core.permissions import user_has_role
+from apps.core.permissions import has_access
 from apps.inventory.api.serializers import UserNameField
 from apps.masterdata.models import Location, Material, Supplier, UnitOfMeasure
 from apps.purchasing import selectors, services
@@ -16,7 +17,7 @@ from apps.purchasing.models import (
 )
 from apps.purchasing.state import purchase_order_states, purchase_request_states
 
-# Depo siparişi ve beklenen teslimatları görür, tutarları görmez.
+# Fiyatları görür'ü olmayan (ör. depo) siparişi ve beklenen teslimatları görür, tutarları görmez.
 PRICE_FIELDS = frozenset(
     {
         "unit_price",
@@ -35,8 +36,9 @@ def _quantity(**kwargs: Any) -> serializers.DecimalField:
 
 
 def can_see_prices(context: dict[str, Any]) -> bool:
+    """Fiyatları görür (plan §3.18, §5.6); istek yoksa fiyatlar gizlenir."""
     request = context.get("request")
-    return request is not None and user_has_role(request.user, services.ORDER_ROLES)
+    return request is not None and has_access(request.user, PRICES)
 
 
 class PriceHidingMixin:

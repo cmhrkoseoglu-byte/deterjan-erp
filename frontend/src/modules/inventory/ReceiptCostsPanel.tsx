@@ -17,6 +17,7 @@ import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { getErrorMessage } from "../../api/client";
+import { useCan } from "../../auth/access";
 import {
   setReceiptCosts,
   type Currency,
@@ -61,9 +62,12 @@ let counter = 0;
 const newKey = () => `e${++counter}`;
 const decimalOrNull = (value: string) => (value.trim() ? normalizeDecimal(value) : null);
 
-/** Mal kabulün alış fiyatları, para birimi, kuru ve ek masrafları (satin_alma, yonetim, admin).
+/** Mal kabulün alış fiyatları, para birimi, kuru ve ek masrafları. Panel, fiyatları gösteren
+ * sunucunun kararıyla açılır (Fiyatları görür); düzenlemek "Mal kabul fiyatları: Değiştirir" ister.
  * Kaydedilmiş mal kabulde not zorunludur; backend oluşan lotların maliyetini yeniden hesaplar. */
 export function ReceiptCostsPanel({ doc }: { doc: GoodsReceiptDetail }) {
+  const { can } = useCan();
+  const editable = can("inventory.receipt_prices", "change");
   const queryClient = useQueryClient();
   const posted = doc.status === "POSTED";
   const [prices, setPrices] = useState<PriceDraft[]>(() =>
@@ -150,6 +154,7 @@ export function ReceiptCostsPanel({ doc }: { doc: GoodsReceiptDetail }) {
                       <TextInput
                         aria-label={`${it.unitPrice} ${line.material_code}`}
                         inputMode="decimal"
+                        disabled={!editable}
                         value={row.unit_price}
                         onChange={(event) =>
                           setPrice(row.id, { unit_price: event.currentTarget.value })
@@ -161,6 +166,7 @@ export function ReceiptCostsPanel({ doc }: { doc: GoodsReceiptDetail }) {
                         aria-label={`${it.currency} ${line.material_code}`}
                         data={CURRENCIES}
                         value={row.currency}
+                        disabled={!editable}
                         allowDeselect={false}
                         onChange={(value) => setPrice(row.id, { currency: value as Currency })}
                       />
@@ -169,7 +175,7 @@ export function ReceiptCostsPanel({ doc }: { doc: GoodsReceiptDetail }) {
                       <TextInput
                         aria-label={`${it.exchangeRate} ${line.material_code}`}
                         inputMode="decimal"
-                        disabled={row.currency === "TRY"}
+                        disabled={!editable || row.currency === "TRY"}
                         value={row.currency === "TRY" ? "" : row.exchange_rate}
                         onChange={(event) =>
                           setPrice(row.id, { exchange_rate: event.currentTarget.value })
@@ -184,25 +190,27 @@ export function ReceiptCostsPanel({ doc }: { doc: GoodsReceiptDetail }) {
         </Table.ScrollContainer>
         <Group justify="space-between">
           <Text fw={600}>{it.extraCosts}</Text>
-          <Button
-            variant="light"
-            size="xs"
-            leftSection={<IconPlus size={14} />}
-            onClick={() =>
-              setExtras((rows) => [
-                ...rows,
-                {
-                  key: newKey(),
-                  kind: "FREIGHT",
-                  description: "",
-                  amount: "",
-                  allocation: "QUANTITY",
-                },
-              ])
-            }
-          >
-            {it.addExtraCost}
-          </Button>
+          {editable && (
+            <Button
+              variant="light"
+              size="xs"
+              leftSection={<IconPlus size={14} />}
+              onClick={() =>
+                setExtras((rows) => [
+                  ...rows,
+                  {
+                    key: newKey(),
+                    kind: "FREIGHT",
+                    description: "",
+                    amount: "",
+                    allocation: "QUANTITY",
+                  },
+                ])
+              }
+            >
+              {it.addExtraCost}
+            </Button>
+          )}
         </Group>
         {extras.map((row) => (
           <Group key={row.key} align="flex-end" wrap="wrap" data-testid="extra-cost">
@@ -210,18 +218,21 @@ export function ReceiptCostsPanel({ doc }: { doc: GoodsReceiptDetail }) {
               label={it.extraKind}
               data={KINDS}
               value={row.kind}
+              disabled={!editable}
               allowDeselect={false}
               onChange={(value) => setExtra(row.key, { kind: value as ExtraCostKind })}
               w={130}
             />
             <TextInput
               label={it.extraDescription}
+              disabled={!editable}
               value={row.description}
               onChange={(event) => setExtra(row.key, { description: event.currentTarget.value })}
             />
             <TextInput
               label={it.extraAmount}
               inputMode="decimal"
+              disabled={!editable}
               value={row.amount}
               onChange={(event) => setExtra(row.key, { amount: event.currentTarget.value })}
               w={130}
@@ -230,21 +241,24 @@ export function ReceiptCostsPanel({ doc }: { doc: GoodsReceiptDetail }) {
               label={it.extraAllocation}
               data={ALLOCATIONS}
               value={row.allocation}
+              disabled={!editable}
               allowDeselect={false}
               onChange={(value) => setExtra(row.key, { allocation: value as ExtraCostAllocation })}
               w={170}
             />
-            <ActionIcon
-              variant="subtle"
-              color="red"
-              aria-label={it.removeLine}
-              onClick={() => setExtras((rows) => rows.filter((r) => r.key !== row.key))}
-            >
-              <IconTrash size={16} />
-            </ActionIcon>
+            {editable && (
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                aria-label={it.removeLine}
+                onClick={() => setExtras((rows) => rows.filter((r) => r.key !== row.key))}
+              >
+                <IconTrash size={16} />
+              </ActionIcon>
+            )}
           </Group>
         ))}
-        {posted && (
+        {editable && posted && (
           <Textarea
             label={it.costsNote}
             withAsterisk
@@ -257,15 +271,17 @@ export function ReceiptCostsPanel({ doc }: { doc: GoodsReceiptDetail }) {
             {getErrorMessage(save.error)}
           </Alert>
         )}
-        <Group justify="flex-end">
-          <Button
-            onClick={() => save.mutate()}
-            loading={save.isPending}
-            disabled={posted && !note.trim()}
-          >
-            {it.saveCosts}
-          </Button>
-        </Group>
+        {editable && (
+          <Group justify="flex-end">
+            <Button
+              onClick={() => save.mutate()}
+              loading={save.isPending}
+              disabled={posted && !note.trim()}
+            >
+              {it.saveCosts}
+            </Button>
+          </Group>
+        )}
       </Stack>
     </Paper>
   );

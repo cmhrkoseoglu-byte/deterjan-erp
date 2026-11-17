@@ -274,7 +274,7 @@ describe("kalite sekmeleri", () => {
   it("depo kalite sayfasına giremez; numune kaydı detaya gider", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));
     renderApp("/kalite");
-    expect(await screen.findByText(/yetkiniz yok/i));
+    expect(await screen.findByRole("heading", { name: "Yetkiniz yok" })).toBeInTheDocument();
     expect(recordPath({ model: "quality.sample", id: 31, repr: "" })).toBe("/kalite/numuneler/31");
   });
 });

@@ -24,8 +24,8 @@ import {
   type CheckStatus,
   type ReadinessCheck,
 } from "../../api/golive";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { gt } from "./strings";
 
 const COLORS: Record<CheckStatus, string> = { OK: "green", WARNING: "yellow", MISSING: "red" };
@@ -64,9 +64,8 @@ function CheckCard({ check }: { check: ReadinessCheck }) {
 }
 
 function GoLiveCard() {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
-  const canEdit = hasAnyRole(user, ["yonetim"]);
+  const canEdit = useCan().can(PERM.GOLIVE_SETTINGS, "change");
   const query = useQuery({ queryKey: ["golive", "go-live"], queryFn: getGoLive });
   const [value, setValue] = useState("");
   useEffect(() => setValue(query.data?.go_live_date ?? ""), [query.data]);
@@ -124,6 +123,7 @@ function GoLiveCard() {
 }
 
 export function ReadinessTab() {
+  const { can } = useCan();
   const query = useQuery({ queryKey: ["golive", "readiness"], queryFn: getReadiness });
   const groups = new Map<string, ReadinessCheck[]>();
   for (const check of query.data ?? []) {
@@ -139,7 +139,8 @@ export function ReadinessTab() {
           {gt.guide}
         </Anchor>
       </Alert>
-      <GoLiveCard />
+      {/* Canlı tarih Canlıya geçiş ayarları bölümündedir; sekme Hazırlık listesi ile açılır. */}
+      {can(PERM.GOLIVE_SETTINGS) && <GoLiveCard />}
       {query.isLoading && <Loader />}
       {query.isError && (
         <Alert color="red" variant="light">

@@ -95,6 +95,8 @@ export const sy = {
   save: "Kaydet",
   cancel: "Vazgeç",
   saved: (name: string) => `${name} kullanıcısının bilgileri kaydedildi.`,
+  coverageWarningTitle: "Kaydedildi; bazı görevleri alacak kimse kalmadı",
+  coverageWarningHint: "Bu rollere yetkili birini ekleyin ya da rol değişikliğini geri alın.",
   // Geçici şifre
   tempTitle: "Geçici şifre",
   tempIntro: (name: string, username: string) =>

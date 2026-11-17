@@ -23,13 +23,14 @@ export interface CurrentUser {
   /** Rol kodları (Django Group adları), alfabetik sıralı. */
   roles: Role[];
   is_superuser: boolean;
-  /** Admin rolü ya da süper kullanıcı (docs/plan/kisi-yetkileri.md §5.9). */
-  is_admin?: boolean;
+  /** Admin rolü ya da süper kullanıcı (docs/plan/kisi-yetkileri.md §5.9): her yetkiye sahiptir. */
+  is_admin: boolean;
   /**
    * Geçerli yetkiler: bölüm → "rvca" harfleri (r kayıtları okur, v görür, c değiştirir, a onaylar).
-   * Arayüz 8. adıma kadar rollere bakar; bu alan o adımda kullanılır.
+   * Sunucu hesaplar (ön koşullar, KVKK kısıtı ve kişiye özel ayarlar uygulanmış); arayüz yalnız
+   * okur (`auth/access.ts`). Yetkisi olmayan bölüm yazılmaz.
    */
-  access?: Readonly<Record<string, string>>;
+  access: Readonly<Record<string, string>>;
   /** İki aşamalı doğrulama (doğrulayıcı uygulama) kurulu mu? */
   otp_enabled: boolean;
   /**
@@ -59,4 +60,12 @@ export interface ApiError {
   detail?: string;
   /** Alan doğrulama hataları (`code` = "validation_error"). */
   errors?: Record<string, string[]>;
+  /** Yetki hatasında (`code` = "permission_denied") eksik yetkiler: bölüm ve düzey. */
+  required?: RequiredAccess[];
+}
+
+/** Gereken yetki: bölüm anahtarı (ör. "production.orders") ya da modül anahtarı ve düzey. */
+export interface RequiredAccess {
+  key: string;
+  level: "read" | "view" | "change" | "approve";
 }

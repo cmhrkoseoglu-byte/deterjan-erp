@@ -33,8 +33,7 @@ import {
   type Printer,
 } from "../../api/labels";
 import type { Location } from "../../api/masterdata";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { LabelPrintModal } from "../../components/labels/LabelPrintModal";
 import { tr } from "../../i18n/tr";
 import { optionLabel } from "../common/useOptions";
@@ -117,8 +116,9 @@ const s = {
 const GS1_PATH = `${SYSTEM_BASE}/${TABS.coding}?bolum=gs1`;
 
 export function LabelSettingsPanel() {
-  const { user } = useAuth();
-  const canEdit = hasAnyRole(user, ["admin"]);
+  const { can } = useCan();
+  // Birim ve etiket ayarları (Referans veriler: Değiştirir) yalnız admine verilebilir (§4).
+  const canEdit = can("masterdata.reference", "change");
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: labelQueryKeys.settings, queryFn: getLabelSettings });
   const printers = useQuery({ queryKey: labelQueryKeys.printers, queryFn: listPrinters });

@@ -32,14 +32,14 @@ import {
   type InvestigationPayload,
   type Severity,
 } from "../../api/hse";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { AttachmentPanel } from "../../components/attachments/AttachmentPanel";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { CancelModal } from "../inventory/CancelModal";
 import { Info } from "../inventory/shared";
-import { HSE_BASE, HSE_ROLES, SEVERITIES, isIncidentOpen } from "./config";
+import { HSE_BASE, SEVERITIES, isIncidentOpen } from "./config";
 import { ErrorAlert, IncidentStatusBadge, SeverityBadge } from "./shared";
 import { hs } from "./strings";
 
@@ -193,9 +193,9 @@ function TextBlock({ label, value }: { label: string; value: string }) {
 }
 
 function IncidentView({ incident }: { incident: Incident }) {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
-  const manager = hasAnyRole(user, HSE_ROLES);
+  // İncele, kapat, iptal: Olaylar ve kazalar: Değiştirir (geçişler yalnız duruma bakar).
+  const manager = useCan().can(PERM.HSE_INCIDENTS, "change");
   const open = isIncidentOpen(incident);
   const [draft, setDraft] = useState(() => draftOf(incident));
   const [closing, setClosing] = useState(false);

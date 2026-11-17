@@ -52,8 +52,9 @@ import {
 } from "../../api/maintenance";
 import { listRecords, type Material } from "../../api/masterdata";
 import type { Role } from "../../api/types";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { PERM, type PermKey } from "../../auth/access.gen";
+import { ForbiddenPage } from "../../pages/ForbiddenPage";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { tr } from "../../i18n/tr";
 import { ct } from "../common/strings";
@@ -62,17 +63,7 @@ import { RowsTable } from "../filling/FillingPage";
 import { today } from "../inventory/config";
 import { idOrNull } from "../inventory/options";
 import { BreakdownButton } from "./BreakdownButton";
-import {
-  CHANGEOVER_ROLES,
-  DOWNTIME_REASONS,
-  DOWNTIME_ROLES,
-  MAINTENANCE_BASE,
-  OPEN_STATUSES,
-  PLAN_ROLES,
-  READ_ROLES,
-  SETTINGS_ROLES,
-  workOrderPath,
-} from "./config";
+import { DOWNTIME_REASONS, MAINTENANCE_BASE, OPEN_STATUSES, workOrderPath } from "./config";
 import { cleanItems, useEquipmentOptions } from "./options";
 import { CalibrationBadge, ChecklistEditor, KindBadge, WorkOrderStatusBadge } from "./shared";
 import { formatMinutes, mt } from "./strings";
@@ -231,7 +222,7 @@ const STATUS_OPTIONS = [
 ];
 
 function WorkOrdersTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
@@ -298,7 +289,7 @@ function WorkOrdersTab() {
             }}
           />
         </Group>
-        {hasAnyRole(user, PLAN_ROLES) && (
+        {can(PERM.MAINTENANCE_PLANS, "change") && (
           <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>
             {mt.newWorkOrder}
           </Button>
@@ -443,13 +434,13 @@ function EndDowntimeModal({ downtime, onClose }: { downtime: Downtime; onClose: 
 }
 
 function OpenDowntimes({ onEnd }: { onEnd: (row: Downtime) => void }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const query = useQuery({
     queryKey: ["maintenance", "downtimes", "open"],
     queryFn: () => listDowntimes({ is_open: true, page_size: 200 }),
   });
   const rows = query.data?.results ?? [];
-  const writer = hasAnyRole(user, DOWNTIME_ROLES);
+  const writer = can(PERM.MAINTENANCE_DOWNTIMES, "change");
   return (
     <Stack gap="xs">
       <Title order={4}>{mt.openDowntimes}</Title>
@@ -573,7 +564,7 @@ interface Range {
 }
 
 function DowntimesTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const equipmentOptions = useEquipmentSelect();
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState<Downtime | null>(null);
@@ -598,7 +589,7 @@ function DowntimesTab() {
   });
   const pages = Math.max(1, Math.ceil((query.data?.count ?? 0) / PAGE_SIZE));
   const rows = query.data?.results ?? [];
-  const writer = hasAnyRole(user, DOWNTIME_ROLES);
+  const writer = can(PERM.MAINTENANCE_DOWNTIMES, "change");
   const resetPage = () => setPage(1);
 
   return (
@@ -889,7 +880,7 @@ function periodText(plan: MaintenancePlan): string {
 }
 
 function PlansTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 300);
@@ -917,7 +908,7 @@ function PlansTab() {
   });
   const pages = Math.max(1, Math.ceil((query.data?.count ?? 0) / PAGE_SIZE));
   const rows = query.data?.results ?? [];
-  const writer = hasAnyRole(user, PLAN_ROLES);
+  const writer = can(PERM.MAINTENANCE_PLANS, "change");
   return (
     <Stack>
       <Group justify="space-between">
@@ -1191,7 +1182,7 @@ function ChangeoverModal({ onClose }: { onClose: () => void }) {
 }
 
 function ChangeoversTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
   const query = useQuery({
@@ -1208,7 +1199,7 @@ function ChangeoversTab() {
     onError: (err) => notifications.show({ color: "red", message: getErrorMessage(err) }),
   });
   const rows = query.data?.results ?? [];
-  const writer = hasAnyRole(user, CHANGEOVER_ROLES);
+  const writer = can(PERM.MAINTENANCE_UNCLEANED, "change");
   return (
     <Stack>
       <Group justify="space-between" align="flex-start">
@@ -1280,9 +1271,12 @@ function ChangeoversTab() {
 
 function SettingsForm({
   initial,
+  editable,
   onSaved,
 }: {
   initial: MaintenanceSettings;
+  /** Bakım ayarları: Değiştirir yoksa salt okunur. */
+  editable: boolean;
   onSaved: (saved: MaintenanceSettings) => void;
 }) {
   const [values, setValues] = useState({
@@ -1311,6 +1305,7 @@ function SettingsForm({
           label={mt.calibrationWarningDays}
           description={mt.calibrationWarningHint}
           inputMode="numeric"
+          readOnly={!editable}
           value={values.warning}
           onChange={(event) => setValues({ ...values, warning: event.currentTarget.value })}
         />
@@ -1318,21 +1313,29 @@ function SettingsForm({
           label={mt.planLeadDays}
           description={mt.planLeadHint}
           inputMode="numeric"
+          readOnly={!editable}
           value={values.lead}
           onChange={(event) => setValues({ ...values, lead: event.currentTarget.value })}
         />
         <ErrorAlert error={error} />
-        <Group justify="flex-end">
-          <Button disabled={!valid} loading={mutation.isPending} onClick={() => mutation.mutate()}>
-            {mt.save}
-          </Button>
-        </Group>
+        {editable && (
+          <Group justify="flex-end">
+            <Button
+              disabled={!valid}
+              loading={mutation.isPending}
+              onClick={() => mutation.mutate()}
+            >
+              {mt.save}
+            </Button>
+          </Group>
+        )}
       </Stack>
     </Paper>
   );
 }
 
 function SettingsTab() {
+  const { can } = useCan();
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["maintenance", "settings"],
@@ -1343,6 +1346,7 @@ function SettingsTab() {
   return (
     <SettingsForm
       initial={query.data}
+      editable={can(PERM.MAINTENANCE_SETTINGS, "change")}
       onSaved={(saved) => queryClient.setQueryData(["maintenance", "settings"], saved)}
     />
   );
@@ -1351,7 +1355,8 @@ function SettingsTab() {
 interface TabDef {
   slug: string;
   label: string;
-  roles: readonly Role[];
+  /** Sekmeyi açan bölüm (Görür; okuma kapsamındaki `r` sayılmaz). */
+  section: PermKey;
   render: () => ReactNode;
 }
 
@@ -1359,27 +1364,37 @@ const TABS: TabDef[] = [
   {
     slug: "is-emirleri",
     label: mt.tabs.workOrders,
-    roles: READ_ROLES,
+    section: PERM.MAINTENANCE_WORK_ORDERS,
     render: () => <WorkOrdersTab />,
   },
-  { slug: "duruslar", label: mt.tabs.downtimes, roles: READ_ROLES, render: () => <DowntimesTab /> },
-  { slug: "planlar", label: mt.tabs.plans, roles: READ_ROLES, render: () => <PlansTab /> },
+  {
+    slug: "duruslar",
+    label: mt.tabs.downtimes,
+    section: PERM.MAINTENANCE_DOWNTIMES,
+    render: () => <DowntimesTab />,
+  },
+  {
+    slug: "planlar",
+    label: mt.tabs.plans,
+    section: PERM.MAINTENANCE_PLANS,
+    render: () => <PlansTab />,
+  },
   {
     slug: "kalibrasyon",
     label: mt.tabs.calibration,
-    roles: READ_ROLES,
+    section: PERM.MAINTENANCE_CALIBRATION,
     render: () => <CalibrationTab />,
   },
   {
     slug: "temizliksiz-gecisler",
     label: mt.tabs.changeovers,
-    roles: READ_ROLES,
+    section: PERM.MAINTENANCE_UNCLEANED,
     render: () => <ChangeoversTab />,
   },
   {
     slug: "ayarlar",
     label: mt.tabs.settings,
-    roles: SETTINGS_ROLES,
+    section: PERM.MAINTENANCE_SETTINGS,
     render: () => <SettingsTab />,
   },
 ];
@@ -1387,17 +1402,20 @@ const TABS: TabDef[] = [
 /** Bakım: sekmeler (`/bakim/<sekme>`). Arıza bildirimi her rolde açıktır. */
 export function MaintenancePage() {
   const { tab } = useParams();
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
-  const visible = TABS.filter((item) => hasAnyRole(user, item.roles));
-  const current = visible.find((item) => item.slug === (tab ?? "is-emirleri"));
+  const visible = TABS.filter((item) => can(item.section));
+  // Varsayılan iş emirleri; görünmüyorsa ilk görünen sekme, hiçbiri yoksa "Yetkiniz yok".
+  const fallback = visible.find((item) => item.slug === "is-emirleri") ?? visible[0];
+  if (!fallback) return <ForbiddenPage />;
+  const current = tab ? visible.find((item) => item.slug === tab) : fallback;
   if (!current) return <Navigate to={MAINTENANCE_BASE} replace />;
 
   return (
     <Stack>
       <Group justify="space-between">
         <Title order={2}>{mt.title}</Title>
-        <BreakdownButton />
+        {can(PERM.MAINTENANCE_BREAKDOWNS, "change") && <BreakdownButton />}
       </Group>
       <Tabs
         value={current.slug}

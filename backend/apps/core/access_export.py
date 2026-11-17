@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 from apps.core import access
+from apps.core.effective_access import ADMIN_ACCESS, compute_access
 from apps.core.roles import ROLE_LABELS
 
 
@@ -58,6 +59,18 @@ def _section_meta(entry: access.Section) -> dict[str, Any]:
         "adminOnly": list(entry.admin_only),
         "locked": list(entry.locked),
     }
+
+
+def role_access() -> dict[str, dict[str, str]]:
+    """Kişiye özel ayar yokken `me.access` harfleri: "" rolsüz kullanıcı, her rol tek başına ve
+    "admin" (admin rolü ya da süper kullanıcı). Ön yüzün test yardımcısı `userWith` birden çok rolü
+    bu tabloların birleşimiyle kurar; birleşimin `compute_access` ile aynı olduğunu
+    `test_role_access_union_matches_compute_access` denetler."""
+    result = {"": compute_access([]).letters()}
+    for role in access.ROLES:
+        result[role] = compute_access([role]).letters()
+    result["admin"] = ADMIN_ACCESS.letters()  # admin rolü ya da süper kullanıcı
+    return result
 
 
 def to_typescript() -> str:
@@ -123,7 +136,12 @@ def to_typescript() -> str:
         "/** Alan grubu → tam gösteren bölümler (Görür); grubun modülünün Açık kayıtlar satırı da"
         " yeter. */",
         "export const FIELD_OPENERS: Readonly<Record<string, readonly PermKey[]>> = "
-        f"{_json(data['field_openers'])};",
+        f"{_json(data['field_openers'])};\n",
+        '/** Kişiye özel ayar yokken `me.access`: "" rolsüz, her rol tek başına ve "admin".',
+        " * Çok rollü kullanıcınınki tek rollü tabloların birleşimidir (test yardımcısı",
+        " * `userWith`). */",
+        "export const ROLE_ACCESS: Readonly<Record<string, Readonly<Record<string, string>>>> = "
+        f"{_json(role_access())};",
     ]
     return "\n".join(parts) + "\n"
 

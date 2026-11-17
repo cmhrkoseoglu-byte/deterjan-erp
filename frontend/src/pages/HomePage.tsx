@@ -19,13 +19,14 @@ import { Link } from "react-router-dom";
 import { getErrorMessage } from "../api/client";
 import { claimTask, completeTask, fetchTasks, type Task, type TaskQuery } from "../api/workflow";
 import { useAuth } from "../auth/AuthContext";
+import { useCan } from "../auth/access";
 import { displayName } from "../auth/roles";
 import { formatDate, formatDateTime, formatElapsed } from "../i18n/format";
 import { tr } from "../i18n/tr";
 import { BreakdownButton } from "../modules/maintenance/BreakdownButton";
 import { workflowKeys } from "../workflow/queryKeys";
 import { usePollInterval } from "../workflow/realtimeContext";
-import { recordPath } from "../workflow/recordLinks";
+import { openableRecordPath } from "../workflow/recordLinks";
 
 const PAGE_SIZE = 50;
 const PRIORITY_COLORS: Record<number, string> = { 1: "gray", 2: "blue", 3: "orange", 4: "red" };
@@ -59,7 +60,9 @@ function useTaskAction() {
 
 function TaskCard({ task, onComplete }: { task: Task; onComplete: (task: Task) => void }) {
   const action = useTaskAction();
-  const path = recordPath(task.related);
+  const { user } = useAuth();
+  // "Kayda git" yalnız açılabilen sayfaya (plan §5.7, §8 madde 2).
+  const path = openableRecordPath(user, task.related);
   const isOpen = task.status === "OPEN" || task.status === "IN_PROGRESS";
   const busy = action.isPending;
 
@@ -195,6 +198,7 @@ function CompleteModal({ task, onClose }: { task: Task | null; onClose: () => vo
 
 export function HomePage() {
   const { user } = useAuth();
+  const access = useCan();
   const [view, setView] = useState<"open" | "closed">("open");
   const [completing, setCompleting] = useState<Task | null>(null);
   const pollInterval = usePollInterval();
@@ -219,8 +223,8 @@ export function HomePage() {
           <Title order={2}>{user ? tr.home.greeting(displayName(user)) : tr.home.tasksTitle}</Title>
           <Text c="dimmed">{formatDate(new Date())}</Text>
         </div>
-        {/* Arıza bildirimi her rolde açıktır (backend: tüm roller). */}
-        <BreakdownButton />
+        {/* Arıza bildirimi rolü olan herkese açıktır (Arıza bildirimi: Değiştirir, kilitli). */}
+        {access.can("maintenance.breakdowns", "change") && <BreakdownButton />}
       </Group>
       <Group justify="space-between">
         <Title order={3}>

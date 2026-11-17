@@ -9,23 +9,32 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import HasRole
-from apps.core.roles import DEPO, PLANLAMA, SATIN_ALMA, YONETIM
+from apps.core.access import APPROVE, CHANGE, PRICES, VIEW
+from apps.core.permissions import AccessMixin, HasAccess, ReadRule
 from apps.inventory.api.serializers import CancelSerializer
 from apps.masterdata.models import Material, Supplier
 from apps.purchasing import selectors, services
+from apps.purchasing.access import (
+    DELIVERIES,
+    ORDERS,
+    OVER_LIMIT,
+    PERFORMANCE,
+    REQUESTS,
+    SETTINGS,
+    SUGGESTIONS,
+)
 from apps.purchasing.api import serializers as s
 from apps.purchasing.models import PurchaseOrder, PurchaseRequest, ReceiptLineLink
 from apps.purchasing.pdf import purchase_order_pdf
 
-ORDER_READ_ROLES = (SATIN_ALMA, YONETIM, DEPO)
-SUGGESTION_ROLES = (SATIN_ALMA, YONETIM, PLANLAMA)
-PERFORMANCE_ROLES = (SATIN_ALMA, YONETIM)
+ORDER_CHANGE = HasAccess(ORDERS, CHANGE)
+# Onay ve taslağa geri gönderme uç noktası: siparişi onaylayan ya da limit üstü onaylayan; limit
+# kararını (D-13) ve taslağa geri göndermeyi servis verir (plan §5.4).
+ORDER_APPROVE = HasAccess(ORDERS, APPROVE) | HasAccess(OVER_LIMIT, APPROVE)
 
 
 def _user(request: Request) -> Any:
@@ -47,21 +56,29 @@ class PurchaseRequestFilter(django_filters.FilterSet):
 
 
 class PurchaseRequestViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Satın alma talepleri. Talep açan roller (planlama, depo, üretim, satın alma, yönetim)
-    görür ve açar; değiştirme ve iptal talebi açana ya da satın almaya açıktır."""
+    """Satın alma talepleri: Görür okur, Değiştirir açar. Değiştirme ve iptal talebi açana ya da
+    "Satın alma siparişleri: Değiştirir"e açıktır (satır kuralı serviste, plan §4)."""
 
     serializer_class = s.PurchaseRequestSerializer
     filterset_class = PurchaseRequestFilter
     search_fields = ["number", "material__code", "material__name", "reason"]
     ordering_fields = ["need_date", "number", "created_at"]
     ordering = ["need_date", "-id"]
-    permission_classes = [HasRole(*services.REQUEST_ROLES)]
+    read_access = HasAccess(REQUESTS, VIEW)
+    unhandled_access = HasAccess(REQUESTS, CHANGE)
+    action_access = {
+        "create": HasAccess(REQUESTS, CHANGE),
+        "update": HasAccess(REQUESTS, CHANGE),
+        "partial_update": HasAccess(REQUESTS, CHANGE),
+        "cancel": HasAccess(REQUESTS, CHANGE),
+    }
 
     def get_queryset(self) -> QuerySet[PurchaseRequest]:
         return PurchaseRequest.objects.select_related(
@@ -114,30 +131,46 @@ class PurchaseOrderFilter(django_filters.FilterSet):
 
 
 class PurchaseOrderViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Satın alma siparişleri. Okuma satın alma, yönetim ve depoya (depo tutarları görmez);
-    yazma satın alma ve yönetime. Siparişten mal kabulü depo da açar. Durum eylem uç
-    noktalarıyla değişir."""
+    """Satın alma siparişleri. Okuma "Satın alma siparişleri: Görür" (tutarlar yalnız Fiyatları
+    görür ile); yazma Değiştirir. Siparişten mal kabul "Beklenen teslimatlar ve siparişten mal
+    kabul: Değiştirir" ister. Durum eylem uç noktalarıyla değişir.
+
+    Bugünkü gibi yalnız GET okumadır: HEAD ve OPTIONS (PDF dahil her yolda) ile karşılanmayan
+    metotlar sipariş yazma yetkisini ister; karşılanmayan yoldaki GET okuma kuralıyla denetlenir,
+    sonra 405 döner. Sipariş PDF'i tutarlı belgedir: Görür ve Fiyatları görür (plan §5.6)."""
 
     serializer_class = s.PurchaseOrderSerializer
     filterset_class = PurchaseOrderFilter
     search_fields = ["number", "supplier__name", "supplier__code", "notes"]
     ordering_fields = ["order_date", "number", "created_at"]
     ordering = ["-order_date", "-id"]
-
-    def get_permissions(self) -> list[BasePermission]:
-        if self.action == "pdf":
-            return [HasRole(*services.ORDER_ROLES)()]
-        if self.request.method == "GET":
-            return [HasRole(*ORDER_READ_ROLES)()]
-        if self.action == "receive":
-            return [HasRole(*services.RECEIPT_ROLES)()]
-        return [HasRole(*services.ORDER_ROLES)()]
+    read_access = ReadRule(ORDERS)
+    read_methods = frozenset({"GET"})
+    other_safe_access = ORDER_CHANGE
+    unhandled_access = ORDER_CHANGE
+    unhandled_read_methods = frozenset({"GET"})
+    action_access = {
+        "create": ORDER_CHANGE,
+        "update": ORDER_CHANGE,
+        "partial_update": ORDER_CHANGE,
+        "submit": ORDER_CHANGE,
+        "approve": ORDER_APPROVE,
+        "return_to_draft": ORDER_APPROVE,
+        "send": ORDER_CHANGE,
+        # Durumu bilmeden: taslak ya da onay bekleyen Değiştirir, onaylı ya da gönderilmiş
+        # Onaylar ister; servis duruma göre denetler.
+        "cancel": ORDER_CHANGE | HasAccess(ORDERS, APPROVE),
+        "close": ORDER_CHANGE,
+        "receive": HasAccess(DELIVERIES, CHANGE),
+        "pdf": HasAccess(ORDERS, VIEW) & HasAccess(PRICES, VIEW),
+    }
 
     def get_queryset(self) -> QuerySet[PurchaseOrder]:
         return (
@@ -203,7 +236,8 @@ class PurchaseOrderViewSet(
     @extend_schema(request=s.PurchaseNoteSerializer, responses=s.PurchaseOrderDetailSerializer)
     @action(detail=True, methods=["post"], url_path="return-to-draft")
     def return_to_draft(self, request: Request, pk: str | None = None) -> Response:
-        """Yönetim onayındaki siparişi gerekçeyle taslağa geri gönderir (yönetim)."""
+        """Yönetim onayındaki siparişi gerekçeyle taslağa geri gönderir (servis Limit üstü
+        sipariş onayı: Onaylar ister)."""
         body = s.PurchaseNoteSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         order = services.return_to_draft(
@@ -257,7 +291,7 @@ class PurchaseOrderViewSet(
     @extend_schema(responses={(200, "application/pdf"): bytes})
     @action(detail=True, methods=["get"])
     def pdf(self, request: Request, pk: str | None = None) -> HttpResponse:
-        """Sipariş PDF'i (tutarlı belge; yalnızca satın alma ve yönetim)."""
+        """Sipariş PDF'i (tutarlı belge; sipariş Görür ve Fiyatları görür)."""
         order = self.get_object()
         response = HttpResponse(purchase_order_pdf(order), content_type="application/pdf")
         response["Content-Disposition"] = f'inline; filename="{order.number}.pdf"'
@@ -267,10 +301,11 @@ class PurchaseOrderViewSet(
 # --- okuma uç noktaları ----------------------------------------------------------------------
 
 
-class ExpectedDeliveriesView(APIView):
-    """Teslimat bekleyen sipariş satırları (depo, satın alma, yönetim; tutarsız)."""
+class ExpectedDeliveriesView(AccessMixin, APIView):
+    """Teslimat bekleyen sipariş satırları (Beklenen teslimatlar: Görür; tutarsız)."""
 
-    permission_classes = [HasRole(*ORDER_READ_ROLES)]
+    read_access = HasAccess(DELIVERIES, VIEW)
+    unhandled_access = HasAccess(DELIVERIES, VIEW)
 
     @extend_schema(
         parameters=[
@@ -289,20 +324,22 @@ class ExpectedDeliveriesView(APIView):
         return Response(s.ExpectedDeliverySerializer(rows, many=True).data)
 
 
-class SuggestionsView(APIView):
+class SuggestionsView(AccessMixin, APIView):
     """Talep önerisi (basit MRP), anlık hesap."""
 
-    permission_classes = [HasRole(*SUGGESTION_ROLES)]
+    read_access = HasAccess(SUGGESTIONS, VIEW)
+    unhandled_access = HasAccess(SUGGESTIONS, VIEW)
 
     @extend_schema(responses=s.SuggestionSerializer(many=True))
     def get(self, request: Request) -> Response:
         return Response(s.SuggestionSerializer(selectors.purchase_suggestions(), many=True).data)
 
 
-class SupplierPerformanceView(APIView):
+class SupplierPerformanceView(AccessMixin, APIView):
     """Tedarikçi performansı: zamanında teslim ve QC red oranı (varsayılan: son 90 gün)."""
 
-    permission_classes = [HasRole(*PERFORMANCE_ROLES)]
+    read_access = HasAccess(PERFORMANCE, VIEW)
+    unhandled_access = HasAccess(PERFORMANCE, VIEW)
 
     @extend_schema(
         parameters=[
@@ -323,10 +360,11 @@ class SupplierPerformanceView(APIView):
         return Response(s.SupplierPerformanceSerializer(rows, many=True).data)
 
 
-class ReceiptLinksView(APIView):
-    """Mal kabulün siparişe bağlı satırları (`?receipt=<id>`); mal kabul ekranı kullanır."""
+class ReceiptLinksView(AccessMixin, APIView):
+    """Mal kabulün siparişe bağlı satırları (`?receipt=<id>`; Beklenen teslimatlar: Görür)."""
 
-    permission_classes = [HasRole(*ORDER_READ_ROLES)]
+    read_access = HasAccess(DELIVERIES, VIEW)
+    unhandled_access = HasAccess(DELIVERIES, VIEW)
 
     @extend_schema(
         parameters=[OpenApiParameter("receipt", int, required=True)],
@@ -342,13 +380,16 @@ class ReceiptLinksView(APIView):
         return Response(s.ReceiptLinkSerializer(links, many=True).data)
 
 
-class PurchasingSettingsView(APIView):
-    """Onay limiti ve fazla teslim toleransı. Okuma satın alma ve yönetime, değiştirme yönetime."""
+class PurchasingSettingsView(AccessMixin, APIView):
+    """Onay limiti ve fazla teslim toleransı. Değerleri Satın alma ayarları: Görür ve sipariş
+    yazan (Satın alma siparişleri: Değiştirir) okur (plan §3.10); değiştirme Satın alma ayarları:
+    Değiştirir. HEAD, OPTIONS ve karşılanmayan metotlar bugünkü gibi değiştirme yetkisini ister."""
 
-    def get_permissions(self) -> list[BasePermission]:
-        if self.request.method == "GET":
-            return [HasRole(SATIN_ALMA, YONETIM)()]
-        return [HasRole(*services.APPROVER_ROLES)()]
+    read_access = HasAccess(SETTINGS, VIEW) | ORDER_CHANGE
+    read_methods = frozenset({"GET"})
+    other_safe_access = HasAccess(SETTINGS, CHANGE)
+    unhandled_access = HasAccess(SETTINGS, CHANGE)
+    action_access = {"patch": HasAccess(SETTINGS, CHANGE)}
 
     @extend_schema(responses=s.PurchasingSettingsSerializer)
     def get(self, request: Request) -> Response:

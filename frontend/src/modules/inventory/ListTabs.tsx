@@ -28,12 +28,11 @@ import {
 } from "../../api/inventory";
 import type { ListParams } from "../../api/masterdata";
 import type { Paginated } from "../../api/types";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDate } from "../../i18n/format";
 import { ImportModal } from "../common/ImportModal";
 import { ct } from "../common/strings";
-import { adjustmentPath, lotPath, receiptPath, STOCK_WRITE_ROLES } from "./config";
+import { adjustmentPath, lotPath, receiptPath } from "./config";
 import { DocStatusBadge, ExpiryText, LotStatusBadge, Qty } from "./shared";
 import { it } from "./strings";
 
@@ -159,7 +158,7 @@ function SearchBox({
 // --- stok sorgu ----------------------------------------------------------------------------
 
 export function StockTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -193,7 +192,7 @@ export function StockTab() {
             w={180}
           />
         </Group>
-        {hasAnyRole(user, STOCK_WRITE_ROLES) && (
+        {can("inventory.stock", "change") && (
           <Button
             variant="default"
             leftSection={<IconFileSpreadsheet size={16} />}
@@ -324,7 +323,7 @@ export function LotsTab() {
 // --- mal kabul ve sayım düzeltme listeleri -------------------------------------------------
 
 export function ReceiptsTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -355,12 +354,15 @@ export function ReceiptsTab() {
             w={180}
           />
         </Group>
-        {hasAnyRole(user, STOCK_WRITE_ROLES) && (
+        {can("inventory.receipts", "change") && (
           <Group gap="xs">
-            {/* Faz 4: siparişe bağlı mal kabul satın alma ekranındaki beklenen teslimatlardan açılır. */}
-            <Button variant="light" onClick={() => navigate("/satin-alma/teslimatlar")}>
-              {it.receiveFromOrder}
-            </Button>
+            {/* Faz 4: siparişe bağlı mal kabul satın alma ekranındaki beklenen teslimatlardan açılır;
+                düğme o sekmeyi görebilene çıkar. */}
+            {can("purchasing.deliveries", "view") && (
+              <Button variant="light" onClick={() => navigate("/satin-alma/teslimatlar")}>
+                {it.receiveFromOrder}
+              </Button>
+            )}
             <Button
               leftSection={<IconPlus size={16} />}
               onClick={() => navigate(receiptPath("yeni"))}
@@ -392,7 +394,7 @@ export function ReceiptsTab() {
 }
 
 export function AdjustmentsTab() {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const list = usePagedList("adjustments", listAdjustments, {}, search);
@@ -408,7 +410,7 @@ export function AdjustmentsTab() {
             list.setPage(1);
           }}
         />
-        {hasAnyRole(user, STOCK_WRITE_ROLES) && (
+        {can("inventory.adjustments", "change") && (
           <Button
             leftSection={<IconPlus size={16} />}
             onClick={() => navigate(adjustmentPath("yeni"))}

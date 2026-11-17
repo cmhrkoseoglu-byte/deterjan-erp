@@ -3,8 +3,8 @@ puantaj (2026-10-29), ücretler (2026-11-01, maliyet modülünden taşındı) ve
 docs/DECISIONS.md).
 
 Sistemi kullanmayan çalışanlar da kaydedilir; sistem hesabı olanın kartı kullanıcısına bağlanır.
-Kart silinmez: işten ayrılan pasife alınır ve çıkış tarihi yazılır. Kişisel veridir; yalnızca admin
-ve yönetim görür (docs/KVKK.md).
+Kart silinmez: işten ayrılan pasife alınır ve çıkış tarihi yazılır. Kişisel veridir; Personel
+bölümleri yalnız yönetim rolündekilere verilebilir (docs/KVKK.md).
 """
 
 import os
@@ -414,7 +414,7 @@ class AttendanceEntry(BaseModel):
 
 class EmployeeWage(BaseModel):
     """Kişinin brüt aylık ücreti, bir tarihten itibaren geçerli. Zam yeni tarihle eklenir; yanlış
-    kayıt silinmez, gerekçeyle kaldırılır. Kişisel veri: yalnızca yönetim ve admin görür
+    kayıt silinmez, gerekçeyle kaldırılır. Kişisel veri: Ücretler: Görür ile görülür
     (docs/KVKK.md).
 
     2026-10-29'da maliyet modülünde açıldı, 2026-11-01'de buraya taşındı: tablo ve kısıt adları

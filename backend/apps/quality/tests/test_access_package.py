@@ -2,11 +2,14 @@
 
 Bugünkü her rol denetimi (API, servis, kayıt türü, kod önerisi ve ön yüz) bir yetki ifadesine
 eşlenir. Kişiye özel ayar yokken eski denetim ile yeni yetki, admin dışındaki 8 rolün bütün
-bileşimlerinde aynı kararı verir. `live` satırları koddaki rol sabitini de denetler.
+bileşimlerinde aynı kararı verir.
 
 Satır olmayanlar: `open_sample` denetim yapmaz (yetkiyi çağıran denetler; numune açılması ardıl
 adımdır, plan §5.4). Kalite sayfasının varsayılan sekme seçimi (`QualityPage.tsx`: laboratuvar
 olmayan yönetim onay sekmesine düşer) rol görünümüdür ve rol bazlı kalır (plan §5.9).
+
+8. adımda ön yüz de bölüm denetimine geçti: ön yüz satırlarının `live` bağlantısı kaldırıldı;
+satırlar 8. adım öncesi rol listelerini dondurulmuş olarak tutar.
 """
 
 from apps.core.access import APPROVE, CHANGE
@@ -14,8 +17,6 @@ from apps.core.tests.access_helpers import SIGNED_IN, Row, any_of, assert_rows, 
 from apps.inventory.access import LOTS
 from apps.production.access import ORDERS as PRODUCTION_ORDERS
 from apps.quality.access import CONDITIONAL, SAMPLES, SPECS
-
-CONFIG = "frontend:src/modules/quality/config.ts"
 
 LAB = ("laboratuvar",)
 MANAGEMENT = ("yonetim",)
@@ -172,7 +173,6 @@ ROWS = [
         "Ön yüz QualityPage.tsx TABS kuyruk — Numune kuyruğu sekmesi (LAB_ROLES)",
         LAB,
         level(SAMPLES, CHANGE),
-        live=f"{CONFIG}:LAB_ROLES",
     ),
     Row(
         "Ön yüz QualityPage.tsx TABS numuneler (roles [], sayfa koruması menuRoles('quality'))",
@@ -183,14 +183,12 @@ ROWS = [
         "Ön yüz QualityPage.tsx TABS onay (APPROVAL_ROLES)",
         MANAGEMENT,
         level(CONDITIONAL),
-        live=f"{CONFIG}:APPROVAL_ROLES",
     ),
     Row(
         "Ön yüz QualityPage.tsx ApprovalsTab onayla ve reddet düğmeleri (onay sekmesi, "
         "APPROVAL_ROLES)",
         MANAGEMENT,
         level(CONDITIONAL, APPROVE),
-        live=f"{CONFIG}:APPROVAL_ROLES",
     ),
     Row(
         "Ön yüz QualityPage.tsx TABS spesifikasyonlar (roles [], sayfa koruması "
@@ -207,59 +205,50 @@ ROWS = [
         "Ön yüz QualityPage.tsx SpecsTab yeni spesifikasyon düğmesi (LAB_ROLES)",
         LAB,
         level(SPECS, CHANGE),
-        live=f"{CONFIG}:LAB_ROLES",
     ),
     Row(
         "Ön yüz QualityPage.tsx testConfig.writeRoles — test tanımı ekle, düzenle, pasife al, "
         "kod önerisi (LAB_ROLES)",
         LAB,
         level(SPECS, CHANGE),
-        live=f"{CONFIG}:LAB_ROLES",
     ),
     Row(
         "Ön yüz SamplePage.tsx isLab → canEnter: karar ver düğmesi (LAB_ROLES)",
         LAB,
         level(SAMPLES, APPROVE),
-        live=f"{CONFIG}:LAB_ROLES",
     ),
     Row(
         "Ön yüz SamplePage.tsx isLab: sonuç girme ve düzeltme, spesifikasyon atama, numune "
         "iptali (LAB_ROLES)",
         LAB,
         level(SAMPLES, CHANGE),
-        live=f"{CONFIG}:LAB_ROLES",
     ),
     Row(
         "Ön yüz SamplePage.tsx şartlı kabulü onayla ve reddet düğmeleri (APPROVAL_ROLES)",
         MANAGEMENT,
         level(CONDITIONAL, APPROVE),
-        live=f"{CONFIG}:APPROVAL_ROLES",
     ),
     Row(
         "Ön yüz SpecificationPage.tsx isLab → canEdit: sürümü onayla düğmesi (LAB_ROLES)",
         LAB,
         level(SPECS, APPROVE),
-        live=f"{CONFIG}:LAB_ROLES",
     ),
     Row(
         "Ön yüz SpecificationPage.tsx isLab: yeni sürüm (kopya), değişiklik notu, satır ekle, "
         "düzenle, kaldır (LAB_ROLES)",
         LAB,
         level(SPECS, CHANGE),
-        live=f"{CONFIG}:LAB_ROLES",
     ),
     Row(
         "Ön yüz LotQualitySection.tsx canOpen: numune aç düğmesi (LAB_ROLES)",
         LAB,
         level(SAMPLES, CHANGE),
-        live=f"{CONFIG}:LAB_ROLES",
     ),
     Row(
         "Ön yüz LotQualitySection.tsx canRework: yeniden işleme emri düğmesi "
         "(production ORDER_ROLES)",
         ("planlama",),
         level(PRODUCTION_ORDERS, CHANGE),
-        live="frontend:src/modules/production/config.ts:ORDER_ROLES",
     ),
     # --- kabuk: modülün menü, rota ve arama girişleri ---
     Row(

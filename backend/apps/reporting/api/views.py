@@ -1,8 +1,12 @@
 """Raporlama API'si: panolar, raporlar (ekran + Excel/PDF), arka plan rapor işleri.
 
-Yetki: her pano ve rapor kendi rol listesiyle korunur (admin hepsini görür). Tutar sütunları ve
-stok değeri yalnızca yonetim ve admin rolüne döner (Karar D-15); bu süzme `reports.py` ve
-`dashboards.py` içinde, ekran ve dosya için aynı kuralla yapılır.
+Yetki (docs/plan/kisi-yetkileri.md §3.15): her pano ve rapor kendi yetki bölümüyle korunur
+(`reporting.access`; admin hepsini görür). Uç noktalar giriş yapan herkese açıktır, bölüm görünümün
+içinde denetlenir: bilinmeyen pano ya da rapor önce 404, yetkisiz kişi sonra 403 alır; OPTIONS
+herkese açık kalır. Tutar sütunları ve stok değeri Maliyetleri görür'e, panodaki onay bekleyen
+satın alma siparişlerinin TL toplamı Fiyatları görür'e bağlıdır; bu süzme `reports.py` ve
+`dashboards.py` içinde, ekran ve dosya için aynı kuralla yapılır. Rapor dosyası indirilirken
+raporun yetkisi yeniden denetlenir (§8 madde 12).
 """
 
 from collections.abc import Callable
@@ -16,20 +20,20 @@ from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, status
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import NotFound
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.access import COSTS, PRICES, VIEW, Section
 from apps.core.models import User
-from apps.core.permissions import user_has_role
-from apps.core.roles import DEPO, LABORATUVAR, PLANLAMA, SEVKIYAT, URETIM, YONETIM
+from apps.core.permissions import MissingAccess, SignedIn, has_access
 from apps.reporting import dashboards, filters, services
+from apps.reporting.access import LAB, MANAGEMENT, PRODUCTION, SHIPPING, WAREHOUSE
 from apps.reporting.api import serializers as s
 from apps.reporting.models import ReportJob
 from apps.reporting.reports import (
     ReportDefinition,
-    can_see,
     can_view,
     get_report,
     reports_for,
@@ -60,59 +64,55 @@ def jsonable(value: Any) -> Any:
 
 # --- panolar ---------------------------------------------------------------------------------
 
-Dashboard = tuple[str, tuple[str, ...], Callable[[Any], dict[str, Any]]]
+Dashboard = tuple[str, Section, Callable[[Any], dict[str, Any]]]
 
 DASHBOARDS: dict[str, Dashboard] = {
     "management": (
         "Yönetim panosu",
-        (YONETIM, PLANLAMA),
-        lambda user: dashboards.management_dashboard(show_costs=can_see(user, "cost")),
+        MANAGEMENT,
+        lambda user: dashboards.management_dashboard(
+            show_costs=has_access(user, COSTS), show_prices=has_access(user, PRICES)
+        ),
     ),
-    "warehouse": (
-        "Depo",
-        (DEPO, PLANLAMA, YONETIM),
-        lambda user: dashboards.warehouse_dashboard(),
-    ),
-    "lab": (
-        "Laboratuvar",
-        (LABORATUVAR, PLANLAMA, YONETIM),
-        lambda user: dashboards.lab_dashboard(),
-    ),
-    "production": (
-        "Üretim",
-        (URETIM, PLANLAMA, YONETIM),
-        lambda user: dashboards.production_dashboard(),
-    ),
-    "shipping": (
-        "Sevkiyat",
-        (SEVKIYAT, DEPO, PLANLAMA, YONETIM),
-        lambda user: dashboards.shipping_dashboard(),
-    ),
+    "warehouse": ("Depo", WAREHOUSE, lambda user: dashboards.warehouse_dashboard()),
+    "lab": ("Laboratuvar", LAB, lambda user: dashboards.lab_dashboard()),
+    "production": ("Üretim", PRODUCTION, lambda user: dashboards.production_dashboard()),
+    "shipping": ("Sevkiyat", SHIPPING, lambda user: dashboards.shipping_dashboard()),
 }
 
 
+def _deny(message: str, section: Section) -> MissingAccess:
+    return MissingAccess(message, ((section.key, VIEW),))
+
+
 class DashboardListView(APIView):
+    permission_classes = [SignedIn("pano listesi kişinin görebildiği panolarla daralır")]
+
     @extend_schema(responses=s.DashboardInfoSerializer(many=True))
     def get(self, request: Request) -> Response:
         """Kullanıcının görebildiği panolar."""
         return Response(
             [
                 {"code": code, "title": title}
-                for code, (title, roles, _) in DASHBOARDS.items()
-                if user_has_role(request.user, roles)
+                for code, (title, section, _) in DASHBOARDS.items()
+                if has_access(request.user, section)
             ]
         )
 
 
 class DashboardView(APIView):
+    permission_classes = [
+        SignedIn("bilinmeyen pano 404, yetki pano koduna göre görünümde denetlenir (403)")
+    ]
+
     @extend_schema(responses=OpenApiTypes.OBJECT)
     def get(self, request: Request, code: str) -> Response:
         """Pano verisi (`management`, `warehouse`, `lab`, `production`, `shipping`)."""
         if code not in DASHBOARDS:
             raise NotFound("Böyle bir pano yok.")
-        _, roles, build = DASHBOARDS[code]
-        if not user_has_role(request.user, roles):
-            raise PermissionDenied("Bu panoyu görme yetkiniz yok.")
+        _, section, build = DASHBOARDS[code]
+        if not has_access(request.user, section):
+            raise _deny("Bu panoyu görme yetkiniz yok.", section)
         return Response(jsonable(build(request.user)))
 
 
@@ -124,7 +124,7 @@ def _definition(request: Request, code: str) -> ReportDefinition:
     if definition is None:
         raise NotFound("Böyle bir rapor yok.")
     if not can_view(definition, _user(request)):
-        raise PermissionDenied("Bu raporu görme yetkiniz yok.")
+        raise _deny("Bu raporu görme yetkiniz yok.", definition.section)
     return definition
 
 
@@ -135,6 +135,8 @@ def _columns(definition: ReportDefinition, user: Any) -> list[dict[str, str]]:
 
 
 class ReportListView(APIView):
+    permission_classes = [SignedIn("rapor listesi kişinin görebildiği raporlarla daralır")]
+
     @extend_schema(responses=s.ReportInfoSerializer(many=True))
     def get(self, request: Request) -> Response:
         """Kullanıcının görebildiği raporlar, filtreleri ve sütunlarıyla."""
@@ -160,6 +162,10 @@ PAGE_PARAMS = [
 
 
 class ReportView(APIView):
+    permission_classes = [
+        SignedIn("bilinmeyen rapor 404, yetki rapor koduna göre görünümde denetlenir (403)")
+    ]
+
     @extend_schema(
         parameters=[filters.ReportFilterSerializer, *PAGE_PARAMS],
         responses=s.ReportPageSerializer,
@@ -192,6 +198,10 @@ class ReportView(APIView):
 
 
 class ReportExportView(APIView):
+    permission_classes = [
+        SignedIn("yetki rapor koduna göre görünümde ve serviste, gövdeden önce denetlenir")
+    ]
+
     @extend_schema(
         parameters=[filters.ReportFilterSerializer],
         request=s.ExportRequestSerializer,
@@ -233,6 +243,7 @@ def _own_jobs(request: Request) -> QuerySet[ReportJob]:
 
 
 class ReportJobListView(generics.ListAPIView):
+    permission_classes = [SignedIn("kişinin kendi rapor dosyaları (indirmeler herkese açık)")]
     serializer_class = s.ReportJobSerializer
     filterset_fields = ["status", "report_code", "file_format"]
     ordering = ["-created_at", "-id"]
@@ -242,6 +253,7 @@ class ReportJobListView(generics.ListAPIView):
 
 
 class ReportJobDetailView(generics.RetrieveAPIView):
+    permission_classes = [SignedIn("kişinin kendi rapor dosyası; başkasınınki 404")]
     serializer_class = s.ReportJobSerializer
 
     def get_queryset(self) -> QuerySet[ReportJob]:
@@ -249,12 +261,19 @@ class ReportJobDetailView(generics.RetrieveAPIView):
 
 
 class ReportJobDownloadView(APIView):
+    permission_classes = [
+        SignedIn("kişinin kendi rapor dosyası; raporun yetkisi indirmede yeniden denetlenir")
+    ]
+
     @extend_schema(responses={(200, "application/octet-stream"): OpenApiTypes.BINARY})
     def get(self, request: Request, pk: int) -> FileResponse:
-        """Hazır dosyayı indirir (yalnızca isteyen kişi)."""
+        """Hazır dosyayı indirir (yalnızca isteyen kişi, raporun yetkisi hâlâ varsa)."""
         job = get_object_or_404(_own_jobs(request), pk=pk)
         if job.status != ReportJob.Status.DONE or not job.file:
             raise NotFound("Dosya hazır değil ya da saklama süresi doldu.")
+        missing = services.missing_download_access(_user(request), job)
+        if missing:
+            raise MissingAccess("Bu dosyayı indirme yetkiniz artık yok.", missing)
         return FileResponse(
             job.file.open("rb"),
             as_attachment=True,

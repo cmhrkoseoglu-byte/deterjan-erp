@@ -309,7 +309,7 @@ describe("dolum sekmeleri", () => {
   it("laboratuvar dolum sayfasına giremez", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("laboratuvar"));
     renderApp("/dolum");
-    expect(await screen.findByText(/yetkiniz yok/i));
+    expect(await screen.findByRole("heading", { name: "Yetkiniz yok" })).toBeInTheDocument();
   });
 
   it("görevdeki dolum kayıtları detay sayfasına gider", () => {

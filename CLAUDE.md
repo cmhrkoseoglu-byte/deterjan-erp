@@ -117,9 +117,7 @@ View'lar ince olur: doğrula → servisi çağır → serialize et. Serializer `
    yetkilerden hesaplanır (`core.permissions`). API'de `HasAccess`, serviste `require_access`
    kullanılır; arayüz aynı kuralı `can()` ile gösterir, frontend'in butonu gizlemesi yetki sayılmaz.
    Onay ve karar adımları ayrı **onaylar** yetkisidir; değiştirir onaylamayı kapsamaz. Admin rolü ve
-   superuser her yetkiye sahiptir. Geçiş sürerken (docs/plan/kisi-yetkileri.md, 2-8. adımlar) henüz
-   geçmemiş modüller rol denetimini (`HasRole`, `hasAnyRole`) korur; yeni ve geçen kod `HasAccess`,
-   `require_access` ve `can()` kullanır.
+   superuser her yetkiye sahiptir.
 
 ## 5. Roller
 

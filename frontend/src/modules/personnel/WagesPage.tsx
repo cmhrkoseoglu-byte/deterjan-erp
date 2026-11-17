@@ -31,6 +31,8 @@ import {
   type EmployeeWage,
   type WageSummaryRow,
 } from "../../api/wages";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate, formatDateTime, formatMoney } from "../../i18n/format";
 import { currentMonthStart, parseMoney, previousMonthStart } from "../costing/personnelCostFormat";
 import { ErrorAlert, ReportTable } from "../costing/ReportTable";
@@ -166,6 +168,7 @@ function WageModal({ row, onClose }: { row: WageSummaryRow; onClose: () => void 
 
 function WageHistoryModal({ row, onClose }: { row: WageSummaryRow; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const writer = useCan().can(PERM.PERSONNEL_WAGES, "change");
   const [removing, setRemoving] = useState<EmployeeWage | null>(null);
   const [reason, setReason] = useState("");
   const remove = useMutation({
@@ -240,26 +243,27 @@ function WageHistoryModal({ row, onClose }: { row: WageSummaryRow; onClose: () =
             },
             {
               label: "",
-              render: (wage) => (
-                <Group justify="flex-end">
-                  <Button
-                    size="xs"
-                    variant="subtle"
-                    color="red"
-                    aria-label={wt.removeWageLabel(
-                      formatDate(wage.valid_from),
-                      formatMoney(wage.gross_monthly, "TL"),
-                    )}
-                    onClick={() => {
-                      setRemoving(wage);
-                      setReason("");
-                      remove.reset();
-                    }}
-                  >
-                    {wt.removeWage}
-                  </Button>
-                </Group>
-              ),
+              render: (wage) =>
+                writer && (
+                  <Group justify="flex-end">
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      color="red"
+                      aria-label={wt.removeWageLabel(
+                        formatDate(wage.valid_from),
+                        formatMoney(wage.gross_monthly, "TL"),
+                      )}
+                      onClick={() => {
+                        setRemoving(wage);
+                        setReason("");
+                        remove.reset();
+                      }}
+                    >
+                      {wt.removeWage}
+                    </Button>
+                  </Group>
+                ),
             },
           ]}
         />
@@ -280,6 +284,7 @@ function WageCell({ row }: { row: WageSummaryRow }) {
 /** Personel ve güncel ücretleri (ayrılanlar isteğe bağlı); ücret ekleme, geçmiş ve kaldırma. */
 export function WagesPage() {
   const [params, setParams] = useSearchParams();
+  const writer = useCan().can(PERM.PERSONNEL_WAGES, "change");
   const includeFormer = params.get("ayrilanlar") === "1";
   const summary = useQuery({
     queryKey: wageKeys.list(includeFormer),
@@ -363,15 +368,17 @@ export function WagesPage() {
               label: "",
               render: (row) => (
                 <Group gap="xs" justify="flex-end" wrap="nowrap">
-                  <Button
-                    size="xs"
-                    variant="light"
-                    leftSection={<IconPlus size={14} />}
-                    aria-label={`${wt.addWage}: ${row.employee.full_name}`}
-                    onClick={() => setAdding(row.employee.id)}
-                  >
-                    {wt.addWage}
-                  </Button>
+                  {writer && (
+                    <Button
+                      size="xs"
+                      variant="light"
+                      leftSection={<IconPlus size={14} />}
+                      aria-label={`${wt.addWage}: ${row.employee.full_name}`}
+                      onClick={() => setAdding(row.employee.id)}
+                    >
+                      {wt.addWage}
+                    </Button>
+                  )}
                   <Button
                     size="xs"
                     variant="subtle"

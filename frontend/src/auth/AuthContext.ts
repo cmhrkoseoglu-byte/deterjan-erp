@@ -9,7 +9,10 @@ export interface AuthContextValue {
   sessionExpired: boolean;
   login: (payload: LoginPayload) => Promise<void>;
   logout: () => Promise<void>;
-  /** `me` bilgisini sunucudan yeniden alır (2FA kurulumu, saha tableti işareti sonrası). */
+  /**
+   * `me` bilgisini sunucudan yeniden alır (2FA kurulumu, saha tableti işareti sonrası). Yetki
+   * değişikliğinde kendiliğinden de yenilenir: `access.changed` iletisi, pencereye dönüş, 403.
+   */
   refresh: () => Promise<void>;
 }
 

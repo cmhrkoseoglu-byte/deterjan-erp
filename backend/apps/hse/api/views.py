@@ -11,13 +11,23 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import HasRole
+from apps.core.access import CHANGE
+from apps.core.permissions import AccessMixin, HasAccess, ReadRule
 from apps.hse import exports, selectors, services
+from apps.hse.access import (
+    HAZARDS,
+    INCIDENT_REPORT,
+    INCIDENTS,
+    SDS,
+    SETTINGS,
+    STORAGE,
+    SUMMARY,
+    WASTE,
+)
 from apps.hse.api import serializers as s
 from apps.hse.models import (
     HazardClass,
@@ -33,6 +43,13 @@ from apps.inventory.api.serializers import CancelSerializer
 from apps.masterdata.models import Location, Material
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+HAZARD_CHANGE = HasAccess(HAZARDS, CHANGE)
+SDS_CHANGE = HasAccess(SDS, CHANGE)
+STORAGE_CHANGE = HasAccess(STORAGE, CHANGE)
+WASTE_CHANGE = HasAccess(WASTE, CHANGE)
+INCIDENT_CHANGE = HasAccess(INCIDENTS, CHANGE)
+SETTINGS_CHANGE = HasAccess(SETTINGS, CHANGE)
 
 
 def _user(request: Request) -> Any:
@@ -69,21 +86,27 @@ def _period(request: Request) -> tuple[date, date]:
     return date_from, date_to
 
 
-def _read_write(read: tuple[str, ...], write: tuple[str, ...], request: Request) -> Any:
-    return [HasRole(*(read if request.method == "GET" else write))()]
+class ReadOnGetMixin(AccessMixin):
+    """Bugünkü kural: yalnız GET okumadır; HEAD, OPTIONS ve karşılanmayan öteki metotlar yazma
+    iznini ister. Yalnız POST'u olan yolda (ör. `activate`) GET okuma iznini ister, sonra 405."""
+
+    read_methods = frozenset({"GET"})
+    unhandled_read_methods = frozenset({"GET"})
 
 
 # --- tehlike ifadeleri ve malzeme tehlike bilgisi ------------------------------------------------
 
 
 class HazardStatementViewSet(
+    ReadOnGetMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """H / P / EUH ifadeleri. Okuma herkese; ekleme ve düzeltme yönetim ve laboratuvara."""
+    """H / P / EUH ifadeleri. Okuma rolü olan herkese (Tehlike bilgileri: Görür, kilitli); ekleme
+    ve düzeltme Tehlike bilgileri: Değiştirir ister."""
 
     serializer_class = s.HazardStatementSerializer
     filterset_fields = ["kind", "is_active"]
@@ -93,8 +116,17 @@ class HazardStatementViewSet(
     queryset = HazardStatement.objects.all()
     http_method_names = ["get", "post", "patch", "head", "options"]
 
-    def get_permissions(self) -> list[BasePermission]:
-        return _read_write(services.HAZARD_READ_ROLES, services.HAZARD_ROLES, self.request)
+    read_access = ReadRule(HAZARDS)
+    other_safe_access = HAZARD_CHANGE
+    unhandled_access = HAZARD_CHANGE
+    # PUT (`update`) yönlendiricide eşlenir ama `http_method_names`'te yoktur: izinden sonra 405.
+    action_access = {
+        "create": HAZARD_CHANGE,
+        "update": HAZARD_CHANGE,
+        "partial_update": HAZARD_CHANGE,
+        "activate": HAZARD_CHANGE,
+        "deactivate": HAZARD_CHANGE,
+    }
 
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """İfade ekler."""
@@ -149,23 +181,27 @@ class MaterialHazardViewSet(
     mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
 ):
     """Malzemelerin tehlike bilgileri (lot listeleri, tartım, toplama ve sevkiyat uyarısı için).
-    Okuma herkese açıktır; yazma `materials/<id>/hazard/` ile."""
+    Okuma rolü olan herkese açıktır (her metot, karşılanmayanlar da); yazma `materials/<id>/hazard/`
+    ile."""
 
     serializer_class = s.MaterialHazardSerializer
     filterset_class = MaterialHazardFilter
     search_fields = ["material__code", "material__name"]
     ordering = ["material__code"]
-    permission_classes = [HasRole(*services.HAZARD_READ_ROLES)]
+    permission_classes = [ReadRule(HAZARDS)]
 
     def get_queryset(self) -> QuerySet[MaterialHazard]:
         return _hazard_queryset()
 
 
-class MaterialHazardView(APIView):
-    """Malzeme kartının "Tehlike" sekmesi. Okuma herkese; yazma yönetim ve laboratuvara."""
+class MaterialHazardView(ReadOnGetMixin, APIView):
+    """Malzeme kartının "Tehlike" sekmesi. Okuma rolü olan herkese; yazma Tehlike bilgileri:
+    Değiştirir ister."""
 
-    def get_permissions(self) -> list[BasePermission]:
-        return _read_write(services.HAZARD_READ_ROLES, services.HAZARD_ROLES, self.request)
+    read_access = ReadRule(HAZARDS)
+    other_safe_access = HAZARD_CHANGE
+    unhandled_access = HAZARD_CHANGE
+    action_access = {"put": HAZARD_CHANGE}
 
     def _data(self, material: Material) -> dict[str, Any]:
         hazard = _hazard_queryset().filter(material=material).first()
@@ -216,14 +252,15 @@ class SafetyDataSheetFilter(django_filters.FilterSet):
 
 
 class SafetyDataSheetViewSet(
+    ReadOnGetMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """GBF arşivi. Okuma yönetim, depo ve laboratuvara; kayıt yönetime. PDF, çekirdek ek API'si
-    ile (`hse.safetydatasheet`) yüklenir."""
+    """GBF arşivi: okuma GBF arşivi: Görür, kayıt Değiştirir ister. PDF, çekirdek ek API'si ile
+    (`hse.safetydatasheet`) yüklenir."""
 
     serializer_class = s.SafetyDataSheetSerializer
     filterset_class = SafetyDataSheetFilter
@@ -232,8 +269,10 @@ class SafetyDataSheetViewSet(
     ordering = ["material__code", "-revision_date", "-id"]
     http_method_names = ["get", "post", "patch", "head", "options"]
 
-    def get_permissions(self) -> list[BasePermission]:
-        return _read_write(services.SDS_READ_ROLES, services.HSE_ROLES, self.request)
+    read_access = ReadRule(SDS)
+    other_safe_access = SDS_CHANGE
+    unhandled_access = SDS_CHANGE
+    action_access = {"create": SDS_CHANGE, "update": SDS_CHANGE, "partial_update": SDS_CHANGE}
 
     def get_queryset(self) -> QuerySet[SafetyDataSheet]:
         return SafetyDataSheet.objects.select_related("material", "supplier", "created_by")
@@ -261,7 +300,7 @@ class SafetyDataSheetViewSet(
 class SdsGapsView(APIView):
     """Eksik / eskimiş GBF raporu: aktif hammaddeler ve tehlikeli işaretli malzemeler."""
 
-    permission_classes = [HasRole(*services.SDS_READ_ROLES)]
+    permission_classes = [HasAccess(SDS)]
 
     @extend_schema(responses=s.SdsStatusSerializer(many=True))
     def get(self, request: Request) -> Response:
@@ -271,7 +310,7 @@ class SdsGapsView(APIView):
 class SdsGapsExportView(APIView):
     """Eksik / eskimiş GBF raporunun Excel çıktısı."""
 
-    permission_classes = [HasRole(*services.SDS_READ_ROLES)]
+    permission_classes = [HasAccess(SDS)]
 
     @extend_schema(responses={(200, XLSX): OpenApiTypes.BINARY})
     def get(self, request: Request) -> HttpResponse:
@@ -285,13 +324,15 @@ class SdsGapsExportView(APIView):
 
 
 class StorageLimitViewSet(
+    ReadOnGetMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Lokasyon × tehlike sınıfı depolama limitleri. Okuma yönetim ve depoya; yazma yönetime."""
+    """Lokasyon × tehlike sınıfı depolama limitleri: okuma Depolama limitleri: Görür, yazma
+    Değiştirir ister."""
 
     serializer_class = s.StorageLimitSerializer
     filterset_fields = ["location", "hazard_class", "is_active"]
@@ -299,8 +340,16 @@ class StorageLimitViewSet(
     ordering = ["location__code", "hazard_class"]
     http_method_names = ["get", "post", "patch", "head", "options"]
 
-    def get_permissions(self) -> list[BasePermission]:
-        return _read_write(services.STORAGE_READ_ROLES, services.HSE_ROLES, self.request)
+    read_access = ReadRule(STORAGE)
+    other_safe_access = STORAGE_CHANGE
+    unhandled_access = STORAGE_CHANGE
+    action_access = {
+        "create": STORAGE_CHANGE,
+        "update": STORAGE_CHANGE,
+        "partial_update": STORAGE_CHANGE,
+        "activate": STORAGE_CHANGE,
+        "deactivate": STORAGE_CHANGE,
+    }
 
     def get_queryset(self) -> QuerySet[StorageLimit]:
         return StorageLimit.objects.select_related("location")
@@ -345,7 +394,7 @@ class StorageLimitViewSet(
 class StorageUtilisationView(APIView):
     """Depolama limitlerinin doluluğu (kg ve %)."""
 
-    permission_classes = [HasRole(*services.STORAGE_READ_ROLES)]
+    permission_classes = [HasAccess(STORAGE)]
 
     @extend_schema(
         parameters=[OpenApiParameter("location", int)],
@@ -361,20 +410,30 @@ class StorageUtilisationView(APIView):
 
 
 class WasteContractorViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Lisanslı atık firmaları (yönetim)."""
+    """Lisanslı atık firmaları: okuma (GET, HEAD, OPTIONS) Atık: Görür, yazma Değiştirir ister."""
 
     serializer_class = s.WasteContractorSerializer
     filterset_fields = ["is_active"]
     search_fields = ["name", "license_no"]
     ordering_fields = ["name", "license_valid_until"]
     ordering = ["name", "id"]
-    permission_classes = [HasRole(*services.HSE_ROLES)]
+    read_access = ReadRule(WASTE)
+    unhandled_access = WASTE_CHANGE
+    unhandled_read_methods = frozenset({"GET"})
+    action_access = {
+        "create": WASTE_CHANGE,
+        "update": WASTE_CHANGE,
+        "partial_update": WASTE_CHANGE,
+        "activate": WASTE_CHANGE,
+        "deactivate": WASTE_CHANGE,
+    }
     queryset = WasteContractor.objects.all()
     http_method_names = ["get", "post", "patch", "head", "options"]
 
@@ -421,19 +480,24 @@ class WasteRecordFilter(django_filters.FilterSet):
 
 
 class WasteRecordViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Atık teslim kayıtları (`AT-`, yönetim). Taşıma formu ek olarak (`hse.wasterecord`)."""
+    """Atık teslim kayıtları (`AT-`): okuma Atık: Görür, kayıt ve iptal Değiştirir ister. Taşıma
+    formu ek olarak (`hse.wasterecord`)."""
 
     serializer_class = s.WasteRecordSerializer
     filterset_class = WasteRecordFilter
     search_fields = ["number", "waste_code", "description", "document_no", "contractor__name"]
     ordering_fields = ["delivered_on", "number", "quantity_kg"]
     ordering = ["-delivered_on", "-id"]
-    permission_classes = [HasRole(*services.HSE_ROLES)]
+    read_access = ReadRule(WASTE)
+    unhandled_access = WASTE_CHANGE
+    unhandled_read_methods = frozenset({"GET"})
+    action_access = {"create": WASTE_CHANGE, "cancel": WASTE_CHANGE}
 
     def get_queryset(self) -> QuerySet[WasteRecord]:
         return WasteRecord.objects.select_related("contractor", "created_by")
@@ -477,13 +541,15 @@ class IncidentFilter(django_filters.FilterSet):
 
 
 class IncidentViewSet(
+    ReadOnGetMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Olay / kaza kayıtları (`OL-`). Herkes bildirir ve kendi bildirdiklerini görür; yönetim
-    tümünü görür, inceler, kapatır."""
+    """Olay / kaza kayıtları (`OL-`). Rolü olan herkes bildirir ve kendi bildirdiklerini görür
+    (Olay bildirimi); Olaylar ve kazalar tümünü görür, inceler, kapatır. HEAD ve OPTIONS bugünkü
+    gibi Olaylar ve kazalar: Değiştirir ister."""
 
     serializer_class = s.IncidentSerializer
     filterset_class = IncidentFilter
@@ -491,10 +557,16 @@ class IncidentViewSet(
     ordering_fields = ["occurred_at", "number", "severity"]
     ordering = ["-occurred_at", "-id"]
 
-    def get_permissions(self) -> list[BasePermission]:
-        if self.request.method == "GET" or self.action == "create":
-            return [HasRole(*services.INCIDENT_REPORT_ROLES)()]
-        return [HasRole(*services.HSE_ROLES)()]
+    read_access = ReadRule(INCIDENTS, INCIDENT_REPORT)
+    other_safe_access = INCIDENT_CHANGE
+    unhandled_access = INCIDENT_CHANGE
+    action_access = {
+        "create": HasAccess(INCIDENT_REPORT, CHANGE),
+        "investigate": INCIDENT_CHANGE,
+        "investigation": INCIDENT_CHANGE,
+        "close": INCIDENT_CHANGE,
+        "cancel": INCIDENT_CHANGE,
+    }
 
     def get_queryset(self) -> QuerySet[Incident]:
         queryset = Incident.objects.select_related("location", "equipment", "created_by")
@@ -561,9 +633,9 @@ class IncidentViewSet(
 
 
 class HseSummaryView(APIView):
-    """Olay ve atık özeti (varsayılan son 30 gün; yönetim)."""
+    """Olay ve atık özeti (varsayılan son 30 gün; İSG özeti: Görür)."""
 
-    permission_classes = [HasRole(*services.HSE_ROLES)]
+    permission_classes = [HasAccess(SUMMARY)]
 
     @extend_schema(
         parameters=[OpenApiParameter("date_from", date), OpenApiParameter("date_to", date)],
@@ -580,11 +652,14 @@ class HseSummaryView(APIView):
         return Response(s.HseSummarySerializer(data).data)
 
 
-class HseSettingsView(APIView):
-    """GBF en çok yaşı. Okuma GBF'yi görenlere, değiştirme yönetime."""
+class HseSettingsView(ReadOnGetMixin, APIView):
+    """GBF en çok yaşı. Okuma İSG ayarları ya da GBF arşivi: Görür'ü olana, değiştirme İSG
+    ayarları: Değiştirir'i olana."""
 
-    def get_permissions(self) -> list[BasePermission]:
-        return _read_write(services.SDS_READ_ROLES, services.SETTINGS_ROLES, self.request)
+    read_access = HasAccess(SETTINGS) | HasAccess(SDS)
+    other_safe_access = SETTINGS_CHANGE
+    unhandled_access = SETTINGS_CHANGE
+    action_access = {"patch": SETTINGS_CHANGE}
 
     @extend_schema(responses=s.HseSettingsSerializer)
     def get(self, request: Request) -> Response:

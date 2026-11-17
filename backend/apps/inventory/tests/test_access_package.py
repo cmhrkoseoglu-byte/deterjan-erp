@@ -5,13 +5,13 @@ tablosundaki yetkiye eşlenir. `assert_rows`, kişiye özel ayar yokken eski den
 yetkinin 8 rolün bütün bileşimlerinde aynı kararı verdiğini kanıtlar.
 
 2. adımda modül bölüm denetimine geçti: backend satırlarının `live` bağlantısı kaldırıldı (sabitler
-yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar. Ön yüz sabitlerine bağlantı
-8. adıma kadar kalır.
+yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar.
+8. adımda ön yüz de bölüm denetimine geçti: ön yüz satırlarının `live` bağlantısı kaldırıldı;
+satırlar 8. adım öncesi rol listelerini dondurulmuş olarak tutar.
 """
 
 from apps.core.access import APPROVE, CHANGE, COSTS, PRICES
 from apps.core.roles import (
-    ADMIN,
     DEPO,
     DOLUM,
     LABORATUVAR,
@@ -27,7 +27,6 @@ from apps.core.tests.access_helpers import (
     Row,
     any_of,
     assert_rows,
-    frontend_roles,
     level,
     read,
 )
@@ -43,8 +42,6 @@ from apps.inventory.access import (
     STOCK,
 )
 from apps.masterdata.access import CARDS
-
-CONFIG = "frontend:src/modules/inventory/config.ts"
 
 PALLET_WRITERS = (DEPO, DOLUM, SEVKIYAT, URETIM)
 PRICE_ROLES = (SATIN_ALMA, YONETIM)
@@ -65,7 +62,6 @@ ROWS = [
         (LABORATUVAR,),
         level(LOT_BLOCK, APPROVE),
     ),
-    # MANUAL_RELEASE_ROLES = (ADMIN,): `live` admin'i taşıyamaz, test_admin_only_constants sabitler.
     Row(
         "views.LotViewSet release (action_roles = MANUAL_RELEASE_ROLES, D-5)",
         ADMIN_ONLY,
@@ -207,27 +203,23 @@ ROWS = [
         "frontend ListTabs.tsx StockTab açılış stoku içe aktarma (STOCK_WRITE_ROLES)",
         (DEPO,),
         level(STOCK, CHANGE),
-        live=f"{CONFIG}:STOCK_WRITE_ROLES",
     ),
     Row(
         "frontend ListTabs.tsx ReceiptsTab yeni mal kabul ve siparişten mal kabul "
         "(STOCK_WRITE_ROLES)",
         (DEPO,),
         level(RECEIPTS, CHANGE),
-        live=f"{CONFIG}:STOCK_WRITE_ROLES",
     ),
     Row(
         "frontend ListTabs.tsx AdjustmentsTab yeni sayım (STOCK_WRITE_ROLES)",
         (DEPO,),
         level(ADJUSTMENTS, CHANGE),
-        live=f"{CONFIG}:STOCK_WRITE_ROLES",
     ),
     Row(
         "frontend GoodsReceiptPage.tsx ReceiptForm editable: taslak kaydet, kaydet ve stoka al, "
         "iptal, form (STOCK_WRITE_ROLES)",
         (DEPO,),
         level(RECEIPTS, CHANGE),
-        live=f"{CONFIG}:STOCK_WRITE_ROLES",
     ),
     # Panel sunucunun fiyat kararıyla açılır (extra_costs !== null) ve fiyat girer: görünmesi
     # Fiyatları görür'e, kaydetmesi bu bölüme bağlanır (plan §5.6).
@@ -241,19 +233,16 @@ ROWS = [
         "(STOCK_WRITE_ROLES)",
         (DEPO,),
         level(ADJUSTMENTS, CHANGE),
-        live=f"{CONFIG}:STOCK_WRITE_ROLES",
     ),
     Row(
         "frontend AdjustmentPage.tsx AdjustmentForm kaydet ve stoka al düğmesi (STOCK_WRITE_ROLES)",
         (DEPO,),
         level(ADJUSTMENTS, APPROVE),
-        live=f"{CONFIG}:STOCK_WRITE_ROLES",
     ),
     Row(
         "frontend LotPage.tsx canBlock (LOT_BLOCK_ROLES)",
         (LABORATUVAR,),
         level(LOT_BLOCK, APPROVE),
-        live=f"{CONFIG}:LOT_BLOCK_ROLES",
     ),
     Row(
         "frontend LotPage.tsx canRelease (MANUAL_RELEASE_ROLES)",
@@ -264,7 +253,6 @@ ROWS = [
         "frontend LotPage.tsx canMove: transfer ve ters kayıt düğmeleri (STOCK_WRITE_ROLES)",
         (DEPO,),
         level(STOCK, CHANGE),
-        live=f"{CONFIG}:STOCK_WRITE_ROLES",
     ),
     # Düğme /maliyet/lotlar/:id sayfasına gider; sayfa Lot maliyetleri: Görür ile açılır
     # (plan §5.9), bölüm de Maliyetleri görür'ü ister.
@@ -278,7 +266,6 @@ ROWS = [
         "frontend LotLabels.tsx PalletSection canCreate (PALLET_ROLES)",
         PALLET_WRITERS,
         level(PALLETS, CHANGE),
-        live=f"{CONFIG}:PALLET_ROLES",
     ),
     # --- ön yüz: ortak dosyalardaki depo öğeleri (menü ve rotalar) ---
     Row("frontend layout/menu.ts inventory (roles: [])", SIGNED_IN, MODULE_VIEW),
@@ -291,8 +278,3 @@ ROWS = [
 
 def test_package_equivalence() -> None:
     assert_rows(ROWS)
-
-
-def test_admin_only_constants() -> None:
-    """Yalnız admin satırları `live` taşıyamaz; bugünkü sabitler burada sabitlenir."""
-    assert frontend_roles("src/modules/inventory/config.ts", "MANUAL_RELEASE_ROLES") == (ADMIN,)

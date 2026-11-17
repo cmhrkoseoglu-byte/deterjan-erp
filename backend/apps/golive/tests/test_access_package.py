@@ -16,32 +16,43 @@ ROWS: list[Row] = [
         "golive.api.views.ReadinessView (READ_ROLES)",
         ("yonetim", "planlama", "depo"),
         level(READINESS),
-        live="apps.golive.api.views:READ_ROLES",
     ),
     Row(
         "golive.api.views.GoLiveView GET (READ_ROLES)",
         ("yonetim", "planlama", "depo"),
         level(SETTINGS),
-        live="apps.golive.api.views:READ_ROLES",
     ),
     Row(
         "golive.api.views.GoLiveView PUT (GO_LIVE_ROLES)",
         ("yonetim",),
         level(SETTINGS, CHANGE),
-        live="apps.golive.api.views:GO_LIVE_ROLES",
     ),
     Row(
         "golive.api.views.StockComparisonViewSet list, retrieve, lines, export, template "
         "(READ_ROLES)",
         ("yonetim", "planlama", "depo"),
         level(COMPARISONS),
-        live="apps.golive.api.views:READ_ROLES",
     ),
     Row(
         "golive.api.views.StockComparisonViewSet create (COMPARISON_WRITE_ROLES)",
         ("depo", "yonetim"),
         level(COMPARISONS, CHANGE),
-        live="apps.golive.api.views:COMPARISON_WRITE_ROLES",
+    ),
+    # Karşılanmayan metotlar ve GET dışındaki güvenli metotlar (sonra 405 ya da yanıt).
+    Row(
+        "golive.api.views.ReadinessView her metot (READ_ROLES)",
+        ("yonetim", "planlama", "depo"),
+        level(READINESS),
+    ),
+    Row(
+        "golive.api.views.GoLiveView HEAD, OPTIONS, karşılanmayan metot (GO_LIVE_ROLES)",
+        ("yonetim",),
+        level(SETTINGS, CHANGE),
+    ),
+    Row(
+        "golive.api.views.StockComparisonViewSet HEAD, OPTIONS, karşılanmayan metot (READ_ROLES)",
+        ("yonetim", "planlama", "depo"),
+        level(COMPARISONS),
     ),
     # Bütün sorun bildirimleri: ekran, ekran görüntüsü ve kayıt paneli (apps.py
     # register_record_type visible=) aynı kuralı kullanır.

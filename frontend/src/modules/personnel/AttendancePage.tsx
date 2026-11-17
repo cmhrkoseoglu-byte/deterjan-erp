@@ -41,6 +41,8 @@ import {
 } from "../../api/attendance";
 import { getErrorMessage } from "../../api/client";
 import { listDepartments } from "../../api/personnel";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { DayModal, RangeModal, ReopenModal } from "./AttendanceModals";
@@ -203,7 +205,7 @@ function DayCell({
   name: string;
   cell: AttendanceCell;
   column: AttendanceColumn;
-  onEdit: () => void;
+  onEdit?: () => void;
 }) {
   const hours = formatHours(cell.overtime_hours);
   const worked = formatWorkedHours(cell.worked_hours);
@@ -249,7 +251,7 @@ function DayCell({
       ·
     </Text>
   );
-  if (!cell.editable) {
+  if (!cell.editable || !onEdit) {
     return (
       <Table.Td style={style} title={title || undefined}>
         {content}
@@ -275,7 +277,8 @@ function AttendanceTable({
   onEdit,
 }: {
   grid: AttendanceGrid;
-  onEdit: (row: AttendanceRow, cell: AttendanceCell, column: AttendanceColumn) => void;
+  /** Yoksa tablo salt okunurdur (Puantaj: Değiştirir yok). */
+  onEdit?: (row: AttendanceRow, cell: AttendanceCell, column: AttendanceColumn) => void;
 }) {
   const width = NAME_WIDTH + grid.days.length * DAY_WIDTH + TOTALS.length * 44;
   return (
@@ -332,7 +335,7 @@ function AttendanceTable({
                   name={row.employee.full_name}
                   cell={cell}
                   column={grid.days[index]}
-                  onEdit={() => onEdit(row, cell, grid.days[index])}
+                  onEdit={onEdit && (() => onEdit(row, cell, grid.days[index]))}
                 />
               ))}
               {TOTALS.map((total) => (
@@ -359,6 +362,9 @@ export function AttendancePage() {
   const [params, setParams] = useSearchParams();
   const { year, month } = parseMonth(params.get("ay"));
   const queryClient = useQueryClient();
+  const { can } = useCan();
+  const writer = can(PERM.PERSONNEL_ATTENDANCE, "change");
+  const approver = can(PERM.PERSONNEL_ATTENDANCE, "approve");
   const [department, setDepartment] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [ranging, setRanging] = useState(false);
@@ -431,14 +437,16 @@ export function AttendancePage() {
             searchable
             w={190}
           />
-          <Button
-            variant="light"
-            leftSection={<IconCalendarPlus size={16} />}
-            onClick={() => setRanging(true)}
-            disabled={approved || !data}
-          >
-            {at.rangeEntry}
-          </Button>
+          {writer && (
+            <Button
+              variant="light"
+              leftSection={<IconCalendarPlus size={16} />}
+              onClick={() => setRanging(true)}
+              disabled={approved || !data}
+            >
+              {at.rangeEntry}
+            </Button>
+          )}
           <Button
             component="a"
             href={attendanceExportUrl(year, month, department ?? "")}
@@ -447,7 +455,7 @@ export function AttendancePage() {
           >
             {at.excel}
           </Button>
-          {approved ? (
+          {!approver ? null : approved ? (
             <Tooltip
               label={pa.attendanceLocked(data?.payroll?.number ?? "")}
               disabled={!payrollLocked}
@@ -492,7 +500,7 @@ export function AttendancePage() {
       {data && data.rows.length > 0 && (
         <AttendanceTable
           grid={data}
-          onEdit={(row, cell, column) => setEditing({ row, cell, column })}
+          onEdit={writer ? (row, cell, column) => setEditing({ row, cell, column }) : undefined}
         />
       )}
       {editing && (

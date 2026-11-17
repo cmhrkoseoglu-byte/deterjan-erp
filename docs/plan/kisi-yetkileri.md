@@ -590,7 +590,8 @@ sahibin onayını ve DECISIONS kaydını ister.
   sistematiği) denetim günlüğünde süzme yapmaz. Kullanıcı kaydında yalnız kişiye özel yetki
   alanları ve gerekçe gizlenir. Böylece giriş, çıkış ve rol kayıtları, sorun bildirimleri ve
   onlara yazılan yorumlar yönetime bugünkü gibi görünür. Yorum ve ek kayıtları bağlı oldukları
-  kaydı izler: bağlı kayıt süzülüyorsa (ör. olay) yorum ve ek de aynı bölümü ister.
+  kaydı izler: bağlı kayıt süzülüyorsa (ör. olay) yorum ve ek de aynı bölümü ister. Kayda bağlı
+  görevlerin kayıtları da bağlı kaydı izler (sahip kararı 2026-11-17; 7. adımda).
 - **Yetki kayıtları:** kullanıcı üzerindeki kaydetme kaydında rollerin önce ve sonra hâli bugünkü
   gibi yönetime de görünür. Kişiye özel yetkilerin önce ve sonra hâli ve gerekçe notu yalnız
   admine görünür. `AccessOverride` ve `AccessCatalogSnapshot` kayıtları yalnız admine görünür.
@@ -620,7 +621,8 @@ sahibin onayını ve DECISIONS kaydını ister.
   - Yükten gelen kişiler (ör. siparişi açan) de aynı denetimden geçer (§8 madde 10); rapor
     isteyen süzülmez.
   - İptal bildirimleri ve görevlerin anlık (WebSocket) kitlesi aynı süzgeci kullanır.
-  - Tartım sapması ve ara kontrol reddi §12'deki karara kadar süzülmez; bugünkü gibi gider.
+  - Tartım sapması ve ara kontrol reddi bugünkü alıcılara gider ve lot sayfasına bağlanır (§12,
+    karar 2026-11-17).
 - Satın alma onayı görevinin açıklamasındaki tutarlar, Fiyatları görür'ü olmayana boş görünür.
 - **Kimse kalmıyor uyarısı:** bir kural için rolde yetkili kimse kalmıyorsa yetki ya da rol
   kaydedilirken uyarı çıkar. Canlıya geçiş hazırlık listesine ve sistem durumuna aynı denetim
@@ -1086,7 +1088,8 @@ Kural 12'ye 1. adımda bir geçiş cümlesi eklenir ve 8. adımın commit'inde s
 - **Bordrosu olmayan ayın işçilik oranı notu** (5. adımdan önce; §8 madde 8). Personel
   maliyetinden açılan gider oranının notunda tutar yerine bordro numarası yazar; canlı
   başlangıcından önceki aylarda onaylı bordro olmadığından numara yoktur. Not o zaman ne yazsın
-  (ör. yalnız "Personel maliyetinden")?
+  (ör. yalnız "Personel maliyetinden")? **Cevaplandı (2026-11-13):** yalnız "Personel
+  maliyetinden" (DECISIONS).
 - **İrsaliyedeki şoför kimlik numarası** (10. adımdan önce): irsaliye PDF'inde tam numarayı
   kimlerin göreceği KVKK.md ile birlikte netleşir; belge mi düzeltilsin, ayrı bir hak mı olsun?
   Bugünkü durum size ayrıca sunulur.
@@ -1096,6 +1099,8 @@ Kural 12'ye 1. adımda bir geçiş cümlesi eklenir ve 8. adımın commit'inde s
 
   İlgili rollere hedefte Görür mü verilsin, bildirimler lot sayfasına mı bağlansın? Karar
   verilene kadar bildirimler bugünkü gibi gider; bağlantı bu alıcılara gösterilmez.
+  **Cevaplandı (2026-11-17):** iki bildirim de lot sayfasına bağlanır; alıcılar ve paketler
+  değişmez (DECISIONS).
 - **Ortak tablet ya da hat hesabı** (Paket B canlıya alınmadan önce; GECIS-PLANI'nda açık).
   Kişiye özel yetki ve ISO kaydı herkesin kişisel hesabı olduğunu varsayar.
 - **Faz B ayrıntıları** (Paket C'den önce). Lot sayfasından mal kabule ulaşma; müşteri ve

@@ -23,7 +23,7 @@ export const MISSING = "<yok>";
 export const ANY = "<her>";
 
 /** Uygulanan adım (plan §10). Her adım bu sayıyı artırır ve kendi kayıtlarını ekler. */
-export const CURRENT_STEP = 4;
+export const CURRENT_STEP = 8;
 
 export interface Allowed {
   /** Planın maddesi, ör. "§8 madde 1". */
@@ -72,7 +72,13 @@ export const ALLOWED: readonly Allowed[] = [
     { "/isg": ["no_role"] },
   ),
   ...cells(
-    { item: "§8 madde 1", section: "pageDefaults", step: 8, old: "/raporlar/panolar" },
+    {
+      item: "§8 madde 1",
+      section: "pageDefaults",
+      step: 8,
+      old: "/raporlar/panolar",
+      new: "forbidden",
+    },
     { "/raporlar": ["no_role"] },
   ),
   ...cells(
@@ -85,7 +91,10 @@ export const ALLOWED: readonly Allowed[] = [
     },
     { "/isg": ["no_role"] },
   ),
-  ...cells({ item: "§8 madde 1", section: "pageTabs", step: 8 }, { "/raporlar": ["no_role"] }),
+  ...cells(
+    { item: "§8 madde 1", section: "pageTabs", step: 8, new: "forbidden" },
+    { "/raporlar": ["no_role"] },
+  ),
   ...cells(
     { item: "§8 madde 1", section: "recordLinks", step: 8, old: "open", new: "forbidden" },
     { "hse.incident": ["no_role"] },
@@ -107,11 +116,11 @@ export const ALLOWED: readonly Allowed[] = [
     { "/isg/:tab?": ["no_role"], "/isg/olaylar/:incidentId": ["no_role"] },
   ),
   ...cells(
-    { item: "§8 madde 1", section: "routes", step: 8, old: "open", required: false },
+    { item: "§8 madde 1", section: "routes", step: 8, old: "open", new: "forbidden" },
     { "/raporlar/:tab?": ["no_role"] },
   ),
   ...cells(
-    { item: "§8 madde 1", section: "shell", step: 8, old: "admin" },
+    { item: "§8 madde 1", section: "shell", step: 8, old: "admin", new: "neutral" },
     { roleBar: ["no_role"] },
   ),
 

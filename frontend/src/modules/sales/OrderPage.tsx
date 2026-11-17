@@ -51,8 +51,8 @@ import {
   type SalesOrderLine,
   type SalesOrderPayload,
 } from "../../api/sales";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate, formatDateTime, formatMoney, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
@@ -67,11 +67,9 @@ import { RowsTable } from "../filling/FillingPage";
 import { shipmentColumns } from "./columns";
 import {
   customerPath,
-  ORDER_WRITE_ROLES,
   RESERVABLE_STATUSES,
   SALES_BASE,
   salesOrderPath,
-  SHIPMENT_WRITE_ROLES,
   SHIPPABLE_ORDER_STATUSES,
   shipmentPath,
 } from "./config";
@@ -233,12 +231,19 @@ export function SalesOrderPage() {
 }
 
 function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
-  const { user } = useAuth();
+  const { can, canRead } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const writer = hasAnyRole(user, ORDER_WRITE_ROLES);
+  const writer = can(PERM.SALES_ORDERS, "change");
+  const approver = can(PERM.SALES_ORDERS, "approve");
   const editable = writer && (!doc || doc.status === "DRAFT");
   const reservable = writer && !!doc && RESERVABLE_STATUSES.includes(doc.status);
+  // Onaylar'ı olan taslağı onaylar; Değiştirir'i yoksa taslak yeniden kaydedilmez (plan §5.9).
+  const canConfirm = !!doc && doc.status === "DRAFT" && approver;
+  // İptal: taslak Değiştirir, onaylı sipariş Onaylar ister (backend `cancel_order`).
+  const canCancel =
+    !!doc && ((doc.status === "DRAFT" && writer) || (doc.status === "CONFIRMED" && approver));
+  const canOpenShipments = canRead(PERM.SALES_SHIPMENTS, PERM.SALES_PICKING);
   const [{ header, lines }, setDraft] = useState(() => toDraft(doc));
   const [error, setError] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -286,6 +291,7 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
   });
   const confirm = useMutation({
     mutationFn: async () => {
+      if (!editable) return confirmSalesOrder(doc!.id);
       const saved = await saveSalesOrder(doc!.id, toPayload(header, lines));
       return confirmSalesOrder(saved.id);
     },
@@ -346,7 +352,7 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
   const otherReservations = (doc?.reservations ?? []).filter((r) => r.status !== "ACTIVE");
   const canPlan =
     !!doc &&
-    hasAnyRole(user, SHIPMENT_WRITE_ROLES) &&
+    can(PERM.SALES_SHIPMENTS, "change") &&
     SHIPPABLE_ORDER_STATUSES.includes(doc.status) &&
     doc.lines.some((line) => Number(line.plannable_quantity) > 0);
 
@@ -374,7 +380,7 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
               {st.saveDraft}
             </Button>
           )}
-          {editable && doc && (
+          {canConfirm && (
             <Button
               color="green"
               leftSection={<IconCheck size={16} />}
@@ -407,7 +413,7 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
               {st.close}
             </Button>
           )}
-          {writer && doc && ["DRAFT", "CONFIRMED"].includes(doc.status) && (
+          {canCancel && (
             <Button
               color="red"
               variant="light"
@@ -728,7 +734,7 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
               rows={doc.shipments}
               loading={false}
               error={null}
-              onOpen={(row) => navigate(shipmentPath(row.id))}
+              onOpen={(row) => canOpenShipments && navigate(shipmentPath(row.id))}
             />
           )}
         </Stack>

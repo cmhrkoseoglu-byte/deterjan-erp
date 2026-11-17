@@ -1,5 +1,6 @@
-"""Personel yazma işlemleri (yalnızca admin ve yönetim): kartlar, özlük belgeleri, puantaj,
-ücretler ve ön bordro (parametreler, mali müşavir rakamları, devir, ek ödeme ve kesintiler).
+"""Personel yazma işlemleri: kartlar, özlük belgeleri, puantaj, ücretler ve ön bordro (parametreler,
+mali müşavir rakamları, devir, ek ödeme ve kesintiler). Her işlem Personel bölümlerinden birini
+ister (docs/plan/kisi-yetkileri.md §3.14); bölümler yalnız yönetim rolündekilere verilebilir (KVKK).
 
 Kart silinmez (CLAUDE.md kural 6): işten ayrılış `terminate_employee` ile kaydedilir (kart pasife
 alınır, çıkış tarihi yazılır), yeniden işe başlayan `reinstate_employee` ile açılır. Her değişiklik
@@ -30,22 +31,22 @@ from types import EllipsisType
 from typing import Any
 
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
 from django.core.files.uploadedfile import UploadedFile
 from django.db import IntegrityError, connection, transaction
 from django.db.models import Max, Q
 from django.utils import timezone
 
 from apps.core import attachments
+from apps.core.access import APPROVE, CHANGE, VIEW
 from apps.core.audit import log_change, snapshot
 from apps.core.exceptions import BusinessRuleError
 from apps.core.formatting import format_money
 from apps.core.models import AuditLog, User
-from apps.core.permissions import user_has_role
-from apps.core.roles import YONETIM
+from apps.core.permissions import require_access
 from apps.core.services import create_document, save_with_audit, transition_status
 from apps.masterdata import services as masterdata
 from apps.personnel import payroll, selectors
+from apps.personnel.access import ATTENDANCE, CARDS, PAYROLL, SETTINGS, WAGES
 from apps.personnel.models import (
     DESCRIBED_CATEGORIES,
     EXTRA_CATEGORIES,
@@ -70,9 +71,6 @@ from apps.personnel.models import (
     PublicHoliday,
 )
 from apps.personnel.state import attendance_month_states, payroll_run_states
-
-# Kartları gören ve düzenleyen roller (admin her yere erişir). Kişisel veri: docs/KVKK.md.
-PERSONNEL_ROLES = (YONETIM,)
 
 EMPLOYEE_FIELDS = (
     "employee_no",
@@ -115,11 +113,6 @@ DOCUMENT_TYPES = {
     ".jpeg": "image/jpeg",
     ".png": "image/png",
 }
-
-
-def _require_role(actor: User | None) -> None:
-    if not user_has_role(actor, PERSONNEL_ROLES):
-        raise PermissionDenied("Personel kayıtlarını yalnızca yönetim ve sistem yöneticisi görür.")
 
 
 def _pick(data: Mapping[str, Any], allowed: Sequence[str]) -> dict[str, Any]:
@@ -201,7 +194,7 @@ def create_employee(actor: User, data: Mapping[str, Any]) -> Employee:
     benzersizdir; TC kimlik no kontrol haneleriyle denetlenir (boşluklar atılır). Doğum tarihi ve
     mezuniyet yılı ileri bir tarih olamaz. Sistem kullanıcısı (isteğe bağlı) aktif olmalı ve başka
     karta bağlı olmamalıdır."""
-    _require_role(actor)
+    require_access(actor, CARDS, CHANGE, "Personel kartı açma yetkiniz yok.")
     values = _clean(_pick(data, EMPLOYEE_FIELDS))
     return masterdata.create_record(actor, Employee, values)
 
@@ -215,7 +208,7 @@ def update_employee(actor: User, employee: Employee, data: Mapping[str, Any]) ->
     ya da istisna ay sayısı yeni tarihe göre fazla kalan devir varken değiştirilemez. Kart önce
     kilitlenir (bordro kayıtlarının kilit sırası): aynı anda girilen kalem ya da devir bu denetimi
     atlatamaz."""
-    _require_role(actor)
+    require_access(actor, CARDS, CHANGE, "Personel kartını değiştirme yetkiniz yok.")
     employee = Employee.objects.select_for_update().get(pk=employee.pk)
     values = _clean(_pick(data, EMPLOYEE_FIELDS), employee)
     if "hire_date" in values and values["hire_date"] != employee.hire_date:
@@ -512,7 +505,7 @@ def terminate_employee(
 
     Bağlı sistem hesabı kendiliğinden kapanmaz; Sistem > Kullanıcılar'dan pasife alınır.
     """
-    _require_role(actor)
+    require_access(actor, CARDS, CHANGE, "Personelin ayrılışını kaydetme yetkiniz yok.")
     locked = Employee.objects.select_for_update().get(pk=employee.pk)
     if not locked.is_active:
         raise BusinessRuleError("already_terminated", "Bu personelin ayrılışı zaten kayıtlı.")
@@ -562,7 +555,7 @@ def terminate_employee(
 def reinstate_employee(actor: User, employee: Employee, *, note: str = "") -> Employee:
     """Ayrılan personeli yeniden çalışır yapar (ör. yeniden işe alım); çıkış tarihi boşalır, eski
     tarih denetim günlüğünde kalır. Ayrılışta kaldırılan puantaj günleri geri gelmez."""
-    _require_role(actor)
+    require_access(actor, CARDS, CHANGE, "Personeli yeniden işe başlatma yetkiniz yok.")
     locked = Employee.objects.select_for_update().get(pk=employee.pk)
     if locked.is_active:
         raise BusinessRuleError("already_active", "Bu personel zaten çalışıyor görünüyor.")
@@ -605,7 +598,7 @@ def add_document(
     bitiş tarihi belirsiz süreli sözleşmede boş kalır, başlangıçtan önce olamaz. Belgenin türüne
     uymayan tarihler yok sayılır. Ayrılan personele de belge eklenebilir (ör. son bordro).
     """
-    _require_role(actor)
+    require_access(actor, CARDS, CHANGE, "Özlük belgesi ekleme yetkiniz yok.")
     if kind not in EmployeeDocument.Kind.values:
         raise BusinessRuleError("invalid_kind", "Geçersiz belge türü.")
     name = os.path.basename(file.name or "belge")[:255]
@@ -659,7 +652,7 @@ def add_document(
 @transaction.atomic
 def remove_document(actor: User, document: EmployeeDocument, reason: str) -> EmployeeDocument:
     """Belgeyi kaldırır: silinmez, pasife alınır ve artık verilmez. Neden zorunludur."""
-    _require_role(actor)
+    require_access(actor, CARDS, CHANGE, "Özlük belgesini kaldırma yetkiniz yok.")
     reason = _text(reason)[:500]
     if not reason:
         raise BusinessRuleError("reason_required", "Kaldırma nedeni girilmelidir.")
@@ -683,7 +676,7 @@ def remove_document(actor: User, document: EmployeeDocument, reason: str) -> Emp
 
 def record_document_access(actor: User, document: EmployeeDocument) -> None:
     """Belgenin açıldığını kartın geçmişine yazar (kişisel veriye erişim izi, docs/KVKK.md)."""
-    _require_role(actor)
+    require_access(actor, CARDS, VIEW, "Özlük belgelerini görme yetkiniz yok.")
     log_change(
         actor,
         document.employee,
@@ -749,7 +742,7 @@ def update_attendance_settings(
     yalnızca değiştirilir (`daily_hours_required`). Kayıtlı günlere ve aylara dokunulmaz: hiç
     onaylanmamış ayın günleri yeni değerle sayılır, bir kez onaylanmış ay onaydaki değeri korur.
     """
-    _require_role(actor)
+    require_access(actor, SETTINGS, CHANGE, "Personel ayarlarını değiştirme yetkiniz yok.")
     days = sorted({int(day) for day in rest_weekdays})
     if not days or len(days) > 6 or any(day < 0 or day > 6 for day in days):
         raise BusinessRuleError(
@@ -810,7 +803,7 @@ def _clean_holiday(values: dict[str, Any], holiday: PublicHoliday | None = None)
 @transaction.atomic
 def add_holiday(actor: User, data: Mapping[str, Any]) -> PublicHoliday:
     """Takvime resmi tatil ekler (ör. dini bayram günü). Tarih onaylı bir aya düşemez."""
-    _require_role(actor)
+    require_access(actor, ATTENDANCE, CHANGE, "Tatil takvimini değiştirme yetkiniz yok.")
     values = _clean_holiday(_pick(data, HOLIDAY_FIELDS))
     return masterdata.create_record(actor, PublicHoliday, values)
 
@@ -819,7 +812,7 @@ def add_holiday(actor: User, data: Mapping[str, Any]) -> PublicHoliday:
 def update_holiday(actor: User, holiday: PublicHoliday, data: Mapping[str, Any]) -> PublicHoliday:
     """Tatilin adını, tarihini ya da yarım gün bilgisini değiştirir (eski ve yeni tarih açık ayda
     olmalı)."""
-    _require_role(actor)
+    require_access(actor, ATTENDANCE, CHANGE, "Tatil takvimini değiştirme yetkiniz yok.")
     _require_month_open(holiday.date)
     values = _clean_holiday(_pick(data, HOLIDAY_FIELDS), holiday)
     return masterdata.update_record(actor, holiday, values)
@@ -828,7 +821,7 @@ def update_holiday(actor: User, holiday: PublicHoliday, data: Mapping[str, Any])
 @transaction.atomic
 def remove_holiday(actor: User, holiday: PublicHoliday) -> PublicHoliday:
     """Tatili takvimden kaldırır (silinmez, pasife alınır). Onaylı aydaki tatil kaldırılamaz."""
-    _require_role(actor)
+    require_access(actor, ATTENDANCE, CHANGE, "Tatil takvimini değiştirme yetkiniz yok.")
     _require_month_open(holiday.date)
     return masterdata.set_active(actor, holiday, False, note="Tatil takvimden kaldırıldı")
 
@@ -837,7 +830,7 @@ def remove_holiday(actor: User, holiday: PublicHoliday) -> PublicHoliday:
 def add_fixed_holidays(actor: User, year: int) -> list[PublicHoliday]:
     """Yılın sabit resmi tatillerini ekler. Takvimde zaten tatil olan ya da onaylı aya düşen
     günler atlanır; tekrar çalıştırmak güvenlidir."""
-    _require_role(actor)
+    require_access(actor, ATTENDANCE, CHANGE, "Tatil takvimini değiştirme yetkiniz yok.")
     if not MIN_YEAR <= year <= MAX_YEAR:
         raise BusinessRuleError("invalid_year", f"Yıl {MIN_YEAR} ile {MAX_YEAR} arasında olmalı.")
     taken = set(selectors.holidays_of_year(year).values_list("date", flat=True))
@@ -1053,7 +1046,7 @@ def set_attendance_day(
     kesintisi doğurur (hafta tatiline ya da tam gün tatile "Çalıştı" yazılmış günde doğurmaz); SGK
     günü değişmez, bordrosu onaylı ay değişmez.
     """
-    _require_role(actor)
+    require_access(actor, ATTENDANCE, CHANGE, "Puantaj girme yetkiniz yok.")
     # Kart kilitlenip yeniden okunur: aynı anda kaydedilen ayrılışın çıkış tarihi görülür.
     employee = Employee.objects.select_for_update().get(pk=employee.pk)
     hours = Decimal(overtime_hours or 0)
@@ -1100,7 +1093,7 @@ def set_attendance_range(
     çalışması işareti sıfırlanır. Aralık çalışılan saat taşımaz: "Çalıştı" kalan günün kayıtlı saati
     ve yarım gün işareti korunur, başka duruma geçen günün saati ve işareti silinir.
     """
-    _require_role(actor)
+    require_access(actor, ATTENDANCE, CHANGE, "Puantaj girme yetkiniz yok.")
     if status not in AttendanceStatus.values:
         raise BusinessRuleError("invalid_status", "Geçersiz puantaj durumu.")
     if end < start:
@@ -1191,7 +1184,7 @@ def approve_attendance_month(actor: User, year: int, month: int) -> AttendanceMo
     günler güncel giriş ve çıkış tarihleriyle yazılır, aynı anda kaydedilen ayrılışla çakışmaz.
     Kilitten sonra tabloya yeni bir kart girerse (ör. o sırada yeniden işe başlatılan ya da açılan
     kart) onay geri alınır (`attendance_cards_changed`); yeniden onaylanınca kart da kilitlenir."""
-    _require_role(actor)
+    require_access(actor, ATTENDANCE, APPROVE, "Puantajı onaylama yetkiniz yok.")
     first, last = selectors.month_bounds(year, month)
     if last >= timezone.localdate():
         raise BusinessRuleError(
@@ -1249,7 +1242,7 @@ def approve_attendance_month(actor: User, year: int, month: int) -> AttendanceMo
 def reopen_attendance_month(actor: User, record: AttendanceMonth, reason: str) -> AttendanceMonth:
     """Onaylı ayı düzeltme için yeniden açar (gerekçe zorunlu). Günler ve ayın günlük çalışma saati
     onaydaki haliyle kalır. Ayın bordrosu onaylıysa reddedilir (önce bordro yeniden açılır)."""
-    _require_role(actor)
+    require_access(actor, ATTENDANCE, APPROVE, "Onaylı puantajı yeniden açma yetkiniz yok.")
     reason = _text(reason)[:500]
     if not reason:
         raise BusinessRuleError("reason_required", "Yeniden açma gerekçesi girilmelidir.")
@@ -1323,7 +1316,7 @@ def add_wage(actor: User, data: Mapping[str, Any]) -> EmployeeWage:
     eklenir; aynı kişide aynı tarihte iki geçerli ücret olamaz. Ücret sıfırdan büyük olmalı.
     Ayrılan kişiye de girilir (geçmiş ayın hesabı için). Ücretin geçerli olacağı günler (bir sonraki
     ücrete kadar) kişinin onaylı bordrodaki bir ayına düşerse reddedilir."""
-    _require_role(actor)
+    require_access(actor, WAGES, CHANGE, "Ücret girme yetkiniz yok.")
     wage = EmployeeWage(**_pick(data, WAGE_FIELDS))
     if wage.employee_id is None:
         raise BusinessRuleError("employee_required", "Personel seçilmelidir.")
@@ -1361,7 +1354,7 @@ def add_wage(actor: User, data: Mapping[str, Any]) -> EmployeeWage:
 def remove_wage(actor: User, wage: EmployeeWage, reason: str) -> EmployeeWage:
     """Yanlış ücret kaydını kaldırır (silinmez, pasife alınır; neden zorunlu). Ücretin geçerli
     olduğu günler kişinin onaylı bordrodaki bir ayına düşüyorsa reddedilir."""
-    _require_role(actor)
+    require_access(actor, WAGES, CHANGE, "Ücret kaydını kaldırma yetkiniz yok.")
     reason = _text(reason)[:500]
     if not reason:
         raise BusinessRuleError("reason_required", "Kaldırma nedeni girilmelidir.")
@@ -1537,7 +1530,7 @@ def create_parameter_set(actor: User, data: Mapping[str, Any]) -> PayrollParamet
     """Bordro parametre seti açar (ör. yeni yılın yasal değerleri; ekranda yasal değerlerle dolu
     gelir, mali müşavirle kontrol edilip kaydedilir). Geçerlilik bir ayın ilk günüdür; aynı aydan
     geçerli ikinci set açılamaz."""
-    _require_role(actor)
+    require_access(actor, SETTINGS, CHANGE, "Bordro parametrelerini değiştirme yetkiniz yok.")
     values = _clean_parameters(_pick(data, PARAMETER_FIELDS))
     years = {values["valid_from"].year}
     before = _approved_parameters(years)
@@ -1557,7 +1550,7 @@ def update_parameter_set(
     """Parametre setini düzeltir; değişen değerler eski → yeni denetim günlüğüne yazılır. Onaylı
     bir bordro ayının parametrelerini değiştirecekse reddedilir (kaynak ya da not düzeltmesi
     serbesttir)."""
-    _require_role(actor)
+    require_access(actor, SETTINGS, CHANGE, "Bordro parametrelerini değiştirme yetkiniz yok.")
     locked = PayrollParameterSet.objects.select_for_update().get(pk=instance.pk)
     if not locked.is_active:
         raise BusinessRuleError("parameters_removed", "Kaldırılmış parametre seti düzenlenemez.")
@@ -1582,7 +1575,7 @@ def remove_parameter_set(
     """Yanlış açılmış parametre setini kaldırır (silinmez, pasife alınır; neden zorunlu). O ay ve
     sonrası bir önceki setle, yoksa yasal değerlerle hesaplanır. Onaylı bir bordro ayının
     parametrelerini değiştirecekse reddedilir."""
-    _require_role(actor)
+    require_access(actor, SETTINGS, CHANGE, "Bordro parametrelerini değiştirme yetkiniz yok.")
     reason = _text(reason)[:500]
     if not reason:
         raise BusinessRuleError("reason_required", "Kaldırma nedeni girilmelidir.")
@@ -1617,7 +1610,7 @@ def set_external_payroll(
     mali müşavirin bordrosundaki brüt toplam ve işverene maliyet. İşveren maliyeti tablosu ve
     personel maliyeti bu rakamları kullanır. Kişinin o aya ERP'de girilmiş kalemleri varsa rakam
     yine girilir; kalemler hesaplanmaz, bordro listesinde mali müşavir bölümünde yazar."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, CHANGE, "Mali müşavir bordro tutarlarını girme yetkiniz yok.")
     _check_period(year, month)
     employee = Employee.objects.select_for_update().get(pk=employee.pk)
     figure = (
@@ -1687,10 +1680,24 @@ def record_payroll_access(
     approval: PayrollApproval | None = None,
     employee: Employee | None = None,
 ) -> None:
-    """Bordro çıktısının (PDF, Excel) açıldığını denetim günlüğüne yazar (ücret ve kimlik bilgisi
-    içeren kişisel veriye erişim izi, docs/KVKK.md): ayın bordro kaydına (yoksa kayıtsız); tek
-    kişinin ücret pusulası kişinin kartının geçmişine de."""
-    _require_role(actor)
+    """Bordro çıktısının (PDF, Excel) açıldığını denetim günlüğüne yazar (Bordro: Görür; ücret ve
+    kimlik bilgisi içeren kişisel veriye erişim izi, docs/KVKK.md): ayın bordro kaydına (yoksa
+    kayıtsız); tek kişinin ücret pusulası kişinin kartının geçmişine de."""
+    require_access(actor, PAYROLL, VIEW, "Bordroyu görme yetkiniz yok.")
+    log_payroll_access(actor, year, month, output, approval=approval, employee=employee)
+
+
+def log_payroll_access(
+    actor: User,
+    year: int,
+    month: int,
+    output: str,
+    *,
+    approval: PayrollApproval | None = None,
+    employee: Employee | None = None,
+) -> None:
+    """`record_payroll_access`'in günlük yazan kısmı, yetki denetimi olmadan. Başka modül kendi
+    bölümüyle denetler ve bunu çağırır (ör. maliyet, Personel maliyeti: Görür ile; plan §5.4)."""
     label = selectors.month_label(year, month)
     run = PayrollRun.objects.filter(year=year, month=month).first()
     parts = [f"Bordro çıktısı açıldı: {output}", label]
@@ -1713,7 +1720,7 @@ def remove_external_payroll(
 ) -> ExternalPayrollFigure:
     """Yanlış girilen mali müşavir rakamını kaldırır (silinmez, pasife alınır; neden zorunlu). O ay
     yeniden kartın işaretine göre hesaplanır."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, CHANGE, "Mali müşavir bordro tutarlarını kaldırma yetkiniz yok.")
     reason = _text(reason)[:500]
     if not reason:
         raise BusinessRuleError("reason_required", "Kaldırma nedeni girilmelidir.")
@@ -1867,7 +1874,7 @@ def set_opening_balance(
     Ocak'ta kümülatif sıfırdan başlar, devir girilmez; bu yıl o aydan önce bu işyerinde çalışmayan
     kişiye de gerekmez. Kişi bir önceki ay ERP'de hesaplandıysa devir o ayların ERP hesabının
     yerine geçer (mali müşavirle eşitleme): `confirm_override` ile onaylanır."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, CHANGE, "Bordro devirlerini girme yetkiniz yok.")
     _check_payroll_month(year, month)
     if month == 1:
         raise BusinessRuleError(
@@ -1957,7 +1964,7 @@ def set_opening_balances(
     """Ayın devirlerini toplu girer (devir penceresinin tek "Kaydet"i): satırlar tek tek
     `set_opening_balance` kurallarıyla yazılır; biri reddedilirse hiçbiri kaydedilmez ve satır
     hataları birlikte döner (`PayrollBatchError`). Kartlar kimlik sırasıyla kilitlenir."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, CHANGE, "Bordro devirlerini girme yetkiniz yok.")
     ids = _employee_ids(rows)
     list(Employee.objects.select_for_update().filter(pk__in=ids).order_by("pk"))
 
@@ -1985,7 +1992,7 @@ def remove_opening_balance(
 ) -> PayrollOpeningBalance:
     """Yanlış devri kaldırır (silinmez, pasife alınır; neden zorunlu). Zincir bir önceki devirden
     ya da yılın ilk ERP ayından yeniden kurulur."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, CHANGE, "Bordro devirlerini kaldırma yetkiniz yok.")
     reason = _text(reason)[:500]
     if not reason:
         raise BusinessRuleError("reason_required", "Kaldırma nedeni girilmelidir.")
@@ -2078,7 +2085,7 @@ def add_payroll_item(actor: User, data: Mapping[str, Any]) -> PayrollItem:
     """Kişiye o ayın ek ödemesini (brüt) ya da kesintisini (netten) girer. Kalem, birlikte ödendiği
     ücretin bordro ayına girilir; başlangıç ayından önceye ve gelecek aya girilmez. Kişi o ay işte
     ve bordrosu ERP'de hesaplanıyor olmalı."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, CHANGE, "Bordro kalemi girme yetkiniz yok.")
     values = _pick(data, ITEM_FIELDS)
     if values.get("employee") is None:
         raise BusinessRuleError("employee_required", "Personel seçilmelidir.")
@@ -2093,7 +2100,7 @@ def add_payroll_items(
     """Ayın kalemlerini toplu girer ("Toplu ekle" ve "Geçen aydan kopyala"): satırlar
     `add_payroll_item` kurallarıyla yazılır; biri reddedilirse hiçbiri kaydedilmez ve satır hataları
     birlikte döner (`PayrollBatchError`). Kartlar kimlik sırasıyla kilitlenir."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, CHANGE, "Bordro kalemi girme yetkiniz yok.")
     ids = _employee_ids(rows)
     cards = {
         card.pk: card
@@ -2114,7 +2121,7 @@ def add_payroll_items(
 def update_payroll_item(actor: User, item: PayrollItem, data: Mapping[str, Any]) -> PayrollItem:
     """Kalemi düzeltir: tutar, kategori (aynı tür içinde) ve açıklama. Değişen değerler eski → yeni
     denetim günlüğüne, özeti kartın geçmişine yazılır."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, CHANGE, "Bordro kalemini değiştirme yetkiniz yok.")
     values = _pick(data, ITEM_UPDATE_FIELDS)
     employee = Employee.objects.select_for_update().get(pk=item.employee_id)
     locked = PayrollItem.objects.select_for_update().get(pk=item.pk)
@@ -2133,7 +2140,7 @@ def update_payroll_item(actor: User, item: PayrollItem, data: Mapping[str, Any])
 @transaction.atomic
 def remove_payroll_item(actor: User, item: PayrollItem, reason: str) -> PayrollItem:
     """Yanlış kalemi kaldırır (silinmez, pasife alınır; neden zorunlu)."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, CHANGE, "Bordro kalemini kaldırma yetkiniz yok.")
     reason = _text(reason)[:500]
     if not reason:
         raise BusinessRuleError("reason_required", "Kaldırma nedeni girilmelidir.")
@@ -2301,7 +2308,7 @@ def approve_payroll_month(
     gününden üç ay sonrasının son gününe kadar.
 
     Kilit sırası: ayın kartları, puantaj ayı, bordro yılı, önceki bordro ayı, bu bordro ayı."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, APPROVE, "Bordroyu onaylama yetkiniz yok.")
     _check_payroll_month(year, month)
     label = selectors.month_label(year, month)
     first, last = selectors.month_bounds(year, month)
@@ -2406,7 +2413,7 @@ def reopen_payroll_month(actor: User, run: PayrollRun, reason: str) -> PayrollRu
     açılır (aylar sondan başa). Onay ve satırları saklanır (geçersiz olarak); ay yeniden canlı
     hesaplanır ve onaydaki kişiler onaydaki "Bordrosu mali müşavirde" ve "BES'e dahil"
     işaretleriyle hesaplanır (kartı izlemeye ayrıca geçirilir)."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, APPROVE, "Onaylı bordroyu yeniden açma yetkiniz yok.")
     reason = _text(reason)[:500]
     if not reason:
         raise BusinessRuleError("reason_required", "Yeniden açma gerekçesi girilmelidir.")
@@ -2450,7 +2457,7 @@ def set_payroll_payment_date(
 ) -> PayrollRun:
     """Onaylı bordronun ödeme tarihini gerekçeyle düzeltir (tutarlar değişmez, ay kilitli kalır);
     eski → yeni denetim günlüğüne yazılır."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, APPROVE, "Bordronun ödeme tarihini düzeltme yetkiniz yok.")
     reason = _text(reason)[:500]
     if not reason:
         raise BusinessRuleError("reason_required", "Düzeltme gerekçesi girilmelidir.")
@@ -2485,7 +2492,7 @@ def set_payroll_follow_card(
     """Yeniden açılan ayda kişiyi kartın bugünkü işaretlerine ("Bordrosu mali müşavirde", "BES'e
     dahil") geçirir (`follow`) ya da son onaydaki işaretlere döndürür. Kayda ve kartın geçmişine
     yazılır."""
-    _require_role(actor)
+    require_access(actor, PAYROLL, CHANGE, "Bordroyu değiştirme yetkiniz yok.")
     employee = Employee.objects.select_for_update().get(pk=employee.pk)
     locked = PayrollRun.objects.select_for_update().get(pk=run.pk)
     label = selectors.month_label(locked.year, locked.month)

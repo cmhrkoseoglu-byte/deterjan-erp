@@ -1,7 +1,7 @@
 """Paket denkliği: ön yüz kabuğu (docs/plan/kisi-yetkileri.md §5.5 3. parça, §2 ve §5.9).
 
-Menü öğelerinin rol listeleri (`frontend/src/layout/menu.ts`), rota korumaları (`routes.tsx`) ve
-arama kaynakları (`pages/SearchPage.tsx`) yetki ifadeleriyle karşılaştırılır:
+Menü öğelerinin 7. adıma kadarki rol listeleri (`frontend/src/layout/menu.ts`), rota korumaları
+(`routes.tsx`) ve arama kaynakları (`pages/SearchPage.tsx`) yetki ifadeleriyle karşılaştırılır:
 
 - menüde modül, ekranı olan bölümlerinden birinde Görür varsa görünür (plan §2); modül sayfaları
   ve birden çok bölümün kayıtlarını gösteren alt sayfalar aynı birleşimle açılır (plan §5.9);
@@ -9,8 +9,10 @@ arama kaynakları (`pages/SearchPage.tsx`) yetki ifadeleriyle karşılaştırıl
 - arama kaynağı, kayıt türünün okuma bölümlerinden (plan §5.1) birinde Görür ister. Kayıt okuması
   (`r`) değil: açık okumalı kaynaklar o zaman herkese açılırdı.
 
-`MENU_ROLES` menü öğelerinin bugünkü rol listeleridir (dondurulmuş); `menuRoles(...)` kullanan
-satırlar bu tabloyu kullanır, tablo da `menu.ts` ile ayrıca karşılaştırılır.
+`MENU_ROLES` menü öğelerinin 7. adıma kadarki rol listeleridir (dondurulmuş); `menuRoles(...)`
+kullanan satırlar bu tabloyu kullanır. 8. adımda ön yüz bu listeleri bıraktı (menü, rotalar ve arama
+`can()` ile karar verir; `frontend/src/auth/pageAccess.ts`); satırlar dondurulmuş listelerle kalır,
+ön yüzün aynı kararı verdiğini ön yüz eşlik testi kanıtlar.
 
 §8'deki ilk gün değişiklikleri `PLANNED` listesindedir: bugünkü karar plandaki yeni rollere
 daralır; test yeni kararın genişlemediğini ve paketlerin yeni rollere denk olduğunu kanıtlar.
@@ -19,7 +21,6 @@ Rol görünümünde kalanlar (`/pano` ve açılış sayfasının yönetim rolü 
 rozetleri) satır değildir (plan §5.9 "Rol görünümü").
 """
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -30,7 +31,6 @@ from apps.core.access import CHANGE, VIEW, Kind, SectionRef
 from apps.core.tests.access_helpers import (
     ADMIN_ONLY,
     ANY_ROLE,
-    REPO_ROOT,
     SIGNED_IN,
     Need,
     OldRoles,
@@ -101,8 +101,8 @@ def planned_errors(changes: Sequence[Planned]) -> list[str]:
 
 # --- menü ------------------------------------------------------------------------------------
 
-# `layout/menu.ts` MENU öğelerinin bugünkü rolleri: boş dizi giriş yapan herkes, ["admin"] yalnız
-# admin.
+# `layout/menu.ts` MENU öğelerinin 7. adıma kadarki rolleri (dondurulmuş): boş dizi giriş yapan
+# herkes, ["admin"] yalnız admin.
 MENU_ROLES: dict[str, OldRoles] = {
     "dashboard": ("yonetim",),
     "home": SIGNED_IN,
@@ -126,29 +126,6 @@ MENU_ROLES: dict[str, OldRoles] = {
     "system": ADMIN_ONLY,
     "admin": ADMIN_ONLY,
 }
-
-MENU_FILE = REPO_ROOT / "frontend" / "src" / "layout" / "menu.ts"
-_MENU_ITEM = re.compile(r'key:\s*"(?P<key>[a-z_]+)".*?roles:\s*\[(?P<roles>[^\]]*)\]', re.S)
-_ROLE = re.compile(r"[\"']([a-z_]+)[\"']")
-
-
-def menu_ts_roles() -> dict[str, tuple[str, ...]]:
-    """`menu.ts` MENU dizisindeki öğelerin rol dizileri (bugünkü kod)."""
-    text = MENU_FILE.read_text(encoding="utf-8")
-    start = text.index("export const MENU")
-    end = text.index("export function", start)
-    return {
-        match["key"]: tuple(_ROLE.findall(match["roles"]))
-        for match in _MENU_ITEM.finditer(text, start, end)
-    }
-
-
-def _menu_form(roles: OldRoles) -> set[str]:
-    if roles == SIGNED_IN:
-        return set()
-    if roles == ADMIN_ONLY:
-        return {"admin"}
-    return set(roles)
 
 
 def _menu(key: str, routes: str) -> Row:
@@ -261,7 +238,6 @@ ROWS: list[Row] = [
         "SearchPage.tsx sources() purchaseOrders (ORDER_READ_ROLES)",
         ("satin_alma", "yonetim", "depo"),
         level(purchasing.ORDERS),
-        live="frontend:src/modules/purchasing/config.ts:ORDER_READ_ROLES",
     ),
     Row(
         "SearchPage.tsx sources() samples (menuRoles('quality'))",
@@ -331,11 +307,3 @@ def test_menu_free_groups_do_not_open_a_menu() -> None:
     for module_key in ("sensitive", "workflow", "system"):
         with pytest.raises(ValueError, match="menüde kendi modülü yok"):
             visible(module_key)
-
-
-def test_menu_roles_match_menu_ts() -> None:
-    """`MENU_ROLES` bugünkü `menu.ts` ile aynı: `menuRoles(...)` satırlarının canlı denetimi."""
-    live = menu_ts_roles()
-    assert set(live) == set(MENU_ROLES)
-    for key, roles in MENU_ROLES.items():
-        assert set(live[key]) == _menu_form(roles), key

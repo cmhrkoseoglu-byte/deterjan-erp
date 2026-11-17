@@ -2,11 +2,14 @@
 
 Bugünkü her rol denetimi (API, servis, kayıt türü ve ön yüz) bir yetki ifadesine eşlenir. Kişiye
 özel ayar yokken eski denetim ile yeni yetki, admin dışındaki 8 rolün bütün bileşimlerinde aynı
-kararı verir. `live` satırları koddaki rol sabitini de denetler.
+kararı verir.
 
 Satır olmayan: `apply_lot_outcome` denetim yapmaz (iade sonucu ardıl adımdır, plan §5.4).
 Teslim almadaki lot bekletme (`inventory.block_lot(..., quality_decision=True)`) ve numune açma
 (`quality.open_sample`) da denetimsizdir; teslim alma kararı yalnız `RECEIVE_ROLES`'tur.
+
+8. adımda ön yüz de bölüm denetimine geçti: ön yüz satırlarının `live` bağlantısı kaldırıldı;
+satırlar 8. adım öncesi rol listelerini dondurulmuş olarak tutar.
 """
 
 from apps.core.access import CHANGE
@@ -16,7 +19,6 @@ from apps.sales.access import ORDERS as SALES_ORDERS
 from apps.sales.access import PICKING, SHIPMENTS, SHIPPED_LOTS
 
 VIEWSET = "CustomerReturnViewSet"
-CONFIG = "frontend:src/modules/returns/config.ts"
 
 SHIPPING = ("sevkiyat",)
 RECEIVERS = ("sevkiyat", "depo")
@@ -82,31 +84,26 @@ ROWS = [
         "Ön yüz ReturnsPage.tsx yeni iade düğmesi (RETURN_EDIT_ROLES)",
         SHIPPING,
         level(RETURNS, CHANGE),
-        live=f"{CONFIG}:RETURN_EDIT_ROLES",
     ),
     Row(
         "Ön yüz ReturnPage.tsx editable: formu düzenleme ve taslağı kaydet (RETURN_EDIT_ROLES)",
         SHIPPING,
         level(RETURNS, CHANGE),
-        live=f"{CONFIG}:RETURN_EDIT_ROLES",
     ),
     Row(
         "Ön yüz ReturnPage.tsx canCancel: taslağı iptal et (RETURN_EDIT_ROLES)",
         SHIPPING,
         level(RETURNS, CHANGE),
-        live=f"{CONFIG}:RETURN_EDIT_ROLES",
     ),
     Row(
         "Ön yüz ReturnPage.tsx canReceive: teslim al (RETURN_RECEIVE_ROLES)",
         RECEIVERS,
         level(RECEIVING, CHANGE),
-        live=f"{CONFIG}:RETURN_RECEIVE_ROLES",
     ),
     Row(
         "Ön yüz ReturnPage.tsx canScrap: imha et (RETURN_SCRAP_ROLES)",
         RECEIVERS,
         level(RECEIVING, CHANGE),
-        live=f"{CONFIG}:RETURN_SCRAP_ROLES",
     ),
     Row(
         "Ön yüz ReturnPage.tsx canOpenShipment: sevkiyat bağlantısı (SHIPMENT_VIEW_ROLES = "

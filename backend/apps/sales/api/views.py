@@ -1,4 +1,4 @@
-from typing import Any, ClassVar
+from typing import Any
 
 import django_filters
 from django.db.models import Count, Exists, OuterRef, QuerySet
@@ -7,25 +7,32 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from apps.core.access import APPROVE, CHANGE, VIEW
 from apps.core.exceptions import BusinessRuleError
-from apps.core.permissions import HasRole
-from apps.core.roles import DEPO, PLANLAMA, SEVKIYAT, YONETIM
+from apps.core.permissions import AccessMixin, HasAccess, ReadRule
 from apps.inventory import selectors as inventory_selectors
 from apps.inventory.api.serializers import CancelSerializer
 from apps.inventory.models import Lot
 from apps.sales import selectors, services
+from apps.sales.access import ORDERS, PICKING, SHIPMENTS, SHIPPED_LOTS
 from apps.sales.api import serializers as s
 from apps.sales.models import SalesOrder, Shipment, ShipmentPick
 from apps.sales.state import shipment_states
 from apps.sales.waybill import waybill_pdf
 
-READ_ROLES = (SEVKIYAT, YONETIM, PLANLAMA, DEPO)
-WRITE_ROLES = services.ORDER_ROLES
-READ_ACTIONS = frozenset({"list", "retrieve", "metadata", "candidates"})
+ORDER_READ = ReadRule(ORDERS)
+ORDER_CHANGE = HasAccess(ORDERS, CHANGE)
+ORDER_APPROVE = HasAccess(ORDERS, APPROVE)
+# Sevkiyat okuması: iki bölümden birinde okuma yeter (plan §5.1); toplama sayfası ve toplama
+# önerisi Sevkiyatlar ve irsaliye: Görür ile de salt okunur açılır (plan §3.7).
+SHIPMENT_READ = ReadRule(SHIPMENTS, PICKING)
+SHIPMENT_VIEW = HasAccess(SHIPMENTS, VIEW)
+SHIPMENT_CHANGE = HasAccess(SHIPMENTS, CHANGE)
+SHIPMENT_APPROVE = HasAccess(SHIPMENTS, APPROVE)
+PICKING_CHANGE = HasAccess(PICKING, CHANGE)
 
 
 def _user(request: Request) -> Any:
@@ -44,25 +51,39 @@ class SalesOrderFilter(django_filters.FilterSet):
 
 
 class SalesOrderViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Satış siparişleri. Okuma sevkiyat, yönetim, planlama ve depoya; yazma sevkiyat ve
-    yönetime açık (admin her yere). Durum PATCH ile değişmez; eylem uç noktaları kullanılır."""
+    """Satış siparişleri (plan §3.7 Satış siparişleri). GET, HEAD ve OPTIONS okumadır; onay
+    Onaylar, öteki yazma eylemleri Değiştirir ister. Karşılanmayan yolda GET okuma, öteki
+    metotlar (eylem yolunda HEAD dahil) bugünkü gibi Değiştirir ister, sonra DRF 405 döner.
+    Durum PATCH ile değişmez; eylem uç noktaları kullanılır."""
 
     serializer_class = s.SalesOrderSerializer
     filterset_class = SalesOrderFilter
     search_fields = ["number", "customer__name", "customer__code", "customer_po_no"]
     ordering_fields = ["order_date", "requested_delivery_date", "number", "created_at"]
     ordering = ["-order_date", "-id"]
-
-    def get_permissions(self) -> list[BasePermission]:
-        if self.action in READ_ACTIONS or self.request.method == "GET":
-            return [HasRole(*READ_ROLES)()]
-        return [HasRole(*WRITE_ROLES)()]
+    read_access = ORDER_READ
+    unhandled_read_methods = frozenset({"GET"})
+    unhandled_access = ORDER_CHANGE
+    action_access = {
+        "create": ORDER_CHANGE,
+        "update": ORDER_CHANGE,
+        "partial_update": ORDER_CHANGE,
+        "confirm": ORDER_APPROVE,
+        # Uç nokta siparişin durumunu bilmeden denetler; servis taslakta Değiştirir, onaylı
+        # siparişte Onaylar ister.
+        "cancel": ORDER_CHANGE | ORDER_APPROVE,
+        "close": ORDER_CHANGE,
+        "reserve_shortages": ORDER_CHANGE,
+        "reserve": ORDER_CHANGE,
+        "release": ORDER_CHANGE,
+    }
 
     def get_queryset(self) -> QuerySet[SalesOrder]:
         shortage = selectors.lines_with_quantities().filter(
@@ -263,14 +284,20 @@ class ShipmentFilter(django_filters.FilterSet):
 
 
 class ShipmentViewSet(
+    AccessMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Sevkiyatlar. Okuma sevkiyat, yönetim, planlama ve depoya; planlama, düzenleme, sevk onayı
-    ve iptal sevkiyata; lot okutma, okutmayı geri alma ve yükleme depoya açık (admin her yere)."""
+    """Sevkiyatlar (plan §3.7). Okuma Sevkiyatlar ve irsaliye ya da Toplama ve yükleme ile;
+    irsaliye yalnız Sevkiyatlar ve irsaliye: Görür ile. Planlama, düzenleme ve iptal Sevkiyatlar ve
+    irsaliye: Değiştirir, sevk onayı Onaylar; lot okutma, okutmayı geri alma ve yükleme Toplama ve
+    yükleme: Değiştirir ister.
+
+    Bugünkü gibi yalnız GET okumadır (karşılanmayan yolda da). HEAD, OPTIONS ve karşılanmayan
+    öteki metotlar Sevkiyatlar ve irsaliye: Değiştirir ister (karşılanmayanda sonra DRF 405)."""
 
     serializer_class = s.ShipmentSerializer
     filterset_class = ShipmentFilter
@@ -282,17 +309,25 @@ class ShipmentViewSet(
     ]
     ordering_fields = ["planned_date", "number", "created_at"]
     ordering = ["-planned_date", "-id"]
-    action_roles: ClassVar[dict[str, tuple[str, ...]]] = {
-        "pick": services.PICK_ROLES,
-        "undo_pick": services.PICK_ROLES,
-        "load": services.PICK_ROLES,
+    read_access = SHIPMENT_READ
+    read_methods = frozenset({"GET"})
+    other_safe_access = SHIPMENT_CHANGE
+    unhandled_read_methods = frozenset({"GET"})
+    unhandled_access = SHIPMENT_CHANGE
+    action_access = {
+        "create": SHIPMENT_CHANGE,
+        "update": SHIPMENT_CHANGE,
+        "partial_update": SHIPMENT_CHANGE,
+        "cancel": SHIPMENT_CHANGE,
+        "dispatch_shipment": SHIPMENT_APPROVE,
+        "pick": PICKING_CHANGE,
+        "undo_pick": PICKING_CHANGE,
+        "load": PICKING_CHANGE,
+        # İrsaliye yalnız Sevkiyatlar ve irsaliye: Görür ile; `:get` eki HEAD'i dışarıda bırakır
+        # (HEAD bugünkü gibi Değiştirir ister).
+        "waybill:get": SHIPMENT_VIEW,
+        "waybill_pdf:get": SHIPMENT_VIEW,
     }
-
-    def get_permissions(self) -> list[BasePermission]:
-        request = getattr(self, "request", None)
-        if request is not None and request.method == "GET":
-            return [HasRole(*READ_ROLES)()]
-        return [HasRole(*self.action_roles.get(self.action, services.SHIPMENT_ROLES))()]
 
     def get_queryset(self) -> QuerySet[Shipment]:
         return Shipment.objects.select_related(
@@ -433,14 +468,14 @@ class ShipmentViewSet(
         return response
 
 
-class ShippedLotViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
-    """Müşteriye sevk edilen lotlar (müşteri kartı); `customer` filtresi zorunlu."""
+class ShippedLotViewSet(AccessMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
+    """Müşteriye sevk edilen lotlar (müşteri kartı); `customer` filtresi zorunlu. Her metot
+    Müşteriye sevk edilen lotlar: Görür ister (karşılanmayanda sonra DRF 405)."""
 
     serializer_class = s.ShippedLotSerializer
     filter_backends: list[Any] = []
-
-    def get_permissions(self) -> list[BasePermission]:
-        return [HasRole(SEVKIYAT, YONETIM)()]
+    read_access = ReadRule(SHIPPED_LOTS)
+    unhandled_access = HasAccess(SHIPPED_LOTS, VIEW)
 
     @extend_schema(parameters=[OpenApiParameter("customer", int, required=True)])
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:

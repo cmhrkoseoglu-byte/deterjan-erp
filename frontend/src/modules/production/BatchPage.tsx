@@ -33,8 +33,7 @@ import {
   type BatchLine,
   type ProductionBatchDetail,
 } from "../../api/production";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDateTime, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ct } from "../common/strings";
@@ -44,7 +43,7 @@ import { normalizeDecimal, trimDecimal } from "../common/forms";
 import { lotPath } from "../inventory/config";
 import { ExpiryText, Info, Qty } from "../inventory/shared";
 import { deviationPct, gaugeValue, lineState, remaining } from "./calc";
-import { BATCH_ROLES, LINE_STATE_COLOR, orderPath } from "./config";
+import { LINE_STATE_COLOR, orderPath } from "./config";
 import { BatchStatusBadge, LineStateBadge, ReasonModal } from "./shared";
 import { ScaleSelect } from "./ScaleSelect";
 import { rememberedScale, useScales } from "./scales";
@@ -77,10 +76,10 @@ export function BatchPage() {
 }
 
 function Batch({ batch }: { batch: ProductionBatchDetail }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const queryClient = useQueryClient();
   const open = batch.status === "IN_PROGRESS";
-  const canWork = open && hasAnyRole(user, BATCH_ROLES);
+  const canWork = open && can("production.batches", "change");
   const firstOpen = batch.lines.find((line) => line.state === "pending" || line.state === "under");
   const [selected, setSelected] = useState<number | null>(firstOpen?.requirement ?? null);
   const [finishOpen, setFinishOpen] = useState(false);

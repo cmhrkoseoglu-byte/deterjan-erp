@@ -6,7 +6,7 @@ import * as mdApi from "../../api/masterdata";
 import * as salesApi from "../../api/sales";
 import type { SalesOrder, SalesOrderDetail } from "../../api/sales";
 import * as workflowApi from "../../api/workflow";
-import { page, userWith } from "../../test/fixtures";
+import { page, userWith, withoutAccess } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
 import { recordPath } from "../../workflow/recordLinks";
 
@@ -145,7 +145,7 @@ describe("satış siparişleri", () => {
   it("üretim rolü sevkiyat sayfasına giremez", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("uretim"));
     renderApp("/sevkiyat");
-    expect(await screen.findByText(/yetkiniz yok/i));
+    expect(await screen.findByRole("heading", { name: "Yetkiniz yok" })).toBeInTheDocument();
   });
 
   it("detayda satır miktarları, toplam ve rezervasyonlar görünür; eksikler rezerve edilir", async () => {
@@ -262,6 +262,50 @@ describe("satış siparişleri", () => {
     ]);
   });
 
+  it("Onaylar'ı olup Değiştirir'i olmayan taslağı yeniden kaydetmeden onaylar", async () => {
+    const base = userWith("sevkiyat");
+    vi.mocked(authApi.fetchMe).mockResolvedValue({
+      ...base,
+      access: { ...base.access, "sales.orders": "va" },
+    });
+    const draft = detail({ status: "DRAFT", is_editable: true, reservations: [] });
+    vi.mocked(salesApi.getSalesOrder).mockResolvedValue(draft);
+    vi.mocked(salesApi.confirmSalesOrder).mockResolvedValue(detail());
+    renderApp("/sevkiyat/siparisler/7");
+
+    expect(await screen.findByTestId("order-lines")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Taslağı kaydet" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Onayla ve rezerve et" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Onayla ve rezerve et" }));
+    await waitFor(() => expect(salesApi.confirmSalesOrder).toHaveBeenCalledWith(7));
+    expect(salesApi.saveSalesOrder).not.toHaveBeenCalled();
+  });
+
+  it("Onaylar'ı olmayan taslağı onaylayamaz (backend onayda Onaylar ister)", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(
+      withoutAccess(userWith("sevkiyat"), { "sales.orders": "a" }),
+    );
+    vi.mocked(salesApi.getSalesOrder).mockResolvedValue(
+      detail({ status: "DRAFT", is_editable: true, reservations: [] }),
+    );
+    renderApp("/sevkiyat/siparisler/7");
+
+    expect(await screen.findByRole("button", { name: "Taslağı kaydet" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Onayla ve rezerve et" })).toBeNull();
+  });
+
+  it("varsayılan sekme görünmüyorsa ilk görünen sekme açılır", async () => {
+    // Depo toplamaya düşer; toplaması kaldırılmış depo siparişlere düşer (yönlendirme döngüsü yok).
+    const base = userWith("depo");
+    const access: Record<string, string> = { ...base.access };
+    delete access["sales.picking"];
+    vi.mocked(authApi.fetchMe).mockResolvedValue({ ...base, access });
+    renderApp("/sevkiyat");
+    expect(await screen.findByTestId("sales-orders")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Toplama" })).toBeNull();
+  });
+
   it("müşteri kartı sipariş geçmişini gösterir", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("sevkiyat"));
     vi.mocked(mdApi.getRecord).mockResolvedValue({
@@ -282,6 +326,30 @@ describe("satış siparişleri", () => {
     expect(await screen.findByText("Müşteri kartı: Zincir Market A.Ş.")).toBeInTheDocument();
     expect(await screen.findByTestId("customer-orders")).toHaveTextContent("SS-2026-00001");
     expect(salesApi.listSalesOrders).toHaveBeenCalledWith({ customer: 3, page_size: 100 });
+  });
+
+  it("siparişleri göremeyen müşteri kartında sipariş geçmişini görmez ve sormaz", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(
+      withoutAccess(userWith("sevkiyat"), { "sales.orders": "rvca", "sales.shipped_lots": "rv" }),
+    );
+    vi.mocked(mdApi.getRecord).mockResolvedValue({
+      id: 3,
+      code: "M-ZINCIR",
+      name: "Zincir Market A.Ş.",
+      tax_office: "",
+      tax_number: "",
+      address: "Gebze",
+      phone: "",
+      email: "",
+      contact_person: "",
+      is_active: true,
+      min_remaining_shelf_life_days: 180,
+    });
+    renderApp("/sevkiyat/musteriler/3");
+
+    expect(await screen.findByText("Müşteri kartı: Zincir Market A.Ş.")).toBeInTheDocument();
+    expect(screen.queryByTestId("customer-orders")).toBeNull();
+    expect(salesApi.listSalesOrders).not.toHaveBeenCalled();
   });
 
   it("görevdeki sipariş kaydı detay sayfasına gider", () => {

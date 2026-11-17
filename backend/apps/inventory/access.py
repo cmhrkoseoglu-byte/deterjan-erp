@@ -6,11 +6,13 @@ Lotu serbest bırakma ve reddetme yalnız kalite kararıyla olur (quality.sample
 from apps.core.access import (
     APPROVE,
     CHANGE,
+    COSTS,
     EVERYONE,
     PRICES,
     VIEW,
     ReadScope,
     grant,
+    register_audit_model,
     register_module,
     register_open_records,
     register_readers,
@@ -114,3 +116,29 @@ for role in (SATIN_ALMA, YONETIM):
 grant(DEPO, ADJUSTMENTS, VIEW, CHANGE, APPROVE)
 grant(YONETIM, ADJUSTMENTS, VIEW)
 grant(LABORATUVAR, LOT_BLOCK, APPROVE)
+
+# Denetim günlüğü (plan §5.6, §8 madde 7): lot maliyeti Maliyetleri görür'e, mal kabul fiyatları,
+# masrafları ve fiyat düzeltmesi notları (lot ve satır kayıtlarına geçen kopyaları dahil) Fiyatları
+# görür'e bağlıdır. Alan adları servis ve serializer'daki listelerle aynıdır (testi denetler).
+LOT_COST_FIELDS = ("unit_cost", "cost_is_estimated")
+RECEIPT_PRICE_FIELDS = ("unit_price", "currency", "exchange_rate")
+PRICE_CORRECTION_NOTE = r"^Fiyat düzeltmesi:"
+
+register_audit_model(
+    "inventory.lot", requires=[COSTS], fields=LOT_COST_FIELDS, note_with_fields=True
+)
+register_audit_model(
+    "inventory.goodsreceipt",
+    requires=[PRICES],
+    fields=(*RECEIPT_PRICE_FIELDS, "amount", "extra_cost"),
+    nested=True,
+    note=PRICE_CORRECTION_NOTE,
+)
+register_audit_model(
+    "inventory.goodsreceiptline",
+    requires=[PRICES],
+    fields=RECEIPT_PRICE_FIELDS,
+    note_with_fields=True,
+)
+# Ek masrafın kendisi (adı tutarı taşır) bütünüyle.
+register_audit_model("inventory.goodsreceiptextracost", requires=[PRICES])

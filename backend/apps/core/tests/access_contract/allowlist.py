@@ -24,7 +24,7 @@ MISSING = "<yok>"  # durum anlık görüntüde (ya da bugünkü kodda) yok
 ANY = "<her>"  # eski ya da yeni değer ne olursa olsun
 
 # Uygulanan adım (plan §10). Her adım bu sayıyı artırır ve kendi kayıtlarını ekler.
-CURRENT_STEP = 4
+CURRENT_STEP = 8
 
 
 def matches(pattern: str, text: str) -> bool:
@@ -386,6 +386,7 @@ ALLOWED: tuple[Allowed, ...] = (
         },
         step=5,
         old=MISSING,
+        new=2,
     ),
     *_cells(
         "§8 madde 7 (satın alma)",
@@ -399,6 +400,10 @@ ALLOWED: tuple[Allowed, ...] = (
         },
         step=5,
         old="purchasing.purchaseorder status_change [status] note$",
+        new=(
+            "purchasing.purchaseorder status_change [approval_limit_try, approval_total_try$, "
+            "exchange_rate$, status]"
+        ),
     ),
     *_cells(
         "§8 madde 7 (satın alma)",
@@ -446,6 +451,28 @@ ALLOWED: tuple[Allowed, ...] = (
             )
         },
         step=5,
+        new=[
+            "costing.costrate rate_per_kg",
+            "costing.lotcost finished_scrap_cost",
+            "costing.lotcost note",
+            "costing.lotcost total_cost",
+            "costing.lotcost unit_cost",
+            "inventory.goodsreceipt extra_cost.amount",
+            "inventory.goodsreceiptextracost amount",
+            "inventory.goodsreceiptline currency",
+            "inventory.goodsreceiptline exchange_rate",
+            "inventory.goodsreceiptline unit_price",
+            "inventory.lot cost_is_estimated",
+            "inventory.lot unit_cost",
+            "personnel.employeewage gross_monthly",
+            "personnel.payrollitem amount",
+            "purchasing.purchaseorder approval_total_try",
+            "purchasing.purchaseorder currency",
+            "purchasing.purchaseorder exchange_rate",
+            "purchasing.purchaseorder line.unit_price",
+            "purchasing.purchaseorderline unit_price",
+            "workflow.task description",
+        ],
         required=False,
     ),
     # 5. adım — İşçilik oranı notunda tutar yerine bordro numarası (denetim günlüğü; gerekli değil).
@@ -506,6 +533,20 @@ ALLOWED: tuple[Allowed, ...] = (
             )
         },
         step=5,
+        new={
+            "entries": [
+                {"action": "status_change", "money": {}, "note": ""},
+                {"action": "status_change", "money": {}, "note": ""},
+                {
+                    "action": "update",
+                    "money": {"line": [{}, None]},
+                    "note": "Satır # kaldırıldı (taslak)",
+                },
+                {"action": "update", "money": {}, "note": ""},
+                {"action": "create", "money": {"currency": [None, "EUR"]}, "note": ""},
+            ],
+            "status": 200,
+        },
     ),
     *_cells(
         "§8 madde 7 (satın alma)",
@@ -519,6 +560,49 @@ ALLOWED: tuple[Allowed, ...] = (
             )
         },
         step=5,
+        new={
+            "entries": [
+                {
+                    "action": "status_change",
+                    "money": {
+                        "approval_limit_try": [None, None],
+                        "approval_total_try": ["36000.00", "36000.00"],
+                        "exchange_rate": ["36.000000", "36.000000"],
+                    },
+                    "note": "",
+                },
+                {
+                    "action": "status_change",
+                    "money": {
+                        "approval_limit_try": [None, None],
+                        "approval_total_try": [None, "36000.00"],
+                        "exchange_rate": ["36.000000", "36.000000"],
+                    },
+                    "note": "",
+                },
+                {
+                    "action": "update",
+                    "money": {"line": [{"unit_price": "20.0000"}, None]},
+                    "note": "Satır # kaldırıldı (taslak)",
+                },
+                {
+                    "action": "update",
+                    "money": {"exchange_rate": ["35.000000", "36.000000"]},
+                    "note": "",
+                },
+                {
+                    "action": "update",
+                    "money": {"exchange_rate": ["34.000000", "35.000000"]},
+                    "note": "",
+                },
+                {
+                    "action": "create",
+                    "money": {"currency": [None, "EUR"], "exchange_rate": [None, "34.000000"]},
+                    "note": "",
+                },
+            ],
+            "status": 200,
+        },
     ),
     # 5. adım — Personel maliyetinden açılan yeni gider oranının notunda tutar yerine bordro
     # numarası yazar.
@@ -533,6 +617,7 @@ ALLOWED: tuple[Allowed, ...] = (
             )
         },
         step=5,
+        new={"labor_rate": {"note": "Personel maliyetinden", "rate_per_kg": "<n>"}, "status": 200},
     ),
     *_cells(
         "§8 madde 8",
@@ -545,6 +630,10 @@ ALLOWED: tuple[Allowed, ...] = (
             )
         },
         step=5,
+        new={
+            "labor_rate": [{"note": "Personel maliyetinden", "rate_per_kg": "<n>"}],
+            "status": 200,
+        },
     ),
     # 6. adım — Kişiye özel ayarlar ve paket sürümleri denetim günlüğünde yalnız admine görünür
     # (plan §5.6); yönetimin 1. adımdaki kaydı 5. adımda biter.
@@ -631,6 +720,7 @@ ALLOWED: tuple[Allowed, ...] = (
         },
         step=6,
         old="200",
+        new="403",
     ),
     # 7. adım — Yükten gelen bildirim alıcıları da yetkiyle süzülür (ör. siparişi açan kişi).
     *_cells(
@@ -974,13 +1064,13 @@ ALLOWED: tuple[Allowed, ...] = (
         old=True,
         new=False,
     ),
+    # Görevi göremeyen üstlenen (rolünü ya da kuralın yetkisini taşımayan) 404 alır.
     *_cells(
         "§8 madde 6",
         "probe_workflow",
         {
             "task batch_sample_analysis: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1002,7 +1092,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task dispatch_shipment: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1012,7 +1101,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task finished_qc: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1034,7 +1122,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task incoming_qc: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1045,7 +1132,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task maintenance_work_order_dolum: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1056,7 +1142,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task maintenance_work_order_laboratuvar: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1067,7 +1152,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task maintenance_work_order_planlama: claimer complete": (
                 "no_role",
-                "yonetim",
                 "depo",
                 "uretim",
                 "laboratuvar",
@@ -1078,7 +1162,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task maintenance_work_order_uretim: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "laboratuvar",
@@ -1100,7 +1183,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task material_prep: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "uretim",
                 "laboratuvar",
@@ -1110,7 +1192,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task packaging_prep: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "uretim",
                 "laboratuvar",
@@ -1120,7 +1201,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task pick_shipment: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "uretim",
                 "laboratuvar",
@@ -1130,7 +1210,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task plan_shipment: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1140,7 +1219,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task problem_reported: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1163,7 +1241,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task purchase_request: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1174,7 +1251,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task return_qc: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1185,7 +1261,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task return_rework: claimer complete": (
                 "no_role",
-                "yonetim",
                 "depo",
                 "uretim",
                 "laboratuvar",
@@ -1196,7 +1271,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task return_scrap: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "uretim",
                 "laboratuvar",
@@ -1206,7 +1280,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task rework_order: claimer complete": (
                 "no_role",
-                "yonetim",
                 "depo",
                 "uretim",
                 "laboratuvar",
@@ -1217,7 +1290,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task sales_shortage: claimer complete": (
                 "no_role",
-                "yonetim",
                 "depo",
                 "uretim",
                 "laboratuvar",
@@ -1228,7 +1300,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task start_batch: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "laboratuvar",
@@ -1239,7 +1310,6 @@ ALLOWED: tuple[Allowed, ...] = (
             ),
             "task start_filling: claimer complete": (
                 "no_role",
-                "yonetim",
                 "planlama",
                 "depo",
                 "uretim",
@@ -1251,6 +1321,39 @@ ALLOWED: tuple[Allowed, ...] = (
         },
         step=7,
         old=200,
+        new=404,
+    ),
+    # Yönetim, Tüm birimlerin görevleri ile görevi görür ama kendi rolünün görevi olmadığından
+    # tamamlayamaz (karar 5): 403.
+    *_cells(
+        "§8 madde 6",
+        "probe_workflow",
+        {
+            "task batch_sample_analysis: claimer complete": ("yonetim",),
+            "task dispatch_shipment: claimer complete": ("yonetim",),
+            "task finished_qc: claimer complete": ("yonetim",),
+            "task incoming_qc: claimer complete": ("yonetim",),
+            "task maintenance_work_order_dolum: claimer complete": ("yonetim",),
+            "task maintenance_work_order_laboratuvar: claimer complete": ("yonetim",),
+            "task maintenance_work_order_planlama: claimer complete": ("yonetim",),
+            "task maintenance_work_order_uretim: claimer complete": ("yonetim",),
+            "task material_prep: claimer complete": ("yonetim",),
+            "task packaging_prep: claimer complete": ("yonetim",),
+            "task pick_shipment: claimer complete": ("yonetim",),
+            "task plan_shipment: claimer complete": ("yonetim",),
+            "task problem_reported: claimer complete": ("yonetim",),
+            "task purchase_request: claimer complete": ("yonetim",),
+            "task return_qc: claimer complete": ("yonetim",),
+            "task return_rework: claimer complete": ("yonetim",),
+            "task return_scrap: claimer complete": ("yonetim",),
+            "task rework_order: claimer complete": ("yonetim",),
+            "task sales_shortage: claimer complete": ("yonetim",),
+            "task start_batch: claimer complete": ("yonetim",),
+            "task start_filling: claimer complete": ("yonetim",),
+        },
+        step=7,
+        old=200,
+        new=403,
     ),
     # 9. adım — "Kim neyi görür" raporu ve Excel'i: yalnız admin (plan §5.10).
     *_cells(

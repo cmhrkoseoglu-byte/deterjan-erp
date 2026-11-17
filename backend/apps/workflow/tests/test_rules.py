@@ -161,7 +161,7 @@ def test_material_ready_opens_start_batch_and_closes_on_batch_started(fire, staf
 
 
 def test_deviation_warns_planning_and_lab(fire, staff):
-    batch = WidgetFactory()
+    batch, lot = WidgetFactory(), WidgetFactory()
 
     fire(
         ev.PRODUCTION_DEVIATION,
@@ -175,6 +175,7 @@ def test_deviation_warns_planning_and_lab(fire, staff):
             actual_quantity="12.6000",
             deviation_pct="5.00",
             note="Fazla döküldü.",
+            output_lot=lot_ref(lot),
         ),
         staff["uretim"],
     )
@@ -184,6 +185,9 @@ def test_deviation_warns_planning_and_lab(fire, staff):
         assert notification.title == "Tartım sapması: UE-2026-00007"
         assert "planlanan 12.0000, tartılan 12.6000 (%5.00)" in notification.body
         assert notification.level == Notification.Level.WARNING
+        # Sahip kararı 2026-11-17: herkesin açabildiği lot sayfasına (şarjın çıktı lotu) bağlanır.
+        assert notification.related_object == lot
+        assert notification.related_repr == f"H-261015-{lot.pk:03d}"
     assert titles_for(staff["uretim"]) == []
 
 
@@ -277,6 +281,9 @@ def test_in_process_reject_notifies_production_and_planning(fire, staff):
     expected = [f"Ara kontrol uygun değil: H-261015-{lot.pk:03d}"]
     assert titles_for(staff["uretim"]) == expected
     assert titles_for(staff["planlama"]) == expected
+    # Sahip kararı 2026-11-17: numune sayfası yerine numunenin lot sayfasına bağlanır.
+    for role in ("uretim", "planlama"):
+        assert Notification.objects.get(recipient=staff[role]).related_object == lot
 
 
 # --- lot.released (BULK) → bildirim (planlama, uretim) ------------------------------------------

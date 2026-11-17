@@ -805,6 +805,8 @@ def _publish_deviation(
             "actual_quantity": f"{format_quantity(deviation.actual)} {unit}",
             "deviation_pct": format_quantity(deviation.pct),
             "note": note,
+            # Bildirim lot sayfasına bağlanır: şarjın çıktı (bulk) lotu (sahip kararı 2026-11-17).
+            "output_lot": lot_payload(batch.output_lot),
         },
         actor,
     )

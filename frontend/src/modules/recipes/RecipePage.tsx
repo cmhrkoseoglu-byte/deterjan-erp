@@ -25,24 +25,23 @@ import {
   type Recipe,
   type RecipeVersionDetail,
 } from "../../api/recipes";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
 import { formatDateTime, formatNumber } from "../../i18n/format";
 import { ActiveBadge } from "../common/ActiveBadge";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { RecordFormModal } from "../common/RecordFormModal";
 import { ct } from "../common/strings";
-import { RECIPE_WRITE_ROLES, RECIPES_BASE, recipeFields, versionFields } from "./config";
+import { RECIPES_BASE, recipeFields, versionFields } from "./config";
 import { StatusBadge } from "./StatusBadge";
 import { rt } from "./strings";
 
 /** Reçete detayı: bilgiler ve sürüm listesi. */
 export function RecipePage() {
   const recipeId = Number(useParams().recipeId);
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const canWrite = hasAnyRole(user, RECIPE_WRITE_ROLES);
+  const canWrite = can("recipes.recipes", "change");
   const [editOpen, setEditOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);

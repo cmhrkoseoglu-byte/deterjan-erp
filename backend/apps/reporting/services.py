@@ -17,12 +17,14 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core import access, events
 from apps.core import event_names as ev
-from apps.core import events
+from apps.core.access import COSTS, PRICES, VIEW, Section
 from apps.core.audit import log_change
 from apps.core.coding.outputs import document_control
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
+from apps.core.permissions import has_access
 from apps.core.services import save_with_audit
 from apps.reporting import exports, filters, state
 from apps.reporting.models import ReportJob
@@ -67,6 +69,16 @@ def report_or_error(code: str) -> ReportDefinition:
     if definition is None:
         raise BusinessRuleError("unknown_report", "Böyle bir rapor yok.")
     return definition
+
+
+def written_sensitive(data: ReportData) -> set[str]:
+    """Dosyaya yazılan hassas veri türleri: hassas sütunlar ve tutar türündeki özet (`money`
+    maliyet sayılır, `reports.visible_summary`). İş kaydında saklanır, indirmede yeniden
+    denetlenir (docs/plan/kisi-yetkileri.md §5.6, §8 madde 12)."""
+    kinds = {str(c.sensitive) for c in data.columns if c.sensitive is not None}
+    if any(item["kind"] == "money" for item in data.summary):
+        kinds.add("cost")
+    return kinds
 
 
 def report_data(definition: ReportDefinition, actor: User, values: dict[str, Any]) -> ReportData:
@@ -126,7 +138,8 @@ def export_report(
     """Raporu dışa aktarır. Küçük rapor dosya olarak döner; `SYNC_ROW_LIMIT` satırı aşan rapor
     için arka plan işi açılır (dosya hazır olunca bildirim gelir).
 
-    Kurallar: rapor kullanıcının rolüne açık olmalı (`report_forbidden`); PDF en fazla
+    Kurallar: rapor kullanıcının yetkisine açık olmalı (raporun bölümünde Görür,
+    `report_forbidden`); PDF en fazla
     `PDF_ROW_LIMIT` satır (`pdf_too_large`, Excel önerilir)."""
     if not can_view(definition, actor):
         raise BusinessRuleError("report_forbidden", "Bu raporu görme yetkiniz yok.")
@@ -221,6 +234,7 @@ def run_job(job_id: int) -> ReportJob:
         data = report_data(definition, actor, values)
         count = len(data.rows)
         output = render(data, job.file_format)
+        sensitive = written_sensitive(data)
     except Exception as exc:  # noqa: BLE001 - her hata işi kapatır ve bildirilir
         logger.exception("Rapor işi başarısız: %s", job_id)
         message = exc.message if isinstance(exc, BusinessRuleError) else "Rapor hazırlanamadı."
@@ -240,9 +254,35 @@ def run_job(job_id: int) -> ReportJob:
             row_count=count,
             finished_at=now,
             expires_at=now + timedelta(days=FILE_RETENTION_DAYS),
+            section=definition.section.key,
+            has_costs="cost" in sensitive,
+            has_prices="price" in sensitive,
         )
         events.publish(ev.REPORT_JOB_DONE, _job_payload(job))
     return job
+
+
+def missing_download_access(user: User, job: ReportJob) -> tuple[tuple[str, str], ...]:
+    """Hazır dosyayı indirmek için kullanıcıda eksik olan yetkiler (boşsa indirebilir).
+
+    Dosyayı istedikten sonra yetkisini kaybeden kişi dosyayı indiremez (plan §8 madde 12):
+    raporun bölümünde Görür ve dosyada maliyet ya da fiyat varsa Maliyetleri görür ya da
+    Fiyatları görür yeniden aranır. Bölümü boş iş (bilinmeyen rapor kodu) yalnız hassas veriyle
+    denetlenir; katalogda artık olmayan bölüm indirmeyi kapatır."""
+    needed: list[Section] = []
+    missing: list[tuple[str, str]] = []
+    if job.section:
+        if not access.has_section(job.section):
+            return ((job.section, VIEW),)
+        needed.append(access.section(job.section))
+    if job.has_prices:
+        needed.append(PRICES)
+    if job.has_costs:
+        needed.append(COSTS)
+    for item in needed:
+        if not has_access(user, item):
+            missing.append((item.key, VIEW))
+    return tuple(missing)
 
 
 def expire_jobs(now: datetime | None = None) -> int:

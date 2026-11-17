@@ -42,9 +42,9 @@ import type {
   StatusCount,
   WarehouseDashboard,
 } from "../../api/reporting";
-import type { Role } from "../../api/types";
+import type { CurrentUser } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { can, moduleVisible } from "../../auth/access";
 import {
   formatDate,
   formatDateTime,
@@ -52,16 +52,16 @@ import {
   formatNumber,
   TIME_ZONE,
 } from "../../i18n/format";
-import { menuRoles } from "../../layout/menu";
 import { formatMinutes } from "../maintenance/strings";
-import { ORDER_READ_ROLES } from "../purchasing/config";
-import { APPROVAL_ROLES } from "../quality/config";
-import { RECORD_ROUTES } from "../../workflow/recordLinks";
+import { RecordLink } from "../../workflow/RecordLink";
 import { BarChart } from "./BarChart";
 import { rt } from "./strings";
 
+/** Kayıt bağlantısı: hedef sayfa açılmıyorsa düz metin (plan §5.9, §8 madde 2). */
 const link = (model: string, id: number, text: string) => (
-  <Link to={RECORD_ROUTES[model](id)}>{text}</Link>
+  <RecordLink model={model} id={id}>
+    {text}
+  </RecordLink>
 );
 
 const hoursText = (value: string | null) =>
@@ -76,10 +76,22 @@ function waitText(value: string | null): string {
   return rt.hours(formatNumber(hours < 10 ? Math.round(hours * 10) / 10 : Math.round(hours)));
 }
 
-/** Bağlantı yalnızca hedef sayfayı açabilen role gösterilir; asıl yetki backend'dedir. */
+/**
+ * Bağlantı yalnızca hedef sayfayı ve sekmeyi açabilene gösterilir (plan §5.9): modül sayfası
+ * (bölümlerinden birinde Görür) ve sekmenin bölümlerinden birinde Görür. Asıl yetki backend'dedir.
+ */
 interface Target {
   to: string;
-  roles: readonly Role[];
+  visible: (user: CurrentUser | null) => boolean;
+}
+
+/** Modülün sekmesine giden hedef. */
+function tab(to: string, moduleKey: string, ...sections: string[]): Target {
+  return {
+    to,
+    visible: (user) =>
+      moduleVisible(user, moduleKey) && sections.some((key) => can(user, key, "view")),
+  };
 }
 
 export function Stat({
@@ -244,7 +256,7 @@ function ApprovalCard({
           {detail}
         </Text>
       )}
-      {waiting && hasAnyRole(user, target.roles) && (
+      {waiting && target.visible(user) && (
         <Anchor component={Link} to={target.to} size="sm" mt="xs" display="inline-block">
           <Group gap={4} wrap="nowrap">
             {action}
@@ -277,7 +289,7 @@ function Approvals({ data }: { data: ManagementDashboard }) {
             : rt.nothingWaiting
         }
         waiting={decisions.count > 0}
-        target={{ to: "/kalite/onay", roles: APPROVAL_ROLES }}
+        target={tab("/kalite/onay", "quality", "quality.conditional")}
         action={rt.openDecisions}
       />
       <ApprovalCard
@@ -286,7 +298,7 @@ function Approvals({ data }: { data: ManagementDashboard }) {
         value={rt.orders(orders.count)}
         detail={orderDetail}
         waiting={orders.count > 0}
-        target={{ to: "/satin-alma/siparisler", roles: ORDER_READ_ROLES }}
+        target={tab("/satin-alma/siparisler", "purchasing", "purchasing.orders")}
         action={rt.openPurchaseOrders}
       />
       <ApprovalCard
@@ -295,7 +307,7 @@ function Approvals({ data }: { data: ManagementDashboard }) {
         value={rt.incidentCount(hse.open_incidents)}
         detail={rt.incidentSummary(hse.days, hse.incidents, hse.injuries)}
         waiting={hse.open_incidents > 0}
-        target={{ to: "/isg/olaylar", roles: menuRoles("hse") }}
+        target={tab("/isg/olaylar", "hse", "hse.incident_report", "hse.incidents")}
         action={rt.openIncidentList}
       />
     </SimpleGrid>
@@ -324,24 +336,23 @@ function attentionItems(data: ManagementDashboard): AttentionItem[] {
   const add = (condition: unknown, item: AttentionItem) => {
     if (condition) items.push(item);
   };
-  const inventory = menuRoles("inventory");
   add(stock.count, {
     key: "stock",
     severity: "critical",
     text: rt.attn.criticalStock(stock.count),
-    target: { to: "/depo/stok", roles: inventory },
+    target: tab("/depo/stok", "inventory", "inventory.stock"),
   });
   add(lots.expired_count, {
     key: "expired",
     severity: "critical",
     text: rt.attn.expiredLots(lots.expired_count),
-    target: { to: "/depo/lotlar", roles: inventory },
+    target: tab("/depo/lotlar", "inventory", "inventory.lots"),
   });
   add(hse.injuries, {
     key: "injuries",
     severity: "critical",
     text: rt.attn.injuries(hse.injuries, hse.days),
-    target: { to: "/isg/olaylar", roles: menuRoles("hse") },
+    target: tab("/isg/olaylar", "hse", "hse.incident_report", "hse.incidents"),
   });
   const longest = tasks.by_role
     .filter((r) => r.max_delay_hours !== null)
@@ -358,26 +369,26 @@ function attentionItems(data: ManagementDashboard): AttentionItem[] {
     key: "late-orders",
     severity: "warning",
     text: rt.attn.lateOrders(data.shipping.late_orders),
-    target: { to: "/sevkiyat/siparisler", roles: menuRoles("sales") },
+    target: tab("/sevkiyat/siparisler", "sales", "sales.orders"),
   });
   add(maintenance.open_downtimes, {
     key: "downtimes",
     severity: "warning",
     text: rt.attn.downtimes(maintenance.open_downtimes),
-    target: { to: "/bakim/duruslar", roles: menuRoles("maintenance") },
+    target: tab("/bakim/duruslar", "maintenance", "maintenance.downtimes"),
   });
   add(maintenance.overdue_plans, {
     key: "plans",
     severity: "warning",
     text: rt.attn.overduePlans(maintenance.overdue_plans),
-    target: { to: "/bakim/planlar", roles: menuRoles("maintenance") },
+    target: tab("/bakim/planlar", "maintenance", "maintenance.plans"),
   });
   const qcWait = data.qc_pending.max_wait_hours;
   add(qcWait !== null && Number(qcWait) >= QC_WAIT_WARNING_HOURS, {
     key: "qc",
     severity: "warning",
     text: rt.attn.qcWait(waitText(qcWait)),
-    target: { to: "/kalite/numuneler", roles: menuRoles("quality") },
+    target: tab("/kalite/numuneler", "quality", "quality.samples"),
   });
   return items;
 }
@@ -410,7 +421,7 @@ function AttentionList({ items }: { items: AttentionItem[] }) {
             </Text>
           </Group>
         );
-        if (item.target && hasAnyRole(user, item.target.roles)) {
+        if (item.target && item.target.visible(user)) {
           return (
             <NavLink
               key={item.key}
@@ -672,7 +683,7 @@ function Pipeline({
   return (
     <Group gap={6}>
       <Text size="sm" w={130}>
-        {hasAnyRole(user, target.roles) ? (
+        {target.visible(user) ? (
           <Anchor component={Link} to={target.to} size="sm">
             {label}
           </Anchor>
@@ -705,7 +716,11 @@ export function ManagementView({ data }: { data: ManagementDashboard }) {
     <Stack gap="lg">
       <Stack gap="xs">
         <Title order={4}>
-          {hasAnyRole(user, APPROVAL_ROLES) ? rt.approvalsMine : rt.approvalsOthers}
+          {/* Bekleyen onaylardan birini verebilen kişiye "Onayınızı bekleyenler". */}
+          {can(user, "quality.conditional", "approve") ||
+          can(user, "purchasing.over_limit", "approve")
+            ? rt.approvalsMine
+            : rt.approvalsOthers}
         </Title>
         <Approvals data={data} />
       </Stack>
@@ -730,17 +745,17 @@ export function ManagementView({ data }: { data: ManagementDashboard }) {
           <Pipeline
             label={rt.productionOrders}
             counts={orders.production}
-            target={{ to: "/uretim/emirler", roles: menuRoles("production") }}
+            target={tab("/uretim/emirler", "production", "production.orders")}
           />
           <Pipeline
             label={rt.fillingOrders}
             counts={orders.filling}
-            target={{ to: "/dolum/emirler", roles: menuRoles("filling") }}
+            target={tab("/dolum/emirler", "filling", "filling.orders")}
           />
           <Pipeline
             label={rt.salesOrders}
             counts={orders.sales}
-            target={{ to: "/sevkiyat/siparisler", roles: menuRoles("sales") }}
+            target={tab("/sevkiyat/siparisler", "sales", "sales.orders")}
           />
         </Stack>
       </Section>

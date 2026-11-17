@@ -155,10 +155,33 @@ describe("bakım", () => {
     expect(screen.queryByRole("tab", { name: "Ayarlar" })).toBeNull();
   });
 
+  it("iş emirleri sekmesi kaldırılınca bakım ilk görünen sekmeyle açılır", async () => {
+    const base = userWith("uretim");
+    const access: Record<string, string> = { ...base.access };
+    delete access["maintenance.work_orders"];
+    vi.mocked(authApi.fetchMe).mockResolvedValue({ ...base, access });
+    renderApp("/bakim");
+    expect(
+      await screen.findByRole("tab", { name: "Duruşlar", selected: true }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "İş emirleri" })).toBeNull();
+    expect(screen.queryByTestId("maintenance-work-orders")).toBeNull();
+  });
+
+  it("ayarları göremeyen yönetim kişisi ayarlar adresinden bakıma döner", async () => {
+    const base = userWith("yonetim");
+    const access: Record<string, string> = { ...base.access };
+    delete access["maintenance.settings"];
+    vi.mocked(authApi.fetchMe).mockResolvedValue({ ...base, access });
+    renderApp("/bakim/ayarlar");
+    expect(await screen.findByTestId("maintenance-work-orders")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Ayarlar" })).toBeNull();
+  });
+
   it("depo bakım sayfasına giremez", async () => {
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("depo"));
     renderApp("/bakim");
-    expect(await screen.findByText(/yetkiniz yok|erişim/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Yetkiniz yok" })).toBeInTheDocument();
     expect(screen.queryByTestId("maintenance-work-orders")).toBeNull();
   });
 

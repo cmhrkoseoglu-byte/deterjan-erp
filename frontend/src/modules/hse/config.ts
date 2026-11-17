@@ -6,19 +6,8 @@ import type {
   Severity,
   SdsState,
 } from "../../api/hse";
-import type { Role } from "../../api/types";
 
-// Yetkiler backend ile aynıdır (apps/hse/services.py); arayüz yalnızca düğmeleri ve sekmeleri gizler.
-/** GBF, atık, depolama limiti yazar; olayları inceler ve kapatır. */
-export const HSE_ROLES: Role[] = ["yonetim"];
-/** Malzeme tehlike bilgisini ve H/P ifadelerini girer (herkes okur). */
-export const HAZARD_ROLES: Role[] = ["yonetim", "laboratuvar"];
-/** GBF arşivini ve eksik GBF raporunu görür. */
-export const SDS_READ_ROLES: Role[] = ["yonetim", "depo", "laboratuvar"];
-/** Depolama limitlerini ve doluluğu görür. */
-export const STORAGE_READ_ROLES: Role[] = ["yonetim", "depo"];
-/** Olayı herkes bildirir; yönetim dışındakiler yalnızca kendi bildirdiklerini görür. */
-export const INCIDENT_ROLES: Role[] = [];
+// Sekme ve düğmeler bölüm yetkisine bakar (`auth/access`); asıl denetim backend'dedir.
 
 export const HSE_BASE = "/isg";
 export const incidentPath = (id: number) => `${HSE_BASE}/olaylar/${id}`;

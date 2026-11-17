@@ -1,9 +1,15 @@
 """Personel: paket denkliği (docs/plan/kisi-yetkileri.md §3.14 ve §5.5, 3. parça).
 
-Personel uç noktaları ve servisleri bugün `PERSONNEL_ROLES` (yönetim) ister; ön yüzde menü ve sayfa
-korumaları satır içi rol dizisidir. Her denetim planın bölüm ve düzeyine eşlenir; kişiye özel ayar
-yokken iki taraf 256 rol bileşiminin hepsinde aynı kararı vermelidir. Bölümlerin hepsi yalnız
-yönetim rolünde geçerlidir (KVKK).
+Personel uç noktaları ve servisleri 5. adıma kadar `PERSONNEL_ROLES` (yönetim) istedi; ön yüzde
+menü ve sayfa korumaları satır içi rol dizisidir. Her denetim planın bölüm ve düzeyine eşlenir;
+kişiye özel ayar yokken iki taraf 256 rol bileşiminin hepsinde aynı kararı vermelidir. Bölümlerin
+hepsi yalnız yönetim rolünde geçerlidir (KVKK).
+
+5. adımda modül bölüm denetimine geçti: `PERSONNEL_ROLES` kalktı, satırların `live` bağlantısı da
+kaldırıldı; satırlar bugünkü rolün kataloğa denkliğini kayıt olarak tutar. Her metot (HEAD, OPTIONS,
+görünümün karşılamadığı metotlar dahil) aynı rolle denetleniyordu: tek kurallı görünümlerde
+kural her metotta aynıdır, `AccessMixin`'li görünümlerde karşılanmayan metot yazma düzeyiyle
+denetlenir (satırları aşağıda).
 """
 
 from apps.core.access import APPROVE, CHANGE, VIEW
@@ -11,20 +17,19 @@ from apps.core.tests.access_helpers import Need, Row, any_of, assert_rows, level
 from apps.personnel.access import ATTENDANCE, CARDS, PAYROLL, SETTINGS, WAGES
 
 YONETIM = ("yonetim",)
-ROLES = "apps.personnel.services:PERSONNEL_ROLES"
 
 # Modülün Görür'ü olan bölümlerinden biri: menü (plan §2).
 ANY_SECTION = any_of(*(level(item, VIEW) for item in (CARDS, ATTENDANCE, WAGES, PAYROLL, SETTINGS)))
 
 
 def api(source: str, need: Need) -> Row:
-    """api/views.py `permission_classes = [HasRole(*services.PERSONNEL_ROLES)]`."""
-    return Row(f"api/views.py {source}", YONETIM, need, live=ROLES)
+    """api/views.py: bugün `permission_classes = [HasRole(*services.PERSONNEL_ROLES)]`."""
+    return Row(f"api/views.py {source}", YONETIM, need)
 
 
 def service(name: str, need: Need) -> Row:
-    """services.py `_require_role(actor)`: `user_has_role(actor, PERSONNEL_ROLES)`."""
-    return Row(f"services.{name}", YONETIM, need, live=ROLES)
+    """services.py: bugün `_require_role(actor)`, yani `user_has_role(actor, PERSONNEL_ROLES)`."""
+    return Row(f"services.{name}", YONETIM, need)
 
 
 API_ROWS = [
@@ -95,6 +100,16 @@ API_ROWS = [
     ),
     api(
         "PayrollParameterSetViewSet POST payroll/parameters/, PATCH {pk}/, POST {pk}/remove/",
+        level(SETTINGS, CHANGE),
+    ),
+    # Karşılanmayan metot (ör. kartta PUT ve DELETE, ayrılış yolunda GET): bugün yönetim, sonra
+    # 405. Tek kurallı APIView'larda (birimler, puantaj, bordro uçları) her metot aynı kuraldadır.
+    api("EmployeeViewSet, EmployeeDocumentViewSet karşılanmayan metot", level(CARDS, CHANGE)),
+    api("PublicHolidayViewSet karşılanmayan metot", level(ATTENDANCE, CHANGE)),
+    api("EmployeeWageViewSet karşılanmayan metot", level(WAGES, CHANGE)),
+    api("PayrollItemViewSet, PayrollOpeningViewSet karşılanmayan metot", level(PAYROLL, CHANGE)),
+    api(
+        "AttendanceSettingsView, PayrollParameterSetViewSet karşılanmayan metot",
         level(SETTINGS, CHANGE),
     ),
 ]

@@ -11,6 +11,7 @@ from apps.core.access import (
     PRICES,
     VIEW,
     grant,
+    register_audit_model,
     register_module,
     register_readers,
     register_section,
@@ -93,3 +94,26 @@ for role in (SATIN_ALMA, YONETIM):
     grant(role, PERFORMANCE, VIEW)
 grant(YONETIM, OVER_LIMIT, APPROVE)
 grant(YONETIM, SETTINGS, VIEW, CHANGE)
+
+# Denetim günlüğü (plan §5.6, §8 madde 7): siparişin tutarları (silinen satırın içindekiler dahil)
+# ve eski onaya gönderme ve onay notlarındaki tutarlar Fiyatları görür'e bağlıdır. Alan adları
+# serializer'ın `PRICE_FIELDS`'iyle, not kalıbı kayıt geçmişininkiyle aynıdır (testi denetler).
+ORDER_PRICE_FIELDS = (
+    "unit_price",
+    "line_total",
+    "total",
+    "total_try",
+    "exchange_rate",
+    "approval_total_try",
+    "approval_limit_try",
+)
+AMOUNT_NOTE = r"^(Tutar [0-9.]+,[0-9]{2} TL|Onay: tutar [0-9.]+,[0-9]{2} TL \(kur .*)$"
+
+register_audit_model(
+    "purchasing.purchaseorder",
+    requires=[PRICES],
+    fields=ORDER_PRICE_FIELDS,
+    nested=True,
+    note=AMOUNT_NOTE,
+)
+register_audit_model("purchasing.purchaseorderline", requires=[PRICES], fields=ORDER_PRICE_FIELDS)

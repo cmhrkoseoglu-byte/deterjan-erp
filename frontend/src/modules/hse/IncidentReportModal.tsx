@@ -31,7 +31,7 @@ function nowLocal(): string {
   return now.toISOString().slice(0, 16);
 }
 
-/** Olay / ramak kala bildirimi: her rol açar (backend INCIDENT_REPORT_ROLES = tüm roller). */
+/** Olay / ramak kala bildirimi; gösteren yer Olay bildirimi: Değiştirir'e bakar (rolü olan herkes). */
 export function IncidentReportModal({
   onClose,
   onSaved,

@@ -1,4 +1,6 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { MantineProvider } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../api/auth";
@@ -297,7 +299,11 @@ describe("Kullanıcılar", () => {
   it("düzenle: bilgileri ve rolleri kaydeder, kullanıcı adı değişmez", async () => {
     const user = userEvent.setup();
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
-    vi.mocked(usersApi.updateUser).mockResolvedValue(userRecord({ roles: ["depo"] }));
+    vi.mocked(usersApi.updateUser).mockResolvedValue({
+      ...userRecord({ roles: ["depo"] }),
+      coverage_warnings: [],
+    });
+    const show = vi.spyOn(notifications, "show").mockReturnValue("bildirim");
     renderApp("/sistem/kullanicilar");
 
     await screen.findByText("Ayşe Yılmaz");
@@ -322,6 +328,42 @@ describe("Kullanıcılar", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: /bilgileri düzenle/ })).not.toBeInTheDocument(),
     );
+    expect(show).toHaveBeenCalledTimes(1);
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ color: "green" }));
+    show.mockRestore();
+  });
+
+  it("rol kaydı görevi alacak kimse bırakmıyorsa kayıttan sonra kalıcı uyarı gösterir", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    const warning =
+      "Sevkiyat rolünde “Satış › Sevkiyatlar: Değiştirir” yetkisi olan etkin kimse yok; 2 görev kimseye düşmez.";
+    vi.mocked(usersApi.updateUser).mockResolvedValue({
+      ...userRecord({ roles: ["depo"] }),
+      coverage_warnings: [warning],
+    });
+    const show = vi.spyOn(notifications, "show").mockReturnValue("bildirim");
+    renderApp("/sistem/kullanicilar");
+
+    await screen.findByText("Ayşe Yılmaz");
+    await user.click(screen.getAllByRole("button", { name: "Düzenle" })[0]);
+    const dialog = await screen.findByRole("dialog", { name: "Ayşe Yılmaz: bilgileri düzenle" });
+    await user.click(within(dialog).getByLabelText("Sevkiyat"));
+    await user.click(within(dialog).getByRole("button", { name: "Kaydet" }));
+
+    // Kayıt engellenmez: pencere kapanır, başarı ve uyarı bildirimleri gösterilir.
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: /bilgileri düzenle/ })).not.toBeInTheDocument(),
+    );
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ color: "green" }));
+    const call = show.mock.calls.find(([options]) => options.color === "orange");
+    expect(call).toBeDefined();
+    const options = call![0];
+    expect(options.title).toBe("Kaydedildi; bazı görevleri alacak kimse kalmadı");
+    expect(options.autoClose).toBe(false);
+    render(<MantineProvider>{options.message}</MantineProvider>);
+    expect(screen.getByTestId("coverage-warnings")).toHaveTextContent(warning);
+    show.mockRestore();
   });
 
   it("şifre sıfırlama onaylanınca yeni geçici şifre gösterilir", async () => {

@@ -8,8 +8,9 @@ Sipariş:
       └────────────┴──── CANCELLED (mal kabul gelmeden önce: DRAFT, PENDING_APPROVAL,
                                     APPROVED, SENT)
 
-- Onay limiti (D-13): limit girilmiş ve TL tutar limit içindeyse satin_alma doğrudan onaylar;
-  değilse "Yönetim onayına gönder" (PENDING_APPROVAL) ve yonetim onaylar ya da taslağa geri yollar.
+- Onay limiti (D-13): limit girilmiş ve TL tutar limit içindeyse "Satın alma siparişleri: Onaylar"
+  doğrudan onaylar; değilse "Yönetim onayına gönder" (PENDING_APPROVAL) ve "Limit üstü sipariş
+  onayı: Onaylar" onaylar ya da taslağa geri yollar.
 - PARTIALLY_RECEIVED / RECEIVED geçişlerini mal kabul kaydı yapar; kısmen teslim alınmış sipariş
   "Kalanı kapat" ile gerekçeli olarak RECEIVED olur.
 

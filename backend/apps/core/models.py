@@ -60,7 +60,7 @@ class User(AbstractUser):
         """Kullanıcı verilen rollerden en az birine sahipse True.
 
         Yalnızca gerçekten atanmış rollere bakar; admin/superuser ayrıcalığı
-        `is_admin` ile ayrıca kontrol edilir (bkz. `core.permissions.HasRole`).
+        `is_admin` ile ayrıca kontrol edilir (bkz. `core.permissions.is_admin`).
         """
         return bool(self.role_names.intersection(roles))
 

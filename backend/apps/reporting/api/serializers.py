@@ -1,5 +1,9 @@
+from typing import Any
+
 from rest_framework import serializers
 
+from apps.core.models import User
+from apps.reporting import services
 from apps.reporting.models import ReportJob
 
 
@@ -11,6 +15,7 @@ class ReportJobSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     file_format_display = serializers.CharField(source="get_file_format_display", read_only=True)
     can_download = serializers.SerializerMethodField()
+    download_required = serializers.SerializerMethodField()
 
     class Meta:
         model = ReportJob
@@ -31,11 +36,24 @@ class ReportJobSerializer(serializers.ModelSerializer):
             "finished_at",
             "expires_at",
             "can_download",
+            "download_required",
         ]
         read_only_fields = fields
 
     def get_can_download(self, job: ReportJob) -> bool:
         return job.status == ReportJob.Status.DONE and bool(job.file)
+
+    def get_download_required(self, job: ReportJob) -> list[dict[str, Any]]:
+        """Dosyayı indirmek için isteyende artık eksik olan yetkiler (plan §8 madde 12): boşsa
+        indirebilir. Ön yüz indirme bağlantısını yalnız boşken gösterir."""
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not isinstance(user, User):
+            return []
+        return [
+            {"key": key, "level": level}
+            for key, level in services.missing_download_access(user, job)
+        ]
 
 
 class ColumnSerializer(serializers.Serializer):

@@ -2,7 +2,7 @@
 
 Bugünkü her rol denetimi (API, servis, kayıt türü, ön yüz) planın §3.6 tablosundaki yetkiye
 eşlenir. Kişiye özel ayar yokken eski ve yeni denetim, admin dışındaki 8 rolün bütün
-bileşimlerinde aynı kararı verir. `live=` satırları koddaki rol sabitine de bağlıdır.
+bileşimlerinde aynı kararı verir.
 
 Satır olmayanlar:
 - `FillingPage` varsayılan sekme sırası rol görünümüdür (plan §5.9), rolle kalır.
@@ -14,15 +14,15 @@ Satır olmayanlar:
   satırları aşağıdadır.
 
 3. adımda modül bölüm denetimine geçti: servis satırlarının `live` bağlantısı kaldırıldı (sabitler
-yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar. Ön yüz sabitlerine
-bağlantı 8. adıma kadar kalır.
+yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar.
+8. adımda ön yüz de bölüm denetimine geçti: ön yüz satırlarının `live` bağlantısı kaldırıldı;
+satırlar 8. adım öncesi rol listelerini dondurulmuş olarak tutar.
 """
 
 from apps.core.access import APPROVE, CHANGE, VIEW
 from apps.core.tests.access_helpers import SIGNED_IN, Row, any_of, assert_rows, level, read
 from apps.filling.access import ORDERS, PREP, REVERT, RUNS, SPECS
 
-CONFIG = "frontend:src/modules/filling/config.ts"
 # layout/menu.ts MENU "filling": menü öğesi ve routes.tsx `fillingPage` koruması.
 MENU_ROLES = ("dolum", "planlama", "depo", "yonetim")
 PLANNER = ("planlama",)
@@ -241,7 +241,6 @@ ROWS = [
         "FillingPage TABS hazirlama (PREP_ROLES)",
         WAREHOUSE,
         level(PREP, VIEW),
-        live=f"{CONFIG}:PREP_ROLES",
     ),
     Row("FillingPage TABS hat (roles: [])", MENU_ROLES, level(RUNS, VIEW)),
     Row("FillingPage TABS ambalaj-receteleri (roles: [])", MENU_ROLES, level(SPECS, VIEW)),
@@ -249,91 +248,76 @@ ROWS = [
         "FillingPage OrdersTab yeni emir düğmesi (PLAN_ROLES)",
         PLANNER,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:PLAN_ROLES",
     ),
     Row(
         "FillingPage SpecsTab yeni ambalaj reçetesi düğmesi (PLAN_ROLES)",
         PLANNER,
         level(SPECS, CHANGE),
-        live=f"{CONFIG}:PLAN_ROLES",
     ),
     Row(
         "OrderPage onayla düğmesi (PLAN_ROLES, taslak)",
         PLANNER,
         level(ORDERS, APPROVE),
-        live=f"{CONFIG}:PLAN_ROLES",
     ),
     Row(
         "OrderPage taslak düzenleme formu (PLAN_ROLES)",
         PLANNER,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:PLAN_ROLES",
     ),
     Row(
         "OrderPage iptal düğmesi taslak emirde (PLAN_ROLES)",
         PLANNER,
         level(ORDERS, CHANGE),
-        live=f"{CONFIG}:PLAN_ROLES",
     ),
     Row(
         "OrderPage iptal düğmesi onaylı ya da hazırlıktaki emirde (PLAN_ROLES)",
         PLANNER,
         level(ORDERS, APPROVE),
-        live=f"{CONFIG}:PLAN_ROLES",
     ),
     Row(
         "OrderPage hazırlama sayfası düğmesi (PREP_ROLES)",
         WAREHOUSE,
         level(PREP, VIEW),
-        live=f"{CONFIG}:PREP_ROLES",
     ),
     Row(
         "OrderPage parti başlat düğmesi (LINE_ROLES)",
         FILLER,
         level(RUNS, CHANGE),
-        live=f"{CONFIG}:LINE_ROLES",
     ),
     Row(
         "OrderPage dolumu bitir düğmesi (LINE_ROLES)",
         FILLER,
         level(RUNS, CHANGE),
-        live=f"{CONFIG}:LINE_ROLES",
     ),
     Row(
         "PrepPage okutma formu (PREP_ROLES)",
         WAREHOUSE,
         level(PREP, CHANGE),
-        live=f"{CONFIG}:PREP_ROLES",
     ),
     Row(
         "PrepPage hazır bildir düğmesi (PREP_ROLES)",
         WAREHOUSE,
         level(PREP, CHANGE),
-        live=f"{CONFIG}:PREP_ROLES",
     ),
     Row(
         "RunPage bulk, okutma, fire, bitir ve iptal (LINE_ROLES)",
         FILLER,
         level(RUNS, CHANGE),
-        live=f"{CONFIG}:LINE_ROLES",
     ),
     Row(
         "SpecPage düzenleme formu ve satırlar (PLAN_ROLES)",
         PLANNER,
         level(SPECS, CHANGE),
-        live=f"{CONFIG}:PLAN_ROLES",
     ),
     Row(
         "SpecPage sürümü onayla düğmesi (PLAN_ROLES)",
         PLANNER,
         level(SPECS, APPROVE),
-        live=f"{CONFIG}:PLAN_ROLES",
     ),
     Row(
         "SpecPage yeni sürüm (kopyala) düğmesi (PLAN_ROLES)",
         PLANNER,
         level(SPECS, CHANGE),
-        live=f"{CONFIG}:PLAN_ROLES",
     ),
 ]
 

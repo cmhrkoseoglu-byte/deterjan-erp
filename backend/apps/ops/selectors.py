@@ -1,5 +1,6 @@
 """Sistem izleme okuma sorguları: kontrollerin değerlendirilmesi ve Sistem durumu ekranı."""
 
+import logging
 import os
 import shutil
 from dataclasses import dataclass, field
@@ -11,7 +12,10 @@ import redis
 from django.conf import settings
 from django.utils import timezone
 
+from apps.core import coverage
 from apps.ops.models import BackupRun, CheckState, Heartbeat
+
+logger = logging.getLogger(__name__)
 
 OK = "ok"
 ERROR = "error"
@@ -24,6 +28,7 @@ CHECK_LABELS = {
     "cpu": "Sunucu yükü",
     "queue": "Arka plan iş kuyruğu",
     "celery": "Arka plan servisleri",
+    "task_coverage": "Her görevi alabilecek biri var",
 }
 
 
@@ -230,6 +235,27 @@ def check_celery(now: datetime) -> CheckResult:
     return CheckResult("celery", OK, title, f"Son nabız {_fmt(beat.beat_at)}.")
 
 
+def check_task_coverage() -> CheckResult:
+    """Her iş akışı kuralının rolünde kuralın yetkisi olan etkin biri var mı (plan §8 madde 9)?
+    Yalnız Sistem durumu ekranında gösterilir: periyodik kontrollere (`evaluate_checks`) ve dış
+    izleme ucuna girmez, uyarı bildirimi göndermez."""
+    try:
+        gaps = coverage.current_gaps()
+    except Exception:
+        logger.exception("Görev kapsaması hesaplanamadı")
+        return CheckResult("task_coverage", UNKNOWN, "Görev kapsaması hesaplanamadı")
+    if not gaps:
+        return CheckResult(
+            "task_coverage", OK, "Her görev ve bildirimin rolünde yetkili etkin biri var"
+        )
+    return CheckResult(
+        "task_coverage",
+        ERROR,
+        "Alabilecek kimsesi olmayan görev ya da bildirim var",
+        " ".join(gap.text for gap in gaps),
+    )
+
+
 def evaluate_checks(now: datetime | None = None) -> list[CheckResult]:
     """Celery işinde çalışan kontroller (arka plan servislerinin kendi kontrolü hariç: o iş
     çalışıyorsa servisler zaten ayaktadır; durumu ekranda ve dış izleme ucunda görünür)."""
@@ -240,7 +266,7 @@ def evaluate_checks(now: datetime | None = None) -> list[CheckResult]:
 def system_status(now: datetime | None = None) -> dict[str, Any]:
     """Sistem durumu ekranı: tüm kontroller, ölçümler ve son yedek çalışmaları."""
     now = now or timezone.now()
-    checks = [*evaluate_checks(now), check_celery(now)]
+    checks = [*evaluate_checks(now), check_celery(now), check_task_coverage()]
     states = {state.code: state for state in CheckState.objects.all()}
     measured = load_ratio()
     return {

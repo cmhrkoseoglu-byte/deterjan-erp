@@ -24,6 +24,8 @@ import {
   type PayrollOpening,
   type PayrollRow,
 } from "../../api/payroll";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDateTime, formatMoney, formatNumber } from "../../i18n/format";
 import { monthLabel } from "../costing/personnelCostFormat";
 import {
@@ -280,9 +282,11 @@ function ItemsTab({
   onEdit: (item: PayrollItemRecord) => void;
   onRemove: (item: PayrollItemRecord) => void;
 }) {
+  // Kalemleri Bordro: Değiştirir'i olan yazar; öteki kişi yalnızca okur.
+  const writer = useCan().can(PERM.PERSONNEL_PAYROLL, "change");
   return (
     <Stack>
-      <Group justify="flex-end" gap="xs">
+      <Group justify="flex-end" gap="xs" display={writer ? undefined : "none"}>
         {(future || locked) && (
           <Text size="xs" c="dimmed">
             {locked ? pa.locked : pn.futureItemsHint}
@@ -311,7 +315,7 @@ function ItemsTab({
                   {item.kind === "DEDUCTION" ? minus(item.amount) : money(item.amount)}
                 </Table.Td>
                 <Table.Td>
-                  {!locked && (
+                  {!locked && writer && (
                     <Group gap={4} justify="flex-end" wrap="nowrap">
                       <Button
                         size="compact-xs"
@@ -360,6 +364,7 @@ function OpeningTab({
   onOpening: (month: number) => void;
   onRemove: (opening: PayrollOpening) => void;
 }) {
+  const writer = useCan().can(PERM.PERSONNEL_PAYROLL, "change");
   const opening = row.opening;
   // Gelecek aya devir girilmez (bir önceki ayın kümülatifi o ay bitince belli olur).
   const future = isFutureMonth(payroll.year, payroll.month);
@@ -375,13 +380,15 @@ function OpeningTab({
         <Alert color="red" variant="light" icon={<IconAlertTriangle size={18} />}>
           <Group justify="space-between" gap="xs">
             <Text size="sm">{pn.warningHelp.opening_missing}</Text>
-            <Button
-              size="compact-sm"
-              disabled={entryFuture}
-              onClick={() => onOpening(row.entry_month as number)}
-            >
-              {pn.openingEnter}
-            </Button>
+            {writer && (
+              <Button
+                size="compact-sm"
+                disabled={entryFuture}
+                onClick={() => onOpening(row.entry_month as number)}
+              >
+                {pn.openingEnter}
+              </Button>
+            )}
           </Group>
         </Alert>
       )}
@@ -407,7 +414,7 @@ function OpeningTab({
           {pn.openingNone}
         </Text>
       )}
-      {(future || entryFuture) && !locked && (
+      {(future || entryFuture) && !locked && writer && (
         <Text size="xs" c="dimmed">
           {pn.futureOpeningsHint}
         </Text>
@@ -417,7 +424,7 @@ function OpeningTab({
           {pa.locked}
         </Text>
       )}
-      <Group gap="xs" display={locked ? "none" : undefined}>
+      <Group gap="xs" display={locked || !writer ? "none" : undefined}>
         {opening && (
           <>
             <Button size="compact-sm" variant="light" onClick={() => onOpening(opening.month)}>
@@ -475,6 +482,7 @@ export function PayrollDrawer({
   /** Bordro onaylı: kalem, devir ve mali müşavir rakamı değiştirilemez. */
   locked?: boolean;
 }) {
+  const writer = useCan().can(PERM.PERSONNEL_PAYROLL, "change");
   const index = order.findIndex((item) => item.employee.id === row.employee.id);
   const previous = index > 0 ? order[index - 1] : null;
   const next = index >= 0 && index < order.length - 1 ? order[index + 1] : null;
@@ -549,7 +557,7 @@ export function PayrollDrawer({
                 ]}
               />
             )}
-            {!locked && (
+            {!locked && writer && (
               <Group>
                 <Button onClick={() => onFigure(row)}>
                   {row.figure ? py.editFigures : py.enterFigures}

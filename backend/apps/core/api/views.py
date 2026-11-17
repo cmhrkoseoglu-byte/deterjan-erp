@@ -15,13 +15,13 @@ from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
-from apps.core import health, ratelimit, records, security, services
+from apps.core import audit_filter, coverage, health, ratelimit, records, security, services
+from apps.core.access import AUDIT_LOG
 from apps.core.api.filters import AuditLogFilter, UserFilter
 from apps.core.api.serializers import (
     AttachmentQuerySerializer,
@@ -43,13 +43,13 @@ from apps.core.api.serializers import (
     SiteInfoSerializer,
     UserCreateSerializer,
     UserSerializer,
+    UserUpdateResultSerializer,
     UserUpdateSerializer,
 )
 from apps.core.attachments import INLINE_TYPES
 from apps.core.authentication import CsrfFailed
 from apps.core.models import Attachment, AuditLog, LoginLockout, TOTPDevice, User
-from apps.core.permissions import HasRole
-from apps.core.roles import ADMIN, YONETIM
+from apps.core.permissions import AdminOnly, HasAccess, Public, SignedIn
 
 
 def _is_api(request: HttpRequest) -> bool:
@@ -104,13 +104,20 @@ class LoginRateThrottle(BaseThrottle):
         return float(ratelimit.login_rate_period())
 
 
+# Giriş gerektirmeyen uçların şemadaki kimlik doğrulaması: drf-spectacular bunu yalnız `AllowAny`
+# izninden çıkarır, `Public` işaretinde açıkça yazılır (şema bugünkü gibi kalır). Oturumla ya da
+# oturumsuz çağrılabilir; kimlik doğrulaması olmayan uçta yalnız oturumsuz.
+OPTIONAL_AUTH: Any = [{"cookieAuth": []}, {}]
+NO_AUTH: Any = [{}]
+
+
 class HealthView(APIView):
     """Servis sağlık durumu. Kimlik doğrulama gerektirmez (izleme araçları için)."""
 
     authentication_classes: list = []
-    permission_classes = [AllowAny]
+    permission_classes = [Public("izleme araçlarının sağlık denetimi")]
 
-    @extend_schema(responses={200: HealthSerializer, 503: HealthSerializer})
+    @extend_schema(responses={200: HealthSerializer, 503: HealthSerializer}, auth=NO_AUTH)
     def get(self, request: Request) -> Response:
         checks = {
             "db": "ok" if health.check_database() else "error",
@@ -127,9 +134,9 @@ class SiteInfoView(APIView):
     """Ortam bilgisi (giriş gerektirmez): SPA eğitim ortamı şeridini buna göre gösterir."""
 
     authentication_classes: list = []
-    permission_classes = [AllowAny]
+    permission_classes = [Public("giriş ekranından önce okunan ortam bilgisi")]
 
-    @extend_schema(responses={200: SiteInfoSerializer})
+    @extend_schema(responses={200: SiteInfoSerializer}, auth=NO_AUTH)
     def get(self, request: Request) -> Response:
         return Response({"training_mode": bool(settings.TRAINING_MODE)})
 
@@ -138,9 +145,9 @@ class SiteInfoView(APIView):
 class CsrfView(APIView):
     """SPA açılışında çağrılır; `csrftoken` çerezini ayarlar."""
 
-    permission_classes = [AllowAny]
+    permission_classes = [Public("girişten önce CSRF çerezini ayarlar")]
 
-    @extend_schema(responses={204: None})
+    @extend_schema(responses={204: None}, auth=OPTIONAL_AUTH)
     def get(self, request: Request) -> Response:
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -149,12 +156,13 @@ class CsrfView(APIView):
 # (login CSRF) burada açıkça korunur.
 @method_decorator(csrf_protect, name="dispatch")
 class LoginView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [Public("giriş formu")]
     throttle_classes = [LoginRateThrottle]
 
     @extend_schema(
         request=LoginSerializer,
         responses={200: MeSerializer, 400: OpenApiResponse(description="invalid_credentials")},
+        auth=OPTIONAL_AUTH,
     )
     def post(self, request: Request) -> Response:
         serializer = LoginSerializer(data=request.data)
@@ -169,9 +177,9 @@ class LoginView(APIView):
 
 
 class LogoutView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [Public("çıkış; oturumu düşmüş istemci de çağırır")]
 
-    @extend_schema(request=None, responses={204: None})
+    @extend_schema(request=None, responses={204: None}, auth=OPTIONAL_AUTH)
     def post(self, request: Request) -> Response:
         services.logout_user(request._request)
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -179,6 +187,7 @@ class LogoutView(APIView):
 
 class MeView(generics.RetrieveAPIView):
     serializer_class = MeSerializer
+    permission_classes = [SignedIn("kişinin kendi hesabı")]
 
     def get_object(self) -> User:
         return self.request.user  # type: ignore[return-value]
@@ -190,6 +199,8 @@ def _actor(request: Request) -> User:
 
 class SecurityStatusView(APIView):
     """Kendi güvenlik durumum: 2FA, kalan kurtarma kodu, saha tableti, şifre kuralları."""
+
+    permission_classes = [SignedIn("kişinin kendi güvenlik durumu")]
 
     @extend_schema(responses=SecurityStatusSerializer)
     def get(self, request: Request) -> Response:
@@ -208,6 +219,8 @@ class SecurityStatusView(APIView):
 class OtpSetupView(APIView):
     """2FA kurulumunu başlatır: QR kod (SVG) ve elle girilecek anahtar."""
 
+    permission_classes = [SignedIn("kişinin kendi iki aşamalı doğrulaması")]
+
     @extend_schema(request=None, responses=OtpSetupSerializer)
     def post(self, request: Request) -> Response:
         setup = security.start_otp_setup(_actor(request))
@@ -221,6 +234,8 @@ class OtpSetupView(APIView):
 class OtpConfirmView(APIView):
     """Uygulamadaki ilk kodla kurulumu tamamlar; kurtarma kodları yalnızca bu yanıtta görünür."""
 
+    permission_classes = [SignedIn("kişinin kendi iki aşamalı doğrulaması")]
+
     @extend_schema(request=OtpCodeSerializer, responses=RecoveryCodesSerializer)
     def post(self, request: Request) -> Response:
         body = OtpCodeSerializer(data=request.data)
@@ -231,6 +246,8 @@ class OtpConfirmView(APIView):
 
 class OtpRecoveryCodesView(APIView):
     """Geçerli bir doğrulama koduyla yeni kurtarma kodları (eskiler geçersiz olur)."""
+
+    permission_classes = [SignedIn("kişinin kendi iki aşamalı doğrulaması")]
 
     @extend_schema(request=OtpCodeSerializer, responses=RecoveryCodesSerializer)
     def post(self, request: Request) -> Response:
@@ -243,6 +260,8 @@ class OtpRecoveryCodesView(APIView):
 class OtpDisableView(APIView):
     """Kendi 2FA'mı kapatırım (şifreyle; zorunlu rolde kapatılamaz)."""
 
+    permission_classes = [SignedIn("kişinin kendi iki aşamalı doğrulaması")]
+
     @extend_schema(request=PasswordConfirmSerializer, responses={204: None})
     def post(self, request: Request) -> Response:
         body = PasswordConfirmSerializer(data=request.data)
@@ -253,6 +272,8 @@ class OtpDisableView(APIView):
 
 class PasswordChangeView(APIView):
     """Kendi şifremi değiştiririm. Şifre politikası uygulanır; oturum açık kalır."""
+
+    permission_classes = [SignedIn("kişinin kendi şifresi")]
 
     @extend_schema(request=PasswordChangeSerializer, responses={204: None})
     def post(self, request: Request) -> Response:
@@ -272,7 +293,7 @@ class FieldDeviceView(APIView):
     İşaret imzalı bir çerezdir; tablette kim giriş yaparsa yapsın kısa hareketsizlik süresi
     geçerlidir."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
 
     @extend_schema(request=FieldDeviceSerializer, responses=FieldDeviceSerializer)
     def post(self, request: Request) -> Response:
@@ -290,7 +311,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     Kullanıcı silinmez (pasife alınır); `PUT` yoktur, güncelleme `PATCH` ile."""
 
     serializer_class = UserSerializer
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
     filterset_class = UserFilter
     search_fields = ["username", "full_name", "email"]
     ordering_fields = ["username", "full_name", "date_joined", "last_login"]
@@ -337,13 +358,22 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         user, password = services.create_user(_actor(request), **body.validated_data)
         return self._issued(user, password, status.HTTP_201_CREATED)
 
-    @extend_schema(request=UserUpdateSerializer, responses=UserSerializer)
+    @extend_schema(request=UserUpdateSerializer, responses=UserUpdateResultSerializer)
     def partial_update(self, request: Request, pk: str | None = None) -> Response:
+        """Bilgi ve rol güncelleme. Rol değişikliği bir iş akışı kuralını alabilecek kimse
+        bırakmıyorsa yanıtta `coverage_warnings` uyarısı döner; kayıt engellenmez."""
         user = self.get_object()
         body = UserUpdateSerializer(data=request.data, partial=True)
         body.is_valid(raise_exception=True)
+        before = [group.name for group in user.groups.all()]
         services.update_user(_actor(request), user, **body.validated_data)
-        return Response(self._fresh(user))
+        data = dict(self._fresh(user))
+        data["coverage_warnings"] = (
+            coverage.role_change_warnings(user, before, data["roles"])
+            if "roles" in body.validated_data
+            else []
+        )
+        return Response(data)
 
     @extend_schema(request=None, responses=UserSerializer)
     @action(detail=True, methods=["post"])
@@ -368,17 +398,39 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
-    """Denetim günlüğü (admin, yonetim). Salt okunur."""
+    """Denetim günlüğü (Denetim günlüğü: Görür). Salt okunur.
+
+    Kayıtlar ve alanlar kişinin yetkisine göre kayıt defteriyle süzülür (plan §5.6,
+    `core.audit_filter`): gizli kayıt listede, sayımda ve ayrıntıda yoktur (404); gizli not
+    aramada eşleşmez.
+    """
 
     serializer_class = AuditLogSerializer
-    permission_classes = [HasRole(ADMIN, YONETIM)]
+    # Tek kural bütün metotlara (karşılanmayan metot dahil): okuyamayana 403, okuyana 405.
+    permission_classes = [HasAccess(AUDIT_LOG)]
     filterset_class = AuditLogFilter
-    search_fields = ["object_repr", "note"]
+    search_fields = ["object_repr", audit_filter.NOTE]
     ordering_fields = ["timestamp"]
     ordering = ["-timestamp", "-id"]
 
+    def _audit_view(self) -> audit_filter.AuditView:
+        view = getattr(self, "_audit_view_cache", None)
+        if view is None:
+            view = audit_filter.view_for(self.request.user)
+            self._audit_view_cache = view
+        return view
+
     def get_queryset(self) -> QuerySet[AuditLog]:
-        return AuditLog.objects.select_related("actor", "content_type")
+        entries = AuditLog.objects.select_related("actor", "content_type")
+        if getattr(self, "swagger_fake_view", False):
+            return entries.none()
+        return audit_filter.visible_entries(self._audit_view(), entries)
+
+    def get_serializer(self, *args: Any, **kwargs: Any) -> Any:
+        if args and args[0] is not None:
+            shown = args[0] if isinstance(args[0], list | tuple) else [args[0]]
+            audit_filter.mask_entries(self._audit_view(), shown)
+        return super().get_serializer(*args, **kwargs)
 
 
 class AttachmentViewSet(
@@ -395,7 +447,7 @@ class AttachmentViewSet(
     """
 
     serializer_class = AttachmentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SignedIn("ek, bağlı olduğu kaydın kuralını izler (core.records)")]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     pagination_class = None
 

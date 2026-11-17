@@ -24,9 +24,8 @@ import {
   type ImportKind,
   type MasterDataEndpoint,
 } from "../../api/masterdata";
-import type { Role } from "../../api/types";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import type { PermKey } from "../../auth/access.gen";
+import { useCan } from "../../auth/access";
 import { ActiveBadge } from "./ActiveBadge";
 import { ConfirmModal } from "./ConfirmModal";
 import type { FieldDef, FormValues } from "./forms";
@@ -49,7 +48,8 @@ export interface EntityConfig<T> {
   columns: Column<T>[];
   fields: FieldDef[];
   defaults?: FormValues;
-  writeRoles: Role[];
+  /** Yeni, düzenle, pasife al ve içe aktar bu bölümün Değiştirir'ini ister. */
+  writeSection: PermKey;
   /** Kodlama sistematiğindeki kod türü (ör. "masterdata.material"): kod önerisi ve kod kilidi. */
   codeType?: string;
   /** Kodun öneki kaydın bu alanından gelir (ekipman türü). */
@@ -79,9 +79,9 @@ function recordName(row: Row): string {
 
 /** Ana veri listesi: arama, aktif/pasif filtresi, sayfalama, form ve içe aktarma. */
 export function CrudPage<T extends Row>({ config }: { config: EntityConfig<T> }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const queryClient = useQueryClient();
-  const canWrite = hasAnyRole(user, config.writeRoles);
+  const canWrite = can(config.writeSection, "change");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [debouncedSearch] = useDebouncedValue(search, 300);

@@ -192,7 +192,7 @@ gelince kendiliğinden `DONE` olur. Eksik alan şablonda boş kalır, hata verme
 | `production_order.<durum>` | `transition_status` / `cancel_document` payload'ı (`model, id, number, from_status, to_status`); onayda isteğe bağlı `priority` (1–4) |
 | `production_batch.started` | `model, id, batch_no, order: {model, id, number}` |
 | `production_batch.completed` | `model, id, batch_no, order: {model, id, number}, output_lot: {model, id, lot_no, material_code, material_name}` |
-| `production.deviation` | `model, id` (şarj), `batch_no, order_number, material_code, lot_no, planned_quantity, actual_quantity, deviation_pct, note` |
+| `production.deviation` | `model, id` (şarj), `batch_no, order_number, material_code, lot_no, planned_quantity, actual_quantity, deviation_pct, note, output_lot: {model, id, lot_no, material_code, material_name}` (2026-11-17: bildirim `output_lot`'a bağlanır) |
 | `production.low_yield` | `model, id` (şarj), `batch_no, order_number, yield_pct, threshold_pct` |
 | `inventory.lots_expiring` | `days, lots: [{lot_no, material_code, material_name, expiry_date}]` |
 | `inventory.below_min_stock` | `materials: [{code, name, quantity, min_stock, unit}]` |
@@ -2554,6 +2554,16 @@ değiştirme zorunlu, yalnızca admin):
   ücretli izin.
 - **CLAUDE.md:** değişiklik gerekmedi.
 
+## 2026-11-13 — Kişiye özel yetkiler: bordrosu olmayan ayın işçilik oranı notu
+
+- **Soru (plan §12, 5. adımdan önce; §8 madde 8):** personel maliyetinden açılan yeni gider oranının
+  notunda tutar yerine bordro numarası yazar. Canlı başlangıcından önceki aylarda onaylı bordro
+  olmadığından numara yoktur; not o zaman ne yazsın?
+- **Karar (CUMHUR, 2026-11-13):** yalnız "Personel maliyetinden" yazar (ay ya da "bordro yok" eki
+  yok).
+- **Gerekçe:** not tutar içermemeli (Fiyatları görür'ü olmayan kişi de görebilir); kaynağı söylemek
+  yeter.
+
 ## 2026-11-13 — Bordroda yarım gün kesintisi (2. adım)
 
 - **İstek (CUMHUR, 2026-11-12, "Yarım günlük ücret kesilsin"):** puantajda yarım gün çalışılan (YG)
@@ -2722,3 +2732,73 @@ değiştirme zorunlu, yalnızca admin):
 - **Önceki kayıtlara not:** "Dolum ve ambalaj (Faz 2, Adım 2.2)" kaydının parti iptali, yetki, olay
   sözleşmesi ve iş akışı maddelerine tarihli not düşüldü.
 - **CLAUDE.md:** değişiklik gerekmedi.
+
+## 2026-11-17 — Kişiye özel yetkiler: görev kayıtları ve iki bildirimin hedefi
+
+- **Bağlam:** 6. adımın bağımsız incelemesi, "Olaylar ve kazalar: Görür"ü kaldırılan bir yönetim
+  üyesinin denetim günlüğünde olay kayıtlarını görmediğini ama olay için açılan inceleme
+  görevinin kaydını (olay numarası, türü, yeri, saati) gördüğünü buldu; plan (§5.6) yalnız yorum ve
+  eklerin bağlı kaydı izlemesini yazıyordu. Ayrıca plan §12'nin 7. adımdan önce sorulacak maddesi:
+  tartım sapması (laboratuvara) ve ara kontrol reddi (üretim ve planlamaya) bildirimlerinin
+  alıcıları hedef sayfayı açamıyor.
+- **Karar (CUMHUR, 2026-11-17):**
+  - Kayda bağlı görevlerin denetim günlüğü kayıtları da bağlı kaydı izler: bağlı kayıt süzülüyorsa
+    (ör. olay) görev kaydı da aynı bölümü ister. İş akışıyla birlikte 7. adımda yapılır. Kişiye
+    özel ayar yokken hiçbir şey değişmez.
+  - Tartım sapması ve ara kontrol reddi bildirimleri herkesin açabildiği lot sayfasına bağlanır.
+    Alıcılar ve rol paketleri değişmez; kimseye yeni okuma hakkı verilmez.
+- **Gerekçe:** olayı göremeyen kişi ona bağlı görevden de olayı öğrenmemeli (§9 riski: verinin
+  başka yoldan sızması). Bildirimin bağlantısı alıcının açabildiği sayfaya gitmeli; yeni okuma
+  hakkı vermek yerine lot sayfası seçildi.
+
+## 2026-11-17 — Kişiye özel yetkiler: 7. adımın uygulama kararları
+
+- **Bağlam:** 7. adımda (iş akışı) her kural gerektirdiği yetkiyi bildirir; alıcılar ve görev
+  görünürlüğü bu yetkiyle süzülür (plan §5.7, karar 5). Planın harfiyen söylemediği noktalar.
+- **Kararlar (uygulamada, plan ve sahip kararlarıyla uyumlu):**
+  - Tartım sapması bildirimi şarjın çıktı (bulk) lotuna bağlanır: sapmanın tek ve belirli lotu
+    odur (girdi lotu kısa tartımda birden çok olabilir). Bildirim metni girdi lotunu söylemeye
+    devam eder. Var olan bildirimler geriye dönük değiştirilmez.
+  - Bu iki bildirimin yetkisi Lotlar: Görür'dür (herkese açık ve kilitli): alıcılar bugünkü gibi.
+  - Görev görmek ve tamamlamak rol üyeliği ile kuralın yetkisini birlikte ister; iptal ve yükten
+    gelen kişi bildirimleri ise iptal edilen ya da bildirilen kaydın bölümünde Görür ister.
+    Rapor isteyen süzülmez. Kuralı olmayan (elle açılmış) görevler bugünkü rol kuralını izler.
+  - "Tüm birimlerin görevleri" başka rollerin görevlerini gösterir ama kişinin kendi rolünde
+    yetkisini kaybettiği görevi geri getirmez.
+  - **Kimse kalmıyor:** görev, bildirim ve bildirim rolü olan iptal kuralları sayılır; iptal
+    kurallarında yalnız bildirim rolleri denetlenir (iptal edilen görevin rolü o an açık olan
+    göreve bağlıdır). Admin rolünün kuralları admin grubundaki etkin kişilerle karşılanır; grupta
+    olmayan süper kullanıcı sayılmaz. Hazırlık listesinde görevi alacak kimse yoksa madde eksik,
+    yalnız bildirim kimseye gitmiyorsa uyarı olur. Sistem durumunda yalnız gösterilir.
+  - **Yetki değişti olayı:** rol gerçekten değiştiğinde (kullanıcı penceresi, yönetim komutları,
+    Django yönetim paneli) yayınlanır ve kişinin açık oturumlarına iletilir; bildirim ya da
+    denetim kaydı yazmaz. Ön yüzün buna göre yenilenmesi 8. adımdadır.
+
+## 2026-11-17 — Kişiye özel yetkiler: 8. adımın uygulama kararları
+
+- **Bağlam:** 8. adımda ön yüzün her kararı kişinin etkin yetkisinden verilir (plan §5.9).
+  Planın harfiyen söylemediği noktalar. Hepsi varsayılan rol paketlerinde bugünkü davranışı
+  korur; fark yalnız kişiye özel ayarlarda (Paket B) çıkar.
+- **Kararlar:**
+  - **Kendi ekranı olmayan bölümler** (Canlıya geçiş ayarları, Tank temizliği, Personel
+    ayarları, Müşteriye sevk edilen lotlar) yalnız başka bir ekranın içinde görünür; modülün
+    menüsünü ve sayfasını tek başına açmaz (plan §2'deki "ekranı olan bölümler"in yorumu).
+    Açsaydı menü "Yetkiniz yok" sayfasına giderdi. Varsayılan paketlerde bu bölümlere sahip her
+    rolün modülde sekmesi olan başka bir bölümü vardır (testle denetlenir).
+  - **Varsayılan sekme:** bugünkü rol tercihi korunur (rol görünümü); tercih edilen sekme
+    görünmüyorsa ilk görünen sekme açılır, hiçbiri yoksa "Yetkiniz yok". Görünmeyen bir sekmenin
+    adresi modülün ana sayfasına yönlenir.
+  - **"Yetkiniz yok" sayfası** eksik yetki biliniyorsa onu söyler; modül sayfasında "bölümlerinden
+    biri", yalnız rol eksikse (yönetim panosu) satır çıkmaz.
+  - **Rolsüz kullanıcının üst bandı** nötr (gri, "Kullanıcı paneli"); `/raporlar` adresi
+    "Yetkiniz yok", `/raporlar/indirmeler` açık (§8 madde 1).
+  - **Düğmeler backend'in istediği düzeyi ister:** onaylamak Onaylar (satış siparişi dahil);
+    yalnız Onaylar'ı olan kişi taslağı yeniden kaydetmeden onaylar; iptal taslakta Değiştirir,
+    onaylı belgede Onaylar ister.
+  - **Gizli 403 yok:** kişinin göremeyeceği veriyi soran sorgu çalışmaz (ör. müşteri kartında
+    sipariş geçmişi, satın alma siparişinde açık talepler).
+  - **Oturum tazeleme:** yetki değişince bütün sorgular yenilenir (kaldırılan fiyat/maliyet açık
+    sayfada kalmasın); pencereye dönünce (30 sn'den eskiyse) ve 403 gelince (5 sn'den eskiyse)
+    `me` bir kez yenilenir.
+  - **Rapor indirme bağlantısı** dosyayı indirmek için eksik yetki yoksa görünür
+    (`download_required`).

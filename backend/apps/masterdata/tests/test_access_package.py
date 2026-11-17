@@ -8,18 +8,16 @@ yazıcı deneme baskısı kaydın okumasını izler (§4). GS1 ayarları kodlama
 admin (§4).
 
 2. adımda modül bölüm denetimine geçti: backend satırlarının `live` bağlantısı kaldırıldı (sabitler
-yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar. Ön yüz sabitlerine bağlantı
-8. adıma kadar kalır.
+yok); satırlar bugünkü rollerin kataloğa denkliğini kayıt olarak tutar.
+8. adımda ön yüz de bölüm denetimine geçti: ön yüz satırlarının `live` bağlantısı kaldırıldı;
+satırlar 8. adım öncesi rol listelerini dondurulmuş olarak tutar.
 """
-
-import re
 
 from apps.core import access
 from apps.core.access import CHANGE, READ
 from apps.core.coding.registry import code_type
 from apps.core.tests.access_helpers import (
     ADMIN_ONLY,
-    REPO_ROOT,
     SIGNED_IN,
     Need,
     Row,
@@ -49,9 +47,6 @@ CARD_CODE_TYPES = (
     "masterdata.customer",
 )
 REFERENCE_CODE_TYPES = ("masterdata.printer", "masterdata.unitofmeasure")
-
-# live= yalnız `export const` okur; bu sabitler dışa aktarılmaz, ayrı testte denetlenir.
-ENTITIES = "src/modules/masterdata/entities.tsx"
 
 
 def contact(name: str) -> Need:
@@ -197,17 +192,9 @@ def test_package_equivalence() -> None:
     assert_rows(ROWS)
 
 
-def _private_frontend_roles(path: str, name: str) -> tuple[str, ...]:
-    """Ön yüz dosyasındaki dışa aktarılmamış `const NAME ... = [...]` rol dizisi."""
-    text = (REPO_ROOT / "frontend" / path).read_text(encoding="utf-8")
-    match = re.search(rf"\bconst\s+{re.escape(name)}\b[^=]*=\s*\[(?P<body>[^\]]*)\]", text)
-    assert match is not None, f"{path}: {name} dizisi bulunamadı."
-    return tuple(re.findall(r"[\"']([a-z_]+)[\"']", match.group("body")))
-
-
 def test_unexported_roles_match_today() -> None:
-    """live= okuyamayan rol listeleri: kod türlerinin yazma rolleri (kayıttan) ve entities.tsx
-    sabitleri satırlardaki rollerle aynıdır."""
+    """live= okuyamayan rol listeleri: kod türlerinin yazma rolleri kayıttan okunur (entities.tsx
+    sabitleri 8. adımda kaldırıldı; satırlar o günkü rolleri dondurur)."""
     for key in CARD_CODE_TYPES:
         item = code_type(key)
         assert item is not None, key
@@ -219,6 +206,3 @@ def test_unexported_roles_match_today() -> None:
     unit = code_type("masterdata.unitofmeasure")
     assert unit is not None
     assert unit.write_access is None
-    assert unit.write_roles == ()
-    assert _private_frontend_roles(ENTITIES, "WRITE") == PLANLAMA
-    assert _private_frontend_roles(ENTITIES, "ADMIN_ONLY") == ("admin",)

@@ -52,8 +52,8 @@ import {
   type PurchaseOrderPayload,
 } from "../../api/purchasing";
 import type { Currency } from "../../api/sales";
-import { useAuth } from "../../auth/AuthContext";
-import { hasAnyRole } from "../../auth/roles";
+import { useCan } from "../../auth/access";
+import { PERM } from "../../auth/access.gen";
 import { formatDate, formatDateTime, formatMoney, formatNumber } from "../../i18n/format";
 import { RecordPanel } from "../../workflow/RecordPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
@@ -66,11 +66,9 @@ import { idOrNull, useLocations } from "../inventory/options";
 import { Info, Qty } from "../inventory/shared";
 import {
   CANCELLABLE_STATUSES,
-  ORDER_WRITE_ROLES,
   PURCHASING_BASE,
   purchaseOrderPath,
   RECEIVABLE_STATUSES,
-  RECEIVE_ROLES,
 } from "./config";
 import { usePurchasableMaterials } from "./options";
 import { PurchaseOrderStatusBadge } from "./shared";
@@ -210,8 +208,9 @@ export function PurchaseOrderPage() {
 }
 
 /** Seçili malzemenin açık talepleri (satıra bağlanabilir). */
-function useOpenRequests() {
+function useOpenRequests(enabled: boolean) {
   return useQuery({
+    enabled,
     queryKey: ["purchasing", "requests", "open-options"],
     staleTime: 30_000,
     queryFn: async () => (await listPurchaseRequests({ page_size: 500 }, ["OPEN"])).results,
@@ -219,10 +218,10 @@ function useOpenRequests() {
 }
 
 function OrderForm({ doc }: { doc: PurchaseOrderDetail | null }) {
-  const { user } = useAuth();
+  const { can } = useCan();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const writer = hasAnyRole(user, ORDER_WRITE_ROLES);
+  const writer = can(PERM.PURCHASING_ORDERS, "change");
   const editable = writer && (!doc || doc.status === "DRAFT");
   const [{ header, lines }, setDraft] = useState(() => toDraft(doc));
   const [error, setError] = useState("");
@@ -235,7 +234,7 @@ function OrderForm({ doc }: { doc: PurchaseOrderDetail | null }) {
   const suppliers = useOptions({ endpoint: "suppliers" });
   const units = useOptions({ endpoint: "units" });
   const materials = usePurchasableMaterials();
-  const openRequests = useOpenRequests();
+  const openRequests = useOpenRequests(editable && can(PERM.PURCHASING_REQUESTS));
 
   useEffect(() => setDraft(toDraft(doc)), [doc]);
 
@@ -295,7 +294,8 @@ function OrderForm({ doc }: { doc: PurchaseOrderDetail | null }) {
   });
   const approve = useMutation({
     mutationFn: async () => {
-      const saved = doc!.status === "DRAFT" ? await saveDraft() : doc!;
+      // Değiştirir'i olmayan onaycı taslağı yeniden kaydetmez, yalnız onaylar (plan §5.9).
+      const saved = doc!.status === "DRAFT" && editable ? await saveDraft() : doc!;
       return approvePurchaseOrder(saved.id);
     },
     onSuccess: (saved) => {
@@ -316,8 +316,15 @@ function OrderForm({ doc }: { doc: PurchaseOrderDetail | null }) {
   const canApprove = !!doc && doc.can_approve && (doc.status === "DRAFT" || pending);
   const needsManagement = !!doc && writer && doc.status === "DRAFT" && !doc.can_approve;
   const receivable =
-    !!doc && hasAnyRole(user, RECEIVE_ROLES) && RECEIVABLE_STATUSES.includes(doc.status);
-  const showPrices = writer;
+    !!doc && can(PERM.PURCHASING_DELIVERIES, "change") && RECEIVABLE_STATUSES.includes(doc.status);
+  // Fiyatlar Fiyatları görür'e bağlıdır; backend fiyat alanlarını yalnız onlara gönderir.
+  const showPrices = can(PERM.SENSITIVE_PRICES);
+  const showPdf = can(PERM.PURCHASING_ORDERS) && showPrices;
+  // İptal: taslak ve onay bekleyen Değiştirir, onaylı ve gönderilmiş sipariş Onaylar ister.
+  const canCancel =
+    !!doc &&
+    CANCELLABLE_STATUSES.includes(doc.status) &&
+    (notYetOrdered ? writer : can(PERM.PURCHASING_ORDERS, "approve"));
 
   return (
     <Stack>
@@ -356,7 +363,7 @@ function OrderForm({ doc }: { doc: PurchaseOrderDetail | null }) {
               {pt.approve}
             </Button>
           )}
-          {pending && hasAnyRole(user, ["yonetim"]) && (
+          {pending && can(PERM.PURCHASING_OVER_LIMIT, "approve") && (
             <Button variant="light" onClick={() => setReturnOpen(true)}>
               {pt.returnToDraft}
             </Button>
@@ -374,7 +381,7 @@ function OrderForm({ doc }: { doc: PurchaseOrderDetail | null }) {
               {pt.receive}
             </Button>
           )}
-          {writer && doc && doc.status !== "DRAFT" && (
+          {showPdf && doc && doc.status !== "DRAFT" && (
             <Button
               variant="default"
               component="a"
@@ -395,7 +402,7 @@ function OrderForm({ doc }: { doc: PurchaseOrderDetail | null }) {
               {pt.close}
             </Button>
           )}
-          {writer && doc && CANCELLABLE_STATUSES.includes(doc.status) && (
+          {canCancel && (
             <Button
               color="red"
               variant="light"

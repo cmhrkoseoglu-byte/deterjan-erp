@@ -2,7 +2,7 @@
 // Sayılar metin olarak gelir (Decimal). Tutar alanları yalnızca yönetim ve admin'e döner.
 import axios from "axios";
 import { api } from "./client";
-import type { Paginated } from "./types";
+import type { Paginated, RequiredAccess } from "./types";
 
 export type DashboardCode = "management" | "warehouse" | "lab" | "production" | "shipping";
 export type ColumnKind =
@@ -84,6 +84,11 @@ export interface ReportJob {
   finished_at: string | null;
   expires_at: string | null;
   can_download: boolean;
+  /**
+   * İndirmek için isteyende artık eksik olan yetkiler (plan §8 madde 12); boşsa indirebilir.
+   * Rapor dosyası istendikten sonra yetkisi kaldırılan kişi dosyayı indiremez.
+   */
+  download_required?: RequiredAccess[];
 }
 
 // --- pano veri biçimleri ----------------------------------------------------------------------

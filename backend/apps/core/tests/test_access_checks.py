@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 
 from apps.core import checks
 from apps.core.access import CHANGE, VIEW, register_module, register_section, temporary_catalog
-from apps.core.permissions import AccessMixin, HasAccess, HasRole, ReadRule, SignedIn
+from apps.core.permissions import AccessMixin, HasAccess, ReadRule, SignedIn
 from apps.production.access import ORDERS, PREP
 
 
@@ -77,21 +77,22 @@ def test_dependency_check_counts_section_keys_given_as_text(tmp_path: Path) -> N
 def test_endpoint_check_only_for_enforced_apps() -> None:
     assert checks.endpoint_errors(set()) == []
 
+    # 6. adımda core geçti (denetim günlüğü: Denetim günlüğü: Görür); 7. adımda iş akışı da geçti:
+    # 7. adımın sonunda bütün modüller denetlenir (plan §5.1).
     errors = checks.endpoint_errors({"core"})
-
-    assert errors
-    assert any(
-        "/api/v1/audit-log/" in error and "HasRole(admin, yonetim)" in error for error in errors
-    )
+    assert not any("/api/v1/audit-log/" in error for error in errors)
     assert not any("/api/v1/access/catalog/" in error for error in errors)
+    assert checks.endpoint_errors({"workflow"}) == []
+    every_app = {path.name for path in checks.APPS_DIR.iterdir() if (path / "apps.py").exists()}
+    assert every_app == set(checks.ENFORCED_APPS)
 
 
 def test_access_permission_recognition() -> None:
     assert checks._is_access_permission(HasAccess(ORDERS)())
     assert checks._is_access_permission(SignedIn("deneme")())
     assert checks._is_access_permission((HasAccess(ORDERS) | ReadRule(PREP))())
-    assert not checks._is_access_permission(HasRole("depo")())
-    assert not checks._is_access_permission((HasAccess(ORDERS) | HasRole("depo"))())
+    assert not checks._is_access_permission(IsAuthenticated())
+    assert not checks._is_access_permission((HasAccess(ORDERS) | IsAuthenticated)())
 
 
 class _HeadOptionsViewSet(AccessMixin, viewsets.ViewSet):
