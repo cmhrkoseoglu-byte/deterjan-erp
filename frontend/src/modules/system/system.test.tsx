@@ -1,8 +1,8 @@
-import { MantineProvider } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as accessApi from "../../api/access";
 import * as authApi from "../../api/auth";
 import * as opsApi from "../../api/ops";
 import type { BackupRun, SystemStatus } from "../../api/ops";
@@ -13,6 +13,7 @@ import { page, userWith } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
 import { formatBytes } from "./format";
 
+vi.mock("../../api/access");
 vi.mock("../../api/auth");
 vi.mock("../../api/ops");
 vi.mock("../../api/users");
@@ -107,6 +108,7 @@ function userRecord(extra: Partial<UserRecord> = {}): UserRecord {
     date_joined: "2026-01-01T08:00:00Z",
     is_locked: true,
     otp_enabled: false,
+    personal_counts: { granted: 0, revoked: 0 },
     ...extra,
   };
 }
@@ -228,7 +230,11 @@ describe("Kullanıcılar", () => {
     renderApp("/sistem/kullanicilar");
     await screen.findByText("Ayşe Yılmaz");
     await user.type(screen.getByLabelText("Ara (kullanıcı adı, ad, e-posta)"), "meh");
-    await waitFor(() => expect(usersApi.listUsers).toHaveBeenLastCalledWith("meh"));
+    await waitFor(() =>
+      expect(usersApi.listUsers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: "meh" }),
+      ),
+    );
   });
 
   it("yeni kullanıcı açar; geçici şifre bir kez gösterilir", async () => {
@@ -296,13 +302,10 @@ describe("Kullanıcılar", () => {
     expect(usersApi.createUser).not.toHaveBeenCalled();
   });
 
-  it("düzenle: bilgileri ve rolleri kaydeder, kullanıcı adı değişmez", async () => {
+  it("düzenle: bilgileri kaydeder; roller rozet, değiştirme bağlantısı Yetkiler sayfasına", async () => {
     const user = userEvent.setup();
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
-    vi.mocked(usersApi.updateUser).mockResolvedValue({
-      ...userRecord({ roles: ["depo"] }),
-      coverage_warnings: [],
-    });
+    vi.mocked(usersApi.updateUser).mockResolvedValue(userRecord({ phone: "0532" }));
     const show = vi.spyOn(notifications, "show").mockReturnValue("bildirim");
     renderApp("/sistem/kullanicilar");
 
@@ -313,16 +316,22 @@ describe("Kullanıcılar", () => {
     expect(
       within(dialog).queryByRole("textbox", { name: /Kullanıcı adı/ }),
     ).not.toBeInTheDocument();
-    expect(within(dialog).getByLabelText("Sevkiyat")).toBeChecked();
-    await user.click(within(dialog).getByLabelText("Sevkiyat"));
+    // Roller burada değişmez: rozet olarak görünür.
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+    const roles = within(dialog).getByTestId("user-roles");
+    expect(within(roles).getByText("Depo")).toBeInTheDocument();
+    expect(within(roles).getByText("Sevkiyat")).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("link", { name: "Rolleri ve yetkileri değiştir" }),
+    ).toHaveAttribute("href", "/sistem/kullanicilar/5/yetkiler");
+    await user.type(within(dialog).getByLabelText("Telefon"), "0532");
     await user.click(within(dialog).getByRole("button", { name: "Kaydet" }));
 
     await waitFor(() =>
       expect(usersApi.updateUser).toHaveBeenCalledWith(5, {
         full_name: "Ayşe Yılmaz",
-        phone: "",
+        phone: "0532",
         email: "ayse@example.com",
-        roles: ["depo"],
       }),
     );
     await waitFor(() =>
@@ -333,37 +342,49 @@ describe("Kullanıcılar", () => {
     show.mockRestore();
   });
 
-  it("rol kaydı görevi alacak kimse bırakmıyorsa kayıttan sonra kalıcı uyarı gösterir", async () => {
+  it("listede kişiye özel rozeti ve ipucu, Yetkiler düğmesi ve ad bağlantısı", async () => {
     const user = userEvent.setup();
     vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
-    const warning =
-      "Sevkiyat rolünde “Satış › Sevkiyatlar: Değiştirir” yetkisi olan etkin kimse yok; 2 görev kimseye düşmez.";
-    vi.mocked(usersApi.updateUser).mockResolvedValue({
-      ...userRecord({ roles: ["depo"] }),
-      coverage_warnings: [warning],
-    });
-    const show = vi.spyOn(notifications, "show").mockReturnValue("bildirim");
+    vi.mocked(usersApi.listUsers).mockResolvedValue(
+      page([userRecord({ personal_counts: { granted: 2, revoked: 1 } })]),
+    );
     renderApp("/sistem/kullanicilar");
 
-    await screen.findByText("Ayşe Yılmaz");
-    await user.click(screen.getAllByRole("button", { name: "Düzenle" })[0]);
-    const dialog = await screen.findByRole("dialog", { name: "Ayşe Yılmaz: bilgileri düzenle" });
-    await user.click(within(dialog).getByLabelText("Sevkiyat"));
-    await user.click(within(dialog).getByRole("button", { name: "Kaydet" }));
-
-    // Kayıt engellenmez: pencere kapanır, başarı ve uyarı bildirimleri gösterilir.
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: /bilgileri düzenle/ })).not.toBeInTheDocument(),
+    const badge = await screen.findByText("Kişiye özel: 3");
+    await user.hover(badge);
+    expect(await screen.findByText("2 yetki eklendi, 1 yetki kaldırıldı")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ayşe Yılmaz" })).toHaveAttribute(
+      "href",
+      "/sistem/kullanicilar/5/yetkiler",
     );
-    expect(show).toHaveBeenCalledWith(expect.objectContaining({ color: "green" }));
-    const call = show.mock.calls.find(([options]) => options.color === "orange");
-    expect(call).toBeDefined();
-    const options = call![0];
-    expect(options.title).toBe("Kaydedildi; bazı görevleri alacak kimse kalmadı");
-    expect(options.autoClose).toBe(false);
-    render(<MantineProvider>{options.message}</MantineProvider>);
-    expect(screen.getByTestId("coverage-warnings")).toHaveTextContent(warning);
-    show.mockRestore();
+    expect(screen.getByRole("link", { name: "Yetkiler" })).toHaveAttribute(
+      "href",
+      "/sistem/kullanicilar/5/yetkiler",
+    );
+  });
+
+  it("Rol, Durum ve Yalnız kişiye özel süzgeçleri adreste saklanır ve isteğe gider", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    const { router } = renderApp("/sistem/kullanicilar?rol=depo&ozel=1&durum=pasif");
+
+    await screen.findByText("Ayşe Yılmaz");
+    expect(usersApi.listUsers).toHaveBeenCalledWith({
+      search: "",
+      role: "depo",
+      active: "false",
+      personal: true,
+    });
+    await user.click(screen.getByLabelText("Yalnız kişiye özel yetkisi olanlar"));
+    await waitFor(() => expect(router.state.location.search).toBe("?rol=depo&durum=pasif"));
+    await waitFor(() =>
+      expect(usersApi.listUsers).toHaveBeenLastCalledWith({
+        search: "",
+        role: "depo",
+        active: "false",
+        personal: false,
+      }),
+    );
   });
 
   it("şifre sıfırlama onaylanınca yeni geçici şifre gösterilir", async () => {
@@ -424,7 +445,7 @@ describe("Kullanıcılar", () => {
     renderApp("/sistem/kullanicilar");
 
     expect(await screen.findByText("Geçici şifre")).toBeInTheDocument();
-    expect(screen.getByText("Pasif")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("Pasif")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Ayşe Yılmaz: diğer işlemler" }));
     expect(screen.queryByRole("menuitem", { name: "Şifre sıfırla" })).not.toBeInTheDocument();
     await user.click(await screen.findByRole("menuitem", { name: "Etkinleştir" }));
@@ -432,6 +453,101 @@ describe("Kullanıcılar", () => {
     await user.click(within(dialog).getByRole("button", { name: "Etkinleştir" }));
 
     await waitFor(() => expect(usersApi.setUserActive).toHaveBeenCalledWith(5, true));
+  });
+});
+
+describe("Rol yetkileri", () => {
+  it("sekme Kullanıcılar'dan sonra gelir; paketler G D O harfleriyle, rol seçimi adreste", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    const { router } = renderApp("/sistem/rol-yetkileri");
+
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      "Sistem durumu",
+      "Kullanıcılar",
+      "Rol yetkileri",
+      "Kodlama sistematiği",
+      "Bu cihaz",
+    ]);
+    expect(screen.getByRole("columnheader", { name: "Herkes" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Depo" })).toBeInTheDocument();
+    // Depo: Malzeme hazırlama Görür ve Değiştirir.
+    expect(
+      screen.getByRole("button", {
+        name: "Depo: Üretim › Malzeme hazırlama (Değiştirir) — kimde var?",
+      }),
+    ).toHaveTextContent("D");
+    expect(
+      screen.getByRole("button", { name: "Herkes: Depo ve stok › Lotlar (Görür) — kimde var?" }),
+    ).toHaveTextContent("G");
+
+    await user.click(screen.getByRole("textbox", { name: "Rol" }));
+    await user.click(await screen.findByRole("option", { name: "Depo" }));
+    await waitFor(() => expect(router.state.location.search).toBe("?rol=depo"));
+    expect(screen.queryByRole("columnheader", { name: "Herkes" })).not.toBeInTheDocument();
+  });
+
+  it("Kimde var? kişileri kaynaklarıyla ve görev ayrılığı uyarısıyla listeler", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    vi.mocked(accessApi.fetchAccessHolders).mockResolvedValue({
+      key: "production.prep",
+      level: "change",
+      holders: [
+        {
+          user: { id: 5, username: "ayse", full_name: "Ayşe Yılmaz", roles: ["depo"] },
+          source: "role",
+          roles: ["depo"],
+          segregation: ["Görev ayrılığı: “Şarj ve tartım (Değiştirir)” ile aynı kişide."],
+        },
+        {
+          user: { id: 7, username: "ali", full_name: "Ali Kaya", roles: ["uretim"] },
+          source: "granted",
+          roles: [],
+          segregation: [],
+        },
+        {
+          user: { id: 8, username: "veli", full_name: "Veli Can", roles: ["depo"] },
+          source: "revoked",
+          roles: ["depo"],
+          segregation: [],
+        },
+      ],
+    });
+    renderApp("/sistem/rol-yetkileri");
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Depo: Üretim › Malzeme hazırlama (Değiştirir) — kimde var?",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Kimde var? Üretim › Malzeme hazırlama (Değiştirir)",
+    });
+    expect(accessApi.fetchAccessHolders).toHaveBeenCalledWith("production.prep", "change");
+    // Tıklanan sütunun rolüyle süzülür.
+    expect(await within(dialog).findByText("Rolden (Depo)")).toBeInTheDocument();
+    expect(within(dialog).getByText("Rolde var ama kaldırıldı")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Ali Kaya")).not.toBeInTheDocument();
+    expect(within(dialog).getByText("Görev ayrılığı")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "Ayşe Yılmaz" })).toHaveAttribute(
+      "href",
+      "/sistem/kullanicilar/5/yetkiler",
+    );
+    await user.click(within(dialog).getByRole("textbox", { name: "Rol" }));
+    await user.click(await screen.findByRole("option", { name: "Üretim" }));
+    expect(await within(dialog).findByText("Kişiye özel eklendi")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Rolden (Depo)")).not.toBeInTheDocument();
+  });
+
+  it("Excel'e aktar bağlantısı rapor adresine gider", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("admin"));
+    renderApp("/sistem/rol-yetkileri");
+    expect(await screen.findByRole("link", { name: "Excel'e aktar" })).toHaveAttribute(
+      "href",
+      "/api/v1/access/report/export/",
+    );
   });
 });
 

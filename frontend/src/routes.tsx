@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { RouteObject } from "react-router-dom";
-import { DASHBOARD_PATH, SEARCH_PATH, TASKS_PATH } from "./auth/paths";
+import { DASHBOARD_PATH, MY_ACCESS_PATH, SEARCH_PATH, TASKS_PATH } from "./auth/paths";
 import { RequireAuth } from "./auth/RequireAuth";
 import { RequireAccess, RequirePage } from "./auth/RequireAccess";
 import type { PageKey } from "./auth/pageAccess";
@@ -51,6 +51,7 @@ import { PurchaseOrderPage } from "./modules/purchasing/OrderPage";
 import { PurchasingPage } from "./modules/purchasing/PurchasingPage";
 import { ShipmentPage } from "./modules/sales/ShipmentPage";
 import { SecurityPage } from "./modules/security/SecurityPage";
+import { UserAccessPage } from "./modules/system/access/UserAccessPage";
 import { SystemPage } from "./modules/system/SystemPage";
 import { ComparisonPage } from "./modules/golive/ComparisonPage";
 import { GoLivePage } from "./modules/golive/GoLivePage";
@@ -58,6 +59,7 @@ import { ProblemPage } from "./modules/golive/ProblemPage";
 import { HelpPage } from "./modules/help/HelpPage";
 import { HomePage } from "./pages/HomePage";
 import { HomeRedirect } from "./pages/HomeRedirect";
+import { MyAccessPage } from "./pages/MyAccessPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ModulePlaceholderPage } from "./pages/ModulePlaceholderPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -145,6 +147,11 @@ const pageRoutes: RouteObject[] = [
   // Panolar ve raporlar: İndirmeler herkese açık; panolar ve raporlar yetkiyle daralır.
   { path: "raporlar/:tab?", element: guarded("reporting", <ReportingPage />) },
   // Sistem: yalnızca admin (sistem durumu, yedekler, kullanıcı kilidi/2FA, saha tableti).
+  // Sistem > Kullanıcılar > Yetkiler: kişinin rolleri ve kişiye özel yetkileri (plan §6.1).
+  {
+    path: "sistem/kullanicilar/:userId/yetkiler",
+    element: guarded("system", <UserAccessPage />),
+  },
   { path: "sistem/:tab?", element: guarded("system", <SystemPage />) },
   // Canlıya geçiş: sorun bildirimini bildiren ve admin açar (backend süzer).
   {
@@ -214,6 +221,8 @@ export const routes: RouteObject[] = [
           { path: SEARCH_PATH.slice(1), element: <SearchPage /> },
           // Güvenlik (şifre, 2FA): her giriş yapmış kullanıcı.
           { path: "guvenlik", element: <SecurityPage /> },
+          // Yetkilerim: her giriş yapmış kullanıcı, salt okunur (plan §6.4).
+          { path: MY_ACCESS_PATH.slice(1), element: <MyAccessPage /> },
           ...pageRoutes,
           ...moduleRoutes,
           { path: "*", element: <NotFoundPage /> },

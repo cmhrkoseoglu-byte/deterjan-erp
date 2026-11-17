@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { markNotificationsRead, type AppNotification } from "../api/workflow";
 import { useAuth } from "../auth/AuthContext";
 import { workflowKeys } from "./queryKeys";
-import { openableRecordPath } from "./recordLinks";
+import { EVENT_ROUTES, openableRecordPath } from "./recordLinks";
 
 /** Bildirimleri okundu işaretler (`ids` yoksa tümünü). */
 export function useMarkRead() {
@@ -15,8 +15,9 @@ export function useMarkRead() {
 }
 
 /**
- * Bildirime tıklanınca: okundu işaretle, ilgili kayda (kişi açamıyorsa ya da kayıt yoksa, görev ise
- * Görevlerim'e) git (plan §5.7, §8 madde 2).
+ * Bildirime tıklanınca: okundu işaretle, ilgili kayda (kişi açamıyorsa ya da kayıt yoksa, olayın
+ * sayfasına, ör. "Yetkileriniz güncellendi" → Yetkilerim; görev ise Görevlerim'e) git (plan §5.7, §6.5,
+ * §8 madde 2).
  */
 export function useOpenNotification(after?: () => void) {
   const markRead = useMarkRead();
@@ -24,7 +25,10 @@ export function useOpenNotification(after?: () => void) {
   const { user } = useAuth();
   return (notification: AppNotification) => {
     if (!notification.is_read) markRead.mutate([notification.id]);
-    const path = openableRecordPath(user, notification.related) ?? (notification.task ? "/" : null);
+    const path =
+      openableRecordPath(user, notification.related) ??
+      EVENT_ROUTES[notification.event_name] ??
+      (notification.task ? "/" : null);
     after?.();
     if (path) navigate(path);
   };

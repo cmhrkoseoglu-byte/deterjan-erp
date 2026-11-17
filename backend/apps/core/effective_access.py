@@ -213,6 +213,132 @@ def effective_access(user: Any) -> EffectiveAccess:
     return compute_access(user.role_names, grants=grants, revokes=revokes)
 
 
+@dataclass(frozen=True)
+class CellSource:
+    """Bir hücrenin (`bölüm`, `düzey`) neden var ya da yok olduğu (Yetkiler ekranı, Yetkilerim,
+    rapor; plan §6.1, §6.2). Hesap kişi etkinmiş gibi yapılır."""
+
+    key: str
+    level: str  # view | change | approve | read
+    effective: bool  # geçerli yetkide var mı (ya da admin)
+    default: bool  # yalnız rollerle (kişiye özel ayar olmadan) var mı
+    holders: tuple[str, ...]  # veren paket sahipleri: "*", "+", rol kodları (admin: "admin")
+    implied: bool  # yalnız Değiştirir/Onaylar Görür'ü getirdiği için var
+    granted: bool  # etkin kişiye özel ekleme satırı var
+    revoked: bool  # etkin kişiye özel kaldırma satırı var
+    dropped: str | None  # eklendiği/rolde olduğu hâlde neden yok: view_revoked | kvkk | requires
+    ineffective: bool  # kişiye özel satır hiçbir şeyi değiştirmiyor (plan §5.2)
+
+
+def explain_access(
+    role_names: Iterable[str],
+    *,
+    grants: Iterable[Entry] = (),
+    revokes: Iterable[Entry] = (),
+    is_admin: bool = False,
+) -> dict[Entry, CellSource]:
+    """Her hücrenin kaynağını açıklar (veritabanına dokunmaz; kişi etkinmiş gibi hesaplar).
+
+    Hücreler her bölümün düzeyleri ve "Açık kayıtlar" satırlarının `read` düzeyidir.
+
+    - `holders`: hücreyi paketinde taşıyan sahipler (`*`, rolü varsa `+`, kişinin rolleri), ham
+      paketlerden; admin için `("admin",)`.
+    - `implied`: hiçbir paket ve ekleme vermediği hâlde Değiştirir ya da Onaylar yüzünden gelen
+      Görür.
+    - `dropped`: rolden ya da eklemeden gelmesi gerekirken neden yok: Görür kaldırıldı
+      (`view_revoked`), KVKK rolü yok (`kvkk`), ön koşulu eksik (`requires`). Kişiden kaldırılan
+      hücrede `None`'dır.
+    - `ineffective`: ekleme rol varsayılanında zaten varsa; kaldırma rol varsayılanında yoksa (KVKK
+      bölümündeki ve kilitli düzeydeki kaldırma hariç). KVKK ya da ön koşul yüzünden düşen ekleme
+      etkisiz sayılmaz (sahibin 2026-11-17 kararı).
+    """
+    roles = set(role_names) & set(ROLES)
+    granted = frozenset(grants)
+    revoked = frozenset(revokes)
+    if is_admin:
+        return {
+            cell: CellSource(
+                key=cell[0],
+                level=cell[1],
+                effective=True,
+                default=True,
+                holders=("admin",),
+                implied=False,
+                granted=False,
+                revoked=False,
+                dropped=None,
+                ineffective=False,
+            )
+            for cell in _cells()
+        }
+    effective = compute_access(roles, grants=granted, revokes=revoked).entries
+    default = compute_access(roles).entries
+    holder_names = (EVERYONE, *((ANY_ROLE,) if roles else ()), *sorted(roles))
+    packages = {name: access.package(name) for name in holder_names}
+    revoked_views = {key for key, level in revoked if level == VIEW}
+    result: dict[Entry, CellSource] = {}
+    for cell in _cells():
+        key, level = cell
+        item = access.section(key)
+        holders = tuple(name for name in holder_names if cell in packages[name])
+        is_granted = cell in granted
+        is_revoked = cell in revoked and level not in item.locked
+        offered = bool(holders) or (
+            is_granted and item.grantable(level) and item.kind is not Kind.OPEN_RECORDS
+        )
+        implied = (
+            level == VIEW
+            and cell in effective
+            and not offered
+            and any((key, other) in effective for other in (CHANGE, APPROVE))
+        )
+        dropped: str | None = None
+        if offered and cell not in effective and not is_revoked:
+            if level in (CHANGE, APPROVE) and key in revoked_views:
+                dropped = "view_revoked"
+            elif item.restricted_to_role is not None and item.restricted_to_role not in roles:
+                dropped = "kvkk"
+            else:
+                dropped = "requires"
+        if is_granted:
+            ineffective = cell in default
+        elif cell in revoked:
+            ineffective = (
+                item.restricted_to_role is None and level not in item.locked and cell not in default
+            )
+        else:
+            ineffective = False
+        result[cell] = CellSource(
+            key=key,
+            level=level,
+            effective=cell in effective,
+            default=cell in default,
+            holders=holders,
+            implied=implied,
+            granted=is_granted,
+            revoked=cell in revoked,
+            dropped=dropped,
+            ineffective=ineffective,
+        )
+    return result
+
+
+def _cells() -> list[Entry]:
+    return [(item.key, level) for item in access.sections() for level in item.levels]
+
+
+def explain_user_access(user: Any) -> dict[Entry, CellSource]:
+    """`explain_access`'in veritabanından okuyan hâli: kullanıcının rolleri ve etkin kişiye özel
+    ayarları; pasif kullanıcı da etkinmiş gibi hesaplanır. Önceden yüklenmiş roller ve ayarlar
+    (`effective_access` gibi) sorgu yapmadan kullanılır."""
+    grants: list[Entry] = []
+    revokes: list[Entry] = []
+    for override in _active_overrides(user):
+        target = grants if override.effect == override.Effect.GRANT else revokes
+        target.append((override.key, override.level))
+    return explain_access(user.roles, grants=grants, revokes=revokes, is_admin=bool(user.is_admin))
+
+
 def active_overrides() -> Any:
     """Etkin kişiye özel ayarlar (bitmemiş satırlar); önceden yüklemek için."""
     from apps.core.models import AccessOverride

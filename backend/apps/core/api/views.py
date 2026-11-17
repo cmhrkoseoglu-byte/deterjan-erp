@@ -2,7 +2,8 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import password_validation
-from django.db.models import Exists, OuterRef, QuerySet
+from django.db.models import Count, Exists, IntegerField, OuterRef, QuerySet, Subquery
+from django.db.models.functions import Coalesce
 from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -20,10 +21,11 @@ from rest_framework.response import Response
 from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
-from apps.core import audit_filter, coverage, health, ratelimit, records, security, services
+from apps.core import access_report, audit_filter, health, ratelimit, records, security, services
 from apps.core.access import AUDIT_LOG
 from apps.core.api.filters import AuditLogFilter, UserFilter
 from apps.core.api.serializers import (
+    AccessHistoryEntrySerializer,
     AttachmentQuerySerializer,
     AttachmentRemoveSerializer,
     AttachmentSerializer,
@@ -41,15 +43,20 @@ from apps.core.api.serializers import (
     RecoveryCodesSerializer,
     SecurityStatusSerializer,
     SiteInfoSerializer,
+    UserAccessResultSerializer,
+    UserAccessSerializer,
+    UserAccessUpdateSerializer,
     UserCreateSerializer,
     UserSerializer,
-    UserUpdateResultSerializer,
     UserUpdateSerializer,
 )
 from apps.core.attachments import INLINE_TYPES
 from apps.core.authentication import CsrfFailed
-from apps.core.models import Attachment, AuditLog, LoginLockout, TOTPDevice, User
-from apps.core.permissions import AdminOnly, HasAccess, Public, SignedIn
+from apps.core.effective_access import active_overrides
+from apps.core.exceptions import BusinessRuleError
+from apps.core.models import AccessOverride, Attachment, AuditLog, LoginLockout, TOTPDevice, User
+from apps.core.permissions import AccessAdminOnly, AdminOnly, HasAccess, Public, SignedIn
+from apps.core.user_access import OverrideSpec
 
 
 def _is_api(request: HttpRequest) -> bool:
@@ -305,10 +312,36 @@ class FieldDeviceView(APIView):
         return response
 
 
+def _personal_count(effect: str) -> Coalesce:
+    """Kullanıcının etkin kişiye özel ayar sayısı (alt sorgu: rol süzgecinin birleşimi sayıyı
+    çoğaltmaz)."""
+    rows = (
+        active_overrides()
+        .filter(user=OuterRef("pk"), effect=effect)
+        .order_by()
+        .values("user")
+        .annotate(n=Count("pk"))
+        .values("n")
+    )
+    return Coalesce(Subquery(rows, output_field=IntegerField()), 0)
+
+
+ROLES_ON_ACCESS_PAGE = (
+    "Roller Sistem › Kullanıcılar › Yetkiler ekranında, gerekçe yazılarak değiştirilir."
+)
+ACCESS_ERRORS = (
+    "access_changed, cannot_edit_own_access, admin_has_all_access, unknown_role, role_not_seeded, "
+    "cannot_remove_own_admin, last_admin, access_duplicate, unknown_access, "
+    "open_records_revoke_only, access_not_grantable, access_locked, access_requires_role, "
+    "access_conflict, access_requires, access_note_required, validation_error"
+)
+
+
 class UserViewSet(viewsets.ReadOnlyModelViewSet):
-    """Kullanıcı yönetimi (yalnızca admin): liste, yeni kullanıcı (geçici şifreyle), bilgi ve rol
-    güncelleme, pasife alma / etkinleştirme, şifre sıfırlama, kilit açma, 2FA sıfırlama.
-    Kullanıcı silinmez (pasife alınır); `PUT` yoktur, güncelleme `PATCH` ile."""
+    """Kullanıcı yönetimi (yalnızca admin): liste, yeni kullanıcı (geçici şifreyle), bilgi
+    güncelleme, pasife alma / etkinleştirme, şifre sıfırlama, kilit açma, 2FA sıfırlama; roller ve
+    kişiye özel yetkiler (`access/`) ile geçmişi (`access/history/`).
+    Kullanıcı silinmez (pasife alınır); kullanıcıda `PUT` yoktur, güncelleme `PATCH` ile."""
 
     serializer_class = UserSerializer
     permission_classes = [AdminOnly]
@@ -323,7 +356,10 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         )
         otp = TOTPDevice.objects.filter(user=OuterRef("pk"), confirmed_at__isnull=False)
         return User.objects.prefetch_related("groups").annotate(
-            is_locked_now=Exists(locked), has_otp=Exists(otp)
+            is_locked_now=Exists(locked),
+            has_otp=Exists(otp),
+            granted_count=_personal_count(AccessOverride.Effect.GRANT),
+            revoked_count=_personal_count(AccessOverride.Effect.REVOKE),
         )
 
     @extend_schema(request=None, responses=UserSerializer)
@@ -358,22 +394,75 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         user, password = services.create_user(_actor(request), **body.validated_data)
         return self._issued(user, password, status.HTTP_201_CREATED)
 
-    @extend_schema(request=UserUpdateSerializer, responses=UserUpdateResultSerializer)
+    @extend_schema(
+        request=UserUpdateSerializer,
+        responses={200: UserSerializer, 400: OpenApiResponse(description="roles_on_access_page")},
+    )
     def partial_update(self, request: Request, pk: str | None = None) -> Response:
-        """Bilgi ve rol güncelleme. Rol değişikliği bir iş akışı kuralını alabilecek kimse
-        bırakmıyorsa yanıtta `coverage_warnings` uyarısı döner; kayıt engellenmez."""
+        """Bilgi güncelleme. Roller burada değişmez: Yetkiler ekranında gerekçeyle değişir
+        (`PUT access/`); rol gönderen eski istemci `roles_on_access_page` alır."""
         user = self.get_object()
+        if "roles" in request.data:
+            raise BusinessRuleError("roles_on_access_page", ROLES_ON_ACCESS_PAGE)
         body = UserUpdateSerializer(data=request.data, partial=True)
         body.is_valid(raise_exception=True)
-        before = [group.name for group in user.groups.all()]
         services.update_user(_actor(request), user, **body.validated_data)
-        data = dict(self._fresh(user))
-        data["coverage_warnings"] = (
-            coverage.role_change_warnings(user, before, data["roles"])
-            if "roles" in body.validated_data
-            else []
+        return Response(self._fresh(user))
+
+    @extend_schema(methods=["GET"], responses=UserAccessSerializer)
+    @extend_schema(
+        methods=["PUT"],
+        request=UserAccessUpdateSerializer,
+        responses={
+            200: UserAccessResultSerializer,
+            400: OpenApiResponse(description=ACCESS_ERRORS),
+        },
+    )
+    @action(
+        detail=True, methods=["get", "put"], url_path="access", permission_classes=[AccessAdminOnly]
+    )
+    def access(self, request: Request, pk: str | None = None) -> Response:
+        """Kişinin yetki matrisi (GET) ve kaydı (PUT): roller ve istenen etkin kişiye özel
+        ayarların tam listesi, gerekçe ve sürüm belirteciyle. `dry_run` yazmadan özeti ve
+        uyarıları döner. Hesap kişi etkinmiş gibi yapılır."""
+        user = self.get_object()
+        if request.method == "GET":
+            body = access_report.matrix(User.objects.get(pk=user.pk), _actor(request))
+            return Response(UserAccessSerializer(body).data)
+        data = UserAccessUpdateSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        values = data.validated_data
+        options: dict[str, Any] = {
+            "version": values["version"],
+            "overrides": [OverrideSpec(**item) for item in values["overrides"]],
+            "note": values["note"],
+            "dry_run": values["dry_run"],
+        }
+        if "roles" in values:
+            options["roles"] = values["roles"]
+        plan = services.set_user_access(_actor(request), user, **options)
+        saved = plan.changed and not values["dry_run"]
+        fresh = (
+            access_report.matrix(User.objects.get(pk=user.pk), _actor(request)) if saved else None
         )
-        return Response(data)
+        result = access_report.save_result(plan, dry_run=values["dry_run"], fresh=fresh)
+        return Response(UserAccessResultSerializer(result).data)
+
+    @extend_schema(responses=AccessHistoryEntrySerializer(many=True), filters=False)
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="access/history",
+        permission_classes=[AccessAdminOnly],
+    )
+    def access_history(self, request: Request, pk: str | None = None) -> Response:
+        """Kişinin rol ve kişiye özel yetki geçmişi (yeniden eskiye, sayfalı): tarih, değiştiren,
+        gerekçe, roller önce/sonra ve eklenen, kaldırılan, biten (nedeniyle) satırlar."""
+        user = self.get_object()
+        page = self.paginate_queryset(access_report.history_entries(user))
+        assert page is not None
+        items = access_report.history_items(page)
+        return self.get_paginated_response(AccessHistoryEntrySerializer(items, many=True).data)
 
     @extend_schema(request=None, responses=UserSerializer)
     @action(detail=True, methods=["post"])

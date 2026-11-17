@@ -25,7 +25,15 @@ RECIPES = register_section(
     },
     read=ReadScope.OPEN,
 )
-OPEN_RECORDS = register_open_records("recipes")
+# Açık kayıtlar kapatılınca etkilenen öteki ekranlar (plan §5.1, §5.3; kaydetme özetindeki
+# uyarı ve Yetkiler ekranındaki satır notu). Sahip PR'da gözden geçirir.
+OPEN_RECORDS = register_open_records(
+    "recipes",
+    affects=(
+        "Üretim emri formundaki reçete seçimi açık kalır (yalnız kod, eski kodlar, ad, ürün ve "
+        "onaylı sürüm).",
+    ),
+)
 
 for role in (PLANLAMA, LABORATUVAR):
     grant(role, RECIPES, VIEW, CHANGE, APPROVE)

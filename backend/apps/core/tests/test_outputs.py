@@ -141,6 +141,7 @@ def test_registered_outputs_have_unique_keys_and_valid_suggestions():
         "personnel.payslip",
         "costing.personnel-cost",
         "hse.sds-gaps",
+        "core.access-report",
         "golive.comparison",
         "masterdata.template.materials",
         "recipes.template",

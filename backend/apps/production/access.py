@@ -51,7 +51,16 @@ BATCHES = register_section(
     },
     read=ReadScope.OPEN,
 )
-OPEN_RECORDS = register_open_records("production")
+# Açık kayıtlar kapatılınca etkilenen öteki ekranlar (plan §5.1, §5.3; kaydetme özetindeki
+# uyarı ve Yetkiler ekranındaki satır notu). Sahip PR'da gözden geçirir.
+OPEN_RECORDS = register_open_records(
+    "production",
+    affects=(
+        "Üretim emri ve şarj yorumlarında bu kişiden bahsedilemez, bahsedilse de bildirim almaz.",
+        "Görevlerdeki, bildirimlerdeki, aramadaki ve panolardaki üretim bağlantıları değişmez: "
+        "bunlar zaten Üretim'de Görür ister.",
+    ),
+)
 
 register_readers("production.productionorder", ORDERS, PREP, BATCHES)
 register_readers("production.productionbatch", ORDERS, PREP, BATCHES)

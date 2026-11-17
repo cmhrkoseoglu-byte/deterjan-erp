@@ -337,6 +337,71 @@ def test_users_list_is_paginated_by_50(client_for, make_user):
     assert body["next"] is not None
 
 
+def _personal(user, key, level, effect, ended=False):
+    from django.utils import timezone
+
+    from apps.core.models import AccessOverride
+
+    row = AccessOverride.objects.create(user=user, key=key, level=level, effect=effect, note="x")
+    if ended:
+        row.ended_at = timezone.now()
+        row.end_reason = AccessOverride.EndReason.RESET
+        row.save(update_fields=["ended_at", "end_reason"])
+    return row
+
+
+def test_users_list_personal_counts_and_filter(client_for, make_user):
+    marked = make_user(DEPO, "sevkiyat", username="isaretli")
+    _personal(marked, "production.prep", "change", "revoke")
+    _personal(marked, "production.prep", "view", "grant")  # etkisiz, yine sayılır
+    _personal(marked, "production.orders", "change", "grant")
+    _personal(marked, "production.batches", "change", "grant", ended=True)
+    ended_only = make_user(DEPO, username="bitmis")
+    _personal(ended_only, "production.prep", "change", "revoke", ended=True)
+    client = client_for(ADMIN)
+
+    rows = {row["username"]: row for row in client.get(USERS).json()["results"]}
+    marked_only = client.get(USERS, {"has_personal": "true"}).json()["results"]
+    unmarked = client.get(USERS, {"has_personal": "false"}).json()["results"]
+    by_role = client.get(USERS, {"role": DEPO}).json()["results"]
+
+    assert rows["isaretli"]["personal_counts"] == {"granted": 2, "revoked": 1}
+    assert rows["bitmis"]["personal_counts"] == {"granted": 0, "revoked": 0}
+    assert [row["username"] for row in marked_only] == ["isaretli"]
+    assert "isaretli" not in {row["username"] for row in unmarked}
+    assert "bitmis" in {row["username"] for row in unmarked}
+    # Rol süzgecinin birleşimi sayıyı çoğaltmaz.
+    counts = {row["username"]: row["personal_counts"] for row in by_role}
+    assert counts["isaretli"] == {"granted": 2, "revoked": 1}
+
+
+def test_users_list_query_count_does_not_grow_with_users(client_for, make_user):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    client = client_for(ADMIN)
+    _personal(make_user(DEPO), "production.prep", "change", "revoke")
+    client.get(USERS)
+    with CaptureQueriesContext(connection) as small:
+        client.get(USERS)
+    for _ in range(4):
+        _personal(make_user(DEPO), "production.prep", "change", "revoke")
+    with CaptureQueriesContext(connection) as large:
+        client.get(USERS)
+
+    assert len(large.captured_queries) == len(small.captured_queries)
+
+
+def test_create_user_with_roles_still_works(client_for, make_user):
+    response = client_for(ADMIN).post(
+        USERS, {"username": "yeni.depo", "full_name": "Yeni Depo", "roles": [DEPO]}, format="json"
+    )
+
+    assert response.status_code == 201
+    assert response.json()["user"]["roles"] == [DEPO]
+    assert response.json()["user"]["personal_counts"] == {"granted": 0, "revoked": 0}
+
+
 # --- audit log --------------------------------------------------------------------------------
 
 

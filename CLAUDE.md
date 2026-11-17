@@ -127,7 +127,9 @@ fazla rolü olabilir. Rol iki işe yarar: varsayılan yetki paketidir ve görev/
 paketleri kodda tutulur, yalnızca yeni sürümle ve DECISIONS kaydıyla değişir. Personel, bordro,
 personel maliyeti, olaylar ve kazalar ve denetim günlüğü yetkileri yalnızca yönetim rolündeki
 kullanıcılara verilebilir (KVKK). Görevler role ya da kişiye atanabilir; rolün üyelerinden görevin
-gerektirdiği yetkisi olmayanlar görevi ve bildirimini almaz.
+gerektirdiği yetkisi olmayanlar görevi ve bildirimini almaz. Var olan kullanıcının rolleri ve kişiye
+özel yetkileri yalnızca admin tarafından, gerekçe yazılarak **Sistem > Kullanıcılar > Yetkiler**
+ekranında değiştirilir; geçmişi silinmez. Yeni kullanıcının ilk rolleri açılış penceresinde verilir.
 
 ## 6. Kod kuralları
 

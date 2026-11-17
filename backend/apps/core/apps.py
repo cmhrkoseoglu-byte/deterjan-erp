@@ -17,3 +17,16 @@ class CoreConfig(AppConfig):
         autodiscover_modules("access")
         # Her uygulamanın handlers.py modülündeki @subscribe kayıtlarını yükle.
         autodiscover_modules("handlers")
+
+        # Çıktı doküman kodları: Sistem > Kodlama sistematiği > Çıktılar (ISO 9001 md. 7.5).
+        # "Kim neyi görür" raporu paketlerin imzalanması ve denetim için kontrollü belgedir
+        # (sahibin 2026-11-17 kararı).
+        from apps.core.coding.registry import register_output
+
+        register_output(
+            "core.access-report",
+            label="Kim neyi görür (yetki raporu)",
+            group="Sistem",
+            formats=("Excel",),
+            suggested_code="LS-SIS-001",
+        )

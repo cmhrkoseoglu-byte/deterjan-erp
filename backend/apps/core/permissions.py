@@ -207,6 +207,17 @@ class AdminOnly(AccessPermission):
         return is_admin(request.user)
 
 
+# Kişinin yetkilerini değiştirme ve "Kim neyi görür" raporu (plan §5.10): reddedilen isteğin
+# mesajı işi söyler. Servis (`set_user_access`) aynı mesajla `require_admin` çağırır.
+ACCESS_ADMIN_MESSAGE = "Yetkileri yalnızca sistem yöneticisi değiştirir."
+
+
+class AccessAdminOnly(AdminOnly):
+    """Yalnız sistem yöneticisi: Yetkiler ekranı, yetki geçmişi ve "Kim neyi görür" raporu."""
+
+    message = ACCESS_ADMIN_MESSAGE
+
+
 # Görünümün karşılamadığı metot: yalnız oturum aranır, DRF 405 döner.
 UNHANDLED_METHOD = SignedIn("görünümün karşılamadığı metot; DRF 405 döner")
 

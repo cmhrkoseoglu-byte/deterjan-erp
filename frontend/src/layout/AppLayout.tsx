@@ -12,10 +12,10 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconChevronDown, IconLogout, IconShieldLock } from "@tabler/icons-react";
+import { IconChevronDown, IconKey, IconLogout, IconShieldLock } from "@tabler/icons-react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { SECURITY_PATH } from "../auth/paths";
+import { MY_ACCESS_PATH, SECURITY_PATH } from "../auth/paths";
 import { displayName } from "../auth/roles";
 import { tr } from "../i18n/tr";
 import { InncosLogo } from "../components/brand/InncosLogo";
@@ -118,6 +118,14 @@ export function AppLayout() {
                     ))}
                   </Group>
                   <Menu.Divider />
+                  <Menu.Item
+                    component={Link}
+                    to={MY_ACCESS_PATH}
+                    leftSection={<IconKey size={18} />}
+                    py="sm"
+                  >
+                    {tr.layout.myAccess}
+                  </Menu.Item>
                   <Menu.Item
                     component={Link}
                     to={SECURITY_PATH}

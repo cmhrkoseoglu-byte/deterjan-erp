@@ -1,5 +1,7 @@
 import {
   Alert,
+  Anchor,
+  Badge,
   Button,
   Checkbox,
   Group,
@@ -12,15 +14,11 @@ import {
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import { ROLES, type Role } from "../../api/types";
-import {
-  createUser,
-  updateUser,
-  type IssuedPassword,
-  type SavedUser,
-  type UserRecord,
-} from "../../api/users";
+import { createUser, updateUser, type IssuedPassword, type UserRecord } from "../../api/users";
+import { userAccessPath } from "../../auth/paths";
 import { tr } from "../../i18n/tr";
 import { sy } from "./strings";
 import { normalizeUsernameInput, suggestUsername, USERNAME_RE } from "./usernames";
@@ -30,20 +28,21 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 interface Props {
   /** Düzenlenecek kullanıcı; `null` ise yeni kullanıcı açılır. */
   user: UserRecord | null;
-  /** Giriş yapmış yöneticinin kimliği: kendi `admin` rolünü kaldıramaz. */
-  selfId: number | undefined;
   onClose: () => void;
   onCreated: (issued: IssuedPassword) => void;
-  /** Kayıt yapıldı; pencere kapanır, yanıttaki uyarıları üst bileşen gösterir. */
-  onSaved: (user: SavedUser) => void;
+  /** Kayıt yapıldı; pencere kapanır. */
+  onSaved: (user: UserRecord) => void;
 }
 
 type Errors = Partial<Record<"username" | "fullName" | "email", string>>;
 
-/** Yeni kullanıcı ya da kullanıcı bilgisi / rol düzenleme penceresi (yalnızca admin). */
-export function UserFormModal({ user, selfId, onClose, onCreated, onSaved }: Props) {
+/**
+ * Yeni kullanıcı ya da kullanıcı bilgisi düzenleme penceresi (yalnızca admin). Yeni kullanıcıda
+ * roller burada seçilir; düzenlemede roller rozet olarak görünür ve kişinin Yetkiler sayfasında,
+ * gerekçe yazılarak değişir (plan §6.3).
+ */
+export function UserFormModal({ user, onClose, onCreated, onSaved }: Props) {
   const isNew = user === null;
-  const isSelf = user !== null && user.id === selfId;
   const [username, setUsername] = useState(user?.username ?? "");
   const [usernameTouched, setUsernameTouched] = useState(false);
   const [fullName, setFullName] = useState(user?.full_name ?? "");
@@ -58,9 +57,8 @@ export function UserFormModal({ user, selfId, onClose, onCreated, onSaved }: Pro
         full_name: fullName.trim(),
         phone: phone.trim(),
         email: email.trim(),
-        roles,
       };
-      if (user === null) onCreated(await createUser({ username, ...fields }));
+      if (user === null) onCreated(await createUser({ username, ...fields, roles }));
       else onSaved(await updateUser(user.id, fields));
     },
   });
@@ -147,32 +145,52 @@ export function UserFormModal({ user, selfId, onClose, onCreated, onSaved }: Pro
               autoComplete="off"
             />
           </SimpleGrid>
-          <Checkbox.Group
-            label={sy.roleField}
-            description={sy.rolesHelp}
-            value={roles}
-            onChange={(value) => setRoles(value as Role[])}
-          >
-            <SimpleGrid cols={{ base: 1, xs: 2, sm: 3 }} mt="xs" spacing="xs">
-              {ROLES.map((role) => (
-                <Checkbox
-                  key={role}
-                  value={role}
-                  label={tr.roles[role]}
-                  disabled={isSelf && role === "admin" && roles.includes("admin")}
-                />
-              ))}
-            </SimpleGrid>
-          </Checkbox.Group>
-          {isSelf && roles.includes("admin") && (
-            <Text size="sm" c="dimmed">
-              {sy.ownAdminLocked}
-            </Text>
-          )}
-          {roles.length === 0 && (
-            <Text size="sm" c="orange">
-              {sy.noRoleWarning}
-            </Text>
+          {user === null ? (
+            <>
+              <Checkbox.Group
+                label={sy.roleField}
+                description={sy.rolesHelp}
+                value={roles}
+                onChange={(value) => setRoles(value as Role[])}
+              >
+                <SimpleGrid cols={{ base: 1, xs: 2, sm: 3 }} mt="xs" spacing="xs">
+                  {ROLES.map((role) => (
+                    <Checkbox key={role} value={role} label={tr.roles[role]} />
+                  ))}
+                </SimpleGrid>
+              </Checkbox.Group>
+              {roles.length === 0 && (
+                <Text size="sm" c="orange">
+                  {sy.noRoleWarning}
+                </Text>
+              )}
+            </>
+          ) : (
+            <Stack gap={4}>
+              <Text size="sm" fw={500}>
+                {sy.roleField}
+              </Text>
+              <Group gap={4} data-testid="user-roles">
+                {user.is_superuser && (
+                  <Badge size="sm" color="grape" variant="light">
+                    {sy.superuser}
+                  </Badge>
+                )}
+                {user.roles.map((role) => (
+                  <Badge key={role} size="sm" variant="light">
+                    {tr.roles[role] ?? role}
+                  </Badge>
+                ))}
+                {user.roles.length === 0 && !user.is_superuser && (
+                  <Text size="sm" c="dimmed">
+                    {sy.noRoles}
+                  </Text>
+                )}
+              </Group>
+              <Anchor component={Link} to={userAccessPath(user.id)} onClick={onClose} size="sm">
+                {sy.changeRolesLink}
+              </Anchor>
+            </Stack>
           )}
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose} disabled={mutation.isPending}>

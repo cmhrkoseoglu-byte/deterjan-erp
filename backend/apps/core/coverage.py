@@ -110,24 +110,57 @@ def _users() -> list[User]:
     )
 
 
-def members(*, replace: tuple[int, Iterable[str]] | None = None) -> list[Member]:
+Entry = tuple[str, str]
+# Bir kişinin rolleri, kişiye eklenenler ve kişiden kaldırılanlar (Yetkiler kaydının önce/sonrası).
+Profile = tuple[Iterable[str], Iterable[Entry], Iterable[Entry]]
+
+
+def _member(
+    user_id: int,
+    groups: Iterable[str],
+    rows: Iterable[AccessOverride],
+    overrides: tuple[Iterable[Entry], Iterable[Entry]] | None,
+    *,
+    is_superuser: bool,
+) -> Member:
+    names = frozenset(groups)
+    if overrides is None:
+        member_access = _access_for(names, rows, is_superuser=is_superuser)
+    else:
+        grants, revokes = overrides
+        member_access = compute_access(
+            names,
+            grants=list(grants),
+            revokes=list(revokes),
+            is_admin=is_superuser or ADMIN in names,
+        )
+    return Member(user_id=user_id, groups=names, access=member_access)
+
+
+def members(
+    *,
+    replace: tuple[int, Iterable[str]] | None = None,
+    overrides: tuple[Iterable[Entry], Iterable[Entry]] | None = None,
+) -> list[Member]:
     """Rolü olan etkin kullanıcılar. `replace=(kullanıcı no, roller)`: o kişinin rolleri yerine
-    verilenler kullanılır (kaydedilmek üzere olan ya da kaydedilmeden önceki roller). Kişi pasifse
-    ya da yoksa değişiklik etkisizdir."""
+    verilenler kullanılır (kaydedilmek üzere olan ya da kaydedilmeden önceki roller).
+    `overrides=(eklenenler, kaldırılanlar)` verilirse o kişinin etkin kişiye özel ayarları yerine
+    bunlar kullanılır (Yetkiler ekranı). Kişi pasifse ya da yoksa değişiklik etkisizdir."""
     result: list[Member] = []
     for user in _users():
-        group_names = frozenset(group.name for group in user.groups.all())
+        rows = [item for item in user.access_overrides.all() if item.ended_at is None]
         if replace is not None and replace[0] == user.pk:
-            group_names = frozenset(replace[1])
+            result.append(
+                _member(user.pk, replace[1], rows, overrides, is_superuser=user.is_superuser)
+            )
+            continue
         result.append(
-            Member(
-                user_id=user.pk,
-                groups=group_names,
-                access=_access_for(
-                    group_names,
-                    [item for item in user.access_overrides.all() if item.ended_at is None],
-                    is_superuser=user.is_superuser,
-                ),
+            _member(
+                user.pk,
+                (group.name for group in user.groups.all()),
+                rows,
+                None,
+                is_superuser=user.is_superuser,
             )
         )
     if replace is not None and not any(member.user_id == replace[0] for member in result):
@@ -137,15 +170,15 @@ def members(*, replace: tuple[int, Iterable[str]] | None = None) -> list[Member]
             .prefetch_related(Prefetch("access_overrides", queryset=active_overrides()))
             .first()
         )
-        if extra is not None and replace[1]:
-            group_names = frozenset(replace[1])
+        group_names = frozenset(replace[1])
+        if extra is not None and group_names:
             result.append(
-                Member(
-                    user_id=extra.pk,
-                    groups=group_names,
-                    access=_access_for(
-                        group_names, extra.access_overrides.all(), is_superuser=extra.is_superuser
-                    ),
+                _member(
+                    extra.pk,
+                    group_names,
+                    extra.access_overrides.all(),
+                    overrides,
+                    is_superuser=extra.is_superuser,
                 )
             )
     return result
@@ -199,3 +232,29 @@ def role_change_gaps(user: User, before: Iterable[str], after: Iterable[str]) ->
 def role_change_warnings(user: User, before: Iterable[str], after: Iterable[str]) -> list[str]:
     """`role_change_gaps`'in kullanıcıya gösterilen Türkçe uyarıları (kaydı engellemez)."""
     return [gap.text for gap in role_change_gaps(user, before, after)]
+
+
+def access_change_gaps(user: User, *, before: Profile, after: Profile) -> list[Gap]:
+    """Yetkiler kaydı kişinin rollerini ve kişiye özel ayarlarını `before`'dan `after`'a
+    değiştirince alabilecek kimsesi kalmayan kurallar (önceden de kapsamsız olanlar sayılmaz).
+    Başka herkes veritabanındaki hâliyle sayılır; pasif kişi kimseyi kapsamaz."""
+    if user.pk is None:
+        return []
+    before_roles, before_grants, before_revokes = before
+    after_roles, after_grants, after_revokes = after
+    was = {
+        rule.code
+        for rule in uncovered(
+            members(
+                replace=(user.pk, frozenset(before_roles)),
+                overrides=(list(before_grants), list(before_revokes)),
+            )
+        )
+    }
+    now = uncovered(
+        members(
+            replace=(user.pk, frozenset(after_roles)),
+            overrides=(list(after_grants), list(after_revokes)),
+        )
+    )
+    return gaps(rule for rule in now if rule.code not in was)

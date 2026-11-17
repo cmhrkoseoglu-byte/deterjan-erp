@@ -9,12 +9,15 @@ yazar.
 from django.db.models import Q
 
 from apps.core.access import (
+    APPROVE,
+    CHANGE,
     PRICES,
     VIEW,
     grant,
     register_audit_model,
     register_audit_parent,
     register_module,
+    register_risky_pair,
     register_section,
 )
 from apps.core.roles import YONETIM
@@ -56,3 +59,18 @@ register_audit_model(
     rows=_purchase_order_approval_tasks,
     fields=("description",),
 )
+
+
+# Görev ayrılığı (plan §5.11): riskli yetki çiftleri tek yerde. workflow her modülü dinlediği için
+# bağımlılık denetiminden muaftır; çiftler birbirine bağlı olmayan modülleri (üretim ve kalite)
+# birleştirdiği için burada kaydedilir. İki yetki aynı rol paketinden geliyorsa uyarı çıkmaz.
+SAMPLE_DECISION = ("quality.samples", APPROVE)
+register_risky_pair(("production.batches", CHANGE), SAMPLE_DECISION)
+register_risky_pair(("filling.runs", CHANGE), SAMPLE_DECISION)
+register_risky_pair(("inventory.receipts", CHANGE), SAMPLE_DECISION)
+register_risky_pair(
+    ("purchasing.settings", CHANGE),
+    ("purchasing.orders", APPROVE),
+    ("purchasing.over_limit", APPROVE),
+)
+register_risky_pair(SAMPLE_DECISION, ("quality.conditional", APPROVE))

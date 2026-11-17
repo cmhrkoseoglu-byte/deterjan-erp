@@ -192,7 +192,7 @@ def _accounts(users: Mapping[str, User | None], commit: Commit) -> None:
         newcomer, _password = core.create_user(
             admin, username="iz.kullanici", full_name="İz Kullanıcı", roles=[DEPO]
         )
-        core.update_user(admin, newcomer, roles=[DEPO, SATIN_ALMA])
+        core.set_user_roles(newcomer, [DEPO, SATIN_ALMA], admin, note="Roller güncellendi")
 
 
 def _personnel(users: Mapping[str, User | None], commit: Commit) -> None:

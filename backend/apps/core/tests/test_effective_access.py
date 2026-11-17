@@ -336,3 +336,125 @@ def test_inactive_anonymous_and_admin_users(make_user: Callable[..., User]) -> N
     assert effective_access(inactive) is NO_ACCESS
     assert effective_access(admin) is ADMIN_ACCESS
     assert effective_access(superuser) is ADMIN_ACCESS
+
+
+# --- hücrelerin kaynağı (Yetkiler ekranı, Yetkilerim, rapor; plan §6.1, §6.2) ------------------
+
+
+def test_explain_access_holders_and_default() -> None:
+    from apps.core.effective_access import explain_access
+
+    cells = explain_access([DEPO])
+
+    prep = cells[("production.prep", CHANGE)]
+    assert prep.effective and prep.default and prep.holders == (DEPO,)
+    assert not (prep.granted or prep.revoked or prep.implied or prep.ineffective)
+    assert prep.dropped is None
+    assert cells[("inventory.lots", VIEW)].holders == (EVERYONE,)
+    assert cells[("maintenance.breakdowns", CHANGE)].holders == (ANY_ROLE,)
+    assert cells[("quality.open_records", READ)].holders == (EVERYONE,)
+    assert cells[("quality.open_records", READ)].effective
+    missing = cells[("personnel.cards", VIEW)]
+    assert not missing.effective and not missing.default and missing.holders == ()
+    assert missing.dropped is None
+    # Rolü olmayan kişide "+" paketi yoktur.
+    assert explain_access([])[("maintenance.breakdowns", CHANGE)].holders == ()
+
+
+def test_explain_access_matches_compute_access() -> None:
+    from apps.core.effective_access import explain_access
+
+    grants = [("quality.samples", CHANGE), ("masterdata.cards", VIEW)]
+    revokes = [("production.prep", VIEW), ("inventory.open_records", READ)]
+    cells = explain_access([DEPO, PLANLAMA], grants=grants, revokes=revokes)
+    effective = compute_access([DEPO, PLANLAMA], grants=grants, revokes=revokes).entries
+    default = compute_access([DEPO, PLANLAMA]).entries
+    open_records = {(key, level) for key, level in cells if level == READ}
+
+    assert {cell for cell, item in cells.items() if item.effective} == (
+        {entry for entry in effective if entry[1] != READ} | (effective & open_records)
+    )
+    assert {cell for cell, item in cells.items() if item.default} == (
+        {entry for entry in default if entry[1] != READ} | (default & open_records)
+    )
+
+
+def test_explain_access_implied_view_and_dropped_reasons() -> None:
+    from apps.core.effective_access import explain_access
+
+    cells = explain_access(
+        [DEPO],
+        grants=[("quality.samples", CHANGE), ("personnel.cards", VIEW), ("sensitive.costs", VIEW)],
+        revokes=[("production.prep", VIEW)],
+    )
+
+    implied = cells[("quality.samples", VIEW)]
+    assert implied.effective and implied.implied and not implied.granted
+    assert cells[("quality.samples", CHANGE)].granted
+    assert cells[("production.prep", CHANGE)].dropped == "view_revoked"
+    prep_view = cells[("production.prep", VIEW)]
+    assert prep_view.revoked and not prep_view.effective and prep_view.dropped is None
+    assert cells[("personnel.cards", VIEW)].dropped == "kvkk"
+    assert cells[("sensitive.costs", VIEW)].dropped == "requires"
+    # KVKK ya da ön koşul yüzünden düşen ekleme etkisiz sayılmaz (sahibin kararı).
+    assert not cells[("personnel.cards", VIEW)].ineffective
+    assert not cells[("sensitive.costs", VIEW)].ineffective
+
+
+def test_explain_access_ineffective_rows() -> None:
+    from apps.core.effective_access import explain_access
+
+    cells = explain_access(
+        [PLANLAMA],
+        grants=[("production.orders", CHANGE)],  # paket zaten verir
+        revokes=[("production.prep", CHANGE), ("personnel.cards", VIEW), ("inventory.lots", VIEW)],
+    )
+
+    assert cells[("production.orders", CHANGE)].ineffective
+    assert cells[("production.prep", CHANGE)].ineffective  # rol vermiyor
+    assert not cells[("personnel.cards", VIEW)].ineffective  # KVKK kaldırması kalır
+    assert not cells[("inventory.lots", VIEW)].ineffective  # kilitli: hesaba girmez
+    assert cells[("inventory.lots", VIEW)].effective
+
+
+def test_explain_access_admin() -> None:
+    from apps.core.effective_access import explain_access
+
+    cells = explain_access([DEPO], grants=[("production.prep", CHANGE)], is_admin=True)
+
+    assert all(item.effective and item.holders == ("admin",) for item in cells.values())
+    assert ("inventory.manual_release", APPROVE) in cells
+    assert not any(item.granted or item.ineffective for item in cells.values())
+
+
+@pytest.mark.django_db
+def test_explain_user_access_reads_rows_and_ignores_inactivity(
+    make_user: Callable[..., User], django_assert_num_queries: Any
+) -> None:
+    from apps.core.effective_access import explain_access, explain_user_access
+
+    user = make_user(DEPO, is_active=False)
+    AccessOverride.objects.create(
+        user=user, key="production.prep", level=CHANGE, effect="revoke", note="deneme"
+    )
+    ended = AccessOverride.objects.create(
+        user=user, key="masterdata.cards", level=VIEW, effect="grant", note="deneme"
+    )
+    ended.ended_at, ended.end_reason = ended.created_at, "reset"
+    ended.save(update_fields=["ended_at", "end_reason"])
+
+    cells = explain_user_access(user)
+
+    assert cells == explain_access([DEPO], revokes=[("production.prep", CHANGE)])
+    assert cells[("production.prep", VIEW)].effective  # pasif kişi etkinmiş gibi
+
+    loaded = (
+        User.objects.filter(pk=user.pk)
+        .prefetch_related("groups", Prefetch("access_overrides", queryset=active_overrides()))
+        .get()
+    )
+    with django_assert_num_queries(0):
+        assert explain_user_access(loaded) == cells
+    assert all(
+        item.holders == ("admin",) for item in explain_user_access(make_user("admin")).values()
+    )

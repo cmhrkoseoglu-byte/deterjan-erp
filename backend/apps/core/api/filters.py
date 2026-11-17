@@ -1,16 +1,27 @@
 import django_filters
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import QuerySet
+from django.db.models import Exists, OuterRef, QuerySet
 
+from apps.core.effective_access import active_overrides
 from apps.core.models import AuditLog, User
 
 
 class UserFilter(django_filters.FilterSet):
     role = django_filters.CharFilter(field_name="groups__name", label="Rol")
+    has_personal = django_filters.BooleanFilter(
+        method="filter_has_personal", label="Kişiye özel yetkisi var"
+    )
 
     class Meta:
         model = User
-        fields = ["is_active", "role"]
+        fields = ["is_active", "role", "has_personal"]
+
+    def filter_has_personal(self, queryset: QuerySet, name: str, value: bool | None) -> QuerySet:
+        """Etkin kişiye özel ayarı (etkisizler dahil) olan ya da olmayan kullanıcılar."""
+        if value is None:
+            return queryset
+        personal = Exists(active_overrides().filter(user=OuterRef("pk")))
+        return queryset.filter(personal) if value else queryset.exclude(personal)
 
 
 class AuditLogFilter(django_filters.FilterSet):

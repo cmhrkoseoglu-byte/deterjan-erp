@@ -34,7 +34,16 @@ RECEIVING = register_section(
     help={CHANGE: "İadeyi teslim alır, imha eder."},
     requires={CHANGE: [(RETURNS, VIEW)]},
 )
-OPEN_RECORDS = register_open_records("returns")
+# Açık kayıtlar kapatılınca etkilenen öteki ekranlar (plan §5.1, §5.3; kaydetme özetindeki
+# uyarı ve Yetkiler ekranındaki satır notu). Sahip PR'da gözden geçirir.
+OPEN_RECORDS = register_open_records(
+    "returns",
+    affects=(
+        "İade yorumlarında bu kişiden bahsedilemez, bahsedilse de bildirim almaz.",
+        "Görevlerdeki, bildirimlerdeki ve aramadaki iade bağlantıları değişmez: bunlar zaten "
+        "İadeler'de Görür ister.",
+    ),
+)
 
 register_readers("returns.customerreturn", RETURNS)
 

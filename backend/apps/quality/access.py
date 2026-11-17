@@ -47,7 +47,15 @@ SPECS = register_section(
     },
     read=ReadScope.OPEN,
 )
-OPEN_RECORDS = register_open_records("quality")
+# Açık kayıtlar kapatılınca etkilenen öteki ekranlar (plan §5.1, §5.3; kaydetme özetindeki
+# uyarı ve Yetkiler ekranındaki satır notu). Sahip PR'da gözden geçirir.
+OPEN_RECORDS = register_open_records(
+    "quality",
+    affects=(
+        "Lot sayfasının kalite bölümü ve analiz sertifikası açık kalır; lotsuz numune listesi "
+        "ve numune sayfası kapanır.",
+    ),
+)
 
 register_readers("quality.sample", SAMPLES, CONDITIONAL)
 

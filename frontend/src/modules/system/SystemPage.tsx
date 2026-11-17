@@ -2,6 +2,7 @@ import { Stack, Tabs, Title } from "@mantine/core";
 import { useNavigate, useParams } from "react-router-dom";
 import { CodingPanel } from "./coding/CodingPanel";
 import { DevicePanel } from "./DevicePanel";
+import { RoleAccessPanel } from "./RoleAccessPanel";
 import { StatusPanel } from "./StatusPanel";
 import { SYSTEM_BASE, TABS, type TabKey } from "./config";
 import { sy } from "./strings";
@@ -11,8 +12,8 @@ function tabFromPath(value: string | undefined): TabKey {
   return (Object.keys(TABS) as TabKey[]).find((key) => TABS[key] === value) ?? "status";
 }
 
-/** Sistem (yalnızca admin): sistem durumu ve yedekler, kullanıcılar, kodlama sistematiği, saha
- * tableti. */
+/** Sistem (yalnızca admin): sistem durumu ve yedekler, kullanıcılar, rol yetkileri, kodlama
+ * sistematiği, saha tableti. */
 export function SystemPage() {
   const tab = tabFromPath(useParams().tab);
   const navigate = useNavigate();
@@ -33,6 +34,7 @@ export function SystemPage() {
       </Tabs>
       {tab === "status" && <StatusPanel />}
       {tab === "users" && <UsersPanel />}
+      {tab === "roles" && <RoleAccessPanel />}
       {tab === "coding" && <CodingPanel />}
       {tab === "device" && <DevicePanel />}
     </Stack>

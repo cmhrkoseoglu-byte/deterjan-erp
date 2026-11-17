@@ -144,6 +144,8 @@ _SECTIONS: dict[str, Section] = {}
 _PACKAGES: dict[str, set[tuple[str, str]]] = {holder: set() for holder in HOLDERS}
 _READERS: dict[str, tuple[str, ...]] = {}
 _FIELD_OPENERS: dict[str, tuple[str, ...]] = {}
+# Modül anahtarı → "Açık kayıtlar" kapatılınca etkilenen ekranlar (`register_open_records`).
+_OPEN_RECORDS_EFFECTS: dict[str, tuple[str, ...]] = {}
 
 
 def _key_of(section: SectionRef) -> str:
@@ -246,9 +248,13 @@ def register_section(
     return section
 
 
-def register_open_records(module_key: str) -> Section:
+def register_open_records(module_key: str, *, affects: Sequence[str] = ()) -> Section:
     """Modülün "Açık kayıtlar" satırı (plan §5.2). Herkeste Kayıtları okur vardır; satır yalnız bir
-    kişi için kapatılabilir (kaldırma)."""
+    kişi için kapatılabilir (kaldırma).
+
+    `affects`: satır kapatılınca etkilenen öteki ekranların Türkçe açıklamaları (plan §5.1, §5.3);
+    Yetkiler ekranı ve `open_records_closed` uyarısı gösterir. Katalogun parçası değildir
+    (`catalog()` ve özeti değişmez)."""
     section = register_section(
         f"{module_key}.{OPEN_RECORDS}",
         "Açık kayıtlar",
@@ -257,6 +263,11 @@ def register_open_records(module_key: str) -> Section:
         help={READ: "Bu modülün kayıtlarını giriş yapan herkes okuyabilir."},
     )
     _PACKAGES[EVERYONE].add((section.key, READ))
+    texts = tuple(text.strip() for text in affects)
+    if any(not text for text in texts):
+        raise ValueError(f"{section.key}: etkilenen ekran açıklaması boş olamaz.")
+    if texts:
+        _OPEN_RECORDS_EFFECTS[module_key] = texts
     return section
 
 
@@ -490,6 +501,57 @@ def rules() -> tuple[RuleRequirement, ...]:
     return tuple(_RULES.values())
 
 
+# --- riskli yetki çiftleri (plan §5.11) -----------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RiskyPair:
+    """Aynı kişide birlikte bulunması riskli iki yetki (görevler ayrılığı, plan §5.11).
+
+    `first` ile `second`'dan herhangi biri ("ya da") birlikteyse çift tamamlanır. İki yetki aynı
+    rol paketinden geliyorsa uyarı çıkmaz (`user_access.mixed_pairs`). Çiftler tek yerde
+    (`apps/workflow/access.py`) kaydedilir; katalogun parçası değildir (`catalog()` ve özeti
+    değişmez).
+    """
+
+    first: tuple[str, str]  # (bölüm anahtarı, düzey)
+    second: tuple[tuple[str, str], ...]
+
+
+_RISKY_PAIRS: list[RiskyPair] = []
+
+
+def register_risky_pair(first: tuple[SectionRef, str], *second: tuple[SectionRef, str]) -> None:
+    """Riskli yetki çiftini kaydeder: `first` ile `second`'dan biri. Bölüm anahtarları yüklenme
+    sırasından bağımsız olsun diye burada değil `validate()`'te denetlenir."""
+    if not second:
+        raise ValueError(f"{_key_of(first[0])}: riskli çiftin ikinci yetkisi verilmelidir.")
+    pair = RiskyPair(
+        first=(_key_of(first[0]), first[1]),
+        second=tuple((_key_of(target), level) for target, level in second),
+    )
+    if pair.first in pair.second:
+        raise ValueError(f"{pair.first[0]}: yetki kendisiyle riskli çift olamaz.")
+    if pair in _RISKY_PAIRS:
+        raise ValueError(f"{pair.first[0]}: riskli çift iki kez kaydedildi.")
+    _RISKY_PAIRS.append(pair)
+
+
+def risky_pairs() -> tuple[RiskyPair, ...]:
+    """Kayıtlı riskli yetki çiftleri, kayıt sırasıyla."""
+    return tuple(_RISKY_PAIRS)
+
+
+def open_records_effects(module_key: str) -> tuple[str, ...]:
+    """Modülün "Açık kayıtlar" satırı kapatılınca etkilenen öteki ekranlar (yoksa boş)."""
+    return _OPEN_RECORDS_EFFECTS.get(module_key, ())
+
+
+def all_open_records_effects() -> dict[str, tuple[str, ...]]:
+    """Bütün modüllerin etkilenen ekran açıklamaları (Yetkiler ekranının GET yanıtı için)."""
+    return dict(_OPEN_RECORDS_EFFECTS)
+
+
 def _ordered(keys: Iterable[str]) -> tuple[str, ...]:
     """Bölüm anahtarları katalog sırasıyla: kayıt sırası (hangi modülün önce yüklendiği) çıktıyı
     ve katalog özetini değiştirmez."""
@@ -666,6 +728,16 @@ def validate() -> list[str]:
             errors.append(
                 f"{requirement.code}: iş akışı kuralının düzeyi {key} bölümünde yok ({level})."
             )
+    for pair in _RISKY_PAIRS:
+        for key, level in (pair.first, *pair.second):
+            target = _SECTIONS.get(key)
+            if target is None:
+                errors.append(f"Riskli çift tanımsız bölüm içeriyor ({key}).")
+            elif level not in GRANT_LEVELS or level not in target.levels:
+                errors.append(f"Riskli çiftin düzeyi {key} bölümünde yok ({level}).")
+    for module_key in _OPEN_RECORDS_EFFECTS:
+        if open_records_section(module_key) is None:
+            errors.append(f"{module_key}: etkilenen ekranlar verilen modülde Açık kayıtlar yok.")
     errors.extend(_requirement_cycles())
     return errors
 
@@ -694,7 +766,7 @@ def _requirement_cycles() -> list[str]:
 @contextmanager
 def temporary_catalog() -> Iterator[None]:
     """Yalnız testler için: blok içinde kaydedilen modül, bölüm, paket, denetim günlüğü ve iş
-    akışı kuralları blok bitince silinir."""
+    akışı kuralları, riskli çiftler ve etkilenen ekran açıklamaları blok bitince silinir."""
     saved = (
         dict(_MODULES),
         dict(_SECTIONS),
@@ -704,6 +776,8 @@ def temporary_catalog() -> Iterator[None]:
         list(_AUDIT_RULES),
         dict(_AUDIT_PARENTS),
         dict(_RULES),
+        list(_RISKY_PAIRS),
+        dict(_OPEN_RECORDS_EFFECTS),
     )
     try:
         yield
@@ -723,6 +797,9 @@ def temporary_catalog() -> Iterator[None]:
         _AUDIT_PARENTS.update(saved[6])
         _RULES.clear()
         _RULES.update(saved[7])
+        _RISKY_PAIRS[:] = saved[8]
+        _OPEN_RECORDS_EFFECTS.clear()
+        _OPEN_RECORDS_EFFECTS.update(saved[9])
 
 
 # --- core'un bölümleri: hassas veriler ve sistem --------------------------------------------------

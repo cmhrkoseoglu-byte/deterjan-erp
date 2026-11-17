@@ -1,15 +1,19 @@
 import {
   ActionIcon,
   Alert,
+  Anchor,
   Badge,
   Button,
   Group,
   Loader,
   Menu,
+  Select,
   Stack,
+  Switch,
   Table,
   Text,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
@@ -23,8 +27,10 @@ import {
   IconUserPlus,
 } from "@tabler/icons-react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
+import { ROLES, type Role } from "../../api/types";
 import {
   listUsers,
   resetUserOtp,
@@ -32,9 +38,11 @@ import {
   setUserActive,
   unlockUser,
   type IssuedPassword,
+  type UserFilters,
   type UserRecord,
 } from "../../api/users";
 import { useAuth } from "../../auth/AuthContext";
+import { userAccessPath } from "../../auth/paths";
 import { formatDateTime } from "../../i18n/format";
 import { tr } from "../../i18n/tr";
 import { ConfirmModal } from "../common/ConfirmModal";
@@ -63,6 +71,33 @@ const ACTIONS: Record<
 
 const USERS_KEY = ["system", "users"] as const;
 
+const STATE_PARAM = { etkin: "true", pasif: "false" } as const;
+
+/** Adresteki süzgeçler (`ara`, `rol`, `durum`, `ozel`; plan §6.3 "adreste saklanır"). */
+function filtersFrom(params: URLSearchParams): Required<UserFilters> {
+  const role = params.get("rol") ?? "";
+  const state = params.get("durum") ?? "";
+  return {
+    search: params.get("ara") ?? "",
+    role: (ROLES as readonly string[]).includes(role) ? (role as Role) : "",
+    active: state in STATE_PARAM ? STATE_PARAM[state as keyof typeof STATE_PARAM] : "",
+    personal: params.get("ozel") === "1",
+  };
+}
+
+function PersonalBadge({ user }: { user: UserRecord }) {
+  const counts = user.personal_counts ?? { granted: 0, revoked: 0 };
+  const total = counts.granted + counts.revoked;
+  if (total === 0) return null;
+  return (
+    <Tooltip label={sy.personalTooltip(counts.granted, counts.revoked)}>
+      <Badge size="sm" color="teal" variant="light">
+        {sy.personalBadge(total)}
+      </Badge>
+    </Tooltip>
+  );
+}
+
 function nameOf(user: UserRecord): string {
   return user.full_name.trim() || user.username;
 }
@@ -89,23 +124,47 @@ async function run(action: Action): Promise<IssuedPassword | null> {
 }
 
 /**
- * Kullanıcı yönetimi: yeni kullanıcı (geçici şifreyle), bilgi ve rol düzenleme, şifre sıfırlama,
- * pasife alma / etkinleştirme, kilit açma ve 2FA sıfırlama.
+ * Kullanıcı yönetimi: yeni kullanıcı (geçici şifreyle), bilgi düzenleme, şifre sıfırlama, pasife
+ * alma / etkinleştirme, kilit açma ve 2FA sıfırlama. Roller ve kişiye özel yetkiler kişinin Yetkiler
+ * sayfasında değişir (plan §6.3).
  */
 export function UsersPanel() {
   const queryClient = useQueryClient();
   const { user: me } = useAuth();
-  const [search, setSearch] = useState("");
+  const [params, setParams] = useSearchParams();
+  const filters = filtersFrom(params);
+  const [search, setSearch] = useState(filters.search);
   const [debounced] = useDebouncedValue(search.trim(), 300);
   const [action, setAction] = useState<Action | null>(null);
   // `null` yeni kullanıcı, kayıt düzenleme; `undefined` form kapalı.
   const [editing, setEditing] = useState<UserRecord | null | undefined>(undefined);
   const [issued, setIssued] = useState<IssuedPassword | null>(null);
+  const wanted: UserFilters = { ...filters, search: debounced };
   const query = useQuery({
-    queryKey: [...USERS_KEY, debounced],
-    queryFn: () => listUsers(debounced),
+    queryKey: [...USERS_KEY, "list", wanted],
+    queryFn: () => listUsers(wanted),
     placeholderData: keepPreviousData,
   });
+
+  function setParam(name: string, value: string) {
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value) next.set(name, value);
+        else next.delete(name);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
+  // Arama metni gecikmeyle adrese yazılır; Yetkiler sayfasından dönünce liste aynı kalır.
+  const searchInUrl = params.get("ara") ?? "";
+  useEffect(() => {
+    if (debounced !== searchInUrl) setParam("ara", debounced);
+    // Yalnız arama metni değişince yazılır.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debounced]);
 
   function reload() {
     return queryClient.invalidateQueries({ queryKey: USERS_KEY });
@@ -147,6 +206,35 @@ export function UsersPanel() {
           {sy.newUser}
         </Button>
       </Group>
+      <Group gap="md" align="flex-end" wrap="wrap">
+        <Select
+          label={sy.filterRole}
+          placeholder={sy.stateAll}
+          data={ROLES.map((role) => ({ value: role, label: tr.roles[role] }))}
+          value={filters.role || null}
+          onChange={(value) => setParam("rol", value ?? "")}
+          clearable
+          maw={220}
+        />
+        <Select
+          label={sy.filterState}
+          data={[
+            { value: "", label: sy.stateAll },
+            { value: "etkin", label: sy.stateActive },
+            { value: "pasif", label: sy.stateInactive },
+          ]}
+          value={params.get("durum") ?? ""}
+          onChange={(value) => setParam("durum", value ?? "")}
+          allowDeselect={false}
+          maw={160}
+        />
+        <Switch
+          label={sy.filterPersonal}
+          checked={filters.personal}
+          onChange={(event) => setParam("ozel", event.currentTarget.checked ? "1" : "")}
+          mb={6}
+        />
+      </Group>
       {query.isError && (
         <Alert color="red" variant="light">
           {getErrorMessage(query.error)}
@@ -175,9 +263,9 @@ export function UsersPanel() {
                   <Table.Tr key={user.id}>
                     <Table.Td>
                       <Group gap={6} wrap="nowrap">
-                        <Text size="sm" fw={500}>
+                        <Anchor component={Link} to={userAccessPath(user.id)} size="sm" fw={500}>
                           {nameOf(user)}
-                        </Text>
+                        </Anchor>
                         {isSelf && (
                           <Badge size="xs" variant="outline">
                             {sy.you}
@@ -201,6 +289,7 @@ export function UsersPanel() {
                             {tr.roles[role] ?? role}
                           </Badge>
                         ))}
+                        <PersonalBadge user={user} />
                       </Group>
                     </Table.Td>
                     <Table.Td>
@@ -253,6 +342,14 @@ export function UsersPanel() {
                             {sy.resetOtp}
                           </Button>
                         )}
+                        <Button
+                          size="xs"
+                          variant="light"
+                          component={Link}
+                          to={userAccessPath(user.id)}
+                        >
+                          {sy.accessButton}
+                        </Button>
                         <Button size="xs" variant="default" onClick={() => setEditing(user)}>
                           {sy.edit}
                         </Button>
@@ -317,7 +414,7 @@ export function UsersPanel() {
       {editing !== undefined && (
         <UserFormModal
           user={editing}
-          selfId={me?.id}
+
           onClose={() => setEditing(undefined)}
           onCreated={(result) => {
             setEditing(undefined);
@@ -327,27 +424,6 @@ export function UsersPanel() {
           onSaved={(saved) => {
             setEditing(undefined);
             notifications.show({ color: "green", message: sy.saved(nameOf(saved)) });
-            const warnings = saved.coverage_warnings ?? [];
-            if (warnings.length > 0) {
-              // Kayıt engellenmez; uyarı kapatılana kadar kalır (plan §8 madde 9).
-              notifications.show({
-                color: "orange",
-                title: sy.coverageWarningTitle,
-                autoClose: false,
-                message: (
-                  <Stack gap={4} data-testid="coverage-warnings">
-                    {warnings.map((warning) => (
-                      <Text size="sm" key={warning}>
-                        {warning}
-                      </Text>
-                    ))}
-                    <Text size="xs" c="dimmed">
-                      {sy.coverageWarningHint}
-                    </Text>
-                  </Stack>
-                ),
-              });
-            }
             reload();
           }}
         />

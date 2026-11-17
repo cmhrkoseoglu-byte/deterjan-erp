@@ -87,7 +87,9 @@ def test_admin_password_change_of_other_user_is_audited(admin_client, superuser,
     assert "pbkdf2" not in str(entry.changes) and "md5" not in str(entry.changes)
 
 
-def test_admin_user_role_change_is_audited(admin_client, superuser, make_user):
+def test_admin_user_roles_are_read_only(admin_client, superuser, make_user):
+    """Roller panelden değişmez (Yetkiler ekranından değişir; plan §5.10); kişisel bilgi
+    değişikliği bugünkü gibi denetim günlüğüne yazılır."""
     target = make_user("depo", username="depo1", full_name="Ayşe")
     planlama = Group.objects.get(name="planlama")
 
@@ -105,11 +107,10 @@ def test_admin_user_role_change_is_audited(admin_client, superuser, make_user):
 
     assert response.status_code == 302, response.content[:500]
     updates = AuditLog.objects.filter(action=AuditLog.Action.UPDATE, object_id=target.pk)
-    assert sorted((e.changes for e in updates), key=str) == [
-        {"full_name": ["Ayşe", "Ayşe Yılmaz"]},
-        {"roles": [["depo"], ["planlama"]]},
-    ]
+    assert [e.changes for e in updates] == [{"full_name": ["Ayşe", "Ayşe Yılmaz"]}]
     assert {e.actor for e in updates} == {superuser}
+    target.refresh_roles()
+    assert target.role_names == {"depo"}
 
 
 def test_admin_cannot_delete_users(admin_client, make_user):
