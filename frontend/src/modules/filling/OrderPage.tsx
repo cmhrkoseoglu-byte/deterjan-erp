@@ -17,6 +17,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
+  IconArrowBackUp,
   IconArrowLeft,
   IconCheck,
   IconFlagCheck,
@@ -33,6 +34,7 @@ import {
   fillingOrderAction,
   getFillingOrder,
   orderReport,
+  revertFillingOrder,
   saveFillingOrder,
   startRun,
   type FillingOrderDetail,
@@ -267,6 +269,7 @@ function OrderDetail({ order }: { order: FillingOrderDetail }) {
   const [error, setError] = useState("");
   const [confirm, setConfirm] = useState<"approve" | "finish" | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [revertOpen, setRevertOpen] = useState(false);
   const canPlan = hasAnyRole(user, PLAN_ROLES);
   const canPrep = hasAnyRole(user, PREP_ROLES);
   const canFill = hasAnyRole(user, LINE_ROLES);
@@ -358,6 +361,16 @@ function OrderDetail({ order }: { order: FillingOrderDetail }) {
               onClick={() => setCancelOpen(true)}
             >
               {ft.cancelOrder}
+            </Button>
+          )}
+          {order.can_revert && (
+            <Button
+              color="red"
+              variant="outline"
+              leftSection={<IconArrowBackUp size={16} />}
+              onClick={() => setRevertOpen(true)}
+            >
+              {ft.revertOrder}
             </Button>
           )}
         </Group>
@@ -566,6 +579,24 @@ function OrderDetail({ order }: { order: FillingOrderDetail }) {
         onDone={(saved) => {
           setCancelOpen(false);
           refresh(saved);
+        }}
+      />
+      <ReasonModal
+        opened={revertOpen}
+        title={ft.revertTitle}
+        hint={ft.revertHint}
+        label={ft.revertReason}
+        confirmLabel={ft.revertOrder}
+        submit={(reason) => revertFillingOrder(order.id, reason)}
+        onClose={() => setRevertOpen(false)}
+        onDone={(saved) => {
+          setRevertOpen(false);
+          notifications.show({ color: "green", message: ft.reverted });
+          refresh(saved);
+          // Geri alma stoğu, numuneleri ve görevleri de değiştirir.
+          for (const key of ["inventory", "quality", "workflow"]) {
+            void queryClient.invalidateQueries({ queryKey: [key] });
+          }
         }}
       />
     </Stack>

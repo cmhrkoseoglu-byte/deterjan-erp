@@ -224,6 +224,18 @@ Firmanın ticari bilgileri **Ana veriler > Firma bilgileri** sekmesindedir. Sevk
 
 Ayrıntılı plan **Canlıya geçiş ve sayım günü** kılavuzundadır.
 
+## Dolumu geri alma
+
+Dolum emri sistemde başlatıldığı hâlde dolum fabrikada fiilen yapılmadıysa emri geri alabilirsiniz. Bunu yalnızca yönetim ve sistem yöneticisi yapar.
+
+1. **Dolum > Dolum emirleri** sekmesinde emri açın. Emir **Ambalaj hazır**, **Dolumda** ya da **Analiz bekliyor** durumunda olmalıdır.
+2. Emir sayfasının üstündeki kırmızı **Dolumu geri al** düğmesine basın.
+3. **Geri alma nedeni**'ni yazın ve **Dolumu geri al**'a basın.
+
+Emrin bütün stok hareketleri ters kayıtla geri alınır: tüketilen bulk kendi lotuyla tanka, tüketilen ve hazırlanan ambalaj alındığı depoya döner, dolum lotunun stoğu sıfırlanır. Partiler ve açık numuneler iptal edilir, laboratuvarın mamul kontrolü görevi kapanır, emir **İptal** olur. Kayıtlar silinmez; lotların soy ağacı geçmiş olarak kalır. Lotların durumu değişmez: dolum lotu bulunduğu durumda (genellikle karantinada) boş kalır, bulk lotu bugünkü durumundadır.
+
+> İşlem ya tamamen yapılır ya hiç yapılmaz. Dolum lotu serbest bırakılmış, sevk edilmiş, taşınmış, rezerve edilmiş ya da başka bir işlemde kullanılmışsa ya da numunesi onay bekliyorsa geri alma reddedilir. Aynı hatta iki emir aynı ambalaj lotunu kullandıysa sistem önce hangi emrin geri alınacağını söyler.
+
 ## Diğer görevler
 
 - **İSG olayı**: Bildirilen kaza ve ramak kala olayları size görev olarak gelir. **İSG ve çevre** menüsünde olayı inceleyip kapatın.

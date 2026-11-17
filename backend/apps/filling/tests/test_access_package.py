@@ -20,7 +20,7 @@ bağlantı 8. adıma kadar kalır.
 
 from apps.core.access import APPROVE, CHANGE, VIEW
 from apps.core.tests.access_helpers import SIGNED_IN, Row, any_of, assert_rows, level, read
-from apps.filling.access import ORDERS, PREP, RUNS, SPECS
+from apps.filling.access import ORDERS, PREP, REVERT, RUNS, SPECS
 
 CONFIG = "frontend:src/modules/filling/config.ts"
 # layout/menu.ts MENU "filling": menü öğesi ve routes.tsx `fillingPage` koruması.
@@ -28,6 +28,9 @@ MENU_ROLES = ("dolum", "planlama", "depo", "yonetim")
 PLANNER = ("planlama",)
 WAREHOUSE = ("depo",)
 FILLER = ("dolum",)
+# Dolum emrini geri alma (DECISIONS 2026-11-14): bugünkü kodda karşılığı yok, yeni bölüm yalnız
+# yönetime (ve admine) verilir.
+MANAGEMENT = ("yonetim",)
 
 # Dolum emri ve partisi okuması: üç bölümden birinde okuma yeter (plan §5.1).
 RECORD_READ = read(ORDERS, PREP, RUNS)
@@ -72,6 +75,7 @@ ROWS = [
     Row("views.FillingOrderViewSet.mark_ready", WAREHOUSE, level(PREP, CHANGE)),
     Row("views.FillingOrderViewSet.picks POST", WAREHOUSE, level(PREP, CHANGE)),
     Row("views.FillingOrderViewSet.finish (dolumu bitirir)", FILLER, level(RUNS, CHANGE)),
+    Row("views.FillingOrderViewSet.revert (dolumu geri alır)", MANAGEMENT, level(REVERT, CHANGE)),
     Row(
         "views.FillingRunViewSet.create (parti başlatma, default_roles)",
         FILLER,
@@ -212,6 +216,7 @@ ROWS = [
         FILLER,
         level(RUNS, CHANGE),
     ),
+    Row("services.revert_order (yönetim)", MANAGEMENT, level(REVERT, CHANGE)),
     # --- kayıt türleri: apps/filling/apps.py (register_record_type, rolsüz) -------------------
     Row("records filling.fillingorder (yorum, geçmiş, ek)", SIGNED_IN, RECORD_READ),
     Row("records filling.fillingrun (yorum, geçmiş, ek)", SIGNED_IN, RECORD_READ),

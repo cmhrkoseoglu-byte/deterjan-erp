@@ -14,7 +14,7 @@ from apps.core.access import APPROVE, CHANGE
 from apps.core.exceptions import BusinessRuleError
 from apps.core.permissions import AccessMixin, HasAccess, ReadRule
 from apps.filling import selectors, services
-from apps.filling.access import ORDERS, PREP, RUNS, SPECS
+from apps.filling.access import ORDERS, PREP, REVERT, RUNS, SPECS
 from apps.filling.api import serializers as s
 from apps.filling.models import (
     FillingOrder,
@@ -39,6 +39,7 @@ PREP_CHANGE = HasAccess(PREP, CHANGE)
 RUN_CHANGE = HasAccess(RUNS, CHANGE)
 SPEC_CHANGE = HasAccess(SPECS, CHANGE)
 SPEC_APPROVE = HasAccess(SPECS, APPROVE)
+ORDER_REVERT = HasAccess(REVERT, CHANGE)
 
 
 def _user(request: Request) -> Any:
@@ -258,6 +259,7 @@ class FillingOrderViewSet(
         "picks": PREP_CHANGE,
         "finish": RUN_CHANGE,
         "report": REPORT_READ,
+        "revert": ORDER_REVERT,
     }
 
     def get_queryset(self) -> QuerySet[FillingOrder]:
@@ -278,7 +280,8 @@ class FillingOrderViewSet(
 
     def _respond(self, order: FillingOrder, code: int = status.HTTP_200_OK) -> Response:
         fresh = self.get_queryset().get(pk=order.pk)
-        return Response(s.FillingOrderDetailSerializer(fresh).data, status=code)
+        data = s.FillingOrderDetailSerializer(fresh, context=self.get_serializer_context()).data
+        return Response(data, status=code)
 
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         body = s.FillingOrderSerializer(data=request.data)
@@ -325,6 +328,19 @@ class FillingOrderViewSet(
         body = CancelSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         order = services.cancel_order(
+            _user(request), self.get_object(), body.validated_data["reason"]
+        )
+        return self._respond(order)
+
+    @extend_schema(request=CancelSerializer, responses=s.FillingOrderDetailSerializer)
+    @action(detail=True, methods=["post"])
+    def revert(self, request: Request, pk: str | None = None) -> Response:
+        """Fiilen yapılmamış dolumu geri alır (Dolum emrini geri alma: Değiştirir): emrin stok
+        hareketleri ters kayıtla geri alınır, partiler ve açık numuneler iptal edilir, emir iptal
+        olur."""
+        body = CancelSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        order = services.revert_order(
             _user(request), self.get_object(), body.validated_data["reason"]
         )
         return self._respond(order)

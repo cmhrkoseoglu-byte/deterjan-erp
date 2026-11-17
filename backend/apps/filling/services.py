@@ -23,6 +23,7 @@ from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 from typing import Any
 
 from django.conf import settings
+from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import F, Max, Q, Sum
 from django.utils import timezone
@@ -33,9 +34,10 @@ from apps.core.access import APPROVE, CHANGE
 from apps.core.audit import log_change, snapshot
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
-from apps.core.permissions import require_access
+from apps.core.permissions import has_access, require_access
 from apps.core.services import cancel_document, create_document, save_with_audit, transition_status
-from apps.filling.access import ORDERS, PREP, RUNS, SPECS
+from apps.core.state import StateMachine
+from apps.filling.access import ORDERS, PREP, REVERT, RUNS, SPECS
 from apps.filling.models import (
     ConsumptionKind,
     FillingConsumption,
@@ -48,10 +50,16 @@ from apps.filling.models import (
     RunLot,
     ScrapRecord,
 )
-from apps.filling.state import filling_order_states, filling_run_states, packaging_spec_states
+from apps.filling.state import (
+    filling_order_revert_states,
+    filling_order_states,
+    filling_run_revert_states,
+    filling_run_states,
+    packaging_spec_states,
+)
 from apps.inventory import picking
 from apps.inventory import services as inventory
-from apps.inventory.models import Lot, StockBalance, StockMovement
+from apps.inventory.models import Lot, LotLink, StockBalance, StockMovement, StockReservation
 from apps.inventory.services import format_quantity, lot_payload, quantize
 from apps.masterdata import services as masterdata
 from apps.masterdata.models import Equipment, Location, Material, UnitOfMeasure
@@ -90,6 +98,8 @@ PICKABLE_STATUSES = (
     Status.IN_PROGRESS,
 )
 RUNNABLE_STATUSES = (Status.MATERIAL_READY, Status.IN_PROGRESS)
+# Dolum emrini geri alma (DECISIONS 2026-11-14): ambalajı hazır, dolumda ya da analiz bekleyen emir.
+REVERTIBLE_STATUSES = (Status.MATERIAL_READY, Status.IN_PROGRESS, Status.QC_PENDING)
 PCT_STEP = Decimal("0.01")
 HUNDRED = Decimal(100)
 
@@ -1125,15 +1135,36 @@ def finish_run(actor: User | None, run: FillingRun, good_units: int, note: str =
     return run
 
 
-def _set_run_status(actor: User | None, run: FillingRun, to_status: str, note: str = "") -> None:
-    filling_run_states.assert_can_transition(run.status, to_status)
+def _set_run_status(
+    actor: User | None,
+    run: FillingRun,
+    to_status: str,
+    note: str = "",
+    *,
+    machine: StateMachine = filling_run_states,
+) -> None:
+    """Partinin durumunu değiştirir ve denetim günlüğüne yazar. İptalde `filling_run.cancelled`
+    yayınlanır (bitişin olayını `finish_run` kendisi yayınlar)."""
+    machine.assert_can_transition(run.status, to_status)
     from_status = run.status
     run.status = to_status
     run.updated_by = actor
     run.save()
-    log_change(
-        actor, run, AuditLog.Action.STATUS_CHANGE, {"status": [from_status, to_status]}, note
-    )
+    changes: dict[str, list[Any]] = {"status": [from_status, to_status]}
+    if to_status == RunStatus.CANCELLED:
+        changes["cancel_reason"] = ["", run.cancel_reason]
+    log_change(actor, run, AuditLog.Action.STATUS_CHANGE, changes, note)
+    if to_status == RunStatus.CANCELLED:
+        lot = run.output_lot
+        events.publish(
+            machine.event_name(RunStatus.CANCELLED),
+            run_payload(
+                run,
+                output_lot=lot_payload(lot, material_type=lot.material.material_type),
+                reason=run.cancel_reason,
+            ),
+            actor,
+        )
 
 
 @transaction.atomic
@@ -1230,3 +1261,290 @@ def lots_for_scrap(run: FillingRun) -> Iterable[Lot]:
     for lot in [*bulk, *scanned]:
         seen.setdefault(lot.pk, lot)
     return list(seen.values())
+
+
+# --- dolum emrini geri alma ------------------------------------------------------------------
+
+
+def can_revert(user: Any, order: FillingOrder) -> bool:
+    """Emir geri alınabilir durumda mı ve kullanıcının Dolum emrini geri alma yetkisi var mı?"""
+    return order.status in REVERTIBLE_STATUSES and has_access(user, REVERT, CHANGE)
+
+
+def _is_reversed(movement: StockMovement) -> bool:
+    return StockMovement.objects.filter(reversal_of=movement).exists()
+
+
+def _pick_is_reversed(pick: PackagingPick) -> bool:
+    """Hazırlama transferi (iki bacağından biri) daha önce elle ters kaydedilmiş mi?"""
+    return StockMovement.objects.filter(reversal_of__transfer_group=pick.transfer_group).exists()
+
+
+def _guard_output_lots(order: FillingOrder, lots: Sequence[Lot]) -> None:
+    """Çıktı lotları yalnızca bu emrin kendi hareketlerini taşımalı: sevk edilmiş, taşınmış,
+    serbest bırakılmış, başka bir işte kullanılmış ya da rezerve lot geri alınmaz."""
+    if not lots:
+        return
+    content_type = ContentType.objects.get_for_model(FillingOrder)
+    foreign = (
+        StockMovement.objects.filter(lot__in=lots)
+        .exclude(source_content_type=content_type, source_object_id=order.pk)
+        .select_related("lot")
+        .order_by("id")
+        .first()
+    )
+    if foreign is not None:
+        raise BusinessRuleError(
+            "output_lot_used",
+            f"Dolum lotu {foreign.lot.lot_no} bu emrin dışında kullanılmış "
+            f"({foreign.get_movement_type_display()}); dolum geri alınamaz.",
+        )
+    child = (
+        LotLink.objects.filter(parent_lot__in=lots)
+        .select_related("parent_lot", "child_lot")
+        .order_by("id")
+        .first()
+    )
+    if child is not None:
+        raise BusinessRuleError(
+            "output_lot_consumed",
+            f"Dolum lotu {child.parent_lot.lot_no} başka bir lotta ({child.child_lot.lot_no}) "
+            "kullanılmış; dolum geri alınamaz.",
+        )
+    reservation = (
+        StockReservation.objects.filter(lot__in=lots, status=StockReservation.Status.ACTIVE)
+        .select_related("lot")
+        .order_by("id")
+        .first()
+    )
+    if reservation is not None:
+        raise BusinessRuleError(
+            "output_lot_reserved",
+            f"Dolum lotu {reservation.lot.lot_no} siparişe ayrılmış; önce rezervasyonu bırakın.",
+        )
+    released = next((lot for lot in lots if lot.status == Lot.Status.RELEASED), None)
+    if released is not None:
+        raise BusinessRuleError(
+            "output_lot_used",
+            f"Dolum lotu {released.lot_no} serbest bırakılmış; serbest mamulün dolumu geri "
+            "alınamaz.",
+        )
+    waiting = (
+        Sample.objects.filter(lot__in=lots, status=Sample.Status.AWAITING_APPROVAL)
+        .select_related("lot")
+        .order_by("id")
+        .first()
+    )
+    if waiting is not None:
+        raise BusinessRuleError(
+            "sample_awaiting_approval",
+            f"Dolum lotu {waiting.lot.lot_no} için {waiting.number} numunesi şartlı kabul onayı "
+            "bekliyor; önce karar verilmelidir.",
+        )
+
+
+def _guard_balances(
+    order: FillingOrder,
+    movements: Sequence[StockMovement],
+    picks: Sequence[PackagingPick],
+) -> None:
+    """Ters kayıtların toplamı hiçbir lot ve lokasyonu negatife düşürmemeli; düşürecekse ilk
+    yazmadan önce, nedeni söylenerek reddedilir. Aynı hattaki başka bir emir bu emrin hazırladığı
+    ambalaj lotunu tüketmişse önce o emir geri alınmalıdır. Stok dönecek lokasyon pasifse
+    reddedilir. Stoğu geri getiren ters kayıtlar önce yazıldığı için toplamın denetimi yeter."""
+    delta: dict[tuple[int, int], Decimal] = {}
+    receiving: dict[int, Location] = {}
+    lots: dict[int, Lot] = {}
+    locations: dict[int, Location] = {}
+
+    def add(movement: StockMovement) -> None:
+        key = (movement.lot_id, movement.location_id)
+        delta[key] = delta.get(key, Decimal(0)) - movement.quantity
+        lots[movement.lot_id] = movement.lot
+        locations[movement.location_id] = movement.location
+        if movement.quantity < 0:
+            receiving[movement.location_id] = movement.location
+
+    for movement in movements:
+        add(movement)
+    for pick in picks:
+        legs = StockMovement.objects.filter(transfer_group=pick.transfer_group).select_related(
+            "lot__material__base_unit", "location"
+        )
+        for leg in legs:
+            add(leg)
+    inactive = sorted(location.code for location in receiving.values() if not location.is_active)
+    if inactive:
+        raise BusinessRuleError(
+            "inactive_reference",
+            f"Geri almada stok dönecek lokasyon pasif: {', '.join(inactive)}. Önce lokasyonu "
+            "yeniden etkinleştirin.",
+        )
+    for (lot_id, location_id), change in sorted(delta.items()):
+        if change >= 0:
+            continue
+        lot, location = lots[lot_id], locations[location_id]
+        balance = inventory.current_balance(lot, location)
+        if balance + change >= 0:
+            continue
+        unit = lot.material.base_unit.code
+        consumers = set(
+            FillingConsumption.objects.filter(lot=lot, location=location)
+            .exclude(run__order=order)
+            .filter(movement__reversed_by__isnull=True)
+            .values_list("run__order__number", "run__order__status")
+        )
+        if consumers:
+            numbers = ", ".join(sorted({number for number, _ in consumers}))
+            shortage = (
+                f"Lot {lot.lot_no} ({lot.material.code}) {location.code} lokasyonunda {numbers} "
+                f"emrinde de tüketilmiş; geri almak için {format_quantity(-change)} {unit} "
+                f"gerekli, {format_quantity(balance)} {unit} var."
+            )
+            if all(status in REVERTIBLE_STATUSES for _, status in consumers):
+                advice = f" Önce {numbers} geri alınmalıdır."
+            else:
+                advice = " Ambalaj tamamlanmış ya da geri alınamayan bir dolumda kullanıldı."
+            raise BusinessRuleError("packaging_used_elsewhere", shortage + advice)
+        raise BusinessRuleError(
+            "negative_stock",
+            f"Yetersiz stok: {lot.material.code} lot {lot.lot_no}, {location.code} lokasyonunda "
+            f"{format_quantity(balance)} {unit} var, geri alma {format_quantity(-change)} {unit} "
+            "istiyor.",
+        )
+
+
+@transaction.atomic
+def revert_order(actor: User | None, order: FillingOrder, reason: str) -> FillingOrder:
+    """Fiilen yapılmamış dolumu geri alır (Dolum emrini geri alma: Değiştirir; DECISIONS
+    2026-11-14). Tek işlemdir; bir adım reddedilirse hiçbir şey değişmez.
+
+    - Emrin bütün stok hareketleri ters kayıtla (`REVERSAL`) geri alınır: önce tüketim ve fire
+      (bulk tanka, ambalaj hatta döner), sonra mamul girişi (dolum lotu sıfırlanır), sonra iade
+      edilmemiş ambalaj hazırlamaları (hat → depo; kayıt iade edildi olur). Daha önce elle ters
+      kaydedilmiş hareket atlanır.
+    - Dolum lotu bu emrin dışında kullanılmışsa (sevk, transfer, serbest bırakma, başka lota
+      girdi, rezervasyon) ya da şartlı kabul onayı bekleyen numunesi varsa reddedilir.
+    - Çıktı lotlarının açık numuneleri, partiler (`filling_run.cancelled`) ve emir
+      (`filling_order.cancelled`) iptal olur. Lot durumları ve soy ağacı değişmez (geçmiş olarak
+      kalır, miktarlar net sıfır); dolum lotu karantinada stoksuz kalır.
+    """
+    require_access(actor, REVERT, CHANGE, "Dolum emrini geri alma yetkiniz yok.")
+    actor = _actor(actor)
+    reason = reason.strip()
+    if not reason:
+        raise BusinessRuleError("cancel_reason_required", "Geri alma nedeni girilmelidir.")
+    order = _lock_order(order)
+    if order.status not in REVERTIBLE_STATUSES:
+        raise BusinessRuleError(
+            "order_not_revertible",
+            f"{order.number} {filling_order_states.label(order.status).lower()} durumda; yalnızca "
+            "ambalajı hazır, dolumda ya da analiz bekleyen emir geri alınabilir.",
+        )
+    runs = list(
+        order.runs.select_for_update(of=("self",))
+        .select_related("output_lot__material")
+        .order_by("sequence")
+    )
+    for run in runs:
+        run.order = order
+    # Çıktı lotları ve açık numuneleri denetimden önce kilitlenir: eşzamanlı bir kalite kararı
+    # (serbest bırakma) denetim ile ters kayıt arasına giremez.
+    output_lots = list(
+        Lot.objects.select_for_update()
+        .filter(pk__in=[run.output_lot_id for run in runs])
+        .select_related("material")
+        .order_by("id")
+    )
+    list(
+        Sample.objects.select_for_update()
+        .filter(
+            lot__in=output_lots,
+            status__in=(
+                Sample.Status.PENDING,
+                Sample.Status.IN_TEST,
+                Sample.Status.AWAITING_APPROVAL,
+            ),
+        )
+        .order_by("id")
+    )
+    if order.picks.filter(returned_at__isnull=False).exists():
+        raise BusinessRuleError(
+            "unreversed_movement",
+            f"{order.number} emrinde iade edilmiş ambalaj hazırlaması var; dolum geri alınamaz.",
+        )
+
+    # Bütün ön denetimler ilk yazmadan önce.
+    _guard_output_lots(order, output_lots)
+    related = ("lot__material__base_unit", "location")
+    recorded = [
+        c.movement
+        for c in FillingConsumption.objects.filter(run__order=order)
+        .select_related(*(f"movement__{name}" for name in related))
+        .order_by("id")
+    ] + [
+        r.movement
+        for r in ScrapRecord.objects.filter(run__order=order, movement__isnull=False)
+        .select_related(*(f"movement__{name}" for name in related))
+        .order_by("id")
+    ]
+    outputs = [
+        StockMovement.objects.select_related(*related).get(pk=run.output_movement_id)
+        for run in runs
+        if run.output_movement_id is not None
+    ]
+    # Önce stoğu geri getirenler (tüketim, fire), sonra mamul girişi.
+    movements = [m for m in [*recorded, *outputs] if m is not None and not _is_reversed(m)]
+    picks = list(
+        order.picks.filter(returned_at__isnull=True)
+        .select_related("lot__material", "from_location", "to_location")
+        .order_by("id")
+    )
+    open_picks = [pick for pick in picks if not _pick_is_reversed(pick)]
+    _guard_balances(order, movements, open_picks)
+
+    note = f"Dolum geri alındı {order.number}: {reason}"
+    reversed_count = 0
+    for movement in movements:
+        reversed_count += len(inventory.reverse_movement(actor, movement, note))
+    now = timezone.now()
+    for pick in picks:
+        if pick in open_picks:
+            leg = StockMovement.objects.filter(transfer_group=pick.transfer_group).first()
+            assert leg is not None
+            reversed_count += len(inventory.reverse_movement(actor, leg, note))
+        pick.returned_at = now
+        save_with_audit(pick, actor, note="Dolum geri alındı: ambalaj depoya döndü")
+
+    # Güvenlik ağı: emre bağlı, ters kaydı olmayan hareket kalmamalı (kalırsa hepsi geri alınır).
+    content_type = ContentType.objects.get_for_model(FillingOrder)
+    left = list(
+        StockMovement.objects.filter(source_content_type=content_type, source_object_id=order.pk)
+        .exclude(movement_type=MovementType.REVERSAL)
+        .filter(reversed_by__isnull=True)
+        .select_related("lot")
+    )
+    if left:
+        lot_nos = ", ".join(sorted({m.lot.lot_no for m in left}))
+        raise BusinessRuleError(
+            "unreversed_movement",
+            f"{order.number} emrinin geri alınamayan stok hareketi kaldı (lot {lot_nos}); dolum "
+            "geri alınmadı.",
+        )
+
+    for lot in output_lots:
+        quality.cancel_lot_samples(actor, lot, note)
+    for run in runs:
+        if run.status == RunStatus.CANCELLED:
+            continue
+        run.cancel_reason = reason
+        _set_run_status(actor, run, RunStatus.CANCELLED, reason, machine=filling_run_revert_states)
+    order = cancel_document(order, actor, reason=reason, machine=filling_order_revert_states)
+    log_change(
+        actor,
+        order,
+        AuditLog.Action.CUSTOM,
+        {},
+        f"Dolum geri alındı: {reversed_count} stok hareketi ters kaydedildi.",
+    )
+    return order

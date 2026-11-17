@@ -4,7 +4,7 @@
 //   docker compose exec -T backend python manage.py export_access --format=ts \
 //     > frontend/src/auth/access.gen.ts
 
-export const ACCESS_CATALOG_HASH = "f7caf85d093703e420f5f9560375658b3d34648d6ed35f2212ba8094eea7902a";
+export const ACCESS_CATALOG_HASH = "951e0b0fc37ca9d926460386442633070a0ff33402a2b7ff9d718334510c3cbf";
 
 export type AccessLevel = "read" | "view" | "change" | "approve";
 export type ReadScope = "view" | "shared" | "any_role" | "open";
@@ -84,6 +84,7 @@ export const PERM = {
   "FILLING_PREP": "filling.prep",
   "FILLING_RUNS": "filling.runs",
   "FILLING_SPECS": "filling.specs",
+  "FILLING_REVERT": "filling.revert",
   "FILLING_OPEN_RECORDS": "filling.open_records",
   "SALES_ORDERS": "sales.orders",
   "SALES_SHIPMENTS": "sales.shipments",
@@ -220,6 +221,7 @@ export const MODULES: readonly ModuleMeta[] = [
       "filling.prep",
       "filling.runs",
       "filling.specs",
+      "filling.revert",
       "filling.open_records"
     ]
   },
@@ -930,6 +932,29 @@ export const SECTIONS: Readonly<Record<PermKey, SectionMeta>> = {
     },
     "read": "open",
     "requires": [],
+    "restrictedToRole": null,
+    "adminOnly": [],
+    "locked": []
+  },
+  "filling.revert": {
+    "key": "filling.revert",
+    "module": "filling",
+    "label": "Dolum emrini geri alma",
+    "kind": "action",
+    "levels": [
+      "change"
+    ],
+    "help": {
+      "change": "Fiilen yapılmamış dolumu geri alır: emrin stok hareketleri ters kayıtla geri alınır, partiler ve açık numuneler iptal edilir, emir iptal olur."
+    },
+    "read": "view",
+    "requires": [
+      {
+        "level": "change",
+        "key": "filling.orders",
+        "need": "view"
+      }
+    ],
     "restrictedToRole": null,
     "adminOnly": [],
     "locked": []
@@ -2050,6 +2075,7 @@ export const PACKAGES: Readonly<Record<string, Readonly<Record<string, string>>>
     "costing.personnel_cost": "vc",
     "costing.rates": "vc",
     "filling.orders": "v",
+    "filling.revert": "c",
     "filling.runs": "v",
     "filling.specs": "v",
     "golive.comparisons": "vc",

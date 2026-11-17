@@ -36,6 +36,8 @@ Emir sayfası emrin durumunu baştan sona gösterir.
 
 > Dolum emri için mamulün onaylı ambalaj reçetesi olmalıdır. Ambalaj reçeteleri **Dolum > Ambalaj reçeteleri** sekmesindedir.
 
+Dolum emri ambalaj hazır olana kadar **Emri iptal et** ile iptal edilir; hazırlanmış ambalaj geldiği yere döner. Ambalajı hazır ya da dolumu başlamış emir iptal edilemez. Dolum fabrikada fiilen yapılmadıysa yönetimden emri **Dolumu geri al** ile geri almasını isteyin: stok hareketleri, partiler ve numuneler de geri alınır.
+
 ## Reçete ve ana veriler
 
 1. **Reçeteler** menüsünde reçeteyi açın. Onaylı sürüm değiştirilemez.

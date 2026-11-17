@@ -57,6 +57,12 @@ export const ft = {
   cancelTitle: "Dolum emrini iptal et",
   cancelHint: "Hat başına taşınmış ambalaj geldiği lokasyonlara geri transfer edilir.",
   cancelReason: "İptal nedeni",
+  revertOrder: "Dolumu geri al",
+  revertTitle: "Dolum emrini geri al",
+  revertHint:
+    "Yalnızca fiilen yapılmamış dolum için. Emrin bütün stok hareketleri ters kayıtla geri alınır: bulk lotuna, ambalaj geldiği depoya döner, dolum lotları sıfırlanır; partiler ve açık numuneler iptal edilir, emir iptal olur. Kayıtlar silinmez. Dolum lotu serbest bırakılmış, sevk edilmiş ya da başka bir işlemde kullanılmışsa geri alınamaz.",
+  revertReason: "Geri alma nedeni",
+  reverted: "Dolum geri alındı, emir iptal edildi.",
   approvedBy: "Onaylayan",
   completedAt: "Tamamlanma",
   requirements: "Ambalaj ihtiyacı",

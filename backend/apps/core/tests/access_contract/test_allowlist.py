@@ -50,6 +50,8 @@ PLANNED_ITEMS: dict[str, frozenset[int]] = {
     "yeni uç nokta: yetki kataloğu (plan §5.1)": frozenset({1}),
     "yeni model: kişiye özel yetki ve paket sürümü (plan §5.2)": frozenset({1}),
     "yeni uç nokta: iadelerin sevkiyat seçimi (plan §5.4)": frozenset({4}),
+    # Plan dışı; sahibin onayladığı geri alma planına dayanır (DECISIONS 2026-11-14).
+    "yeni uç nokta: dolum emrini geri alma (DECISIONS 2026-11-14)": frozenset({4}),
     "yeni model: kişiye özel yetki ve paket sürümü (plan §5.2, §5.6)": frozenset({6}),
     "yeni uç nokta: Yetkilerim (plan §5.10)": frozenset({9}),
     "yeni uç nokta: kişinin yetki matrisi (plan §5.10)": frozenset({9}),

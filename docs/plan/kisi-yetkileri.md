@@ -168,6 +168,7 @@ okutma ve "hazır" düğmeleri Malzeme hazırlama: Değiştirir ister.
 | Ambalaj hazırlama | Hazırlama sekmesi. Değiştirir: hazırlığı başlatır, ambalaj okutur, hazır bildirir. Açık okuma | depo | depo | — |
 | Dolum hattı | Değiştirir: parti başlatır, bulk tüketimini ve ambalaj okutmayı kaydeder, fire girer, partiyi bitirir, kaydı olmayan partiyi iptal eder, dolumu bitirir. Parti ve emir tüketim raporları açık okumadır; koli etiketi basma herkese açıktır (Lotlar). Açık okuma | dolum, planlama, depo, yönetim | dolum | — |
 | Ambalaj reçeteleri | Sürümler ve satırlar. Onaylar: sürüm onayı. Açık okuma | dolum, planlama, depo, yönetim | planlama | planlama |
+| Dolum emrini geri alma | 2026-11-14'te eklendi (DECISIONS "Dolum emrini geri alma"). Değiştirir: fiilen yapılmamış dolumu geri alır; emrin stok hareketleri ters kayıtla geri alınır, partiler ve açık numuneler iptal edilir, emir iptal olur. Dolum emirleri: Görür'ü ister | — | yönetim | — |
 
 Ambalaj hazırlama sayfası bugünkü gibi Dolum'un herhangi bir bölümünde Görür ile salt okunur açılır.
 
@@ -929,7 +930,7 @@ değişikliğini adıma bağlı `test_pending_purchase_total_for_planning_and_pu
 | KVKK (personel, bordro, sağlık verisi) | Yalnız yönetim kısıtı üç yerde: servis, hesap ve rol kancası; ücret ve bordro ön koşulları; denetim günlüğü süzmesi; Kim neyi görür raporu |
 | Görev ayrılığı kişiye özel yetkiyle zayıflar | Onaylar ayrı; şartlı kabulde zorunlu dört göz; riskli çift uyarısı ve raporu |
 | Görev kimseye düşmez | Kaydederken uyarı, canlıya geçiş hazırlık maddesi, sistem durumu |
-| Matris büyük (75 bölüm, 7 "Açık kayıtlar" satırı ve 2 hassas hak) | Modül başına açılır kapanır; varsayılanlar görünür; "Yalnız kişiye özel ayarlar" süzgeci; toplu işlemler |
+| Matris büyük (76 bölüm, 7 "Açık kayıtlar" satırı ve 2 hassas hak) | Modül başına açılır kapanır; varsayılanlar görünür; "Yalnız kişiye özel ayarlar" süzgeci; toplu işlemler |
 | Ortak tablet ya da hat hesabı kişiye özel yetkiyi ve ISO kaydını boşa çıkarır | §12 |
 
 ## 10. Adımlar

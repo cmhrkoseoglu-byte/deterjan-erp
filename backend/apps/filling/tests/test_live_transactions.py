@@ -45,3 +45,28 @@ def test_filling_flow_runs_without_a_surrounding_transaction(
     order.refresh_from_db()
     assert order.status == FillingOrder.Status.COMPLETED
     assert_stock_invariants()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_revert_runs_without_a_surrounding_transaction(make_user: Callable[..., User]) -> None:
+    """Dolum emrini geri alma canlı gibi dış işlem olmadan çalışır (DECISIONS 2026-11-14)."""
+    ensure_standard_units()
+    planner = make_user("planlama", username="planlama")
+    depo = make_user("depo", username="depo")
+    filler = make_user("dolum", username="dolum")
+    manager = make_user("yonetim", username="yonetim")
+    line = build_line(planner)
+
+    run = started_run(line, planner, depo, filler)
+    services.consume_bulk(filler, run, line.lots["bulk"], D("780"))
+    services.finish_run(filler, run, 1000)
+    order = services.revert_order(manager, run.order, "Dolum yapılmadı")
+
+    run.refresh_from_db()
+    assert order.status == FillingOrder.Status.CANCELLED
+    assert run.status == FillingRun.Status.CANCELLED
+    assert inventory.current_balance(run.output_lot, line.finished_store) == D("0")
+    assert not Sample.objects.filter(
+        lot=run.output_lot, stage=SampleStage.FINAL, status=Sample.Status.PENDING
+    ).exists()
+    assert_stock_invariants()

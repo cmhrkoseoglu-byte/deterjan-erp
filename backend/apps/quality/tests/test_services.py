@@ -240,6 +240,44 @@ def test_cancel_sample(lab, commit, published):
     services.create_sample(lab, lot, SampleStage.INCOMING)
 
 
+def test_cancel_lot_samples_cancels_open_samples_without_access_check(
+    lab, make_user, commit, published
+):
+    """Yetkisiz yardımcı (dolum emrini geri alma): bekleyen ve testteki numuneler iptal olur,
+    karar verilmiş numune değişmez; yetkiyi çağıran denetler."""
+    lot, _q = quarantined_raw_lot()
+    decided = services.create_sample(lab, lot, SampleStage.INCOMING)
+    Sample.objects.filter(pk=decided.pk).update(status=Sample.Status.DECIDED)
+    pending = services.create_sample(lab, lot, SampleStage.INCOMING)
+    no_role = make_user(username="rolsuz")
+
+    with commit():
+        cancelled = services.cancel_lot_samples(no_role, lot, "Dolum geri alındı")
+
+    assert [x.pk for x in cancelled] == [pending.pk]
+    pending.refresh_from_db()
+    decided.refresh_from_db()
+    assert pending.status == Sample.Status.CANCELLED
+    assert pending.cancel_reason == "Dolum geri alındı"
+    assert decided.status == Sample.Status.DECIDED
+    assert [e.name for e in published].count(ev.SAMPLE_CANCELLED) == 1
+    assert services.cancel_lot_samples(no_role, lot, "Tekrar") == []
+
+
+def test_cancel_lot_samples_refuses_awaiting_approval(lab):
+    lot, _q = quarantined_raw_lot()
+    sample = services.create_sample(lab, lot, SampleStage.INCOMING)
+    Sample.objects.filter(pk=sample.pk).update(status=Sample.Status.AWAITING_APPROVAL)
+    other = services.create_sample(lab, lot, SampleStage.FINAL)
+
+    with pytest.raises(BusinessRuleError) as exc:
+        services.cancel_lot_samples(lab, lot, "Dolum geri alındı")
+
+    assert exc.value.code == "sample_awaiting_approval"
+    other.refresh_from_db()
+    assert other.status == Sample.Status.PENDING
+
+
 def test_sample_state_machine_transitions():
     allowed = {
         "PENDING": ["AWAITING_APPROVAL", "CANCELLED", "DECIDED", "IN_TEST"],
