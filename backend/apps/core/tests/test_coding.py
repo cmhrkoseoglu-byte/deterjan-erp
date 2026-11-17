@@ -635,15 +635,22 @@ def test_api_counter_correction_rejects_huge_numbers(client_for):
 
 
 @pytest.mark.django_db
-def test_api_suggestion_for_write_roles(client_for, make_user):
+def test_api_suggestion_for_write_access(client_for, make_user):
+    """Kod önerisi türün yazma yetkisine (deneme parçasında "Ana veri kartları: Değiştirir")
+    açıktır; yazma yetkisi tanımlanmamış tür yalnız admin'e."""
     planner = client_for(PLANLAMA)
     inactive = planner.get(f"{BASE}/suggest/{WIDGET}/").json()
     assert inactive == {"key": WIDGET, "active": False, "code": None, "format": "WDG-0000"}
     activate(make_user(ADMIN))
     assert planner.get(f"{BASE}/suggest/{WIDGET}/").json()["code"] == "WDG-0001"
-    assert client_for(DEPO).get(f"{BASE}/suggest/{WIDGET}/").status_code == 403
-    # Yazma rolü tanımlanmamış tür yalnız admin'e açık.
-    assert planner.get(f"{BASE}/suggest/{TYPED}/").status_code == 403
+    denied = client_for(DEPO).get(f"{BASE}/suggest/{WIDGET}/")
+    assert denied.status_code == 403
+    assert denied.json()["detail"] == "Bu kayıt türünü yazma yetkiniz yok."
+    assert denied.json()["required"] == [{"key": "masterdata.cards", "level": "change"}]
+    typed = planner.get(f"{BASE}/suggest/{TYPED}/")
+    assert typed.status_code == 403
+    assert typed.json()["detail"] == "Bu kayıt türünü yazma yetkiniz yok."
+    assert "required" not in typed.json()
     assert client_for(ADMIN).get(f"{BASE}/suggest/{TYPED}/", {"type": "BETA"}).status_code == 200
     assert planner.get(f"{BASE}/suggest/yok.yok/").status_code == 404
 

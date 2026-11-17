@@ -3,12 +3,16 @@
 Bütün bölümler yalnız yönetim rolündekilere verilebilir (KVKK).
 """
 
+from django.db.models import Q
+
 from apps.core.access import (
     ALL,
     APPROVE,
     CHANGE,
     VIEW,
     grant,
+    register_audit_model,
+    register_audit_rows,
     register_module,
     register_section,
 )
@@ -73,3 +77,40 @@ grant(YONETIM, ATTENDANCE, VIEW, CHANGE, APPROVE)
 grant(YONETIM, WAGES, VIEW, CHANGE)
 grant(YONETIM, PAYROLL, VIEW, CHANGE, APPROVE)
 grant(YONETIM, SETTINGS, VIEW, CHANGE)
+
+# Denetim günlüğü (plan §5.6, KVKK): personel kayıtları ilgili personel bölümünü ister. Kartın
+# geçmişindeki bordro özetleri (ek ödeme, kesinti, devir, pusula; kart ekranında da gizli) ve
+# bordrosu açılmamış ayın bordro erişim kayıtları (içerik türü yok) Bordro: Görür ister.
+_SECTIONS_OF_MODELS = {
+    CARDS: ("employee", "employeedocument"),
+    ATTENDANCE: ("attendanceentry", "attendancemonth", "publicholiday"),
+    WAGES: ("employeewage",),
+    PAYROLL: (
+        "externalpayrollfigure",
+        "payrollapproval",
+        "payrollitem",
+        "payrollopeningbalance",
+        "payrollrun",
+        "payrollslip",
+    ),
+    SETTINGS: ("attendancesettings", "payrollparameterset"),
+}
+for _section, _models in _SECTIONS_OF_MODELS.items():
+    for _model in _models:
+        register_audit_model(f"personnel.{_model}", requires=[_section])
+
+
+def _payroll_card_notes() -> Q:
+    from apps.personnel.selectors import payroll_card_notes
+
+    return payroll_card_notes()
+
+
+register_audit_model("personnel.employee", requires=[PAYROLL], rows=_payroll_card_notes)
+# `services.log_payroll_access`, ayın bordrosu yokken (notun başı aynıdır).
+PAYROLL_ACCESS_NOTE = "Bordro çıktısı açıldı:"
+register_audit_rows(
+    "personnel.payroll_access",
+    Q(action="custom", note__startswith=PAYROLL_ACCESS_NOTE),
+    requires=[PAYROLL],
+)

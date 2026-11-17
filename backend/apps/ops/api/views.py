@@ -1,15 +1,14 @@
 import logging
+from typing import Any
 
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core import health, ratelimit
-from apps.core.permissions import HasRole
-from apps.core.roles import ADMIN
+from apps.core.permissions import AdminOnly, Public, SignedIn
 from apps.ops import selectors
 from apps.ops.api.serializers import (
     ClientErrorSerializer,
@@ -18,12 +17,15 @@ from apps.ops.api.serializers import (
 )
 
 logger = logging.getLogger("apps.ops.client")
+# Şemada giriş gerektirmeyen uç: drf-spectacular bunu yalnız `AllowAny` izninden çıkarır, `Public`
+# işaretinde açıkça yazılır (şema bugünkü gibi kalır).
+NO_AUTH: Any = [{}]
 
 
 class SystemStatusView(APIView):
     """Sistem durumu ekranı (yalnızca admin): kontroller, disk, yük, kuyruk, yedek geçmişi."""
 
-    permission_classes = [HasRole(ADMIN)]
+    permission_classes = [AdminOnly]
 
     @extend_schema(responses=SystemStatusSerializer)
     def get(self, request: Request) -> Response:
@@ -35,9 +37,9 @@ class OpsHealthView(APIView):
     arka plan servisleri. Biri `error` ise 503. Kimlik doğrulama gerektirmez; ayrıntı vermez."""
 
     authentication_classes: list = []
-    permission_classes = [AllowAny]
+    permission_classes = [Public("dış izleme aracı; ayrıntı vermez")]
 
-    @extend_schema(responses={200: OpsHealthSerializer, 503: OpsHealthSerializer})
+    @extend_schema(responses={200: OpsHealthSerializer, 503: OpsHealthSerializer}, auth=NO_AUTH)
     def get(self, request: Request) -> Response:
         body: dict[str, str] = {
             "db": "ok" if health.check_database() else "error",
@@ -57,6 +59,8 @@ class OpsHealthView(APIView):
 class ClientErrorView(APIView):
     """SPA'daki beklenmeyen hatalar sunucu günlüğüne (ve tanımlıysa hata takip aracına) yazılır.
     Kullanıcı başına dakikada 30 kayıt."""
+
+    permission_classes = [SignedIn("arayüz hata kaydı")]
 
     @extend_schema(request=ClientErrorSerializer, responses={204: None})
     def post(self, request: Request) -> Response:

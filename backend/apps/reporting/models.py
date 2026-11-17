@@ -12,7 +12,8 @@ from apps.core.models import BaseModel
 
 class ReportJob(BaseModel):
     """Arka planda hazırlanan rapor dosyası. `created_by` raporu isteyen kişidir; dosyayı yalnızca
-    o (ve admin) indirir. Dosya `EXPIRY_DAYS` gün sonra silinir, kayıt kalır (EXPIRED)."""
+    o indirir, o da raporun yetkisi hâlâ varsa. Dosya `FILE_RETENTION_DAYS` gün sonra silinir,
+    kayıt kalır (EXPIRED)."""
 
     class Status(models.TextChoices):
         QUEUED = "QUEUED", "Sırada"
@@ -44,6 +45,11 @@ class ReportJob(BaseModel):
     started_at = models.DateTimeField("başlama zamanı", null=True, blank=True, editable=False)
     finished_at = models.DateTimeField("bitiş zamanı", null=True, blank=True, editable=False)
     expires_at = models.DateTimeField("silinme zamanı", null=True, blank=True, editable=False)
+    # Dosya yazılırken saklanır; indirmede yeniden denetlenir (docs/plan/kisi-yetkileri.md §5.6,
+    # §8 madde 12): raporun yetki bölümü ve dosyada maliyet ya da fiyat bulunup bulunmadığı.
+    section = models.CharField("yetki bölümü", max_length=64, blank=True, editable=False)
+    has_costs = models.BooleanField("maliyet içerir", default=False, editable=False)
+    has_prices = models.BooleanField("fiyat içerir", default=False, editable=False)
 
     class Meta:
         verbose_name = "rapor dosyası"

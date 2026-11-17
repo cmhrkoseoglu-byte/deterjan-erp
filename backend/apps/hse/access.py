@@ -9,6 +9,7 @@ from apps.core.access import (
     CHANGE,
     VIEW,
     grant,
+    register_audit_model,
     register_module,
     register_readers,
     register_section,
@@ -99,3 +100,7 @@ grant(YONETIM, STORAGE, CHANGE)
 grant(YONETIM, WASTE, VIEW, CHANGE)
 grant(YONETIM, SUMMARY, VIEW)
 grant(YONETIM, SETTINGS, VIEW, CHANGE)
+
+# Denetim günlüğü (plan §5.6): olay kayıtları (yaralanma bilgisi) Olaylar ve kazalar: Görür ister;
+# olaya yazılan yorum ve eklenen fotoğraf da olayı izler.
+register_audit_model("hse.incident", requires=[INCIDENTS])

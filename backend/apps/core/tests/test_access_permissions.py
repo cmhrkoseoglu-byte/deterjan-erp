@@ -24,13 +24,15 @@ from apps.core.permissions import (
     AdminOnly,
     DenyUnknownAction,
     HasAccess,
-    HasRole,
     MissingAccess,
+    Public,
     ReadRule,
     SignedIn,
     can_read,
     has_access,
+    is_admin,
     require_access,
+    require_admin,
 )
 from apps.core.roles import DEPO, PLANLAMA
 from apps.production.access import BATCHES, ORDERS, PREP
@@ -127,10 +129,43 @@ def test_signed_in_matches_is_authenticated(make_user: Callable[..., User]) -> N
         SignedIn(" ")
 
 
+def test_public_allows_everyone_like_allow_any(make_user: Callable[..., User]) -> None:
+    """Giriş gerektirmeyen uç noktanın işareti: anonim dahil herkese izin verir, sistem denetimi
+    onu açık işaret sayar; nedeni yazılmalıdır."""
+    from apps.core import checks
+
+    permission = Public("giriş formu")()
+
+    assert permission.has_permission(drf_request(None), VIEW_STUB)
+    assert permission.has_permission(drf_request(make_user()), VIEW_STUB)
+    assert permission.has_object_permission(drf_request(None), VIEW_STUB, object())
+    assert checks._is_access_permission(permission)
+    assert type(permission).__name__ == "Public(giriş formu)"
+    with pytest.raises(ValueError, match="nedeni"):
+        Public(" ")
+
+
 def test_admin_only(make_user: Callable[..., User]) -> None:
     assert AdminOnly().has_permission(drf_request(make_user("admin")), VIEW_STUB)
     assert AdminOnly().has_permission(drf_request(make_user(is_superuser=True)), VIEW_STUB)
     assert not AdminOnly().has_permission(drf_request(make_user(PLANLAMA)), VIEW_STUB)
+    assert not AdminOnly().has_permission(
+        drf_request(make_user("admin", is_active=False)), VIEW_STUB
+    )
+    assert not AdminOnly().has_permission(drf_request(None), VIEW_STUB)
+
+
+def test_is_admin_and_require_admin(make_user: Callable[..., User]) -> None:
+    """Servis denetimi: aktif admin ya da süper kullanıcı geçer; değilse verilen mesajla 403."""
+    assert is_admin(make_user("admin"))
+    assert is_admin(make_user(is_superuser=True))
+    assert not is_admin(make_user(PLANLAMA))
+    assert not is_admin(make_user("admin", is_active=False))
+    assert not is_admin(None)
+    assert not is_admin(AnonymousUser())
+    require_admin(make_user("admin"), "x")
+    with pytest.raises(PermissionDenied, match="Yalnız yönetici"):
+        require_admin(make_user(PLANLAMA), "Yalnız yönetici.")
 
 
 class _DemoViewSet(AccessMixin):
@@ -162,12 +197,13 @@ def test_access_mixin_reads_head_and_options_by_default() -> None:
     assert type(options).__name__ == "ReadRule(production.orders)"
 
 
-WRITE = HasRole(DEPO)
+# Bugün HEAD ve OPTIONS'ı yazma kuralıyla denetleyen görünümün yazma izni.
+WRITE = HasAccess(ORDERS, CHANGE)
 
 
 class _MethodViewSet(AccessMixin):
     """Bugünkü kararları birebir çeviren bir görünüm: GET ile POST ayrı; HEAD ve OPTIONS okuma
-    sayılmaz, yazma rolüyle denetlenir."""
+    sayılmaz, yazma yetkisiyle denetlenir."""
 
     read_access = ReadRule(ORDERS)
     read_methods = frozenset({"GET"})
@@ -410,11 +446,3 @@ def test_403_without_access_check_has_no_required_and_csrf_is_untouched() -> Non
         "code": "permission_denied",
         "detail": "Rol yetkisi yok.",
     }
-
-
-def test_has_role_is_unchanged(make_user: Callable[..., User]) -> None:
-    permission = HasRole(DEPO)()
-
-    assert permission.has_permission(drf_request(make_user(DEPO)), VIEW_STUB)
-    assert not permission.has_permission(drf_request(make_user(PLANLAMA)), VIEW_STUB)
-    assert VIEW == "view"

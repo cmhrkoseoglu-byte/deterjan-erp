@@ -102,14 +102,15 @@ def test_task_durations_and_bottleneck(chain, staff):
 
 
 def test_dashboards_follow_the_chain(chain):
-    data = dashboards.management_dashboard(show_costs=False)
+    data = dashboards.management_dashboard(show_costs=False, show_prices=False)
     today = data["production"]["today"]
     assert today["bulk"] == [{"unit": "KG", "quantity": D("950"), "batches": 1}]
     assert today["units"] == 975
     assert data["scrap"]["rate"] == D("2.50")
     assert data["stock_value"] is None
     assert data["qc_pending"]["sample_count"] == 0
-    assert dashboards.management_dashboard(show_costs=True)["stock_value"]["total"] >= 0
+    with_costs = dashboards.management_dashboard(show_costs=True, show_prices=False)
+    assert with_costs["stock_value"]["total"] >= 0
     # Son 14 gün: eskiden yeniye, bugünün çıktısı son günde; üretim olmayan günler sıfır.
     daily = data["daily"]
     assert len(daily) == 14
@@ -151,7 +152,7 @@ def test_management_dashboard_shows_pending_approvals(db, make_user, commit):
         approval_status=QualityDecision.Approval.PENDING,
     )
 
-    approvals = dashboards.management_dashboard(show_costs=True)["approvals"]
+    approvals = dashboards.management_dashboard(show_costs=False, show_prices=True)["approvals"]
 
     order.refresh_from_db()
     assert approvals["purchase_orders"] == {"count": 1, "total_try": order.approval_total_try}
@@ -159,9 +160,10 @@ def test_management_dashboard_shows_pending_approvals(db, make_user, commit):
     conditional = approvals["conditional_acceptance"]
     assert conditional["count"] == 1
     assert D("5") <= conditional["oldest_wait_hours"] < D("6")
-    # Tutar yalnızca yönetim ve admin'e (D-15): diğer rolde toplam yok, sayı var.
-    hidden = dashboards.management_dashboard(show_costs=False)["approvals"]["purchase_orders"]
-    assert hidden == {"count": 1, "total_try": None}
+    # Tutar yalnızca Fiyatları görür'ü olana (sahibin onayı 2026-11-11): maliyet yetkisi tutarı
+    # açmaz; yetkisi olmayana toplam yok, sayı var.
+    hidden = dashboards.management_dashboard(show_costs=True, show_prices=False)["approvals"]
+    assert hidden["purchase_orders"] == {"count": 1, "total_try": None}
 
 
 def test_lab_queue_and_tank_in_batch(db, staff, commit):
@@ -198,7 +200,7 @@ def test_dashboards_show_maintenance_and_hse(db, make_user):
     )
     [row] = [t for t in dashboards.production_dashboard()["tanks"] if t["id"] == tank.pk]
     assert row["downtime"]["reason"] == "BREAKDOWN"
-    data = dashboards.management_dashboard(show_costs=False)
+    data = dashboards.management_dashboard(show_costs=False, show_prices=False)
     assert data["maintenance"]["open_work_orders"] == 1
     assert data["maintenance"]["open_downtimes"] == 1
     assert data["hse"] == {"days": 30, "incidents": 1, "injuries": 1, "open_incidents": 1}

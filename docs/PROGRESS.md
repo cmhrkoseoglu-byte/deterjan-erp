@@ -1883,3 +1883,38 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
     ambalaj depoda; mamul kontrolü görevi kapanmış. Açık sekmeler yenilenir.
 - İzin listesine eklenen yeni uç nokta kaydı sahibin onayladığı plana dayanır (yalnız admin ve
   yönetim).
+
+## 2026-11-17 — Kişiye özel yetkiler: 6. adım (ortak parçalar)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-17). Önce dal canlı kodla
+  eşitlendi (main birleştirmesi: dolum emrini geri alma).
+- **Panolar ve raporlar:** pano ve rapor listeleri kişinin bölümleriyle daralır; maliyet sütunları
+  ve stok değeri Maliyetleri görür'e, yönetim panosundaki onay bekleyen satın alma TL toplamı
+  Fiyatları görür'e bağlıdır (sahip onayı 2026-11-11; ör. planlama ve satın alma rollerini birlikte
+  taşıyan kişi artık toplamı görür).
+- **Rapor dosyaları (§8 madde 12):** iş kaydı raporun bölümünü ve dosyada maliyet ya da fiyat
+  sütunu olup olmadığını tutar (göç reporting 0002; eski dosyalar için isteyenin bugünkü hakkından
+  hesaplanır, bugün indirilen hiçbir dosya kapanmaz). İndirmede yeniden denetlenir; yetki yoksa
+  "Bu dosyayı indirme yetkiniz artık yok." döner. İş listesi ve ayrıntısı değişmez.
+- **Denetim günlüğü süzmesi (§5.6):** her modül `access.py`'sinde kendi modelleri için gereken
+  bölümü ve gizli alanları bildirir; süzme veritabanında yapılır (sayfa sayısı, arama, kayıt
+  açma tutarlı), gizlenen notlar aramada eşleşmez. Personel kayıtları kendi bölümünü, olaylar
+  Olaylar ve kazalar'ı, maliyet kayıtları Maliyetleri görür'ü, fiyat alanları ve satın alma onayı
+  görevinin açıklaması Fiyatları görür'ü ister; yorum ve ekler bağlı oldukları kaydı izler.
+  Kişiye özel ayar ve paket sürümü kayıtları yalnız admine görünür (izin listesindeki tek fark).
+- **Kayıt paneli:** rol yolu kalktı; kendi okuma bölümünü bildirmeyen kayıt türü katalogdaki
+  okuma bölümlerini izler (§5.1 tablosu), @bahsetme önerisi de.
+- **Sistem:** kullanıcılar, saha tableti, sistem durumu ve kodlama sistematiği yalnız admin
+  (`AdminOnly`). Giriş yapan herkese açık uçlar `SignedIn("neden")`, giriş istemeyen uçlar (sağlık,
+  site bilgisi, giriş, çıkış, CSRF) yeni `Public("neden")` işaretini taşır. `HasRole`,
+  `user_has_role` ve kod türlerinin `write_roles` alanı kaldırıldı.
+- **Denetimler:** çekirdek, sistem durumu ve raporlar rol denetimi tarayıcısına ve uç nokta
+  denetimine girdi; izinli satırlar gerekçeli (rol etiketleri, kullanıcının rol verisi, yetki
+  hesabı, iki aşamalı doğrulama, son admin kuralı). Tarayıcı artık yalnız modülün kök
+  `access.py`'sini atlar. Denetim günlüğü kuralında olmayan model `manage.py check`'te hata verir.
+- **Kişiye özel ayar ve bağ testleri:** raporlar, denetim günlüğü, kayıt paneli ve sistem için.
+- **Doğrulama:** backend 2513, ön yüz 654 test yeşil; mypy, ruff, `manage.py check`, göç ve şema
+  temiz. Alan doğrulayıcıları eski ve yeni kodu karşılaştırdı (raporlar 8.523, denetim günlüğü
+  ve kayıt paneli 26.468, sistem 20.974 durum); farklar yalnız izin listesi ve sahibin onayladığı
+  madde. Bağımsız çapraz incelemenin bulgusu (tarayıcının atladığı dosya) düzeltildi.
+- Açık iş: indirilemeyen dosyanın bağlantısı ön yüzde hâlâ görünür (8. adım).

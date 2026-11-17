@@ -2,7 +2,9 @@
 
 Her pano tek bir sözlük döner; sorgu sayısı sabittir (satır başına sorgu yok), böylece pano demo
 verisiyle 2 saniyenin altında açılır (kabul kriteri, `tests/test_dashboards.py`). Stok değeri
-yalnızca `show_costs=True` iken hesaplanır (Karar D-15: yalnızca yonetim ve admin).
+yalnızca `show_costs=True` iken (Maliyetleri görür, Karar D-15), onay bekleyen satın alma
+siparişlerinin TL toplamı `show_prices=True` iken (Fiyatları görür; sahibin onayı 2026-11-11,
+docs/plan/kisi-yetkileri.md §8) döner.
 """
 
 from collections import defaultdict
@@ -285,10 +287,10 @@ def production_daily(today: date, days: int = DAILY_DAYS) -> list[dict[str, Any]
     return list(series.values())
 
 
-def pending_approvals(*, show_costs: bool) -> dict[str, Any]:
+def pending_approvals(*, show_prices: bool) -> dict[str, Any]:
     """Yönetimin kararını bekleyenler: şartlı kabul onayı (en eski bekleme, saat) ve limit üstü
-    satın alma siparişleri. Siparişlerin TL karşılığı toplamı yalnızca tutar görebilene döner
-    (Karar D-15)."""
+    satın alma siparişleri. Siparişlerin TL karşılığı toplamı yalnızca Fiyatları görür'ü olana
+    döner."""
     now = timezone.now()
     decisions = QualityDecision.objects.filter(
         approval_status=QualityDecision.Approval.PENDING
@@ -303,7 +305,7 @@ def pending_approvals(*, show_costs: bool) -> dict[str, Any]:
         },
         "purchase_orders": {
             "count": orders["count"],
-            "total_try": (orders["total"] or ZERO) if show_costs else None,
+            "total_try": (orders["total"] or ZERO) if show_prices else None,
         },
     }
 
@@ -321,13 +323,15 @@ def _late_sales_orders(today: date) -> QuerySet[SalesOrder]:
     ).order_by("requested_delivery_date", "id")
 
 
-def management_dashboard(*, show_costs: bool, today: date | None = None) -> dict[str, Any]:
+def management_dashboard(
+    *, show_costs: bool, show_prices: bool, today: date | None = None
+) -> dict[str, Any]:
     """Yönetim panosu: onay bekleyenler, bugünün ve haftanın üretimi, son 14 gün, sevkiyat, kalite,
     stok, görevler, bakım ve İSG. Yönetim rolünün açılış ekranıdır."""
     today = today or timezone.localdate()
     data: dict[str, Any] = {
         "date": today,
-        "approvals": pending_approvals(show_costs=show_costs),
+        "approvals": pending_approvals(show_prices=show_prices),
         "production": production_output(today),
         "daily": production_daily(today),
         "shipping": {

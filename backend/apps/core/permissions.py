@@ -1,11 +1,4 @@
-"""API ve servis izinleri.
-
-Rol bazlı (bugünkü):
-
-    class StockView(APIView):
-        permission_classes = [HasRole("depo", "planlama")]
-
-Bölüm ve düzey bazlı (docs/plan/kisi-yetkileri.md §5.4; modüller adım adım geçer):
+"""API ve servis izinleri: bölüm ve düzey bazlı (docs/plan/kisi-yetkileri.md §5.4).
 
     class ProductionOrderViewSet(AccessMixin, viewsets.ModelViewSet):
         read_access = ReadRule(ORDERS, PREP, BATCHES)
@@ -13,6 +6,10 @@ Bölüm ve düzey bazlı (docs/plan/kisi-yetkileri.md §5.4; modüller adım ad�
 
     # services.py
     require_access(actor, ORDERS, APPROVE, "Üretim emrini onaylama yetkiniz yok.")
+
+Bölümü olmayan uç noktalar açık işaret taşır: `SignedIn("neden")` giriş yapan herkese,
+`Public("neden")` giriş gerektirmeyen uçlara (sağlık, giriş, CSRF), `AdminOnly` yalnız sistem
+yöneticisine.
 
 `admin` rolündeki kullanıcılar ve superuser'lar her uç noktaya erişir. Giriş yapılmamışsa 401,
 yetki yoksa 403 döner; 403 yanıtı bölüm denetiminde eksik yetkiyi `required` listesinde söyler.
@@ -33,42 +30,12 @@ from rest_framework.request import Request
 from apps.core import access
 from apps.core.access import READ, VIEW, ReadScope, SectionRef
 from apps.core.models import User
-from apps.core.roles import ALL_ROLES
 
 DEFAULT_MESSAGE = "Bu işlem için yetkiniz yok."
 REQUIRED_ATTR = "_access_required"
 
 # DRF izin sınıfı ya da `A | B`, `A & B`, `~A` birleşimi.
 PermissionClass = type[BasePermission] | OperandHolder | SingleOperandHolder
-
-
-def user_has_role(user: Any, roles: tuple[str, ...]) -> bool:
-    """Kullanıcı aktif, giriş yapmış ve rollerden birine sahip (ya da admin) ise True."""
-    if not isinstance(user, User) or not user.is_authenticated or not user.is_active:
-        return False
-    return user.is_admin or user.has_role(*roles)
-
-
-def HasRole(*roles: str) -> type[BasePermission]:  # noqa: N802 - sınıf gibi kullanılır
-    """Verilen rollerden birine sahip kullanıcılara izin veren DRF izin sınıfı üretir."""
-    unknown = set(roles) - set(ALL_ROLES)
-    if unknown:
-        raise ValueError(f"Tanımsız rol: {', '.join(sorted(unknown))}")
-    if not roles:
-        raise ValueError("En az bir rol verilmelidir.")
-
-    class _HasRole(BasePermission):
-        message = DEFAULT_MESSAGE
-        required_roles = roles
-
-        def has_permission(self, request: Request, view: Any) -> bool:
-            return user_has_role(request.user, roles)
-
-    _HasRole.__name__ = _HasRole.__qualname__ = f"HasRole({', '.join(roles)})"
-    return _HasRole
-
-
-# --- bölüm ve düzey bazlı yetki -------------------------------------------------------------------
 
 
 def _active_user(user: Any) -> User | None:
@@ -114,10 +81,15 @@ def sees_fields(user: Any, name: str) -> bool:
     return active is not None and active.access.sees_fields(name)
 
 
+def is_admin(user: Any) -> bool:
+    """Aktif, giriş yapmış sistem yöneticisi mi (admin rolü ya da süper kullanıcı)?"""
+    active = _active_user(user)
+    return active is not None and active.is_admin
+
+
 def require_admin(actor: Any, message: str) -> None:
     """Bölümü olmayan, yalnız sistem yöneticisinin işi (ör. GS1 ayarları): değilse 403."""
-    active = _active_user(actor)
-    if active is None or not active.is_admin:
+    if not is_admin(actor):
         raise PermissionDenied(message)
 
 
@@ -208,12 +180,31 @@ def SignedIn(reason: str) -> type[BasePermission]:  # noqa: N802
     return _SignedIn
 
 
+def Public(reason: str) -> type[BasePermission]:  # noqa: N802
+    """Giriş gerektirmeyen uç noktanın açık işareti (bugünkü `AllowAny` ile aynı): giriş yapmamış
+    istek dahil herkese izin verir.
+
+    `reason` neden kimlik doğrulamasız açık olduğunu söyler (ör. "giriş formu"). Kimlik doğrulama
+    sınıfları görünümde olduğu gibi kalır.
+    """
+    if not reason.strip():
+        raise ValueError("Giriş gerektirmeyen uç noktanın nedeni yazılmalıdır.")
+
+    class _Public(AccessPermission):
+        public_reason = reason
+
+        def has_permission(self, request: Request, view: Any) -> bool:
+            return True
+
+    _Public.__name__ = _Public.__qualname__ = f"Public({reason})"
+    return _Public
+
+
 class AdminOnly(AccessPermission):
     """Yalnız sistem yöneticisi (admin rolü ya da süper kullanıcı)."""
 
     def has_permission(self, request: Request, view: Any) -> bool:
-        active = _active_user(request.user)
-        return active is not None and active.is_admin
+        return is_admin(request.user)
 
 
 # Görünümün karşılamadığı metot: yalnız oturum aranır, DRF 405 döner.

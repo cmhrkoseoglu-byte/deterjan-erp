@@ -23,6 +23,7 @@ APPS_DIR = Path(__file__).resolve().parent.parent
 # Yetki denetimine geçmiş modüller (her adım kendi modüllerini ekler).
 ENFORCED_APPS: frozenset[str] = frozenset(
     {
+        "core",
         "costing",
         "filling",
         "golive",
@@ -30,11 +31,13 @@ ENFORCED_APPS: frozenset[str] = frozenset(
         "inventory",
         "maintenance",
         "masterdata",
+        "ops",
         "personnel",
         "production",
         "purchasing",
         "quality",
         "recipes",
+        "reporting",
         "returns",
         "sales",
         "traceability",
@@ -54,6 +57,9 @@ def check_access(app_configs: Sequence[AppConfig] | None = None, **kwargs: Any) 
     messages: list[Any] = [checks.Error(text, id="access.E001") for text in access.validate()]
     messages.extend(checks.Error(text, id="access.E002") for text in dependency_errors(APPS_DIR))
     messages.extend(checks.Error(text, id="access.E003") for text in endpoint_errors(ENFORCED_APPS))
+    from apps.core import audit_filter  # modeller yüklendikten sonra (denetim günlüğü kuralları)
+
+    messages.extend(checks.Error(text, id="access.E004") for text in audit_filter.model_errors())
     return messages
 
 

@@ -8,9 +8,10 @@ açılabilen kayıt türlerini `AppConfig.ready()` içinde kendi ekranındaki ok
     register_record_type("sales.salesorder", readers=(ORDERS,))
     register_record_type("hse.incident", visible=incidents_visible_to)
 
-- `roles`: kaydı okuyabilen roller (admin her zaman); boşsa giriş yapmış herkes.
 - `readers`: kaydı okuyabilen bölümler; birinde okuma yeter (`can_read`, ör. Satın alma
-  siparişleri). Satır kuralı değildir (o `visible`).
+  siparişleri). Verilmezse katalogdaki okuma bölümleri (`core.access.register_readers`, plan §5.1
+  tablosu) kullanılır; katalogda da yoksa giriş yapmış her etkin kullanıcı okur. Satır kuralı
+  değildir (o `visible`).
 - `visible(user, queryset)`: kayıt bazlı süzgeç (ör. olayı yalnızca bildiren ve yönetim görür).
 - `hidden_fields(user)`: geçmişte bu kullanıcıya gösterilmeyen alanlar (ör. maliyet, fiyat); kaydın
   kendi ekranı da bu alanları o kullanıcıya göstermez.
@@ -33,10 +34,11 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import QuerySet
 
+from apps.core import access as catalog
 from apps.core.access import SectionRef
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import User
-from apps.core.permissions import can_read, user_has_role
+from apps.core.permissions import can_read
 
 Visible = Callable[[User, QuerySet[Any]], QuerySet[Any]]
 HiddenFields = Callable[[User], Collection[str]]
@@ -46,7 +48,6 @@ Parent = Callable[[Any], models.Model | None]
 
 @dataclass(frozen=True)
 class RecordAccess:
-    roles: tuple[str, ...] = ()
     readers: tuple[SectionRef, ...] = ()
     visible: Visible | None = None
     hidden_fields: HiddenFields | None = None
@@ -62,7 +63,6 @@ _REGISTRY: dict[str, RecordAccess] = {}
 def register_record_type(
     label: str,
     *,
-    roles: Collection[str] = (),
     readers: Collection[SectionRef] = (),
     visible: Visible | None = None,
     hidden_fields: HiddenFields | None = None,
@@ -73,7 +73,6 @@ def register_record_type(
 ) -> None:
     """`"app_label.model"` türünü okuma kuralıyla kaydeder (modülün `AppConfig.ready()`'sinde)."""
     _REGISTRY[label.lower()] = RecordAccess(
-        roles=tuple(roles),
         readers=tuple(readers),
         visible=visible,
         hidden_fields=hidden_fields,
@@ -111,9 +110,8 @@ def can_view(user: Any, obj: models.Model | None) -> bool:
     access = _REGISTRY.get(_label(obj))
     if access is None:
         return False
-    if access.roles and not user_has_role(user, access.roles):
-        return False
-    if access.readers and not can_read(user, *access.readers):
+    readers = access.readers or catalog.readers(_label(obj))
+    if readers and not can_read(user, *readers):
         return False
     if access.visible is not None:
         queryset = type(obj)._base_manager.filter(pk=obj.pk)

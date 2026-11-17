@@ -219,6 +219,5 @@ def test_unexported_roles_match_today() -> None:
     unit = code_type("masterdata.unitofmeasure")
     assert unit is not None
     assert unit.write_access is None
-    assert unit.write_roles == ()
     assert _private_frontend_roles(ENTITIES, "WRITE") == PLANLAMA
     assert _private_frontend_roles(ENTITIES, "ADMIN_ONLY") == ("admin",)

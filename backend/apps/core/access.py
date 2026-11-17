@@ -305,6 +305,133 @@ def _append(
     registry[name] = previous + tuple(key for key in keys if key not in previous)
 
 
+# --- denetim günlüğü süzmesi (plan §5.1, §5.6) ---------------------------------------------------
+
+
+@dataclass(frozen=True)
+class AuditRule:
+    """Denetim günlüğünde bir modelin kayıtlarını ya da alanlarını görmek için gereken yetki.
+
+    `requires`'ın hepsi gerekir (`admin_only`: yalnız sistem yöneticisi). Yetkisi olmayana:
+
+    - alan ve not verilmemişse kural kayıtları gizler: `rows` verilmişse yalnız o kayıtları
+      (`AuditLog` üzerinde bir `Q`), verilmemişse modelin bütün kayıtlarını;
+    - `fields` değişikliklerde gizlenir (`nested`: iç içe kayıtların içinde de); yalnız gizli
+      alanları değiştiren kayıt hiç listelenmez (kayıt geçmişi gibi);
+    - `note` (düzenli ifade, PostgreSQL ve Python'da aynı anlamda) eşleşen not gizlenir;
+      `note_with_fields`: gizli alanlardan birini değiştiren kaydın notu da gizlenir (ör. fiyat
+      düzeltmesinin kopyası). Değişikliği olmayan ve notu gizlenen kayıt listelenmez.
+
+    `rows` verilirse alan ve not gizlemesi de yalnız o kayıtlara uygulanır. `label` olmayan kural
+    içerik türü olmayan kayıtlar içindir (ör. bordrosu açılmamış ayın bordro erişimi).
+    """
+
+    label: str | None
+    requires: tuple[tuple[str, str], ...] = ()
+    admin_only: bool = False
+    rows: Any = None  # django `Q` ya da `Q` döndüren çağrılabilir (model import etmemek için)
+    fields: frozenset[str] = frozenset()
+    nested: bool = False
+    note: str | None = None
+    note_with_fields: bool = False
+    name: str = ""
+
+    @property
+    def hides_rows(self) -> bool:
+        """Kural kayıtları mı gizler (alan ya da not değil)?"""
+        return not self.fields and self.note is None
+
+
+_AUDIT_RULES: list[AuditRule] = []
+# Bağlı olduğu kaydı izleyen model (yorum, ek) → (içerik türü alanı, kayıt no alanı).
+_AUDIT_PARENTS: dict[str, tuple[str, str]] = {}
+
+AuditNeed = SectionRef | tuple[SectionRef, str]
+
+
+def _audit_needs(items: Iterable[AuditNeed]) -> tuple[tuple[str, str], ...]:
+    needs: list[tuple[str, str]] = []
+    for item in items:
+        target, level = item if isinstance(item, tuple) else (item, VIEW)
+        needs.append((_key_of(target), level))
+    return tuple(needs)
+
+
+_MODEL_LABEL = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
+
+
+def _check_audit_label(label: str) -> str:
+    if not _MODEL_LABEL.match(label):
+        raise ValueError(f"Geçersiz model etiketi: {label!r}")
+    return label
+
+
+def register_audit_model(
+    label: str,
+    *,
+    requires: Iterable[AuditNeed] = (),
+    admin_only: bool = False,
+    rows: Any = None,
+    fields: Iterable[str] = (),
+    nested: bool = False,
+    note: str | None = None,
+    note_with_fields: bool = False,
+) -> None:
+    """Modelin (`"personnel.employeewage"`) denetim günlüğü kuralını kaydeder (`AuditRule`). Bir
+    model birden çok kural alabilir; her kural kendi yetkisiyle ayrı uygulanır."""
+    needs = _audit_needs(requires)
+    if not needs and not admin_only:
+        raise ValueError(f"{label}: gereken yetki ya da admin_only verilmelidir.")
+    hidden = frozenset(fields)
+    if (nested or note_with_fields) and not hidden:
+        raise ValueError(f"{label}: nested ve note_with_fields gizli alan ister.")
+    if note is not None:
+        re.compile(note)
+    _AUDIT_RULES.append(
+        AuditRule(
+            label=_check_audit_label(label),
+            requires=needs,
+            admin_only=admin_only,
+            rows=rows,
+            fields=hidden,
+            nested=nested,
+            note=note,
+            note_with_fields=note_with_fields,
+        )
+    )
+
+
+def register_audit_rows(
+    name: str, rows: Any, *, requires: Iterable[AuditNeed] = (), admin_only: bool = False
+) -> None:
+    """İçerik türü olmayan kayıtlardan `rows`'a uyanları (ör. bordro erişimi) gereken yetkiye
+    bağlar. `name` kuralın adıdır (ör. `"personnel.payroll_access"`)."""
+    needs = _audit_needs(requires)
+    if not needs and not admin_only:
+        raise ValueError(f"{name}: gereken yetki ya da admin_only verilmelidir.")
+    if rows is None:
+        raise ValueError(f"{name}: kayıt koşulu verilmelidir.")
+    _AUDIT_RULES.append(
+        AuditRule(label=None, requires=needs, admin_only=admin_only, rows=rows, name=name)
+    )
+
+
+def register_audit_parent(
+    label: str, *, content_type_field: str = "content_type", object_id_field: str = "object_id"
+) -> None:
+    """Denetim günlüğünde bağlı olduğu kaydı izleyen model (yorum, ek): bağlı kaydın modeli
+    bütünüyle gizleniyorsa onun kayıtları da gizlenir (plan §5.6)."""
+    _AUDIT_PARENTS[_check_audit_label(label)] = (content_type_field, object_id_field)
+
+
+def audit_rules() -> tuple[AuditRule, ...]:
+    return tuple(_AUDIT_RULES)
+
+
+def audit_parents() -> dict[str, tuple[str, str]]:
+    return dict(_AUDIT_PARENTS)
+
+
 def _ordered(keys: Iterable[str]) -> tuple[str, ...]:
     """Bölüm anahtarları katalog sırasıyla: kayıt sırası (hangi modülün önce yüklendiği) çıktıyı
     ve katalog özetini değiştirmez."""
@@ -462,6 +589,14 @@ def validate() -> list[str]:
                 errors.append(f"{name}: alanları açan bölüm tanımsız ({key}).")
             elif not target.has_view:
                 errors.append(f"{name}: alanları açan bölümün Görür düzeyi yok ({key}).")
+    for rule in _AUDIT_RULES:
+        name = rule.label or rule.name
+        for key, level in rule.requires:
+            target = _SECTIONS.get(key)
+            if target is None:
+                errors.append(f"{name}: denetim günlüğü kuralı tanımsız bölüm ({key}).")
+            elif level not in target.levels:
+                errors.append(f"{name}: denetim günlüğü kuralının düzeyi {key}'de yok ({level}).")
     errors.extend(_requirement_cycles())
     return errors
 
@@ -489,13 +624,16 @@ def _requirement_cycles() -> list[str]:
 
 @contextmanager
 def temporary_catalog() -> Iterator[None]:
-    """Yalnız testler için: blok içinde kaydedilen modül, bölüm ve paketler blok bitince silinir."""
+    """Yalnız testler için: blok içinde kaydedilen modül, bölüm, paket ve denetim günlüğü kuralları
+    blok bitince silinir."""
     saved = (
         dict(_MODULES),
         dict(_SECTIONS),
         copy.deepcopy(_PACKAGES),
         dict(_READERS),
         dict(_FIELD_OPENERS),
+        list(_AUDIT_RULES),
+        dict(_AUDIT_PARENTS),
     )
     try:
         yield
@@ -510,6 +648,9 @@ def temporary_catalog() -> Iterator[None]:
         _READERS.update(saved[3])
         _FIELD_OPENERS.clear()
         _FIELD_OPENERS.update(saved[4])
+        _AUDIT_RULES[:] = saved[5]
+        _AUDIT_PARENTS.clear()
+        _AUDIT_PARENTS.update(saved[6])
 
 
 # --- core'un bölümleri: hassas veriler ve sistem --------------------------------------------------
@@ -547,3 +688,17 @@ grant(SATIN_ALMA, PRICES, VIEW)
 grant(YONETIM, PRICES, VIEW)
 grant(YONETIM, COSTS, VIEW)
 grant(YONETIM, AUDIT_LOG, VIEW)
+
+
+# --- core'un denetim günlüğü kuralları (plan §5.6 "Yetki kayıtları") -----------------------------
+
+# Kişiye özel yetkilerin önce ve sonra hâli kullanıcı kaydında bu alanlardadır (Paket B'deki
+# `set_user_access` yazar); gerekçe notu da yalnız admine görünür. Rollerin önce ve sonra hâli
+# (`roles`) bugünkü gibi yönetime de görünür.
+USER_ACCESS_FIELDS: tuple[str, ...] = ("access",)
+
+register_audit_model("core.accessoverride", admin_only=True)
+register_audit_model("core.accesscatalogsnapshot", admin_only=True)
+register_audit_model("core.user", admin_only=True, fields=USER_ACCESS_FIELDS, note_with_fields=True)
+# Dosya eki bağlı olduğu kaydı izler (yorumun eki yorumun kaydını; workflow yorumu kaydeder).
+register_audit_parent("core.attachment")

@@ -5,7 +5,17 @@ rollerinin görevlerinde karar 5 geçerlidir. Görev ve bildirim kurallarının 
 `rules.py`'de kuralın alanıdır (7. adım).
 """
 
-from apps.core.access import VIEW, grant, register_module, register_section
+from django.db.models import Q
+
+from apps.core.access import (
+    PRICES,
+    VIEW,
+    grant,
+    register_audit_model,
+    register_audit_parent,
+    register_module,
+    register_section,
+)
 from apps.core.roles import YONETIM
 
 # Görevlerim herkese açıktır; "Tüm birimlerin görevleri" menüde modül açmaz.
@@ -19,3 +29,23 @@ ALL_TASKS = register_section(
 )
 
 grant(YONETIM, ALL_TASKS, VIEW)
+
+# Denetim günlüğü (plan §5.6): yorum bağlı olduğu kaydı izler; satın alma onayı görevinin
+# açıklaması (tutarlar) Fiyatları görür ister.
+register_audit_parent("workflow.comment")
+PURCHASE_ORDER_APPROVAL = "purchase_order_approval"
+
+
+def _purchase_order_approval_tasks() -> Q:
+    from apps.workflow.models import Task
+
+    tasks = Task.objects.filter(rule_code=PURCHASE_ORDER_APPROVAL).values("pk")
+    return Q(object_id__in=tasks) | Q(changes__rule_code__1=PURCHASE_ORDER_APPROVAL)
+
+
+register_audit_model(
+    "workflow.task",
+    requires=[PRICES],
+    rows=_purchase_order_approval_tasks,
+    fields=("description",),
+)

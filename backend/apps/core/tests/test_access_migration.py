@@ -23,6 +23,13 @@ ROLE_CHECK = re.compile(
 # (ör. demo kullanıcısı). Anahtar `<dosya>: <satırın metni>`dir: satır numarası kayınca liste
 # bozulmaz, satır değişince yeniden bakılır. Değer nedeni söyler.
 DEMO_USER = "demo kullanıcısı rolün adıyla bulunur (`create_demo_users`); rol denetimi değil"
+ROLE_LABEL = "rol adları ekranda ve çıktıda etiket olarak; rol denetimi değil"
+USER_ROLES = "kullanıcı kaydının rol verisi (Kullanıcılar ekranı, yalnız admin); rol denetimi değil"
+ACCESS_CALC = "geçerli yetki hesabı rollerden başlar (plan §5.3, §10 izinli)"
+ROLE_SEED = "rolleri ve ilk kullanıcıları kuran komut; rol denetimi değil"
+ROLE_PRIMITIVE = (
+    "rol ilkeli: is_admin, iki aşamalı doğrulama, son admin kuralı, görev yönlendirme (plan §10)"
+)
 ALLOWED: dict[str, str] = {
     "production/management/commands/seed_demo.py: from apps.core.roles import PLANLAMA": DEMO_USER,
     "filling/management/commands/seed_filling_demo.py: "
@@ -55,6 +62,65 @@ ALLOWED: dict[str, str] = {
     "maintenance/services.py: return actor.has_role(order.responsible_role)": (
         "bakımda sorumlu birim kuralı (plan §4 satır kuralı, §10 izin listesi)"
     ),
+    "core/access_export.py: from apps.core.roles import ROLE_LABELS": ROLE_LABEL,
+    "core/admin.py: from apps.core.roles import ROLE_LABELS": ROLE_LABEL,
+    "core/api/access.py: from apps.core.roles import ROLE_LABELS": ROLE_LABEL,
+    (
+        "core/api/filters.py: role = "
+        'django_filters.CharFilter(field_name="groups__name", label="Rol")'
+    ): USER_ROLES,
+    "core/api/serializers.py: from apps.core.roles import ALL_ROLES": USER_ROLES,
+    (
+        "core/api/serializers.py: roles = "
+        "serializers.ListField(child=serializers.CharField(), read_only=True)"
+    ): "oturumdaki kullanıcının rolleri (me yanıtı, ön yüzün rol görünümü); rol denetimi değil",
+    "core/api/serializers.py: roles = serializers.SerializerMethodField()": USER_ROLES,
+    "core/api/serializers.py: roles = serializers.ListField(": USER_ROLES,
+    (
+        "core/api/serializers.py: roles = "
+        "serializers.ListField(child=serializers.ChoiceField(choices=ALL_ROLES), "
+        "required=False)"
+    ): USER_ROLES,
+    "core/effective_access.py: role_names: Iterable[str],": ACCESS_CALC,
+    "core/effective_access.py: roles = set(role_names) & set(ROLES)": ACCESS_CALC,
+    (
+        "core/effective_access.py: return compute_access(user.role_names, "
+        "grants=grants, revokes=revokes)"
+    ): ACCESS_CALC,
+    (
+        "core/management/commands/create_demo_users.py: from apps.core.roles "
+        "import ADMIN, ALL_ROLES, ROLE_LABELS"
+    ): ROLE_SEED,
+    "core/management/commands/create_first_admin.py: from apps.core.roles import ADMIN": ROLE_SEED,
+    "core/management/commands/seed_roles.py: from apps.core.roles import ALL_ROLES": ROLE_SEED,
+    "core/models.py: from apps.core.roles import ADMIN": ROLE_PRIMITIVE,
+    "core/models.py: def role_names(self) -> frozenset[str]:": ROLE_PRIMITIVE,
+    "core/models.py: return sorted(self.role_names)": ROLE_PRIMITIVE,
+    "core/models.py: def has_role(self, *roles: str) -> bool:": ROLE_PRIMITIVE,
+    "core/models.py: return bool(self.role_names.intersection(roles))": ROLE_PRIMITIVE,
+    "core/models.py: return self.is_superuser or self.has_role(ADMIN)": ROLE_PRIMITIVE,
+    'core/models.py: self.__dict__.pop("role_names", None)': ROLE_PRIMITIVE,
+    (
+        "core/security.py: return user.has_role(*required)"
+    ): "iki aşamalı doğrulamanın zorunlu olduğu roller (plan §10 izinli)",
+    (
+        "core/services.py: from apps.core.roles import ADMIN, ALL_ROLES"
+    ): "rol atama ve son admin kuralı (plan §5.10)",
+    (
+        "core/services.py: .filter(Q(is_superuser=True) | Q(groups__name=ADMIN))"
+    ): "son admin kuralı: sistemde en az bir admin kalır (plan §5.10)",
+    (
+        "core/services.py: if user.has_role(ADMIN) and ADMIN not in wanted:"
+    ): "admin kendi admin rolünü kaldıramaz (plan §5.10)",
+    (
+        "reporting/dashboards.py: from apps.core.roles import ROLE_LABELS"
+    ): "gecikmiş görevler kartı role göre gruplar ve rol adını gösterir; rol denetimi değil",
+    (
+        "reporting/filters.py: from apps.core.roles import ROLE_LABELS"
+    ): "görev süreleri raporunun rol süzgecinin etiketleri; rol denetimi değil",
+    (
+        "reporting/selectors.py: from apps.core.roles import ROLE_LABELS"
+    ): "görev süreleri raporunun rol sütunu etiketleri; rol denetimi değil",
 }
 
 
@@ -64,7 +130,9 @@ def _role_lines(apps_dir: Path, apps: Iterable[str]) -> list[tuple[str, str]]:
     for app in sorted(apps):
         for path in sorted((apps_dir / app).rglob("*.py")):
             relative = path.relative_to(apps_dir)
-            if relative.parts[1] in ("tests", "migrations") or relative.name == "access.py":
+            # Atlanan: testler, göçler ve modülün kök katalog dosyası (`<modül>/access.py`, yalnız
+            # veri). Aynı adı taşıyan alt dosyalar (ör. `core/api/access.py`, bir görünüm) taranır.
+            if relative.parts[1] in ("tests", "migrations") or relative.parts[1:] == ("access.py",):
                 continue
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
                 if ROLE_CHECK.search(line):
@@ -103,9 +171,11 @@ def test_scanner_finds_role_checks(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (app / "access.py").write_text("from apps.core.roles import DEPO\n", encoding="utf-8")
+    (app / "api" / "access.py").write_text("x = HasRole(DEPO)\n", encoding="utf-8")
     (app / "tests" / "test_x.py").write_text("HasRole\n", encoding="utf-8")
 
     assert role_checks(tmp_path, frozenset({"demo"})) == [
+        "demo/api/access.py:1: x = HasRole(DEPO)",
         "demo/api/views.py:1: x = HasRole(DEPO)",
         "demo/apps.py:1: register_record_type('demo.x', roles=READERS)",
         "demo/apps.py:2: register_master_code('k', write_roles=W)",

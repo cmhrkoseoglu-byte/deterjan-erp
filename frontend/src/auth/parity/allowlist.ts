@@ -23,7 +23,7 @@ export const MISSING = "<yok>";
 export const ANY = "<her>";
 
 /** Uygulanan adım (plan §10). Her adım bu sayıyı artırır ve kendi kayıtlarını ekler. */
-export const CURRENT_STEP = 5;
+export const CURRENT_STEP = 6;
 
 export interface Allowed {
   /** Planın maddesi, ör. "§8 madde 1". */

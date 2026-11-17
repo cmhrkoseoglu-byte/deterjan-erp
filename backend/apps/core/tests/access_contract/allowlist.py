@@ -24,7 +24,7 @@ MISSING = "<yok>"  # durum anlık görüntüde (ya da bugünkü kodda) yok
 ANY = "<her>"  # eski ya da yeni değer ne olursa olsun
 
 # Uygulanan adım (plan §10). Her adım bu sayıyı artırır ve kendi kayıtlarını ekler.
-CURRENT_STEP = 5
+CURRENT_STEP = 6
 
 
 def matches(pattern: str, text: str) -> bool:
@@ -720,6 +720,7 @@ ALLOWED: tuple[Allowed, ...] = (
         },
         step=6,
         old="200",
+        new="403",
     ),
     # 7. adım — Yükten gelen bildirim alıcıları da yetkiyle süzülür (ör. siparişi açan kişi).
     *_cells(
