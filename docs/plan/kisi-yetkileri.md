@@ -590,7 +590,8 @@ sahibin onayını ve DECISIONS kaydını ister.
   sistematiği) denetim günlüğünde süzme yapmaz. Kullanıcı kaydında yalnız kişiye özel yetki
   alanları ve gerekçe gizlenir. Böylece giriş, çıkış ve rol kayıtları, sorun bildirimleri ve
   onlara yazılan yorumlar yönetime bugünkü gibi görünür. Yorum ve ek kayıtları bağlı oldukları
-  kaydı izler: bağlı kayıt süzülüyorsa (ör. olay) yorum ve ek de aynı bölümü ister.
+  kaydı izler: bağlı kayıt süzülüyorsa (ör. olay) yorum ve ek de aynı bölümü ister. Kayda bağlı
+  görevlerin kayıtları da bağlı kaydı izler (sahip kararı 2026-11-17; 7. adımda).
 - **Yetki kayıtları:** kullanıcı üzerindeki kaydetme kaydında rollerin önce ve sonra hâli bugünkü
   gibi yönetime de görünür. Kişiye özel yetkilerin önce ve sonra hâli ve gerekçe notu yalnız
   admine görünür. `AccessOverride` ve `AccessCatalogSnapshot` kayıtları yalnız admine görünür.
@@ -1097,6 +1098,8 @@ Kural 12'ye 1. adımda bir geçiş cümlesi eklenir ve 8. adımın commit'inde s
 
   İlgili rollere hedefte Görür mü verilsin, bildirimler lot sayfasına mı bağlansın? Karar
   verilene kadar bildirimler bugünkü gibi gider; bağlantı bu alıcılara gösterilmez.
+  **Cevaplandı (2026-11-17):** iki bildirim de lot sayfasına bağlanır; alıcılar ve paketler
+  değişmez (DECISIONS).
 - **Ortak tablet ya da hat hesabı** (Paket B canlıya alınmadan önce; GECIS-PLANI'nda açık).
   Kişiye özel yetki ve ISO kaydı herkesin kişisel hesabı olduğunu varsayar.
 - **Faz B ayrıntıları** (Paket C'den önce). Lot sayfasından mal kabule ulaşma; müşteri ve

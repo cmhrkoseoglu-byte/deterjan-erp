@@ -2732,3 +2732,21 @@ değiştirme zorunlu, yalnızca admin):
 - **Önceki kayıtlara not:** "Dolum ve ambalaj (Faz 2, Adım 2.2)" kaydının parti iptali, yetki, olay
   sözleşmesi ve iş akışı maddelerine tarihli not düşüldü.
 - **CLAUDE.md:** değişiklik gerekmedi.
+
+## 2026-11-17 — Kişiye özel yetkiler: görev kayıtları ve iki bildirimin hedefi
+
+- **Bağlam:** 6. adımın bağımsız incelemesi, "Olaylar ve kazalar: Görür"ü kaldırılan bir yönetim
+  üyesinin denetim günlüğünde olay kayıtlarını görmediğini ama olay için açılan inceleme
+  görevinin kaydını (olay numarası, türü, yeri, saati) gördüğünü buldu; plan (§5.6) yalnız yorum ve
+  eklerin bağlı kaydı izlemesini yazıyordu. Ayrıca plan §12'nin 7. adımdan önce sorulacak maddesi:
+  tartım sapması (laboratuvara) ve ara kontrol reddi (üretim ve planlamaya) bildirimlerinin
+  alıcıları hedef sayfayı açamıyor.
+- **Karar (CUMHUR, 2026-11-17):**
+  - Kayda bağlı görevlerin denetim günlüğü kayıtları da bağlı kaydı izler: bağlı kayıt süzülüyorsa
+    (ör. olay) görev kaydı da aynı bölümü ister. İş akışıyla birlikte 7. adımda yapılır. Kişiye
+    özel ayar yokken hiçbir şey değişmez.
+  - Tartım sapması ve ara kontrol reddi bildirimleri herkesin açabildiği lot sayfasına bağlanır.
+    Alıcılar ve rol paketleri değişmez; kimseye yeni okuma hakkı verilmez.
+- **Gerekçe:** olayı göremeyen kişi ona bağlı görevden de olayı öğrenmemeli (§9 riski: verinin
+  başka yoldan sızması). Bildirimin bağlantısı alıcının açabildiği sayfaya gitmeli; yeni okuma
+  hakkı vermek yerine lot sayfası seçildi.
