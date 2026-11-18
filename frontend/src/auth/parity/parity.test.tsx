@@ -113,7 +113,7 @@ afterAll(async () => {
  */
 const modulePages = once(async () => {
   const pages = MENU.filter((item) => !item.external);
-  expect(pages).toHaveLength(20);
+  expect(pages).toHaveLength(21);
   const tabs: Cases = {};
   const opened: Cases = {};
   const buttons: Cases = {};
@@ -178,7 +178,7 @@ describe("ön yüz eşlik anlık görüntüsü", () => {
 
   it("menü", async () => {
     // Menünün tek kaynağı MENU; yeni öğe anlık görüntüye girmeden geçemesin.
-    expect(MENU).toHaveLength(21);
+    expect(MENU).toHaveLength(22);
     const menu: Cases = {};
     for (const item of MENU) {
       menu[item.key] = await row((_persona, user) =>
@@ -245,7 +245,7 @@ describe("ön yüz eşlik anlık görüntüsü", () => {
     "rota korumaları: her rota personayı içeri alıyor mu",
     async () => {
       const cases = routeCases(routes);
-      expect(cases).toHaveLength(56);
+      expect(cases).toHaveLength(58);
       expect(new Set(cases.map((item) => item.name)).size).toBe(cases.length);
       const result: Cases = {};
       for (const { name, chain } of cases) {

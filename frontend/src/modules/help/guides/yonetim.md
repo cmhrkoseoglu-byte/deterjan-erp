@@ -236,6 +236,17 @@ Emrin bütün stok hareketleri ters kayıtla geri alınır: tüketilen bulk kend
 
 > İşlem ya tamamen yapılır ya hiç yapılmaz. Dolum lotu serbest bırakılmış, sevk edilmiş, taşınmış, rezerve edilmiş ya da başka bir işlemde kullanılmışsa ya da numunesi onay bekliyorsa geri alma reddedilir. Aynı hatta iki emir aynı ambalaj lotunu kullandıysa sistem önce hangi emrin geri alınacağını söyler.
 
+## Cari hesaplar
+
+**Cari hesaplar** menüsünde müşteri ve tedarikçi carileri ayrı sekmelerdedir. Bakiye her para biriminde (TL, EUR, USD) ayrı tutulur: **(B)** cari borçlu, **(A)** cari alacaklı.
+
+- Sevk onaylanan sevkiyat müşteriye, kaydedilen mal kabul tedarikçiye kendiliğinden yazılır. Tutar sipariş ya da mal kabul fiyatından, malzeme kartındaki KDV oranıyla KDV dahil hesaplanır. Cari kartında **KDV muaf** işaretliyse (ihracat, ithalat) KDV eklenmez. Mal kabulün ek masrafları cariye yazılmaz.
+- Listede bakiye, **vadesi geçen** tutar ve **Tutarı eksik** belge sayısı görünür. Vade, cari kartındaki **Vade (gün)** alanından hesaplanır; boşsa peşindir.
+- Cariye tıklayınca yaşlandırma (vadesi gelmemiş, 1-30, 31-60, 61-90, 90+ gün) ve ekstre açılır. Ekstreyi tarih aralığıyla süzün; **Excel** ya da mutabakat için **PDF** indirin.
+- **Tahsilat gir** / **Ödeme gir** ile ödeme şekli ve tutarı girin. **Dekont / açılış** ile iade alacak dekontu, borç ve alacak dekontu ya da canlıya geçişteki açılış bakiyesini girin. İade dekontunda iadeyi seçince tutar sevkiyatın sipariş fiyatından önerilir.
+- Yanlış girilen kaydı satırdaki **İptal et** ile gerekçe yazarak iptal edin. Kayıt silinmez; bugün tarihli ters kayıt yazılır. Sevkiyat ve mal kabul kayıtları iptal edilemez; fark dekontla düzeltilir.
+- Siparişinde fiyatı olmayan sevkiyat **Fiyatı eksik belgeler** listesinde görünür; **Fiyat gir** ile cari fiyatını girin (sipariş değişmez). Mal kabulde fiyat düzeltilirse cariye o gün tarihli düzeltme yazılır.
+
 ## Diğer görevler
 
 - **İSG olayı**: Bildirilen kaza ve ramak kala olayları size görev olarak gelir. **İSG ve çevre** menüsünde olayı inceleyip kapatın.
