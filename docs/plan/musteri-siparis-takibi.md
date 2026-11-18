@@ -69,8 +69,13 @@ sonra). Her adımdan önce o adımın kısa planı yeniden onaya sunulur (CLAUDE
 - API (`/api/v1/sales/tracking/`): `GET customers/` (müşteri özeti, sayfalı, süzgeç: arama, yalnız
   gecikenler), `GET orders/?customer=&late=&due_before=` (sipariş + satır özeti). Tutarlar sipariş
   fiyatından; fiyatı gören = siparişi gören (karar 6).
-- Cari özeti: müşteri satırında bakiye ve vadesi geçen tutar yalnız **Müşteri carileri: Görür +
-  Fiyatları görür** olanın yanıtında bulunur (`ledger.selectors.balances_of`).
+- Cari özeti (A2'de düzeltildi, CUMHUR onayı 2026-11-19): `sales` `ledger`'a bağımlı olamaz
+  (CLAUDE.md bağımlılık yönü), bu yüzden takip API'si bakiye taşımaz. Ekran (A3) bakiyeyi mevcut
+  Cari hesaplar API'sinden (`/api/v1/ledger/customers/`) yalnız **Müşteri carileri: Görür +
+  Fiyatları görür** olana gösterir.
+- Kapsam (CUMHUR, 2026-11-19): açık siparişler; "Biten siparişleri de göster" ile son 90 günde
+  sevk edilen, kapanan ya da onaydan sonra iptal edilenler de (biten siparişte gecikme son sevk
+  gününe göre).
 - Yetki: **Satış siparişleri: Görür** (yeni bölüm yok). Yetkisiz rol 403.
 
 ### 3.3 Ekran

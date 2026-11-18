@@ -2088,3 +2088,13 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   ayrıca 24/24), ön yüz 763 test yeşil; mypy, ruff, göç denetimi, OpenAPI şeması (uyarısız),
   ESLint ve tsc temiz.
 
+## 2026-11-19 — Müşteri sipariş takibi: A2 (takip okuma ve API)
+
+- `GET /api/v1/sales/tracking/orders/` ve `/tracking/customers/`: açık siparişler (isteğe bağlı
+  son 90 günde bitenler), vade (termin ya da istenen teslim), gecikme günü, satır başına sevk
+  edilen / sevke planlanan / kalan (adet ve sipariş birimiyle), sevkiyatlar ve tutar; müşteri
+  başına açık, geciken ve yakında vadesi gelen sipariş sayısı. Satış siparişleri: Görür.
+- Plandan düzeltme: cari bakiye takip API'sinde değil, ekranda Cari hesaplar API'sinden (A3).
+- **Doğrulama:** backend 2983 test yeşil; mypy, ruff, göç denetimi ve OpenAPI şeması (uyarısız)
+  temiz. Ön yüz değişmedi (A3).
+

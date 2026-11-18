@@ -3,16 +3,23 @@ sipariş geçmişi, SKT'si yaklaşan rezerve lotlar; sevkiyat satırları, topla
 verisi ve müşteriye sevk edilen lotlar (Adım 3.2)."""
 
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import (
     Case,
+    Count,
+    DateField,
+    DateTimeField,
     DecimalField,
     F,
+    Max,
+    Min,
     OuterRef,
+    Prefetch,
+    Q,
     QuerySet,
     Subquery,
     Sum,
@@ -428,3 +435,146 @@ def shipped_by_shipment_lot(shipment: Shipment) -> dict[int, Decimal]:
         .annotate(total=Sum("quantity"))
     )
     return {row["lot_id"]: row["total"] for row in rows}
+
+
+# --- müşteri sipariş takibi (docs/plan/musteri-siparis-takibi.md §3.2) ------------------------
+
+OPEN_ORDER_STATUSES = (SalesOrder.Status.CONFIRMED, SalesOrder.Status.PARTIALLY_SHIPPED)
+FINISHED_ORDER_STATUSES = (
+    SalesOrder.Status.SHIPPED,
+    SalesOrder.Status.CLOSED,
+    SalesOrder.Status.CANCELLED,
+)
+# "Biten siparişleri de göster": son bu kadar günde biten siparişler.
+FINISHED_WINDOW_DAYS = 90
+# Müşteri özetinde "yakında vadesi gelen": bugünden itibaren bu kadar gün.
+DUE_SOON_DAYS = 7
+
+
+def due_date_expression() -> Coalesce:
+    """Vade: termin, yoksa istenen teslim tarihi (ikisi de boşsa boş)."""
+    return Coalesce(F("promised_date"), F("requested_delivery_date"), output_field=DateField())
+
+
+def due_date(order: SalesOrder) -> date | None:
+    """Siparişin vadesi: termin, yoksa istenen teslim tarihi."""
+    return order.promised_date or order.requested_delivery_date
+
+
+def _last_dispatch() -> Subquery:
+    rows = (
+        Shipment.objects.filter(sales_order=OuterRef("pk"), status=Shipment.Status.DISPATCHED)
+        .values("sales_order")
+        .annotate(last=Max("dispatched_at"))
+        .values("last")
+    )
+    return Subquery(rows, output_field=DateTimeField())
+
+
+def tracked_orders(
+    *, include_finished: bool = False, today: date | None = None
+) -> QuerySet[SalesOrder]:
+    """Takipteki siparişler: açıklar (Onaylandı, Kısmen sevk edildi); `include_finished` ile son
+    `FINISHED_WINDOW_DAYS` günde biten (sevk edilen, kapanan, onaydan sonra iptal edilen)
+    siparişler de. Açıklamalar: `due_date`, `last_dispatched_at`, `finished_on` (bitiş günü).
+    Satırlar miktarlarıyla (`lines_with_quantities`), sevkiyatlar iptaller hariç önceden
+    yüklenir. Sıra: vade (boşlar sonda), sipariş no."""
+    today = today or timezone.localdate()
+    since = today - timedelta(days=FINISHED_WINDOW_DAYS)
+    orders = SalesOrder.objects.annotate(
+        due_date=due_date_expression(),
+        last_dispatched_at=_last_dispatch(),
+    ).annotate(
+        finished_at=Case(
+            When(status=SalesOrder.Status.CLOSED, then=F("closed_at")),
+            When(status=SalesOrder.Status.CANCELLED, then=F("cancelled_at")),
+            When(status=SalesOrder.Status.SHIPPED, then=F("last_dispatched_at")),
+            default=None,
+            output_field=DateTimeField(),
+        )
+    )
+    scope = Q(status__in=OPEN_ORDER_STATUSES)
+    if include_finished:
+        start = timezone.make_aware(datetime.combine(since, time.min))
+        scope |= Q(
+            status__in=FINISHED_ORDER_STATUSES,
+            confirmed_at__isnull=False,
+            finished_at__gte=start,
+        )
+    return (
+        orders.filter(scope)
+        .select_related("customer")
+        .prefetch_related(
+            Prefetch("lines", queryset=lines_with_quantities().order_by("line_no")),
+            Prefetch(
+                "shipments",
+                queryset=Shipment.objects.exclude(status=Shipment.Status.CANCELLED).order_by(
+                    "planned_date", "id"
+                ),
+            ),
+        )
+        .order_by(F("due_date").asc(nulls_last=True), "number")
+    )
+
+
+def late_filter(today: date | None = None) -> Q:
+    """Geciken sipariş: açık ve vadesi bugünden önce."""
+    today = today or timezone.localdate()
+    return Q(status__in=OPEN_ORDER_STATUSES, due_date__lt=today)
+
+
+def days_late(order: SalesOrder, today: date | None = None) -> int | None:
+    """Açık siparişin gecikme günü (vade geçmişse > 0, değilse 0); vadesiz siparişte boş.
+    Biten siparişte gecikme son sevk gününe göre (zamanında = 0); sevki olmayanda boş."""
+    due = due_date(order)
+    if due is None:
+        return None
+    if order.status in OPEN_ORDER_STATUSES:
+        reference = today or timezone.localdate()
+    else:
+        dispatched = getattr(order, "last_dispatched_at", None)
+        if dispatched is None:
+            return None
+        reference = timezone.localtime(dispatched).date()
+    return max((reference - due).days, 0)
+
+
+def line_remaining(line: SalesOrderLine) -> Decimal:
+    """Satırın kalan (sevk edilmemiş) miktarı, temel birimde; en az 0. Kapanan ya da iptal
+    edilen siparişte kalan sevk edilmeyecektir (çağıran durumla birlikte gösterir)."""
+    shipped = getattr(line, "shipped_quantity", Decimal(0))
+    return max(line.base_quantity - shipped, Decimal(0))
+
+
+def in_order_unit(line: SalesOrderLine, base_quantity: Decimal) -> Decimal:
+    """Temel birimdeki miktarı satırın sipariş birimine çevirir (satırın kendi oranıyla)."""
+    if not line.base_quantity:
+        return Decimal(0)
+    return (base_quantity * line.quantity / line.base_quantity).quantize(Decimal("0.0001"))
+
+
+def customer_tracking_summary(*, today: date | None = None) -> QuerySet[Customer]:
+    """Açık siparişi olan müşteriler: `open_orders`, `late_orders`, `oldest_due_date` (geciken
+    siparişlerin en eski vadesi), `due_soon` (vadesi bugünden `DUE_SOON_DAYS` gün içinde).
+    Sıra: geciken sayısı (çoktan aza), en eski gecikme, müşteri kodu."""
+    today = today or timezone.localdate()
+    soon = today + timedelta(days=DUE_SOON_DAYS)
+    open_q = Q(sales_orders__status__in=OPEN_ORDER_STATUSES)
+    due = Coalesce(
+        F("sales_orders__promised_date"),
+        F("sales_orders__requested_delivery_date"),
+        output_field=DateField(),
+    )
+    customers = Customer.objects.alias(order_due=due).annotate(
+        open_orders=Count("sales_orders", filter=open_q, distinct=True),
+        late_orders=Count("sales_orders", filter=open_q & Q(order_due__lt=today), distinct=True),
+        oldest_due_date=Min("order_due", filter=open_q & Q(order_due__lt=today)),
+        due_soon=Count(
+            "sales_orders",
+            filter=open_q & Q(order_due__gte=today, order_due__lte=soon),
+            distinct=True,
+        ),
+    )
+    return customers.filter(open_orders__gt=0).order_by(
+        "-late_orders", F("oldest_due_date").asc(nulls_last=True), "code"
+    )

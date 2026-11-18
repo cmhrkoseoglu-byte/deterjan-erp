@@ -3044,3 +3044,26 @@ değiştirme zorunlu, yalnızca admin):
   POST yalnız Satış siparişleri: Değiştirir'i olanlara (sevkiyat, yönetim, admin), OPTIONS
   siparişi okuyanlara açık; hücreler gözlenen değere sabitlendi.
 
+## 2026-11-19 — Müşteri sipariş takibi: A2 (takip okuma ve API)
+
+- **A2 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"); kapsam "Açıklar + isteğe bağlı son 90
+  gün".
+- **Plandan düzeltme (onaylı):** takip API'si cari bakiye taşımaz; `sales` `ledger`'a bağımlı
+  olamaz. Ekran bakiyeyi Cari hesaplar API'sinden, Müşteri carileri: Görür + Fiyatları görür
+  olana gösterir (A3).
+- **Vade ve gecikme:** vade = termin, yoksa istenen teslim tarihi. Geciken = açık (Onaylandı,
+  Kısmen sevk edildi) ve vadesi bugünden önce; gecikme günü bugün − vade. Biten siparişte gecikme
+  son sevk günü − vade (zamanında = 0); sevki olmayan bitende boş. Vadesiz sipariş gecikmez.
+- **Kalan:** satır başına sipariş − sevk edilen (temel birimde, en az 0) ve sipariş birimiyle
+  (satırın kendi oranıyla). Sevke planlanan, açık sevkiyatlardaki miktardır; kalanı azaltmaz.
+- **Biten siparişler:** `include_finished=true` ile son 90 günde biten (Sevk edildi: son sevk;
+  Kapandı: kapanış; İptal: iptal zamanı) ve onaylanmış olanlar. Hiç onaylanmamış iptaller girmez.
+- **Uç noktalar:** `GET /api/v1/sales/tracking/orders/` (süzgeç: `customer`, `late`,
+  `due_before`, `include_finished`, `search`; sıra vade, boşlar sonda) ve
+  `GET /api/v1/sales/tracking/customers/` (açık siparişi olan müşteriler; açık, geciken, 7 gün
+  içinde vadesi gelen, en eski gecikme; süzgeç `late`, `search`). Salt okunur, Satış siparişleri:
+  Görür ister; fiyat ve tutar siparişi görene açık (karar 6). Müşteri kartının iletişim
+  alanları yanıtta yok.
+- **Yetki sözleşmesi:** iki uç nokta izin listesine "yeni uç nokta: müşteri sipariş takibi
+  (DECISIONS 2026-11-19)" kaydıyla bağlandı; hücreler gözlenen değere sabitlendi.
+

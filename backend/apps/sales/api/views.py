@@ -16,6 +16,7 @@ from apps.core.permissions import AccessMixin, HasAccess, ReadRule
 from apps.inventory import selectors as inventory_selectors
 from apps.inventory.api.serializers import CancelSerializer
 from apps.inventory.models import Lot
+from apps.masterdata.models import Customer
 from apps.sales import selectors, services
 from apps.sales.access import ORDERS, PICKING, SHIPMENTS, SHIPPED_LOTS
 from apps.sales.api import serializers as s
@@ -512,3 +513,75 @@ class ShippedLotViewSet(AccessMixin, mixins.ListModelMixin, viewsets.GenericView
         if not customer.isdigit():
             raise ValidationError({"customer": ["Müşteri seçilmelidir."]})
         return selectors.customer_shipped_lots(int(customer))
+
+
+# --- müşteri sipariş takibi (docs/plan/musteri-siparis-takibi.md §3.2) ------------------------
+
+
+class TrackedOrderFilter(django_filters.FilterSet):
+    late = django_filters.BooleanFilter(method="filter_late", label="Yalnız gecikenler")
+    due_before = django_filters.DateFilter(field_name="due_date", lookup_expr="lte")
+
+    class Meta:
+        model = SalesOrder
+        fields = ["customer"]
+
+    def filter_late(
+        self, queryset: QuerySet[SalesOrder], name: str, value: bool | None
+    ) -> QuerySet[SalesOrder]:
+        if value is None:
+            return queryset
+        late = selectors.late_filter()
+        return queryset.filter(late) if value else queryset.exclude(late)
+
+
+class TrackedOrderViewSet(AccessMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
+    """Müşteri sipariş takibi: açık siparişler, `include_finished=true` ile son 90 günde
+    bitenler de; vade ve gecikmeyle. Satış siparişleri: Görür ister."""
+
+    serializer_class = s.TrackedOrderSerializer
+    filterset_class = TrackedOrderFilter
+    search_fields = ["number", "customer__name", "customer__code", "customer_po_no"]
+    ordering_fields = ["due_date", "order_date", "number"]
+    read_access = ORDER_READ
+    unhandled_access = HasAccess(ORDERS, VIEW)
+
+    @extend_schema(parameters=[OpenApiParameter("include_finished", bool)])
+    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        return super().list(request, *args, **kwargs)
+
+    def get_queryset(self) -> QuerySet[SalesOrder]:
+        flag = self.request.query_params.get("include_finished", "")
+        return selectors.tracked_orders(include_finished=flag.lower() in ("1", "true"))
+
+
+class CustomerTrackingFilter(django_filters.FilterSet):
+    late = django_filters.BooleanFilter(method="filter_late", label="Yalnız gecikenler")
+
+    class Meta:
+        model = Customer
+        fields: list[str] = []
+
+    def filter_late(
+        self, queryset: QuerySet[Customer], name: str, value: bool | None
+    ) -> QuerySet[Customer]:
+        if value is None:
+            return queryset
+        if value:
+            return queryset.filter(late_orders__gt=0)  # type: ignore[misc]
+        return queryset.filter(late_orders=0)  # type: ignore[misc]
+
+
+class CustomerTrackingViewSet(AccessMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
+    """Açık siparişi olan müşteriler: açık, geciken ve yakında vadesi gelen sipariş sayısı.
+    Satış siparişleri: Görür ister."""
+
+    serializer_class = s.CustomerTrackingSerializer
+    filterset_class = CustomerTrackingFilter
+    search_fields = ["code", "name"]
+    ordering_fields = ["code", "name", "late_orders", "open_orders"]
+    read_access = ORDER_READ
+    unhandled_access = HasAccess(ORDERS, VIEW)
+
+    def get_queryset(self) -> QuerySet[Customer]:
+        return selectors.customer_tracking_summary()

@@ -9,6 +9,8 @@ router = SimpleRouter()
 router.register("orders", views.SalesOrderViewSet, basename="order")
 router.register("shipments", views.ShipmentViewSet, basename="shipment")
 router.register("shipped-lots", views.ShippedLotViewSet, basename="shipped-lot")
+router.register("tracking/orders", views.TrackedOrderViewSet, basename="tracking-order")
+router.register("tracking/customers", views.CustomerTrackingViewSet, basename="tracking-customer")
 
 urlpatterns = [
     # Spesifikasyondaki yol (sonda eğik çizgi yok): /api/v1/sales/shipments/{id}/waybill.pdf

@@ -173,6 +173,10 @@ _PROMISED_DATE = "yeni uç nokta: sipariş termini (DECISIONS 2026-11-19)"
 _PROMISED_DATE_PATH = "/api/v1/sales/orders/{pk}/promised-date/"
 _ORDER_WRITERS = ("admin", "superuser", "yonetim", "sevkiyat", "depo+sevkiyat")
 _ORDER_OUTSIDERS = ("no_role", "uretim", "laboratuvar", "dolum", "satin_alma")
+# Plan dışı yeni uç noktalar: müşteri sipariş takibi (docs/plan/musteri-siparis-takibi.md §3.2;
+# DECISIONS 2026-11-19). Salt okunur, Satış siparişleri: Görür ister.
+_TRACKING = "yeni uç nokta: müşteri sipariş takibi (DECISIONS 2026-11-19)"
+_TRACKING_PATH = "* /api/v1/sales/tracking/*"
 
 ALLOWED: tuple[Allowed, ...] = (
     # 1. adım: planın eklediği uç nokta (plan §5.1, §5.5). Giriş yapan herkese açık (SignedIn).
@@ -407,6 +411,18 @@ ALLOWED: tuple[Allowed, ...] = (
         step=9,
         old=MISSING,
         new="403",
+    ),
+    *_cells(_TRACKING, "endpoints", {_TRACKING_PATH: _SIGNED_OUT}, step=9, old=MISSING, new="401"),
+    *_cells(
+        _TRACKING,
+        "endpoints",
+        {_TRACKING_PATH: (*_ORDER_WRITERS, "planlama", "depo")},
+        step=9,
+        old=MISSING,
+        new="allow",
+    ),
+    *_cells(
+        _TRACKING, "endpoints", {_TRACKING_PATH: _ORDER_OUTSIDERS}, step=9, old=MISSING, new="403"
     ),
     # 5. adım — Onaya gönderme ve onay kayıtlarında tutar, kur ve limit notta değil ayrı alan
     # satırlarında görünür; nottaki tutar aramada bulunmaz.
