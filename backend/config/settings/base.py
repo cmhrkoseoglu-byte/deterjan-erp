@@ -197,6 +197,11 @@ SPECTACULAR_SETTINGS = {
         "EmployeeDocumentKindEnum": "apps.personnel.models.EmployeeDocument.Kind",
         "AttendanceStatusEnum": "apps.personnel.models.AttendanceStatus",
         "PayrollItemCategoryEnum": "apps.personnel.models.PayrollItemCategory",
+        "LedgerEntryKindEnum": "apps.ledger.models.LedgerEntry.Kind",
+        "LedgerPaymentMethodEnum": "apps.ledger.models.LedgerEntry.Method",
+        # Cari ödeme şekliyle aynı adlı alan: lot maliyetinin yöntemi.
+        "LotCostMethodEnum": "apps.costing.models.LotCost.Method",
+        "LedgerMissingPriceKindEnum": "apps.ledger.api.serializers.MISSING_PRICE_KINDS",
         "PayrollItemKindEnum": "apps.personnel.models.PayrollItemKind",
         "CostStageEnum": "apps.costing.models.CostStage",
         "LotLabelKindEnum": "apps.inventory.api.serializers.LOT_LABEL_KINDS",

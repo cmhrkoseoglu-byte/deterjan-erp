@@ -156,6 +156,15 @@ _LEDGER_MODELS = "yeni model: cari hesaplar (DECISIONS 2026-11-18)"
 _LEDGER_ENDPOINTS = "yeni uç nokta: cari hesaplar (DECISIONS 2026-11-18)"
 # Denetim günlüğünü bugün okuyanlar.
 _AUDIT_READERS = ("yonetim", "admin", "superuser")
+# Cari hesap uç noktaları: Müşteri carileri sevkiyatta Görür, yönetimde Görür + Değiştirir;
+# Tedarikçi carileri satın alma ve yönetimde Görür + Değiştirir. Yazma, iade önerisi ve PDF ekstre
+# ayrıca Fiyatları görür ister.
+_LEDGER_MANAGERS = ("admin", "superuser", "yonetim")
+_LEDGER_OTHERS = ("no_role", "planlama", "depo", "uretim", "laboratuvar", "dolum")
+_CUSTOMER_VIEWERS = ("sevkiyat", "depo+sevkiyat")
+_CUSTOMER_VIEW_PATHS = ("", "export-xlsx/", "missing-prices/", "{pk}/", "{pk}/statement/")
+_CUSTOMER_PRICE_PATHS = ("{pk}/return-suggestion/", "{pk}/statement-pdf/")
+_CUSTOMERS = "/api/v1/ledger/customers/"
 # Plan dışı yeni uç nokta: dolum emrini geri alma (DECISIONS 2026-11-14).
 _FILLING_REVERT = "yeni uç nokta: dolum emrini geri alma (DECISIONS 2026-11-14)"
 
@@ -1592,6 +1601,66 @@ ALLOWED: tuple[Allowed, ...] = (
         step=8,
         old=MISSING,
         new="403 permission_denied",
+    ),
+    *_cells(
+        _LEDGER_ENDPOINTS,
+        "endpoints",
+        {"* /api/v1/ledger/*": _SIGNED_OUT},
+        step=8,
+        old=MISSING,
+        new="401",
+    ),
+    *_cells(
+        _LEDGER_ENDPOINTS,
+        "endpoints",
+        {
+            f"* {_CUSTOMERS}*": _LEDGER_MANAGERS,
+            "* /api/v1/ledger/suppliers/*": (*_LEDGER_MANAGERS, "satin_alma"),
+        },
+        step=8,
+        old=MISSING,
+        new="allow",
+    ),
+    *_cells(
+        _LEDGER_ENDPOINTS,
+        "endpoints",
+        {
+            f"* {_CUSTOMERS}*": (*_LEDGER_OTHERS, "satin_alma"),
+            "* /api/v1/ledger/suppliers/*": (*_LEDGER_OTHERS, *_CUSTOMER_VIEWERS),
+        },
+        step=8,
+        old=MISSING,
+        new="403",
+    ),
+    *_cells(
+        _LEDGER_ENDPOINTS,
+        "endpoints",
+        {
+            **{
+                f"{method} {_CUSTOMERS}{path}": _CUSTOMER_VIEWERS
+                for method in ("GET", "HEAD")
+                for path in (*_CUSTOMER_VIEW_PATHS, "{pk}/statement-xlsx/")
+            },
+            f"OPTIONS {_CUSTOMERS}*": _CUSTOMER_VIEWERS,
+        },
+        step=8,
+        old=MISSING,
+        new="allow",
+    ),
+    *_cells(
+        _LEDGER_ENDPOINTS,
+        "endpoints",
+        {
+            **{
+                f"{method} {_CUSTOMERS}{path}": _CUSTOMER_VIEWERS
+                for method in ("GET", "HEAD")
+                for path in _CUSTOMER_PRICE_PATHS
+            },
+            f"POST {_CUSTOMERS}*": _CUSTOMER_VIEWERS,
+        },
+        step=8,
+        old=MISSING,
+        new="403",
     ),
 )
 
