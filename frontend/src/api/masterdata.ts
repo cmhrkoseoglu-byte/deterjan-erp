@@ -100,6 +100,8 @@ export interface Material extends Audited, FormerCodes {
   requires_incoming_qc: boolean;
   is_hazardous: boolean;
   storage_notes: string;
+  /** KDV oranı (%): "0.00", "1.00", "10.00" ya da "20.00"; cari hesaba KDV dahil yazılır. */
+  vat_rate: string;
   conversions?: Conversion[];
 }
 
@@ -144,6 +146,10 @@ export interface Partner extends Audited, FormerCodes {
   contact_person: string;
   /** ISO 3166-1 alpha-2 (TR, DE, IQ …). */
   country_code: string;
+  /** Vade (gün); boş = peşin. Cari hesapta vade = belge tarihi + vade günü. */
+  payment_term_days: number | null;
+  /** KDV muaf cari (ihracat müşterisi / ithalat tedarikçisi): cariye KDV'siz yazılır. */
+  vat_exempt: boolean;
 }
 
 /**

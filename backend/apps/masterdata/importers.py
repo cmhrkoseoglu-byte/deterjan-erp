@@ -215,6 +215,14 @@ _PARTNER_COLUMNS = (
         example="TR",
         help="ISO 3166-1 alpha-2 (TR, DE, IQ …); yeni kayıtta boşsa TR",
     ),
+    Column("Vade (gün)", "payment_term_days", parse_int, example=30, help="Boş = peşin"),
+    Column(
+        "KDV muaf",
+        "vat_exempt",
+        parse_bool,
+        example="Hayır",
+        help="Evet / Hayır (ihracat müşterisi, ithalat tedarikçisi; boşsa Hayır)",
+    ),
 )
 
 SPECS: dict[str, ImportSpec] = {
@@ -282,6 +290,13 @@ SPECS: dict[str, ImportSpec] = {
             ),
             Column("Tehlikeli madde", "is_hazardous", parse_bool, example="Hayır"),
             Column("Depolama notu", "storage_notes", parse_text, example="Serin yerde saklayın"),
+            Column(
+                "KDV oranı (%)",
+                "vat_rate",
+                parse_decimal,
+                example=20,
+                help="0, 1, 10 ya da 20 (boşsa 20)",
+            ),
         ),
     ),
     "suppliers": ImportSpec(
