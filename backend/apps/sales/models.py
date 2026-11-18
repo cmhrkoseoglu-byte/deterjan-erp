@@ -33,6 +33,14 @@ class SalesOrder(DocumentModel):
     )
     order_date = models.DateField("sipariş tarihi")
     requested_delivery_date = models.DateField("istenen teslim tarihi", null=True, blank=True)
+    # Müşteriye sözü verilen teslim tarihi: onayda zorunlu, sonra gerekçeyle değişir
+    # (docs/plan/musteri-siparis-takibi.md §3.1). Gecikme bu tarihe göre hesaplanır.
+    promised_date = models.DateField(
+        "termin",
+        null=True,
+        blank=True,
+        help_text="Müşteriye sözü verilen teslim tarihi",
+    )
     delivery_address = models.TextField("teslim adresi", blank=True)
     customer_po_no = models.CharField("müşteri sipariş no", max_length=64, blank=True)
     notes = models.TextField("notlar", blank=True)

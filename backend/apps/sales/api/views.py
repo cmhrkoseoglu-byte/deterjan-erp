@@ -66,7 +66,13 @@ class SalesOrderViewSet(
     serializer_class = s.SalesOrderSerializer
     filterset_class = SalesOrderFilter
     search_fields = ["number", "customer__name", "customer__code", "customer_po_no"]
-    ordering_fields = ["order_date", "requested_delivery_date", "number", "created_at"]
+    ordering_fields = [
+        "order_date",
+        "requested_delivery_date",
+        "promised_date",
+        "number",
+        "created_at",
+    ]
     ordering = ["-order_date", "-id"]
     read_access = ORDER_READ
     unhandled_read_methods = frozenset({"GET"})
@@ -80,6 +86,7 @@ class SalesOrderViewSet(
         # siparişte Onaylar ister.
         "cancel": ORDER_CHANGE | ORDER_APPROVE,
         "close": ORDER_CHANGE,
+        "promised_date": ORDER_CHANGE,
         "reserve_shortages": ORDER_CHANGE,
         "reserve": ORDER_CHANGE,
         "release": ORDER_CHANGE,
@@ -142,14 +149,31 @@ class SalesOrderViewSet(
         data, lines = self._split(body)
         return self._respond(services.update_order(_user(request), order, data, lines))
 
-    @extend_schema(request=s.SalesNoteSerializer, responses=s.SalesOrderDetailSerializer)
+    @extend_schema(request=s.ConfirmOrderSerializer, responses=s.SalesOrderDetailSerializer)
     @action(detail=True, methods=["post"])
     def confirm(self, request: Request, pk: str | None = None) -> Response:
-        """Siparişi onaylar ve FEFO ile rezervasyon yapar."""
-        body = s.SalesNoteSerializer(data=request.data)
+        """Siparişi onaylar ve FEFO ile rezervasyon yapar; termin onayda zorunludur."""
+        body = s.ConfirmOrderSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         order = services.confirm_order(
-            _user(request), self.get_object(), body.validated_data["note"]
+            _user(request),
+            self.get_object(),
+            body.validated_data["note"],
+            promised_date=body.validated_data.get("promised_date"),
+        )
+        return self._respond(order)
+
+    @extend_schema(request=s.PromisedDateSerializer, responses=s.SalesOrderDetailSerializer)
+    @action(detail=True, methods=["post"], url_path="promised-date")
+    def promised_date(self, request: Request, pk: str | None = None) -> Response:
+        """Onaylı ya da kısmen sevk edilmiş siparişin terminini gerekçeyle değiştirir."""
+        body = s.PromisedDateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        order = services.change_promised_date(
+            _user(request),
+            self.get_object(),
+            body.validated_data["promised_date"],
+            body.validated_data["reason"],
         )
         return self._respond(order)
 

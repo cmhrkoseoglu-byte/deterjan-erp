@@ -100,6 +100,7 @@ class SalesOrderSerializer(serializers.ModelSerializer):
             "customer_name",
             "order_date",
             "requested_delivery_date",
+            "promised_date",
             "delivery_address",
             "customer_po_no",
             "notes",
@@ -298,6 +299,15 @@ class SalesOrderDetailSerializer(SalesOrderSerializer):
 
 class SalesNoteSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ConfirmOrderSerializer(SalesNoteSerializer):
+    promised_date = serializers.DateField(required=False, allow_null=True, default=None)
+
+
+class PromisedDateSerializer(serializers.Serializer):
+    promised_date = serializers.DateField()
+    reason = serializers.CharField(max_length=500)
 
 
 class ReserveSerializer(serializers.Serializer):

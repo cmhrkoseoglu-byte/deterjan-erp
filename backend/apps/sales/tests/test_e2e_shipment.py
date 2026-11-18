@@ -150,7 +150,12 @@ def test_goods_receipt_to_shipment_waybill_trace_and_return(staff, commit):
     with commit():
         order = sales.create_order(
             staff[SEVKIYAT],
-            {"customer": market, "order_date": date.today(), "customer_po_no": "PO-9"},
+            {
+                "customer": market,
+                "order_date": date.today(),
+                "promised_date": date.today(),
+                "customer_po_no": "PO-9",
+            },
             [{"product": product, "quantity": D("50"), "unit": unit("KOLI")}],
         )
         sales.confirm_order(staff[SEVKIYAT], order)
@@ -163,7 +168,7 @@ def test_goods_receipt_to_shipment_waybill_trace_and_return(staff, commit):
     with commit():
         second = sales.create_order(
             staff[SEVKIYAT],
-            {"customer": other, "order_date": date.today()},
+            {"customer": other, "order_date": date.today(), "promised_date": date.today()},
             [{"product": product, "quantity": D("450"), "unit": unit("ADET")}],
         )
         sales.confirm_order(staff[SEVKIYAT], second)

@@ -43,6 +43,7 @@ export interface SalesOrder {
   customer_name: string;
   order_date: string;
   requested_delivery_date: string | null;
+  promised_date: string | null;
   delivery_address: string;
   customer_po_no: string;
   notes: string;
@@ -96,6 +97,7 @@ export interface SalesOrderPayload {
   customer: number | null;
   order_date: string;
   requested_delivery_date: string | null;
+  promised_date: string | null;
   delivery_address: string;
   customer_po_no: string;
   notes: string;
@@ -154,7 +156,10 @@ async function action(id: number, name: string, body: object = {}): Promise<Sale
   return data;
 }
 
-export const confirmSalesOrder = (id: number, note = "") => action(id, "confirm", { note });
+export const confirmSalesOrder = (id: number, note = "", promisedDate: string | null = null) =>
+  action(id, "confirm", { note, promised_date: promisedDate });
+export const changePromisedDate = (id: number, promisedDate: string, reason: string) =>
+  action(id, "promised-date", { promised_date: promisedDate, reason });
 export const cancelSalesOrder = (id: number, reason: string) => action(id, "cancel", { reason });
 export const closeSalesOrder = (id: number, note = "") => action(id, "close", { note });
 export const reserveShortages = (id: number) => action(id, "reserve-shortages");

@@ -62,6 +62,7 @@ ORDER_FIELDS = (
     "customer",
     "order_date",
     "requested_delivery_date",
+    "promised_date",
     "delivery_address",
     "customer_po_no",
     "notes",
@@ -127,6 +128,20 @@ def _validate_order(order: SalesOrder) -> None:
         raise BusinessRuleError(
             "invalid_delivery_date", "İstenen teslim tarihi sipariş tarihinden önce olamaz."
         )
+    if order.promised_date and order.promised_date < order.order_date:
+        raise BusinessRuleError("invalid_promised_date", "Termin sipariş tarihinden önce olamaz.")
+
+
+def _require_future_promised_date(promised_date: date | None) -> date:
+    """Onayda ve termin değişikliğinde termin dolu olmalı ve bugünden önce olmamalı."""
+    if promised_date is None:
+        raise BusinessRuleError(
+            "promised_date_required",
+            "Termin (müşteriye sözü verilen teslim tarihi) girilmelidir.",
+        )
+    if promised_date < timezone.localdate():
+        raise BusinessRuleError("promised_date_past", "Termin bugünden önce olamaz.")
+    return promised_date
 
 
 def _prepare_line(line: SalesOrderLine) -> None:
@@ -233,22 +248,38 @@ def update_order(
 
 
 @transaction.atomic
-def confirm_order(actor: User | None, order: SalesOrder, note: str = "") -> SalesOrder:
+def confirm_order(
+    actor: User | None,
+    order: SalesOrder,
+    note: str = "",
+    promised_date: date | None = None,
+) -> SalesOrder:
     """Siparişi onaylar ve FEFO ile rezervasyon yapar. Olay `sales_order.confirmed` sevkiyata
-    "Sevkiyat planla" görevi açar; eksik varsa `sales_order.shortage` planlamaya görev açar."""
+    "Sevkiyat planla" görevi açar; eksik varsa `sales_order.shortage` planlamaya görev açar.
+
+    Termin onayda zorunludur ve bugünden önce olamaz; `promised_date` verilirse siparişteki
+    termin onunla değişir (değişiklik onayın denetim kaydına yazılır)."""
     require_access(actor, ORDERS, APPROVE, "Satış siparişini onaylama yetkiniz yok.")
     actor = _actor(actor)
     order = _lock_order(order)
     sales_order_states.assert_can_transition(order.status, Status.CONFIRMED)
-    _validate_order(order)
+    changes: dict[str, Any] = {}
+    if promised_date is not None and promised_date != order.promised_date:
+        changes["promised_date"] = [
+            order.promised_date.isoformat() if order.promised_date else None,
+            promised_date.isoformat(),
+        ]
+        order.promised_date = promised_date
     lines = list(order.lines.select_related("product__base_unit", "unit").order_by("line_no"))
     if not lines:
         raise BusinessRuleError("document_empty", "Satırı olmayan sipariş onaylanamaz.")
+    _require_future_promised_date(order.promised_date)
+    _validate_order(order)
     for line in lines:
         _prepare_line(line)
     order.confirmed_by = actor
     order.confirmed_at = timezone.now()
-    order.save(update_fields=["confirmed_by", "confirmed_at"])
+    order.save(update_fields=["confirmed_by", "confirmed_at", "promised_date"])
     transition_status(
         order,
         Status.CONFIRMED,
@@ -256,8 +287,44 @@ def confirm_order(actor: User | None, order: SalesOrder, note: str = "") -> Sale
         machine=sales_order_states,
         note=note,
         event_payload=_order_payload(order),
+        changes=changes or None,
     )
     _reserve_order(actor, order, publish_complete=False)
+    return order
+
+
+# Termini değiştirilebilen durumlar: onaylı ve kısmen sevk edilmiş (kalanı olan) sipariş.
+PROMISE_CHANGEABLE_STATUSES = (Status.CONFIRMED, Status.PARTIALLY_SHIPPED)
+
+
+@transaction.atomic
+def change_promised_date(
+    actor: User | None, order: SalesOrder, promised_date: date, reason: str
+) -> SalesOrder:
+    """Onaylı ya da kısmen sevk edilmiş siparişin terminini değiştirir (Satış siparişleri:
+    Değiştirir). Gerekçe zorunlu, yeni termin bugünden önce olamaz; eski → yeni değer ve gerekçe
+    denetim günlüğüne yazılır, commit sonrası `sales_order.promised_date_changed` yayınlanır."""
+    require_access(actor, ORDERS, CHANGE, "Siparişin terminini değiştirme yetkiniz yok.")
+    actor = _actor(actor)
+    reason = reason.strip()
+    if not reason:
+        raise BusinessRuleError("reason_required", "Termin değişikliği için gerekçe girilmelidir.")
+    order = _lock_order(order)
+    _require_status(order, PROMISE_CHANGEABLE_STATUSES, "document_locked", "termini değiştirilemez")
+    _require_future_promised_date(promised_date)
+    if promised_date == order.promised_date:
+        raise BusinessRuleError("promised_date_unchanged", "Yeni termin eskisiyle aynı.")
+    old = order.promised_date
+    order.promised_date = promised_date
+    _validate_order(order)
+    save_with_audit(order, actor, note=reason)
+    payload = {
+        **_order_payload(order),
+        "old_promised_date": old.isoformat() if old else None,
+        "promised_date": promised_date.isoformat(),
+        "reason": reason,
+    }
+    events.publish(ev.SALES_ORDER_PROMISED_DATE_CHANGED, payload, actor)
     return order
 
 

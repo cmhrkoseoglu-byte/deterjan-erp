@@ -51,7 +51,11 @@ def dispatched_shipment(
         shipping_location(code="SEVK")
     order = sales.create_order(
         shipper,
-        {"customer": customer or CustomerFactory.create(), "order_date": date.today()},
+        {
+            "customer": customer or CustomerFactory.create(),
+            "order_date": date.today(),
+            "promised_date": date.today(),
+        },
         [
             {
                 "product": material,

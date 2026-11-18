@@ -19,6 +19,8 @@ export const ORDER_STATUS_COLOR: Record<SalesOrderStatus, string> = {
 
 /** Rezervasyonu değiştirilebilen sipariş durumları. */
 export const RESERVABLE_STATUSES: SalesOrderStatus[] = ["CONFIRMED", "PARTIALLY_SHIPPED"];
+/** Termini değiştirilebilen sipariş durumları (backend `PROMISE_CHANGEABLE_STATUSES`). */
+export const PROMISE_CHANGEABLE: SalesOrderStatus[] = ["CONFIRMED", "PARTIALLY_SHIPPED"];
 
 export const SHIPMENT_STATUS_COLOR: Record<ShipmentStatus, string> = {
   PLANNED: "blue",

@@ -167,6 +167,12 @@ _CUSTOMER_PRICE_PATHS = ("{pk}/return-suggestion/", "{pk}/statement-pdf/")
 _CUSTOMERS = "/api/v1/ledger/customers/"
 # Plan dışı yeni uç nokta: dolum emrini geri alma (DECISIONS 2026-11-14).
 _FILLING_REVERT = "yeni uç nokta: dolum emrini geri alma (DECISIONS 2026-11-14)"
+# Plan dışı yeni uç nokta: siparişin termini (docs/plan/musteri-siparis-takibi.md §3.1;
+# DECISIONS 2026-11-19). Satış siparişleri: Değiştirir ister; OPTIONS okumayı izler.
+_PROMISED_DATE = "yeni uç nokta: sipariş termini (DECISIONS 2026-11-19)"
+_PROMISED_DATE_PATH = "/api/v1/sales/orders/{pk}/promised-date/"
+_ORDER_WRITERS = ("admin", "superuser", "yonetim", "sevkiyat", "depo+sevkiyat")
+_ORDER_OUTSIDERS = ("no_role", "uretim", "laboratuvar", "dolum", "satin_alma")
 
 ALLOWED: tuple[Allowed, ...] = (
     # 1. adım: planın eklediği uç nokta (plan §5.1, §5.5). Giriş yapan herkese açık (SignedIn).
@@ -371,6 +377,36 @@ ALLOWED: tuple[Allowed, ...] = (
         step=4,
         old=MISSING,
         new="allow",
+    ),
+    *_cells(
+        _PROMISED_DATE,
+        "endpoints",
+        {f"* {_PROMISED_DATE_PATH}": _SIGNED_OUT},
+        step=9,
+        old=MISSING,
+        new="401",
+    ),
+    *_cells(
+        _PROMISED_DATE,
+        "endpoints",
+        {
+            f"POST {_PROMISED_DATE_PATH}": _ORDER_WRITERS,
+            f"OPTIONS {_PROMISED_DATE_PATH}": (*_ORDER_WRITERS, "planlama", "depo"),
+        },
+        step=9,
+        old=MISSING,
+        new="allow",
+    ),
+    *_cells(
+        _PROMISED_DATE,
+        "endpoints",
+        {
+            f"POST {_PROMISED_DATE_PATH}": (*_ORDER_OUTSIDERS, "planlama", "depo"),
+            f"OPTIONS {_PROMISED_DATE_PATH}": _ORDER_OUTSIDERS,
+        },
+        step=9,
+        old=MISSING,
+        new="403",
     ),
     # 5. adım — Onaya gönderme ve onay kayıtlarında tutar, kur ve limit notta değil ayrı alan
     # satırlarında görünür; nottaki tutar aramada bulunmaz.

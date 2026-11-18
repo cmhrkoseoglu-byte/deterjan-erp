@@ -22,6 +22,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import {
   IconArrowLeft,
+  IconCalendarEvent,
   IconCheck,
   IconLock,
   IconPlus,
@@ -67,12 +68,14 @@ import { RowsTable } from "../filling/FillingPage";
 import { shipmentColumns } from "./columns";
 import {
   customerPath,
+  PROMISE_CHANGEABLE,
   RESERVABLE_STATUSES,
   SALES_BASE,
   salesOrderPath,
   SHIPPABLE_ORDER_STATUSES,
   shipmentPath,
 } from "./config";
+import { ChangePromisedDateModal, ConfirmOrderModal } from "./PromisedDateModals";
 import { SalesOrderStatusBadge } from "./shared";
 import { PlanShipmentModal } from "./ShipmentForms";
 import { st } from "./strings";
@@ -97,6 +100,7 @@ interface HeaderDraft {
   customer: string | null;
   order_date: string;
   requested_delivery_date: string;
+  promised_date: string;
   delivery_address: string;
   customer_po_no: string;
   notes: string;
@@ -126,6 +130,7 @@ function toDraft(doc: SalesOrderDetail | null): { header: HeaderDraft; lines: Li
         customer: null,
         order_date: today(),
         requested_delivery_date: "",
+        promised_date: "",
         delivery_address: "",
         customer_po_no: "",
         notes: "",
@@ -138,6 +143,7 @@ function toDraft(doc: SalesOrderDetail | null): { header: HeaderDraft; lines: Li
       customer: str(doc.customer),
       order_date: doc.order_date,
       requested_delivery_date: doc.requested_delivery_date ?? "",
+      promised_date: doc.promised_date ?? "",
       delivery_address: doc.delivery_address,
       customer_po_no: doc.customer_po_no,
       notes: doc.notes,
@@ -160,6 +166,7 @@ function toPayload(header: HeaderDraft, lines: LineDraft[]): SalesOrderPayload {
     customer: idOrNull(header.customer),
     order_date: header.order_date,
     requested_delivery_date: header.requested_delivery_date || null,
+    promised_date: header.promised_date || null,
     delivery_address: header.delivery_address.trim(),
     customer_po_no: header.customer_po_no.trim(),
     notes: header.notes.trim(),
@@ -248,6 +255,7 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
   const [error, setError] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [promiseOpen, setPromiseOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reserveLine, setReserveLine] = useState<SalesOrderLine | null>(null);
   const [releasing, setReleasing] = useState<Reservation | null>(null);
@@ -290,10 +298,10 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
     onError,
   });
   const confirm = useMutation({
-    mutationFn: async () => {
-      if (!editable) return confirmSalesOrder(doc!.id);
+    mutationFn: async (promisedDate: string) => {
+      if (!editable) return confirmSalesOrder(doc!.id, "", promisedDate);
       const saved = await saveSalesOrder(doc!.id, toPayload(header, lines));
-      return confirmSalesOrder(saved.id);
+      return confirmSalesOrder(saved.id, "", promisedDate);
     },
     onSuccess: (saved) => {
       setError("");
@@ -389,6 +397,15 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
               {st.confirm}
             </Button>
           )}
+          {writer && doc && PROMISE_CHANGEABLE.includes(doc.status) && (
+            <Button
+              variant="light"
+              leftSection={<IconCalendarEvent size={16} />}
+              onClick={() => setPromiseOpen(true)}
+            >
+              {st.changePromisedDate}
+            </Button>
+          )}
           {canPlan && (
             <Button leftSection={<IconTruck size={16} />} onClick={() => setPlanOpen(true)}>
               {st.planShipment}
@@ -460,6 +477,13 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
               }
             />
             <TextInput
+              label={st.promisedDate}
+              description={st.promisedDateHint}
+              type="date"
+              value={header.promised_date}
+              onChange={(event) => setHeader({ promised_date: event.currentTarget.value })}
+            />
+            <TextInput
               label={st.customerPo}
               value={header.customer_po_no}
               onChange={(event) => setHeader({ customer_po_no: event.currentTarget.value })}
@@ -495,6 +519,9 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
               </Info>
               <Info label={st.requestedDelivery}>
                 <Text size="sm">{formatDate(doc.requested_delivery_date)}</Text>
+              </Info>
+              <Info label={st.promisedDate}>
+                <Text size="sm">{formatDate(doc.promised_date)}</Text>
               </Info>
               <Info label={st.customerPo}>
                 <Text size="sm">{doc.customer_po_no}</Text>
@@ -740,14 +767,25 @@ function OrderForm({ doc }: { doc: SalesOrderDetail | null }) {
         </Stack>
       )}
 
-      <ConfirmModal
-        opened={confirmOpen}
-        message={st.confirmQuestion}
-        confirmLabel={st.confirm}
-        loading={confirm.isPending}
-        onConfirm={() => confirm.mutate()}
-        onClose={() => setConfirmOpen(false)}
-      />
+      {confirmOpen && (
+        <ConfirmOrderModal
+          initialDate={(editable ? header.promised_date : doc?.promised_date) || ""}
+          loading={confirm.isPending}
+          onConfirm={(promisedDate) => confirm.mutate(promisedDate)}
+          onClose={() => setConfirmOpen(false)}
+        />
+      )}
+      {doc && promiseOpen && (
+        <ChangePromisedDateModal
+          order={doc}
+          onClose={() => setPromiseOpen(false)}
+          onDone={(saved) => {
+            setPromiseOpen(false);
+            notifications.show({ color: "green", message: st.promisedDateChanged });
+            refresh(saved);
+          }}
+        />
+      )}
       <ConfirmModal
         opened={closeOpen}
         message={st.closeQuestion}

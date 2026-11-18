@@ -99,6 +99,7 @@ def seed(seller: User, write: Any = print) -> None:
                 "customer": customers["M-ZINCIR"],
                 "order_date": today,
                 "requested_delivery_date": today + timedelta(days=3),
+                "promised_date": today + timedelta(days=3),
                 "customer_po_no": "DEMO-1",
             },
             [
@@ -126,6 +127,7 @@ def seed(seller: User, write: Any = print) -> None:
             {
                 "customer": customers["M-TOPTAN"],
                 "order_date": today,
+                "promised_date": today + timedelta(days=5),
                 "customer_po_no": "DEMO-2",
             },
             [
@@ -166,7 +168,12 @@ def seed_shipments(
         return
     order = services.create_order(
         seller,
-        {"customer": customers["M-TOPTAN"], "order_date": today, "customer_po_no": "DEMO-3"},
+        {
+            "customer": customers["M-TOPTAN"],
+            "order_date": today,
+            "promised_date": today + timedelta(days=7),
+            "customer_po_no": "DEMO-3",
+        },
         [
             {
                 "product": Material.objects.get(code="YUZEY-CAM-1000"),

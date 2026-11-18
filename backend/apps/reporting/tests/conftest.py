@@ -188,6 +188,7 @@ def chain(staff: dict[str, User], commit: Callable[[], AbstractContextManager[An
                 "customer": customer,
                 "order_date": date.today(),
                 "requested_delivery_date": date.today(),
+                "promised_date": date.today(),
             },
             [{"product": product, "quantity": D("600"), "unit": unit("ADET")}],
         )

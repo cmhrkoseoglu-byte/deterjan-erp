@@ -2069,3 +2069,22 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   hücreler gözlenen değere sabitlendi.
 - **Doğrulama:** backend 2783, ön yüz 710 test yeşil; mypy, ruff, OpenAPI şeması (uyarısız),
   göç denetimi, `access.gen.ts`, ESLint, Prettier, tsc ve build temiz.
+
+## 2026-11-19 — Müşteri sipariş takibi: A1 (Termin)
+
+- Plan `docs/plan/musteri-siparis-takibi.md` (Paket A iç ekran, Paket B portal); sahibin
+  kararları ve A1 uygulama kararları DECISIONS'ta (2026-11-19). Dal
+  `claude/musteri-siparis-takibi` (main 47c4b15'ten).
+- **A1:** siparişe Termin (`promised_date`, göç sales 0003); onayda zorunlu ve bugünden önce
+  olamaz; onaylı / kısmen sevk edilmiş siparişte gerekçeli "Termini değiştir"
+  (`POST /api/v1/sales/orders/{id}/promised-date/`, Satış siparişleri: Değiştirir), denetim
+  günlüğü ve `sales_order.promised_date_changed` olayı; sipariş formu, onay penceresi, detay ve
+  listede Termin.
+- **Canlıya alırken:** göç yeterli; canlıdaki onaylı siparişlerde termin boş kalır (gecikme
+  hesabında istenen teslim tarihi kullanılır, A2). Taslak siparişler onaylanırken termin ister.
+- **Yetki sözleşmesi:** yeni uç nokta izin listesinde "yeni uç nokta: sipariş termini
+  (DECISIONS 2026-11-19)" kaydıyla; hücreler gözlenen değere sabitlendi.
+- **Doğrulama:** backend 2971 test (yetki sözleşmesi düzeltmesinden sonra sözleşme testleri
+  ayrıca 24/24), ön yüz 763 test yeşil; mypy, ruff, göç denetimi, OpenAPI şeması (uyarısız),
+  ESLint ve tsc temiz.
+

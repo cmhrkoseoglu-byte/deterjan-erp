@@ -3019,3 +3019,28 @@ değiştirme zorunlu, yalnızca admin):
 - **Kapsam dışı:** müşteriye özel fiyat listesi, portalda stok ya da teslim vaadi, lot/SKT ve analiz
   sertifikası, iade talebi, online ödeme, fatura, SMS/WhatsApp, kendi kendine kayıt ve e-postayla
   şifre sıfırlama.
+
+## 2026-11-19 — Müşteri sipariş takibi: A1 (Termin) uygulama kararları
+
+- **A1 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"); tarih kuralı "Geçmiş tarih olamaz".
+- **Alan:** `SalesOrder.promised_date` "Termin" (boş olabilir; göç sales 0003 mevcut siparişlere
+  dokunmaz). Taslakta formdan girilir; termin hiçbir zaman sipariş tarihinden önce olamaz
+  (`invalid_promised_date`).
+- **Onay:** `POST .../confirm/` gövdesine isteğe bağlı `promised_date`; verilirse siparişin
+  termini onunla değişir ve değişiklik onayın denetim kaydına eklenir. Termin boşsa onay
+  `promised_date_required`, bugünden önceyse `promised_date_past` ile reddedilir. Satırsız
+  siparişte önce `document_empty` döner.
+- **Değişiklik:** `POST .../promised-date/` (`promised_date`, `reason`) yalnız Onaylandı ve
+  Kısmen sevk edildi durumunda (`document_locked`), Satış siparişleri: Değiştirir ister;
+  gerekçe zorunlu (`reason_required`), yeni termin bugünden önce olamaz, aynı tarih reddedilir
+  (`promised_date_unchanged`). Eski → yeni değer ve gerekçe denetim günlüğüne (güncelleme
+  kaydının notu) yazılır; commit sonrası `sales_order.promised_date_changed` yayınlanır (bugün
+  dinleyeni yok; portal e-postası ve gecikme listesi için).
+- **Ekran:** sipariş formunda ve detayda Termin; onay penceresinde zorunlu Termin alanı; onaylı
+  siparişte "Termini değiştir" (tarih + gerekçe); sipariş listesinde Termin sütunu ve sıralaması.
+- **Demo verisi:** `seed_sales_demo` siparişlerine termin (bugün + 3 / 5 / 7 gün).
+- **Yetki sözleşmesi:** yeni uç nokta izin listesine "yeni uç nokta: sipariş termini (DECISIONS
+  2026-11-19)" kaydıyla bağlandı (cari hesaplardaki gibi, sahibin onayladığı plana dayanır):
+  POST yalnız Satış siparişleri: Değiştirir'i olanlara (sevkiyat, yönetim, admin), OPTIONS
+  siparişi okuyanlara açık; hücreler gözlenen değere sabitlendi.
+

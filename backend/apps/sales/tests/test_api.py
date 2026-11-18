@@ -24,6 +24,7 @@ def order_body(customer_id: int, product_id: int) -> dict[str, object]:
     return {
         "customer": customer_id,
         "order_date": str(timezone.localdate()),
+        "promised_date": str(timezone.localdate() + timedelta(days=7)),
         "customer_po_no": "PO-1",
         "lines": [
             {

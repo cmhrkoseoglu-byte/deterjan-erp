@@ -15,6 +15,7 @@ export const orderColumns: {
   { header: st.customer, render: (r) => r.customer_name },
   { header: st.orderDate, render: (r) => formatDate(r.order_date) },
   { header: st.requestedDelivery, render: (r) => formatDate(r.requested_delivery_date) },
+  { header: st.promisedDate, render: (r) => formatDate(r.promised_date) },
   { header: st.customerPo, render: (r) => r.customer_po_no },
   {
     header: st.status,
