@@ -65,6 +65,11 @@ function orderPage(moduleKey: string, ordersKey: string, param: string): PageRul
 
 const signedIn: PageRule = { allow: () => true, need: NO_NEED };
 
+/** Cari hesap sekmesinin bölümü (`/cari-hesaplar/musteriler|tedarikciler`). */
+function ledgerSection(tab: string | undefined): string {
+  return tab === "tedarikciler" ? "ledger.suppliers" : "ledger.customers";
+}
+
 export const PAGE_RULES = {
   masterdata: modulePage("masterdata"),
   recipes: sectionPage("recipes.recipes"),
@@ -83,6 +88,12 @@ export const PAGE_RULES = {
   returns: modulePage("returns"),
   purchasing: modulePage("purchasing"),
   purchaseOrder: sectionPage("purchasing.orders"),
+  ledger: modulePage("ledger"),
+  /** Bir carinin ekstresi: sekmenin bölümü (müşteri ya da tedarikçi carileri) Görür. */
+  ledgerPartner: {
+    allow: (user, params) => can(user, ledgerSection(params.tab), "view"),
+    need: (params) => [{ key: ledgerSection(params.tab), level: "view" }],
+  },
   traceability: sectionPage("traceability.trace"),
   costing: modulePage("costing"),
   lotCost: sectionPage("costing.lot_costs"),

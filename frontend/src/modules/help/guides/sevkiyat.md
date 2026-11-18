@@ -54,6 +54,10 @@ Depo lotları okutup **Yükleme tamam** deyince size "sevk onayı" görevi gelir
 
 **Müşteriler** sekmesinde müşteri kartı açılır: sipariş geçmişi ve müşteriye sevk edilen lotlar. Müşteri bilgileri, adres ve asgari kalan raf ömrü **Ana veriler** ekranından planlama ya da yönetim tarafından düzenlenir.
 
+## Müşteri carileri
+
+**Cari hesaplar > Müşteriler** sekmesinde müşterilerin hareketlerini ve ekstresini görürsünüz. Tutarlar yalnız fiyatları görme yetkisi olanlara görünür; tahsilatı yönetim girer.
+
 ## Müşteri iadesi
 
 1. **İadeler** menüsünde **Yeni iade**'ye basın.

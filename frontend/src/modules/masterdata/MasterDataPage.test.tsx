@@ -61,6 +61,7 @@ const las: Material = {
   requires_incoming_qc: true,
   is_hazardous: true,
   storage_notes: "",
+  vat_rate: "20.00",
   is_active: true,
   created_at: "2026-10-15T10:00:00+03:00",
   updated_at: "2026-10-15T10:00:00+03:00",

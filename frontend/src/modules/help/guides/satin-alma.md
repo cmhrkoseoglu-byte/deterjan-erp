@@ -44,3 +44,7 @@ Mal kabul sayfasında **Fiyat ve ek masraf** bölümünü yalnızca satın alma 
 ## Tedarikçi performansı
 
 **Tedarikçi performansı** sekmesinde tarih aralığı seçin. Her tedarikçi için zamanında teslim oranı ve laboratuvarın reddettiği lot oranı görünür. Bir tedarikçinin lotu reddedildiğinde size bildirim de gelir.
+
+## Tedarikçi carileri
+
+**Cari hesaplar > Tedarikçiler** sekmesinde tedarikçilere borcumuz, vadesi geçen tutar ve ekstre görünür. Kaydedilen mal kabul fiyatıyla (KDV dahil) tedarikçiye kendiliğinden yazılır; ek masraflar yazılmaz. Fiyatı girilmemiş mal kabul **Fiyatı eksik belgeler** listesinde görünür: fiyatı mal kabulün **Fiyat ve masraflar** panelinden girin. Ödemeyi carinin sayfasında **Ödeme gir** ile kaydedin; yanlış kaydı **İptal et** ile gerekçe yazarak iptal edin.

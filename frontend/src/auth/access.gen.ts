@@ -4,7 +4,7 @@
 //   docker compose exec -T backend python manage.py export_access --format=ts \
 //     > frontend/src/auth/access.gen.ts
 
-export const ACCESS_CATALOG_HASH = "951e0b0fc37ca9d926460386442633070a0ff33402a2b7ff9d718334510c3cbf";
+export const ACCESS_CATALOG_HASH = "65c55deb24b1bc81b212f334d421cc390bd957defd4ada170b543de72bd5833d";
 
 export type AccessLevel = "read" | "view" | "change" | "approve";
 export type ReadScope = "view" | "shared" | "any_role" | "open";
@@ -101,6 +101,8 @@ export const PERM = {
   "PURCHASING_DELIVERIES": "purchasing.deliveries",
   "PURCHASING_PERFORMANCE": "purchasing.performance",
   "PURCHASING_SETTINGS": "purchasing.settings",
+  "LEDGER_CUSTOMERS": "ledger.customers",
+  "LEDGER_SUPPLIERS": "ledger.suppliers",
   "COSTING_LOT_COSTS": "costing.lot_costs",
   "COSTING_RATES": "costing.rates",
   "COSTING_PERSONNEL_COST": "costing.personnel_cost",
@@ -266,6 +268,15 @@ export const MODULES: readonly ModuleMeta[] = [
       "purchasing.deliveries",
       "purchasing.performance",
       "purchasing.settings"
+    ]
+  },
+  {
+    "key": "ledger",
+    "label": "Cari hesaplar",
+    "menu": true,
+    "sections": [
+      "ledger.customers",
+      "ledger.suppliers"
     ]
   },
   {
@@ -1287,6 +1298,56 @@ export const SECTIONS: Readonly<Record<PermKey, SectionMeta>> = {
     "adminOnly": [],
     "locked": []
   },
+  "ledger.customers": {
+    "key": "ledger.customers",
+    "module": "ledger",
+    "label": "Müşteri carileri",
+    "kind": "section",
+    "levels": [
+      "view",
+      "change"
+    ],
+    "help": {
+      "view": "Müşteri cari listesi, yaşlandırma ve ekstre; tutarlar Fiyatları görür ile.",
+      "change": "Tahsilat, iade dekontu, borç/alacak dekontu ve açılış bakiyesi girer, kayıt iptal eder, fiyatı eksik sevkiyata fiyat girer."
+    },
+    "read": "view",
+    "requires": [
+      {
+        "level": "change",
+        "key": "sensitive.prices",
+        "need": "view"
+      }
+    ],
+    "restrictedToRole": null,
+    "adminOnly": [],
+    "locked": []
+  },
+  "ledger.suppliers": {
+    "key": "ledger.suppliers",
+    "module": "ledger",
+    "label": "Tedarikçi carileri",
+    "kind": "section",
+    "levels": [
+      "view",
+      "change"
+    ],
+    "help": {
+      "view": "Tedarikçi cari listesi, yaşlandırma ve ekstre; tutarlar Fiyatları görür ile.",
+      "change": "Ödeme, borç/alacak dekontu ve açılış bakiyesi girer, kayıt iptal eder."
+    },
+    "read": "view",
+    "requires": [
+      {
+        "level": "change",
+        "key": "sensitive.prices",
+        "need": "view"
+      }
+    ],
+    "restrictedToRole": null,
+    "adminOnly": [],
+    "locked": []
+  },
   "costing.lot_costs": {
     "key": "costing.lot_costs",
     "module": "costing",
@@ -2091,6 +2152,8 @@ export const PACKAGES: Readonly<Record<string, Readonly<Record<string, string>>>
     "inventory.adjustments": "v",
     "inventory.receipt_prices": "c",
     "inventory.receipts": "v",
+    "ledger.customers": "vc",
+    "ledger.suppliers": "vc",
     "maintenance.any_unit": "c",
     "maintenance.calibration": "v",
     "maintenance.cleanings": "vc",
@@ -2245,6 +2308,7 @@ export const PACKAGES: Readonly<Record<string, Readonly<Record<string, string>>>
   },
   "sevkiyat": {
     "inventory.pallets": "c",
+    "ledger.customers": "v",
     "reporting.shipping": "v",
     "reporting.shipping_report": "v",
     "returns.receiving": "c",
@@ -2256,6 +2320,7 @@ export const PACKAGES: Readonly<Record<string, Readonly<Record<string, string>>>
   "satin_alma": {
     "inventory.receipt_prices": "c",
     "inventory.receipts": "v",
+    "ledger.suppliers": "vc",
     "purchasing.deliveries": "vc",
     "purchasing.orders": "vca",
     "purchasing.performance": "v",
@@ -2418,6 +2483,8 @@ export const ROLE_ACCESS: Readonly<Record<string, Readonly<Record<string, string
     "purchasing.deliveries": "rvc",
     "purchasing.performance": "rv",
     "purchasing.settings": "rvc",
+    "ledger.customers": "rvc",
+    "ledger.suppliers": "rvc",
     "costing.lot_costs": "rvc",
     "costing.rates": "rvc",
     "costing.personnel_cost": "rvc",
@@ -2705,6 +2772,7 @@ export const ROLE_ACCESS: Readonly<Record<string, Readonly<Record<string, string
     "returns.returns": "rvc",
     "returns.receiving": "c",
     "returns.open_records": "r",
+    "ledger.customers": "rv",
     "maintenance.breakdowns": "c",
     "maintenance.downtimes": "r",
     "hse.incident_report": "rvc",
@@ -2746,6 +2814,7 @@ export const ROLE_ACCESS: Readonly<Record<string, Readonly<Record<string, string
     "purchasing.orders": "rvca",
     "purchasing.deliveries": "rvc",
     "purchasing.performance": "rv",
+    "ledger.suppliers": "rvc",
     "maintenance.breakdowns": "c",
     "maintenance.downtimes": "r",
     "hse.incident_report": "rvc",
@@ -2799,6 +2868,8 @@ export const ROLE_ACCESS: Readonly<Record<string, Readonly<Record<string, string
     "purchasing.deliveries": "rvc",
     "purchasing.performance": "rv",
     "purchasing.settings": "rvc",
+    "ledger.customers": "rvc",
+    "ledger.suppliers": "rvc",
     "costing.lot_costs": "rvc",
     "costing.rates": "rvc",
     "costing.personnel_cost": "rvc",

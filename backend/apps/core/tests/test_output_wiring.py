@@ -37,8 +37,11 @@ from apps.hse.exports import sds_gaps_xlsx
 from apps.inventory.importers import build_template as opening_template
 from apps.inventory.testing import assert_stock_invariants
 from apps.inventory.tests.factories import stocked_lot, storage_location
+from apps.ledger import exports as ledger_exports
+from apps.ledger import selectors as ledger_selectors
+from apps.ledger import services as ledger_services
 from apps.masterdata.importers import SPECS, build_template, template_output
-from apps.masterdata.tests.factories import MaterialFactory
+from apps.masterdata.tests.factories import CustomerFactory, MaterialFactory
 from apps.personnel import exports as personnel_exports
 from apps.personnel import pdf as personnel_pdf
 from apps.personnel import selectors as personnel_selectors
@@ -442,6 +445,45 @@ def costing_outputs(make_user: Callable[..., User], client_for: Any) -> list[Pri
     return printed
 
 
+def ledger_outputs(make_user: Callable[..., User], client_for: Any) -> list[Printed]:
+    """Cari hesap ekstresi (tarihsiz; PDF ve Excel) ve cari listesi (Excel). 40 hareket: PDF iki
+    sayfa."""
+    customer = CustomerFactory.create()
+    actor = make_user(YONETIM)
+    for day in range(40):
+        ledger_services.post_manual_entry(
+            actor,
+            partner=customer,
+            kind="OPENING",
+            entry_date=timezone.localdate() - timedelta(days=day),
+            currency="TRY",
+            amount=Decimal("10"),
+            direction="debit",
+        )
+    rows = ledger_selectors.partner_rows("customer")
+    return [
+        Printed(
+            ledger_exports.STATEMENT_OUTPUT,
+            PDF,
+            1,
+            partial(ledger_exports.statement_document, customer, None, None, contact=True),
+            pages=2,
+        ),
+        Printed(
+            ledger_exports.STATEMENT_OUTPUT,
+            XLSX,
+            1,
+            partial(ledger_exports.statement_workbook, customer, None, None, amounts=True),
+        ),
+        Printed(
+            ledger_exports.PARTNERS_OUTPUT,
+            XLSX,
+            1,
+            partial(ledger_exports.partners_workbook, "customer", rows, amounts=True),
+        ),
+    ]
+
+
 def hse_outputs(make_user: Callable[..., User], client_for: Any) -> list[Printed]:
     """Eksik GBF listesi (tarihsiz)."""
     return [Printed("hse.sds-gaps", XLSX, 1, lambda: sds_gaps_xlsx(hse_selectors.sds_gaps()))]
@@ -488,6 +530,10 @@ GROUPS: dict[str, Group] = {
     "traceability": Group(traceability_outputs, lambda: {RECALL_OUTPUT}),
     "costing": Group(costing_outputs, lambda: {*COSTING_REPORTS.values(), PERSONNEL_COST}),
     "hse": Group(hse_outputs, lambda: {"hse.sds-gaps"}),
+    "ledger": Group(
+        ledger_outputs,
+        lambda: {ledger_exports.STATEMENT_OUTPUT, ledger_exports.PARTNERS_OUTPUT},
+    ),
     "templates": Group(
         template_outputs,
         lambda: {template_output(kind) for kind in SPECS} | set(TEMPLATES),

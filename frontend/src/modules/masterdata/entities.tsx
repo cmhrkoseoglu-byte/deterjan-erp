@@ -24,6 +24,14 @@ import { LocationLabelAction, PrinterTestAction } from "./LabelTools";
 const CARDS = "masterdata.cards";
 const REFERENCE = "masterdata.reference";
 
+// Türkiye'de uygulanan KDV oranları; sunucu yalnız bunları kabul eder.
+const VAT_RATES = [
+  { value: "20.00", label: "%20" },
+  { value: "10.00", label: "%10" },
+  { value: "1.00", label: "%1" },
+  { value: "0.00", label: "%0" },
+];
+
 export const MATERIAL_TYPES = [
   { value: "RAW", label: "Hammadde" },
   { value: "PACKAGING", label: "Ambalaj" },
@@ -142,8 +150,16 @@ export const materialConfig: EntityConfig<Material> = {
     { name: "requires_incoming_qc", label: "Giriş kontrolü gerekli", type: "checkbox" },
     { name: "is_hazardous", label: "Tehlikeli madde", type: "checkbox" },
     { name: "storage_notes", label: "Depolama notu", type: "textarea" },
+    {
+      name: "vat_rate",
+      label: "KDV oranı",
+      type: "select",
+      required: true,
+      options: VAT_RATES,
+      description: "Sevkiyat ve mal kabul cariye bu oranla KDV dahil yazılır",
+    },
   ],
-  defaults: { requires_incoming_qc: true, material_type: "RAW" },
+  defaults: { requires_incoming_qc: true, material_type: "RAW", vat_rate: "20.00" },
   // Tehlike bilgisi (GHS piktogramı, H/P ifadeleri): herkes görür, yönetim ve laboratuvar düzenler.
   rowActions: (row) => <MaterialHazardAction row={row} />,
   filters: selectFilter("Tür", "material_type", MATERIAL_TYPES),
@@ -388,6 +404,18 @@ const partnerFields: FieldDef[] = [
     component: CountryField,
   },
   { name: "address", label: "Adres", type: "textarea" },
+  {
+    name: "payment_term_days",
+    label: "Vade (gün)",
+    type: "integer",
+    description: "Boş bırakılırsa peşin; cari hesapta vade ve yaşlandırma bundan hesaplanır",
+  },
+  {
+    name: "vat_exempt",
+    label: "KDV muaf",
+    type: "checkbox",
+    description: "İhracat müşterisi / ithalat tedarikçisi: cariye KDV'siz yazılır",
+  },
 ];
 
 // Yeni caride ülke Türkiye gelir (sunucudaki varsayılanla aynı).

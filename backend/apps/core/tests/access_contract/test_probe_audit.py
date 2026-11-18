@@ -165,7 +165,8 @@ UNTRACKED = frozenset(
 )
 # Proje modeli sayısı: yeni modelin denetim günlüğünde kime görüneceği bir karardır.
 # 1. adım: core.accessoverride ve core.accesscatalogsnapshot eklendi (plan §5.2).
-EXPECTED_MODELS = 124
+# Cari hesaplar (docs/plan/cari-hesaplar.md): ledger.ledgerentry ve ledger.shipmentlineprice.
+EXPECTED_MODELS = 126
 
 
 # --- kayıt izi ---------------------------------------------------------------------------------
