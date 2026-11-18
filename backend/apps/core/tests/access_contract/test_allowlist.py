@@ -57,6 +57,9 @@ PLANNED_ITEMS: dict[str, frozenset[int]] = {
     "yeni uç nokta: kişinin yetki matrisi (plan §5.10)": frozenset({9}),
     "yeni uç nokta: yetki geçmişi (plan §5.10)": frozenset({9}),
     "yeni uç nokta: Kim neyi görür raporu (plan §5.10)": frozenset({9}),
+    # Plan dışı; sahibin onayladığı cari hesaplar planına dayanır (DECISIONS 2026-11-18).
+    "yeni model: cari hesaplar (DECISIONS 2026-11-18)": frozenset({8}),
+    "yeni uç nokta: cari hesaplar (DECISIONS 2026-11-18)": frozenset({8}),
 }
 _ITEM = re.compile(r"^§8 madde (\d+)\b")
 PIN = "adımı açıldı; yeni değer gözlenen değere sabitlenmeli (daraltmak onay istemez)."

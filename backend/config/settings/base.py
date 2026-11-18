@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "apps.filling",
     "apps.sales",
     "apps.returns",
+    "apps.ledger",
     "apps.traceability",
     "apps.costing",
     "apps.purchasing",

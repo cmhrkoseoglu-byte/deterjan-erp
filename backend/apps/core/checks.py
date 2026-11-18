@@ -29,6 +29,7 @@ ENFORCED_APPS: frozenset[str] = frozenset(
         "golive",
         "hse",
         "inventory",
+        "ledger",
         "maintenance",
         "masterdata",
         "ops",
