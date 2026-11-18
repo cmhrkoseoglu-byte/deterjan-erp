@@ -2142,6 +2142,8 @@ değiştirme zorunlu, yalnızca admin):
 - **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=admin,yonetim` ve aynı yeniden başlatma. Bu
   rollerdeki kullanıcılar bir sonraki işleminde Güvenlik sayfasında kurulumu yapar; kontrol listesi
   madde 22 ve 25 o zaman yeniden işaretlenir.
+- **Sona erdi (2026-11-18):** 2FA yeniden zorunlu; bkz. "2026-11-18 — İki aşamalı doğrulama canlıda
+  yeniden zorunlu (yetki ekranından önce)".
 
 ## 2026-11-04 — Kodlama sistematiği
 
@@ -2911,3 +2913,18 @@ değiştirme zorunlu, yalnızca admin):
   basabilir; maskeli bir kopya sorun çıkarabilirdi. Tam numaranın tek yerde kalması ve her
   açılışın izi KVKK için yeterli görüldü. Kişisel hesap olmadan kişiye özel yetki, görev ayrılığı
   ve denetim kaydı (kim neyi yaptı) anlamını yitirir.
+
+## 2026-11-18 — İki aşamalı doğrulama canlıda yeniden zorunlu (yetki ekranından önce)
+
+- **Karar (CUMHUR, "Önce 2FA'yı birlikte açalım", zamanlama sorusuna "Evet, şimdi aç"):** admin ve
+  yönetim rollerinde iki aşamalı doğrulama canlıda yeniden zorunlu. Kişiye özel yetkiler planının
+  Paket B'si (yetki ekranı) canlıya alınmadan önceki koşul (plan karar 11, §8 madde 16) böylece
+  karşılandı. "2026-11-04 — İki aşamalı doğrulama canlıda yine geçici olarak zorunlu değil"
+  kararının yerine geçer.
+- **Uygulama (kod değişmedi):** canlı `.env.prod` içinde `OTP_REQUIRED_ROLES=admin,yonetim`, ardından
+  `scripts/prod-compose.sh up -d --wait`. Öncesinde `.env.prod` ve veritabanı yedeği alındı
+  (`20261118T170635`).
+- **Etkisi:** bu rollerdeki kullanıcılar bir sonraki işleminde Güvenlik sayfasına yönlendirilir ve
+  kurulumu bitirmeden başka işlem yapamaz; yönetim paneli girişi de kod ister. Öteki roller
+  değişmez. Kontrol listesi madde 22 ve 25 kurulumlar bitince işaretlenir.
+- **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=` (boş) ve aynı yeniden başlatma.
