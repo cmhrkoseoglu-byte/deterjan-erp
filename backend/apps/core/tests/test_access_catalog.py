@@ -19,7 +19,8 @@ FRONTEND_FILE = Path(__file__).resolve().parents[4] / "frontend" / "src" / "auth
 def test_section_counts_match_the_plan() -> None:
     kinds = [item.kind for item in access.sections()]
 
-    assert kinds.count(Kind.SECTION) + kinds.count(Kind.ACTION) == 76
+    # 76 + cari hesaplar (DECISIONS 2026-11-18): Müşteri carileri, Tedarikçi carileri.
+    assert kinds.count(Kind.SECTION) + kinds.count(Kind.ACTION) == 78
     assert kinds.count(Kind.OPEN_RECORDS) == 7
     assert kinds.count(Kind.SENSITIVE) == 2
 
@@ -37,6 +38,7 @@ def test_modules_in_menu_order() -> None:
         "returns",
         "traceability",
         "purchasing",
+        "ledger",
         "costing",
         "maintenance",
         "hse",

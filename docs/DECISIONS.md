@@ -2928,3 +2928,58 @@ değiştirme zorunlu, yalnızca admin):
   kurulumu bitirmeden başka işlem yapamaz; yönetim paneli girişi de kod ister. Öteki roller
   değişmez. Kontrol listesi madde 22 ve 25 kurulumlar bitince işaretlenir.
 - **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=` (boş) ve aynı yeniden başlatma.
+
+## 2026-11-18 — Cari hesaplar (tedarikçi ve müşteri paneli)
+
+- **İstek (CUMHUR):** "tedarikçi ve müşteri paneli yapalım cari hesapları kontrol edeceğimiz bir
+  ekran olsun." Plan: `docs/plan/cari-hesaplar.md` (CUMHUR onayı 2026-11-18, "Onaylıyorum").
+- **Sahibin kararları (kartlarla, hepsi önerilen seçenek):**
+  - **Bakiye kaynağı "Hareket + elle tahsilat":** sevk edilen sevkiyat müşteriyi borçlandırır,
+    kaydedilen mal kabul tedarikçiyi alacaklandırır (fiyatlarıyla); tahsilat, ödeme, iade
+    dekontu, borç/alacak dekontu ve açılış bakiyesi ekrandan elle girilir. Fatura muhasebe
+    programında kesilmeye devam eder (D-9, D-17).
+  - **Para birimi "Her birim ayrı":** TRY, EUR ve USD bakiyeleri ayrıdır; kur biliniyorsa
+    kayıtta saklanır.
+  - **Yetki "Yönetim + bölüm rolleri":** yeni modül Cari hesaplar; bölümler Müşteri carileri ve
+    Tedarikçi carileri (Görür, Değiştirir). Varsayılan paketler: yönetim ikisinde Görür +
+    Değiştirir, satın alma tedarikçide Görür + Değiştirir, sevkiyat müşteride Görür. Tutarlar
+    Fiyatları görür ister (sevkiyat tutarları görmez); Değiştirir'in ön koşulu Fiyatları görür.
+  - **Çıktı "Excel + PDF":** cari listesi ve ekstre Excel'i, mutabakat ekstresi A4 PDF'i
+    (Fiyatları görür ister; carinin adres ve vergi bilgisi iletişim bilgisini görebilene basılır).
+  - **KDV "KDV dahil":** malzeme kartına KDV oranı (0, 1, 10, 20; mevcut malzemeler 20), cari
+    kartına KDV muaf (ihracat müşterisi, ithalat tedarikçisi). Matrah ve KDV satır bazında
+    2 ondalığa yuvarlanır.
+  - **İade "Elle iade dekontu":** iade ekstrede bilgi satırıdır; dekont teslim alınmış iadeye
+    bağlanır, tutar sevkiyatın sipariş fiyatından (KDV dahil) önerilir.
+  - **Ek masraf "Yalnız maliyete":** mal kabul ek masrafları tedarikçi carisine yazılmaz.
+  - **Vade "Cari kartında vade günü":** vade = kayıt tarihi + vade günü (boş = peşin);
+    yaşlandırma vadesi gelmemiş / 1-30 / 31-60 / 61-90 / 90+ gün; alacaklar en eski borçtan
+    kapatılır (FIFO).
+- **Uygulama kararları (planın harfiyen söylemediği noktalar):**
+  - **Defter:** `ledger.LedgerEntry` stok defteri gibi değiştirilmez ve silinmez; her kaydın
+    `CH-` numarası vardır (Kodlama sistematiğinde "Cari hareket"). İptal bugün tarihli ters
+    kayıttır ve gerekçe ister; sevkiyat ve mal kabul kaydı iptal edilemez (belgeyi izler, fark
+    dekontla düzeltilir). İptal edilen kayıt ve iptali yaşlandırmaya girmez.
+  - **Eşitleme idempotent:** sevkiyat ve mal kabulün bugünkü tutarı defterdekiyle
+    karşılaştırılır, fark varsa kayıt yazılır. İlk kayıt belge tarihli (sevkte sevk günü, mal
+    kabulde kabul tarihi), sonraki düzeltmeler düzeltme günü tarihlidir ("Düzeltme: ..."). Olay
+    dinleyicileri (`shipment.dispatched`, `goods_receipt.posted`, `goods_receipt.cost_changed`)
+    ve günlük kontrol eşitler; canlıya alışta geçmiş belgeler `manage.py sync_ledger` ile bir kez
+    yazılır. Sevk hareketinin sonradan ters kaydı ticari tutarı değiştirmez.
+  - **Fiyatı eksik satır** cariye yazılmaz ve "Tutarı eksik" listesinde görünür. Sipariş onaydan
+    sonra değişmediğinden sevkiyat satırının fiyatı cari ekranından girilir (`ShipmentLinePrice`,
+    yalnız cari için, denetimli); mal kabulde mevcut "Fiyat ve masraflar" paneli kullanılır.
+  - **Elle kayıt kuralları:** tarih bugünden ileri olamaz; tutar sıfırdan büyük ve en fazla 2
+    ondalık; tahsilat ve ödemede ödeme şekli (nakit, havale/EFT, çek, senet, kredi kartı,
+    mahsup, diğer), dekontta açıklama zorunlu; TL kayıtta kur boşaltılır. Pasif cariye kayıt
+    girilebilir (eski alacağın tahsilatı).
+  - **Denetim günlüğü:** cari hareket ve cari fiyatı Fiyatları görür'e, müşteri carisinin kaydı
+    ayrıca Müşteri carileri'ne, tedarikçininki Tedarikçi carileri'ne bağlıdır. Bugün günlüğü
+    okuyanlarda (admin, yönetim) değişiklik yoktur.
+  - **Yetki sözleşmesi:** yeni uç noktalar, iki model, CH belge türü ve iki çıktı (Cari hesap
+    ekstresi FR-MUH-001 önerisi, Cari listesi LS-MUH-001 önerisi) izin listesine "plan dışı yeni
+    model / uç nokta: cari hesaplar" kaydı olarak bağlandı; mal kabul cariye yazıldığından
+    denetim sondasının tutar alanı listesine cari hareketin para birimi ve kuru eklendi (§8
+    madde 7-8 kaydının genişletilmesi, bu kararla).
+- **Kapsam dışı:** fatura ve e-Fatura, kur farkı hesabı, çek/senet portföyü, banka entegrasyonu,
+  muhasebeye aktarım (Faz 5.1; bu defter aktarımın kaynağı olabilir).

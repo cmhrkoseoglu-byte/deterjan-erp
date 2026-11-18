@@ -101,8 +101,8 @@ MANUAL_RELEASE = register_section(
 OPEN_RECORDS = register_open_records(
     "inventory",
     affects=(
-        "Lot sayfasındaki, satın alma sipariş sayfasındaki ve izlenebilirlikteki mal kabul "
-        "bağlantıları düz metin olur.",
+        "Lot sayfasındaki, satın alma sipariş sayfasındaki, izlenebilirlikteki ve cari "
+        "ekstresindeki mal kabul bağlantıları düz metin olur.",
     ),
 )
 

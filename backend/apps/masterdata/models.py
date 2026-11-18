@@ -3,12 +3,17 @@
 Bu dosyada iş mantığı yoktur; yazma işlemleri `services.py` üzerinden yapılır.
 """
 
+from decimal import Decimal
+
 from django.db import models
 from django.db.models import Q, Value
 from django.db.models.functions import LPad
 
 from apps.core.models import BaseModel, MasterDataModel
 from apps.masterdata.fields import CodeField
+
+# Türkiye'de uygulanan KDV oranları (%).
+VAT_RATES = (Decimal("0"), Decimal("1"), Decimal("10"), Decimal("20"))
 
 
 class UnitOfMeasure(MasterDataModel):
@@ -112,6 +117,15 @@ class Material(MasterDataModel):
     requires_incoming_qc = models.BooleanField("giriş kontrolü gerekli", default=True)
     is_hazardous = models.BooleanField("tehlikeli madde", default=False)
     storage_notes = models.TextField("depolama notu", blank=True)
+    # Cari hesaplar (docs/plan/cari-hesaplar.md): sevkiyat ve mal kabul tutarları bu oranla KDV
+    # dahil cariye yazılır; KDV muaf caride oran uygulanmaz.
+    vat_rate = models.DecimalField(
+        "KDV oranı (%)",
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("20"),
+        help_text="0, 1, 10 ya da 20",
+    )
 
     class Meta:
         verbose_name = "malzeme"
@@ -127,6 +141,11 @@ class Material(MasterDataModel):
                 condition=Q(min_stock__isnull=True) | Q(min_stock__gte=0),
                 name="masterdata_material_min_stock_non_negative",
                 violation_error_message="Minimum stok negatif olamaz.",
+            ),
+            models.CheckConstraint(
+                condition=Q(vat_rate__in=VAT_RATES),
+                name="masterdata_material_vat_rate_valid",
+                violation_error_message="KDV oranı 0, 1, 10 ya da 20 olmalıdır.",
             ),
             # GTIN 14 haneli normal biçimde tektir: 8690000000012 ile 08690000000012 aynı GTIN'dir.
             # Ürün ve koli GTIN'leri arasındaki tekillik servisle denetlenir.
@@ -327,6 +346,12 @@ class BusinessPartner(MasterDataModel):
     contact_person = models.CharField("yetkili kişi", max_length=128, blank=True)
     country_code = models.CharField(
         "ülke", max_length=2, default="TR", help_text="ISO 3166-1 alpha-2 (TR, DE, IQ …)"
+    )
+    # Cari hesaplar: vade = belge tarihi + vade günü (boş = peşin); KDV muaf caride (ihracat
+    # müşterisi, ithalat tedarikçisi) sevkiyat ve mal kabul KDV'siz yazılır.
+    payment_term_days = models.PositiveIntegerField("vade (gün)", null=True, blank=True)
+    vat_exempt = models.BooleanField(
+        "KDV muaf", default=False, help_text="İhracat müşterisi / ithalat tedarikçisi"
     )
 
     class Meta:

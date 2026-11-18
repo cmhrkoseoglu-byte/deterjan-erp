@@ -115,6 +115,7 @@ export const tr = {
     returns: "İadeler",
     traceability: "İzlenebilirlik",
     purchasing: "Satın alma",
+    ledger: "Cari hesaplar",
     costing: "Maliyet",
     maintenance: "Bakım",
     hse: "İSG ve çevre",

@@ -166,6 +166,7 @@ class MaterialSerializer(FormerCodesMixin, serializers.ModelSerializer):
             "requires_incoming_qc",
             "is_hazardous",
             "storage_notes",
+            "vat_rate",
             *AUDIT_FIELDS,
         ]
         read_only_fields = AUDIT_FIELDS
@@ -257,6 +258,8 @@ PARTNER_FIELDS = [
     "email",
     "contact_person",
     "country_code",
+    "payment_term_days",
+    "vat_exempt",
     *AUDIT_FIELDS,
 ]
 

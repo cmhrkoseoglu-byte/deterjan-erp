@@ -638,7 +638,8 @@ def test_warning_open_records_closed_lists_effects(admin, make_user):
     assert warning.text == (
         f"{module} kayıtları bu kişi için kapanıyor. Okumaya devam ettiği bölümler: Mal kabul, "
         "Sayım düzeltme. Etkilenebilecek başka ekranlar: Lot sayfasındaki, satın alma sipariş "
-        "sayfasındaki ve izlenebilirlikteki mal kabul bağlantıları düz metin olur."
+        "sayfasındaki, izlenebilirlikteki ve cari ekstresindeki mal kabul bağlantıları düz metin "
+        "olur."
     )
 
 

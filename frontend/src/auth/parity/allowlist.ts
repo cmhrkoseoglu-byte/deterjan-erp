@@ -56,6 +56,29 @@ function cells(
   );
 }
 
+// Cari hesaplar (DECISIONS 2026-11-18): personaların varsayılan paketlere göre grupları.
+const LEDGER_ITEM = "yeni sayfa: Cari hesaplar (DECISIONS 2026-11-18)";
+const LEDGER_ALL = ["admin", "superuser", "yonetim"];
+const LEDGER_CUSTOMER = ["sevkiyat", "depo+sevkiyat"];
+const LEDGER_SUPPLIER = ["satin_alma"];
+const LEDGER_DENIED = ["inactive", "no_role", "planlama", "depo", "uretim", "laboratuvar", "dolum"];
+
+/** Yeni durumun hücreleri: değer (metin; JSON dizisi ya da true/false dahil) → personalar. */
+function ledgerCells(
+  section: string,
+  name: string,
+  byValue: Readonly<Record<string, readonly string[]>>,
+): Allowed[] {
+  return Object.entries(byValue).flatMap(([value, personas]) => {
+    const parsed: unknown =
+      value.startsWith("[") || value === "true" || value === "false" ? JSON.parse(value) : value;
+    return cells(
+      { item: LEDGER_ITEM, section, step: 8, old: MISSING, new: parsed },
+      { [name]: personas },
+    );
+  });
+}
+
 export const ALLOWED: readonly Allowed[] = [
   // 8. adım — Rolsüz kullanıcı "İSG ve çevre" ile "Panolar ve raporlar" menülerini ve sayfalarını
   // (İndirmeler hariç) ve Görevlerim'deki "Arıza bildir" düğmesini görmez; üst bandı nötr olur.
@@ -244,6 +267,37 @@ export const ALLOWED: readonly Allowed[] = [
       ],
     },
   ),
+
+  // Plan dışı yeni sayfa: Cari hesaplar (DECISIONS 2026-11-18). Müşteri carileri yönetim ve
+  // sevkiyatta, tedarikçi carileri yönetim ve satın almada; cari ekstresi sekmenin bölümüyle.
+  ...ledgerCells("menu", "ledger", {
+    true: [...LEDGER_ALL, ...LEDGER_CUSTOMER, ...LEDGER_SUPPLIER],
+    false: ["anonymous", ...LEDGER_DENIED],
+  }),
+  ...ledgerCells("pageDefaults", "/cari-hesaplar", {
+    "/cari-hesaplar/musteriler": [...LEDGER_ALL, ...LEDGER_CUSTOMER],
+    "/cari-hesaplar/tedarikciler": LEDGER_SUPPLIER,
+    login: ["anonymous"],
+    forbidden: LEDGER_DENIED,
+  }),
+  ...ledgerCells("pageTabs", "/cari-hesaplar", {
+    '["/cari-hesaplar/musteriler","/cari-hesaplar/tedarikciler"]': LEDGER_ALL,
+    '["/cari-hesaplar/musteriler"]': LEDGER_CUSTOMER,
+    '["/cari-hesaplar/tedarikciler"]': LEDGER_SUPPLIER,
+    login: ["anonymous"],
+    forbidden: LEDGER_DENIED,
+  }),
+  ...ledgerCells("routes", "/cari-hesaplar/:tab?", {
+    open: [...LEDGER_ALL, ...LEDGER_CUSTOMER, ...LEDGER_SUPPLIER],
+    login: ["anonymous"],
+    forbidden: LEDGER_DENIED,
+  }),
+  // Sondada sekme parametresi müşteri carileridir: satın alma o sayfayı açamaz.
+  ...ledgerCells("routes", "/cari-hesaplar/:tab/:partnerId", {
+    open: [...LEDGER_ALL, ...LEDGER_CUSTOMER],
+    login: ["anonymous"],
+    forbidden: [...LEDGER_DENIED, ...LEDGER_SUPPLIER],
+  }),
 ];
 
 function globToRegExp(pattern: string): RegExp {
@@ -338,6 +392,8 @@ export const ITEM_STEPS: Readonly<Record<number, readonly number[]>> = {
 /** Planın adıyla eklediği ekranlar → açıldıkları adımlar (kapalı liste; plan §6, §10). */
 export const PLANNED_ITEMS: Readonly<Record<string, readonly number[]>> = {
   "yeni sayfa: Sistem > Rol yetkileri sekmesi (plan §6.2)": [9],
+  // Plan dışı; sahibin onayladığı cari hesaplar planına dayanır (DECISIONS 2026-11-18).
+  "yeni sayfa: Cari hesaplar (DECISIONS 2026-11-18)": [8],
 };
 
 type FrozenSections = Readonly<

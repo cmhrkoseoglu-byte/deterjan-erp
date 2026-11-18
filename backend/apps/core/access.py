@@ -814,7 +814,8 @@ PRICES = register_section(
     kind=Kind.SENSITIVE,
     help={
         VIEW: "Alış fiyatları: mal kabul fiyat ve masrafları, satın alma tutarları ve sipariş "
-        "PDF'i. Satış fiyatları bu hakka bağlı değildir."
+        "PDF'i; cari hesap tutarları ve ekstre PDF'i. Satış siparişindeki fiyatlar bu hakka bağlı "
+        "değildir."
     },
 )
 COSTS = register_section(

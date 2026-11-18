@@ -59,6 +59,8 @@ docker compose exec -T backend python manage.py export_access --format=markdown 
 | Satın alma | Beklenen teslimatlar ve siparişten mal kabul |  |  | G D |  | G D |  |  |  |  | G D |  |
 | Satın alma | Tedarikçi performansı |  |  | G |  |  |  |  |  |  | G |  |
 | Satın alma | Satın alma ayarları |  |  | G D |  |  |  |  |  |  |  |  |
+| Cari hesaplar | Müşteri carileri |  |  | G D |  |  |  |  |  | G |  |  |
+| Cari hesaplar | Tedarikçi carileri |  |  | G D |  |  |  |  |  |  | G D |  |
 | Maliyet | Lot maliyetleri ve maliyet raporları |  |  | G D |  |  |  |  |  |  |  |  |
 | Maliyet | Gider oranları ve standart maliyetler |  |  | G D |  |  |  |  |  |  |  |  |
 | Maliyet | Personel maliyeti |  |  | G D |  |  |  |  |  |  |  | yalnız Yönetim (KVKK) |

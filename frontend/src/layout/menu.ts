@@ -13,6 +13,7 @@ import {
   IconRoute,
   IconServer,
   IconPackages,
+  IconReportMoney,
   IconBottle,
   IconSettings,
   IconShieldCheck,
@@ -144,6 +145,15 @@ export const MENU: readonly MenuItem[] = [
     icon: IconShoppingCart,
     // Depo siparişleri (tutarsız) ve beklenen teslimatları görür; planlama ve üretim talep açar.
     visible: module("purchasing"),
+    phase: 4,
+  },
+  {
+    key: "ledger",
+    label: tr.menu.ledger,
+    path: "/cari-hesaplar",
+    icon: IconReportMoney,
+    // Müşteri carileri yönetim ve sevkiyatta, tedarikçi carileri yönetim ve satın almada.
+    visible: module("ledger"),
     phase: 4,
   },
   {

@@ -85,7 +85,8 @@ ACTIVE_FILE, REMOVED_FILE = "etkin.png", "kaldirilmis.png"
 # Bugünkü kayıt defterleri. Yeni tür eklenince sayı ve sonda kaydı (BUILDERS) birlikte güncellenir.
 RECORD_TYPE_COUNT = 19
 ATTACHMENT_TARGET_COUNT = 8
-CODE_TYPE_COUNT = 32
+# Cari hesaplar (DECISIONS 2026-11-18): belge türü CH (cari hareket).
+CODE_TYPE_COUNT = 33
 # `visible` satır kuralı olan türler: bildiren kendi kaydını görür (`created_by`).
 ROW_RULE_TYPES = frozenset({"golive.problemreport", "hse.incident"})
 # Satır kurallarının (yorumu yazan düzenler, eki yükleyen ya da admin kaldırır, kaldırılmış

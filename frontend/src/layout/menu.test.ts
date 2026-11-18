@@ -60,6 +60,7 @@ describe("visibleMenu", () => {
       "sales",
       "returns",
       "purchasing",
+      "ledger",
       "hse",
       "reporting",
       "golive",

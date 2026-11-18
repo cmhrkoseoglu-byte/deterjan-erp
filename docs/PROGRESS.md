@@ -2044,3 +2044,28 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
 - **Canlıya almadan önce:** admin ve yönetimde iki aşamalı doğrulama yeniden zorunlu olmalı
   (plan §8 madde 16).
 - **Sırada:** Paket B'nin canlıya alınması (sahibin onayıyla); sonra Paket C (Faz B, ayrı onay).
+
+## 2026-11-18 — Cari hesaplar (tedarikçi ve müşteri paneli)
+
+- Plan `docs/plan/cari-hesaplar.md`; sahibin kararları ve uygulama kararları DECISIONS'ta
+  (2026-11-18). Dal `claude/cari-hesap-paneli` (main 62a0d93'ten).
+- **1. adım (ana veriler):** malzemeye KDV oranı (0/1/10/20, varsayılan 20), tedarikçi ve
+  müşteriye vade (gün) ve KDV muaf; kart formları ve Excel içe aktarma (göç masterdata 0009).
+- **2. adım (defter):** yeni `ledger` modülü; değiştirilmeyen cari hareket defteri (`CH-`),
+  sevkiyat ve mal kabulün idempotent eşitlenmesi (olaylar, günlük kontrol, `sync_ledger`),
+  elle kayıt, ters kayıtla iptal, fiyatı eksik sevkiyat satırına cari fiyatı; yetki bölümleri
+  ve rol paketleri, denetim günlüğü kuralları; `assert_ledger_invariants()` (göç ledger 0001).
+- **3-4. adım (okuma, API, çıktılar):** `/api/v1/ledger/customers|suppliers/`: süzgeçli sayfalı
+  liste ve toplamlar, özet ve yaşlandırma, devreden bakiyeli ekstre, elle kayıt, iptal, fiyatı
+  eksik belgeler, iade dekontu önerisi; ekstre ve liste Excel'i, mutabakat PDF'i (doküman
+  kontrol bandıyla). Tutarlar Fiyatları görür'e bağlı.
+- **5. adım (ekran):** menüde Cari hesaplar (`/cari-hesaplar`): Müşteriler / Tedarikçiler
+  sekmeleri, cari ekstre sayfası (`/cari-hesaplar/<sekme>/<id>`), tahsilat/ödeme ve dekont
+  girişi, iptal, fiyat girişi; yönetim, satın alma ve sevkiyat kılavuzları.
+- **Canlıya alırken:** göçlerden sonra bir kez `python manage.py sync_ledger` (geçmiş sevkiyat
+  ve mal kabuller cariye yazılır); açılış bakiyeleri ekrandan "Dekont / açılış" ile girilir.
+- **Yetki sözleşmesi:** yeni model, uç nokta, belge türü (CH), çıktılar ve ön yüz sayfası izin
+  listelerinde "plan dışı yeni ... : cari hesaplar (DECISIONS 2026-11-18)" kaydıyla bağlandı;
+  hücreler gözlenen değere sabitlendi.
+- **Doğrulama:** backend 2783, ön yüz 710 test yeşil; mypy, ruff, OpenAPI şeması (uyarısız),
+  göç denetimi, `access.gen.ts`, ESLint, Prettier, tsc ve build temiz.

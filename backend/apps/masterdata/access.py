@@ -56,6 +56,7 @@ OPEN_RECORDS = register_open_records(
     affects=(
         "Sevkiyattaki ve öteki ekranlardaki müşteri ve tedarikçi kartları, Satış siparişleri: "
         "Görür'ü olmayan kişide sade görünür (vergi, adres ve iletişim bilgileri olmadan).",
+        "Cari hesap ekstresi PDF'inde carinin adresi ve vergi bilgileri basılmaz.",
     ),
 )
 register_field_openers("masterdata.customer.contact", CARDS)

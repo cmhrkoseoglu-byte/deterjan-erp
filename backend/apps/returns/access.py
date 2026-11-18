@@ -42,6 +42,7 @@ OPEN_RECORDS = register_open_records(
         "İade yorumlarında bu kişiden bahsedilemez, bahsedilse de bildirim almaz.",
         "Görevlerdeki, bildirimlerdeki ve aramadaki iade bağlantıları değişmez: bunlar zaten "
         "İadeler'de Görür ister.",
+        "Cari ekstresindeki iade bağlantıları düz metin olur.",
     ),
 )
 

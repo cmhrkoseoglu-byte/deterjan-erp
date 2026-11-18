@@ -49,6 +49,8 @@ import { ShipmentPickPage } from "./modules/sales/PickPage";
 import { SalesPage } from "./modules/sales/SalesPage";
 import { PurchaseOrderPage } from "./modules/purchasing/OrderPage";
 import { PurchasingPage } from "./modules/purchasing/PurchasingPage";
+import { LedgerPage } from "./modules/ledger/LedgerPage";
+import { PartnerLedgerPage } from "./modules/ledger/PartnerLedgerPage";
 import { ShipmentPage } from "./modules/sales/ShipmentPage";
 import { SecurityPage } from "./modules/security/SecurityPage";
 import { UserAccessPage } from "./modules/system/access/UserAccessPage";
@@ -126,6 +128,12 @@ const pageRoutes: RouteObject[] = [
     element: guarded("purchaseOrder", <PurchaseOrderPage />),
   },
   { path: "satin-alma/:tab?", element: guarded("purchasing", <PurchasingPage />) },
+  // Cari hesaplar: sekmeler kendi bölümleriyle; tutarlar backend'de Fiyatları görür ile süzülür.
+  {
+    path: "cari-hesaplar/:tab/:partnerId",
+    element: guarded("ledgerPartner", <PartnerLedgerPage />),
+  },
+  { path: "cari-hesaplar/:tab?", element: guarded("ledger", <LedgerPage />) },
   // İzlenebilirlik ve geri çağırma.
   { path: "izlenebilirlik/:tab?", element: guarded("traceability", <TracePage />) },
   // Maliyet: lot maliyeti kendi bölümüyle; tutarlar backend'de de yetkiyle süzülür.
@@ -177,6 +185,7 @@ const IMPLEMENTED = new Set([
   "traceability",
   "costing",
   "purchasing",
+  "ledger",
   "maintenance",
   "hse",
   "personnel",
