@@ -2983,3 +2983,39 @@ değiştirme zorunlu, yalnızca admin):
     madde 7-8 kaydının genişletilmesi, bu kararla).
 - **Kapsam dışı:** fatura ve e-Fatura, kur farkı hesabı, çek/senet portföyü, banka entegrasyonu,
   muhasebeye aktarım (Faz 5.1; bu defter aktarımın kaynağı olabilir).
+
+## 2026-11-19 — Müşteri sipariş takibi (iç ekran ve müşteri portalı)
+
+- **İstek (CUMHUR):** "Müşterilerin siparişlerini takip edeceği ekranı tasarlayalım." Plan:
+  `docs/plan/musteri-siparis-takibi.md` (CUMHUR onayı 2026-11-19, "Onaylıyorum"). Uygulamaya geçmek
+  ayrı onayla; her adımdan önce kısa planı onaya sunulur.
+- **Sahibin kararları (kartlarla):**
+  - **Sıra "Önce iç ekran, sonra portal":** Paket A çalışanlar için müşteri bazında sipariş takibi;
+    Paket B müşterinin kendi hesabıyla girdiği portal, Paket A canlıya alındıktan sonra ayrı onayla.
+  - **Müşterinin gördükleri:** sipariş durumu, sipariş / sevk edilen / kalan miktar, termin; ayrıca
+    irsaliye PDF'i, fiyat ve tutar, cari bakiye ve ekstre. Lot no ve SKT gösterilmez.
+  - **Giriş "Ayrı müşteri hesabı + iki aşamalı doğrulama zorunlu":** portal hesabı tek bir müşteri
+    kartına bağlıdır, rol taşımaz, yalnız giriş ve portal uç noktalarını açar.
+  - **Portal irsaliyesinde şoför TC kimlik no maskeli** (ad soyad ve plaka görünür); her açılış
+    denetim günlüğüne yazılır.
+  - **Termin:** siparişe "Termin" (sözü verilen teslim tarihi) eklenir; onayda zorunlu, onaydan sonra
+    gerekçeyle değişir. Gecikme termine göre; termin boşsa istenen teslim tarihine göre.
+  - **Portalda sipariş talebi:** müşteri fiyatsız talep girer (tüm aktif mamuller); sevkiyat
+    siparişe çevirir (fiyat ve termin taslakta girilir) ya da gerekçeyle reddeder.
+  - **Portal hesabını yalnız admin açar ve kapatır**; bir müşteriye birden çok kişi açılabilir;
+    portal kullanıcısı bağlı müşterinin tüm siparişlerini, irsaliyelerini ve carisini görür.
+  - **Bildirim:** iç geciken teslim uyarısı (sevkiyat ve yönetim, günlük); müşteriye e-posta
+    "sipariş onaylandı" ve "sevk edildi", alıcılar e-postayı kapatmamış portal kullanıcıları.
+- **Sahibin onayladığı ek kurallar ("Hepsi uygun"):** siparişin iç notları, satır notu,
+  rezervasyon, lot ve oluşturan/onaylayan kişi müşteriye görünmez; taslak siparişler portalda
+  görünmez; geciken sipariş yalnız ilk gün bildirilir, sonra listede kalır; e-postalarda fiyat ve
+  şoför bilgisi yazılmaz, irsaliye eklenmez; portal kullanıcısının şifresini admin sıfırlar;
+  hesabın bağlı olduğu müşteri sonradan değiştirilemez.
+- **CLAUDE.md değişikliği (onaylandı, B1 adımında yapılır):** §3 modül tablosuna `portal` (yalnız
+  `core`, `masterdata`, `sales` ve `ledger`'a bağlı; kimse `portal`'a bağımlı olmaz); §5'e "Portal
+  kullanıcısı rol taşımaz; yalnızca giriş ve portal uç noktalarını açar, başka her istek reddedilir."
+- **Sonra sorulacaklar:** e-posta gönderen hesabı ve SMTP (B4 öncesi), portal alan adı ve aydınlatma
+  metni, ilk portal müşterileri (B6 öncesi).
+- **Kapsam dışı:** müşteriye özel fiyat listesi, portalda stok ya da teslim vaadi, lot/SKT ve analiz
+  sertifikası, iade talebi, online ödeme, fatura, SMS/WhatsApp, kendi kendine kayıt ve e-postayla
+  şifre sıfırlama.
