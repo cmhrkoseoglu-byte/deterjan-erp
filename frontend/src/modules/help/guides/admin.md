@@ -1,6 +1,6 @@
 # Sistem yöneticisi
 
-Sistem yöneticisi; kullanıcıları ve rollerini yönetir, kullanıcıların gönderdiği sorun bildirimlerini çözer, kodlama sistematiğini (kod, belge ve lot numarası biçimleri, çıktıların doküman kodu, GS1), etiket yazıcılarını ve etiket ayarlarını tutar. Yönetici her menüyü görür.
+Sistem yöneticisi; kullanıcıları, rollerini ve kişiye özel yetkilerini yönetir, kullanıcıların gönderdiği sorun bildirimlerini çözer, kodlama sistematiğini (kod, belge ve lot numarası biçimleri, çıktıların doküman kodu, GS1), etiket yazıcılarını ve etiket ayarlarını tutar. Yönetici her menüyü görür.
 
 ## Kullanıcı açma ve rol verme
 
@@ -8,7 +8,7 @@ Kullanıcılar **Sistem > Kullanıcılar** ekranında yönetilir. Bu ekranı yal
 
 1. **Yeni kullanıcı**'ya basın.
 2. **Ad soyad**'ı yazın. **Kullanıcı adı** ad soyaddan önerilir (Ahmet Yılmaz → ahmet.yilmaz); isterseniz değiştirin. Kullanıcı adı küçük harf, rakam, nokta, alt çizgi ve tireden oluşur, Türkçe karakter içermez ve sonradan değiştirilemez.
-3. Varsa telefonu ve e-postayı girin, kişinin **Roller**ini işaretleyin. Bir kişiye birden fazla rol verilebilir.
+3. Varsa telefonu ve e-postayı girin, kişinin **Roller**ini işaretleyin. Bir kişiye birden fazla rol verilebilir. İlk roller burada verilir; sonraki değişiklikler kişinin **Yetkiler** sayfasından yapılır.
 4. **Hesabı aç**'a basın. Sistem bir **geçici şifre** üretir ve **yalnızca bir kez** gösterir. **Kopyala** ile alın ya da not edin ve kişiye yüz yüze ya da güvenli bir yoldan iletin.
 5. Kişi geçici şifreyle girince önce kendi şifresini belirler; o zamana kadar başka ekran açılmaz. Rolü gerektiriyorsa (sistem yöneticisi, yönetim) ardından iki aşamalı doğrulamayı kurar.
 
@@ -16,15 +16,77 @@ Kullanıcılar **Sistem > Kullanıcılar** ekranında yönetilir. Bu ekranı yal
 
 > Kullanıcı silinmez. İşten ayrılan kişiyi satırdaki **⋯ > Pasife al** ile pasife alın: giriş yapamaz, açık oturumu kapanır, geçmiş kayıtlarda adı kalır. Gerekirse **⋯ > Etkinleştir** ile geri açın.
 
-- **Düzenle**: ad soyad, telefon, e-posta ve rolleri değiştirir. Kendi sistem yöneticisi rolünüzü kaldıramazsınız; sistemde her zaman en az bir aktif yönetici kalır.
+- **Düzenle**: ad soyad, telefon ve e-postayı değiştirir. Roller pencerede yalnızca görünür; değiştirmek için **Rolleri ve yetkileri değiştir**'e basın (kişinin Yetkiler sayfası açılır, aşağıda). Kendi sistem yöneticisi rolünüzü kaldıramazsınız; sistemde her zaman en az bir aktif yönetici kalır.
 - **⋯ > Şifre sıfırla**: şifresini unutan kişiye yeni geçici şifre üretir (bir kez gösterilir). Kişinin açık oturumu kapanır, hesabı kilitliyse kilit açılır; kişi girişte yeniden kendi şifresini belirler. Kendi şifrenizi **Güvenlik** sayfasından değiştirirsiniz.
 - **Kilidi aç**: çok sayıda hatalı deneme yüzünden kilitlenen hesabı hemen açar.
 - **2FA sıfırla**: telefonunu kaybeden kişinin iki aşamalı doğrulamasını sıfırlar; kişi sonraki girişte yeniden kurar.
 - **Geçici şifre** rozeti kişinin henüz kendi şifresini belirlemediğini gösterir.
 - **Personel kartı**: çalışanın sicil no, birim, görev, kimlik, iletişim ve mezuniyet bilgileri ile özlük belgeleri **Personel** ekranındaki kartındadır; aylık puantaj, ücretler, bordro ve tatil takvimi aynı bölümün sekmelerindedir (Yönetim kılavuzu, "Personel", "Puantaj", "Bordro" ve "Personel maliyeti"). Hesabı açtıktan sonra kişinin kartında **Sistem kullanıcısı** olarak bu hesabı seçin. İşten ayrılan kişinin hesabını pasife alırken kartına da **İşten ayrıldı**'yı kaydedin.
-- Rollerin kendisi sabittir ve `seed_roles` komutuyla oluşur; eklenmez ya da silinmez.
+- Rollerin kendisi sabittir ve `seed_roles` komutuyla oluşur; eklenmez ya da silinmez. Rollerin varsayılan yetki paketleri de sabittir: **Sistem > Rol yetkileri**'nde salt okunur görünür ve yalnızca yeni sürümle değişir.
 - Bu ekrandaki her değişiklik denetim günlüğüne yazılır; şifreler günlüğe yazılmaz.
-- Yönetim paneli (/admin/) yalnızca iç ağdan açılır; kullanıcı işleri için gerekmez. Panelde GTIN'ler, ülke kodu, birimin UN/ECE kodu ve sembolü salt okunurdur; bunları uygulamadan girin. Biçimi kodlama sistematiğinden ayarlanan ana veri türlerinde (malzeme, malzeme kategorisi, depo, lokasyon, ekipman, tedarikçi, müşteri) kod salt okunurdur ve panelden yeni kayıt açılmaz. Kullanılan birimin türü ve katsayısı panelden de uygulamadan da değiştirilemez.
+- Yönetim paneli (/admin/) yalnızca sunucunun kendisinden ve VPN'den açılır; kullanıcı işleri için gerekmez. Panelde kullanıcının rolleri, süper kullanıcı ve panele giriş işaretleri salt okunurdur; roller uygulamadaki Yetkiler sayfasından değişir. Panelde GTIN'ler, ülke kodu, birimin UN/ECE kodu ve sembolü salt okunurdur; bunları uygulamadan girin. Biçimi kodlama sistematiğinden ayarlanan ana veri türlerinde (malzeme, malzeme kategorisi, depo, lokasyon, ekipman, tedarikçi, müşteri) kod salt okunurdur ve panelden yeni kayıt açılmaz. Kullanılan birimin türü ve katsayısı panelden de uygulamadan da değiştirilemez.
+
+## Kullanıcı yetkileri
+
+Her rolün varsayılan bir yetki paketi vardır. Bir kişiye paketin dışında yetki ekleyebilir ya da paketteki bir yetkiyi o kişi için kaldırabilirsiniz. Kişinin yetkileri, **Sistem > Kullanıcılar** listesinde satırdaki **Yetkiler** düğmesiyle ya da kişinin adına basınca açılan sayfadadır.
+
+![Kullanıcının yetkiler sayfası](/kilavuz/admin-yetkiler.jpg)
+
+Sayfanın bölümleri:
+
+- **Roller**: kişinin rolleri. Rol değişikliği yetkilerle birlikte, aynı kayıtta ve gerekçeyle kaydedilir.
+- **Hassas veriler**: **Fiyatları görür** ve **Maliyetleri görür**.
+- **Modül yetkileri**: her modül açılıp kapanan bir kutudur. Satırlar modülün bölümleri, sütunlar **Görür**, **Değiştirir** ve **Onaylar**'dır. Modülün başlığında modülün kişinin menüsünde olup olmadığı (**Menüde** ya da **Menüde değil**) ve varsa kaç kişiye özel ayar olduğu yazar.
+
+Hücrenin durumu simgesinden ve yazısından anlaşılır; üzerine gelince ayrıntısı çıkar:
+
+- **Rolden** (mavi onay işareti): yetki kişinin rolünden gelir; ipucunda hangi rol olduğu yazar.
+- **Eklendi** (yeşil artı): bu kişiye özel verildi.
+- **Kaldırıldı** (kırmızı eksi): rolde var ama bu kişi için kaldırıldı.
+- **Verilmedi** (boş): kişide yok.
+- **Kilitli** (kilit): buradan değişmez. Nedeni ipucunda yazar: herkese ya da rolü olan herkese açıktır, yalnızca sistem yöneticisindedir ya da KVKK yüzünden yalnızca yönetim rolündekilere verilebilir.
+- **—**: bölümde bu düzey yok.
+
+Hücreye basınca durumu tersine döner; ayarı olan hücreye yeniden basınca rol varsayılanına döner. Kaydedilmemiş hücrenin köşesinde sarı nokta görünür. Turuncu uyarı işareti ayarın etkisiz olduğunu gösterir (ör. rol zaten veriyor).
+
+- **Değiştirir** ya da **Onaylar** açılınca **Görür** de açılır; **Görür** kapanınca öteki düzeyler de kapanır.
+- Bir yetkinin ön koşulu eksikse o da verilir ve satırın altında yazar, ör. "Satın alma › Satın alma siparişleri: Değiştirir için Fiyatları görür de verildi."
+- **Onaylar**, **Değiştirir**'den ayrıdır: kaydı giren ile onaylayan ayrı kişiler olabilir.
+- Personel modülünün yetkileri (kartlar, puantaj, ücretler, bordro, ayarlar), personel maliyeti, olaylar ve kazalar ile denetim günlüğü yalnızca yönetim rolündeki kullanıcılara verilebilir (KVKK). Yönetim rolü kaldırılınca bu eklemeler biter.
+- Bazı modüllerin kayıtlarını giriş yapan herkes okuyabilir. Bu modüllerin son satırı **Açık kayıtlar**'dır: **Herkes okur** ya da **Bu kişi için kapalı**. Bu satır bir kişi için yalnızca kapatılır ya da yeniden açılır. Kapatınca satırın altında kişinin bu kayıtları hangi bölümlerden okumaya devam ettiği yazar.
+
+Toplu işlemler:
+
+- Modül başlığındaki **Görür**, **Değiştirir** ve **Onaylar** kutuları o sütunu modülün bütün bölümlerinde açar ya da kapatır.
+- Başlıktaki **⋯** menüsünde **Rol varsayılanına dön**, **Yalnız görsün** ve **Modüldeki bütün yetkileri kaldır** vardır. **Yalnız görsün**, kişinin yetkisi olan bölümlerde Görür'ü bırakır, Değiştirir ve Onaylar'ı kapatır. **Modüldeki bütün yetkileri kaldır** Açık kayıtlar satırını değiştirmez; o satır ayrıca kapatılır.
+- Sayfanın üstünde **Bölüm ara** kutusu, **Yalnız kişiye özel ayarlar** anahtarı ve **Tümünü rol varsayılanına döndür** ile **Etkisiz ayarları temizle** düğmeleri vardır.
+
+**Kaydetme**
+
+1. Değişiklik yaptıkça altta kaydedilmemiş değişiklik sayısı çıkar. **Kaydet…**'e basın.
+2. **Değişikliklerin özeti** penceresinde rol değişikliklerini, verilecek ve kaldırılacak yetkileri, menüye eklenecek ve menüden kalkacak modülleri, biten kişiye özel ayarları ve **Uyarılar**'ı okuyun. Uyarılar örneğin bir işin görevini alacak kimsenin kalmadığını, görev ayrılığını ya da hassas yetki verilen kişinin iki aşamalı doğrulamasının kurulu olmadığını söyler. Uyarılar kaydı engellemez.
+3. **Değişiklik notu**'na gerekçeyi yazın (zorunlu) ve **Kaydet**'e basın.
+
+![Kaydetmeden önceki özet](/kilavuz/admin-yetkiler-ozet.jpg)
+
+Kaydedince kişinin açık ekranı saniyeler içinde yenilenir ve kişiye "Yetkileriniz güncellendi" bildirimi gider. Kaydetmeden sayfadan çıkmak isterseniz sorulur.
+
+- **Geçmiş** sekmesi her kaydın tarihini, değiştireni ve gerekçesini; altında rol değişikliklerini, eklenen ve kaldırılan yetkileri ve biten kişiye özel ayarları (ör. rol varsayılanına dönen) gösterir.
+- Sistem yöneticisi her ekranı görür ve her işlemi yapar; ona kişiye özel yetki uygulanmaz. Sayfasında matris yerine bu yazar.
+- Kendi sayfanızda yalnızca rollerinizi değiştirebilirsiniz.
+
+**Rol yetkileri ve Kimde var?**
+
+**Sistem > Rol yetkileri** sekmesi rollerin varsayılan paketlerini salt okunur gösterir. Hücrelerde G (Görür), D (Değiştirir) ve O (Onaylar) harfleri, Açık kayıtlar satırında Okur yazar; **Rol** alanından tek bir rol seçebilirsiniz.
+
+![Rol yetkileri](/kilavuz/admin-rol-yetkileri.jpg)
+
+- Bir harfe basınca **Kimde var?** penceresi açılır: o yetkiyi taşıyan etkin kullanıcılar ve yetkinin kaynağı (ör. rolden, kişiye özel eklendi) listelenir. Rolünde olduğu hâlde kendisinden kaldırılan kişiler en sonda "Rolde var ama kaldırıldı" ile görünür.
+- **Excel'e aktar** rol paketlerini, kişilerin yetkilerini, kişiye özel ayarları ve görev ayrılığını bir dosyaya aktarır; paketlerin imzalanması ve denetim için kullanılır.
+
+![Kimde var? penceresi](/kilavuz/admin-kimde-var.jpg)
+
+> Kullanıcı listesinde kişiye özel ayarı olan kişinin satırında **Kişiye özel: n** rozeti görünür; üzerine gelince kaç yetkinin eklendiği ve kaldırıldığı yazar. Listeyi **Rol**, **Durum** ve **Yalnız kişiye özel yetkisi olanlar** ile süzebilirsiniz.
 
 ## Sorun bildirimleri
 
@@ -117,7 +179,7 @@ GS1 firma öneki palet etiketindeki SSCC numarasında ve mamullerin GTIN öneris
 ## Diğer yönetici işleri
 
 - **Elle serbest bırak**: Lot sayfasında yalnızca yöneticiye görünür. Olağan serbest bırakma laboratuvar kararıyla yapılır; bu düğme istisnai durumlar içindir ve gerekçe denetim günlüğüne yazılır. Dolum partisi ya da üretim şarjı bitmemiş (ya da iptal edilmiş) lot elle de serbest bırakılamaz.
-- **Dolumu geri al**: Dolum emri sayfasında size ve yönetime görünür. Fabrikada fiilen yapılmamış dolumu geri alır: emrin stok hareketleri ters kayıtla geri alınır, partiler ve açık numuneler iptal edilir, emir iptal olur. Dolum lotu serbest bırakılmış ya da başka işlemde kullanılmışsa reddedilir. Ayrıntısı yönetim kılavuzunun "Dolumu geri alma" bölümündedir.
+- **Dolumu geri al**: Dolum emri sayfasında size ve **Dolum emrini geri alma** yetkisi olanlara (varsayılan: yönetim) görünür. Fabrikada fiilen yapılmamış dolumu geri alır: emrin stok hareketleri ters kayıtla geri alınır, partiler ve açık numuneler iptal edilir, emir iptal olur. Dolum lotu serbest bırakılmış ya da başka işlemde kullanılmışsa reddedilir. Ayrıntısı yönetim kılavuzunun "Dolumu geri alma" bölümündedir.
 - **Canlıya geçiş > Hazırlık** listesindeki "Kullanıcılar" ve "Etiket yazıcıları" maddeleri sizin sorumluluğunuzdadır.
 - **Birimler**: **Ana veriler > Birimler** sekmesini yalnızca sistem yöneticisi yazar. Her birimin uluslararası **UN/ECE kodu** (KGM, LTR, C62; koli XCT, palet XPX) ve **Sembol**'ü vardır.
-- Kullanıcı bir ekranı göremediğini söylerse önce rollerini kontrol edin. Menü ve sekmeler role göre açılır.
+- Kullanıcı bir ekranı göremediğini söylerse kişinin **Yetkiler** sayfasına bakın: rolleri ve kişiye özel eklenen ya da kaldırılan yetkiler orada görünür. Kişinin gördüğü **Yetkiniz yok** sayfası gereken yetkiyi yazar; **Sistem > Rol yetkileri**'nde o yetkinin harfine basınca **Kimde var?** onu kimlerin taşıdığını listeler.

@@ -2015,3 +2015,32 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
 - **Canlıya almadan önce:** admin ve yönetimde iki aşamalı doğrulama yeniden zorunlu olmalı
   (plan §8 madde 16) ve ortak tablet/hat hesabı sorusu (plan §12) yanıtlanmalı.
 - **Sırada:** 10. adım (belgeler: KVKK, kılavuzlar, ekran görüntüleri).
+
+## 2026-11-18 — Kişiye özel yetkiler: 10. adım (belgeler)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-18). Planın §12'de
+  10. adımdan önce sorulacak dediği iki soru yanıtlandı (DECISIONS 2026-11-18): şoför kimlik
+  numarası bugünkü gibi kalır (tam numara yalnız irsaliye PDF'inde, belgeler düzeltildi);
+  herkes kişisel hesapla girer, ortak hat ya da vardiya hesabı açılmaz.
+- **KVKK.md:** teknik tedbir satırı bölüm ve düzey bazında; "Kim görür" sütunu bölüm ve
+  varsayılan rol olarak yeniden yazıldı (müşteri ve tedarikçi iletişim bilgileri, firma bilgileri,
+  şoför kimlik numarası, personel ve bordro, olaylar, denetim günlüğü, ekler); kişiye özel yetki
+  değişiklikleri için yeni envanter satırı; veri yeri bulut sunucusu (D-21); iki aşamalı doğrulama.
+- **Canlı kontrol listesi ve geçiş planı:** iki aşamalı doğrulamanın yetki ekranından önce yeniden
+  açılması, panelde rollerin salt okunur olması, kişisel hesap, "Her görevi alabilecek biri var"
+  ve Rol yetkileri Excel'inin gözden geçirilmesi.
+- **Kılavuzlar:** admin'e "Kullanıcı yetkileri" bölümü; genel'e Yetkilerim, "Yetkiniz yok" ve
+  "Yetkileriniz güncellendi"; yönetim, laboratuvar, satın alma ve sevkiyatta Onaylar yetkisi,
+  yalnız yönetime verilebilen yetkiler ve irsaliye; geçişte kişisel hesap. Beş yeni ekran görüntüsü
+  (yetki matrisi, kaydetme özeti, Rol yetkileri, Kimde var?, Yetkilerim), kullanıcı listesi
+  yeniden çekildi; betikte kaydedilmiş bir kişiye özel ayar açılmaz.
+- **Küçük kod işi (davranış değişmez):** irsaliye PDF'i tarayıcıda saklanmaz (`no-store`), PDF'in
+  tam numarayı yazdığı ve açılışın günlüğe yalnız numara varken yazıldığı testlendi.
+  `docs/YETKI-PAKETLERI.md` rol paketlerini `export_access --format=markdown` ile üretilen tablo
+  olarak gösterir (ekrandaki G/D/O harfleriyle); CI güncelliğini denetler.
+- **Doğrulama:** backend 2876, ön yüz 751 test yeşil; mypy, ruff, ESLint, Prettier, tsc,
+  build, `manage.py check`, göç, şema ve `access.gen.ts` temiz. Belgeler dosya dosya ve
+  çapraz olarak kodla karşılaştırıldı; bulunan uyuşmazlıklar düzeltildi.
+- **Canlıya almadan önce:** admin ve yönetimde iki aşamalı doğrulama yeniden zorunlu olmalı
+  (plan §8 madde 16).
+- **Sırada:** Paket B'nin canlıya alınması (sahibin onayıyla); sonra Paket C (Faz B, ayrı onay).

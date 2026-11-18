@@ -146,8 +146,44 @@ def to_typescript() -> str:
     return "\n".join(parts) + "\n"
 
 
+MD_TARGET = "docs/YETKI-PAKETLERI.md"
+
+MD_HEADER = f"""\
+# Yetki paketleri
+
+Bu dosya üretilir; elle değiştirmeyin. Kaynak: `backend/apps/*/access.py`
+(docs/plan/kisi-yetkileri.md §5.1). Tablo, her bölümde rollerin varsayılan paketini gösterir.
+Kişiye özel ayarlar (Sistem > Kullanıcılar > Yetkiler) burada yer almaz. CI dosyanın güncel
+olduğunu denetler.
+
+Yeniden üretmek için (depo kökünde):
+
+```
+docker compose exec -T backend python manage.py export_access --format=markdown > {MD_TARGET}
+```
+
+"""
+
+
+# Bölüm kayıtlarını Görür'ü olmayanların da okuyabildiği durumlar (belgedeki "Not" sütunu).
+READ_LABELS = {
+    access.ReadScope.SHARED: "herkes, kişiden kapatılamaz",
+    access.ReadScope.ANY_ROLE: "rolü olan herkes, kişiden kapatılamaz",
+    access.ReadScope.OPEN: "herkes, Açık kayıtlar satırıyla kişiden kapatılabilir",
+}
+
+
+# Belgedeki harfler ekrandakiyle aynı (Sistem > Rol yetkileri).
+DOC_LETTERS = {"r": "Okur", "v": "G", "c": "D", "a": "O"}
+
+
+def _doc_letters(letters: str) -> str:
+    return " ".join(DOC_LETTERS[letter] for letter in letters)
+
+
 def to_markdown() -> str:
-    """Rol paketleri tablosu (belgeler için): bölüm × paket sahibi, hücrede "vca" harfleri."""
+    """Rol paketleri belgesi (`docs/YETKI-PAKETLERI.md`): üretildiğini söyleyen başlık ve
+    bölüm × paket sahibi tablosu, hücrede "vca" harfleri."""
     holders = access.HOLDERS
     labels = {**access.HOLDER_LABELS, **ROLE_LABELS}
     packages = access.packages()
@@ -157,7 +193,9 @@ def to_markdown() -> str:
     ]
     for module in access.modules():
         for entry in access.sections(module.key):
-            cells = [access.letters(packages[holder], entry.key) or "" for holder in holders]
+            cells = [
+                _doc_letters(access.letters(packages[holder], entry.key)) for holder in holders
+            ]
             notes = []
             if entry.restricted_to_role:
                 notes.append(f"yalnız {ROLE_LABELS[entry.restricted_to_role]} (KVKK)")
@@ -171,8 +209,8 @@ def to_markdown() -> str:
                     "kilitli: " + ", ".join(access.LEVEL_LABELS[level] for level in entry.locked)
                 )
             if entry.read is not access.ReadScope.VIEW:
-                notes.append(f"okuma: {entry.read}")
+                notes.append("okuma: " + READ_LABELS[entry.read])
             row = [module.label, entry.label, *cells, "; ".join(notes)]
             lines.append("| " + " | ".join(row) + " |")
-    legend = "Harfler: r kayıtları okur, v görür, c değiştirir, a onaylar."
-    return "\n".join(lines) + "\n\n" + legend + "\n"
+    legend = "Harfler: G görür, D değiştirir, O onaylar; Okur: kayıtları okur (Açık kayıtlar)."
+    return MD_HEADER + "\n".join(lines) + "\n\n" + legend + "\n"

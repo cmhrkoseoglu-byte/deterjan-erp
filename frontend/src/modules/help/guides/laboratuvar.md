@@ -1,6 +1,6 @@
 # Laboratuvar
 
-Laboratuvar; gelen hammaddeyi, üretilen bulk ürünü, dolan mamulü ve iadeleri analiz eder. Lotu serbest bırakma ya da reddetme kararı yalnızca laboratuvarın numune kararıyla verilir.
+Laboratuvar; gelen hammaddeyi, üretilen bulk ürünü, dolan mamulü ve iadeleri analiz eder. Lotu serbest bırakma ya da reddetme yalnızca numunedeki kalite kararıyla olur; kararı varsayılan olarak laboratuvar verir.
 
 ## Numune kuyruğu
 
@@ -30,10 +30,12 @@ Numuneler kendiliğinden açılır: mal kabul kaydedilince **Giriş kontrolü**,
 
 ## Karar verme
 
+> Sonuç girmek ile karar vermek ayrı yetkilerdir: **Numuneler ve kalite kararı** bölümünde sonuç girmek **Değiştirir**, karar vermek **Onaylar** yetkisidir. Laboratuvarda varsayılan olarak ikisi de vardır; sistem yöneticisi bunları ayrı kişilere verebilir. Bekleyen ya da testteki bir numunede **Karar ver** düğmesini görmüyorsanız karar yetkiniz yoktur.
+
 Karar seçenekleri:
 
 - **Serbest bırak**: lot serbest olur, stok seçilen lokasyona taşınır.
-- **Şartlı kabul**: sonuç sınır dışı ama kullanılabilir. **Gerekçe** zorunludur. Yönetim onaylayınca lot serbest olur.
+- **Şartlı kabul**: sonuç sınır dışı ama kullanılabilir. **Gerekçe** zorunludur. Yönetim onaylayınca lot serbest olur. Şartlı kabulü öneren kişi onu onaylayamaz.
 - **Yeniden işleme** (yalnızca bulk ve iade): lot bloke olur, planlamaya yeniden işleme görevi düşer.
 - **Ret**: lot reddedilir ve karantinada kalır. Geri alınamaz.
 
@@ -57,7 +59,7 @@ verirsiniz.
 
 ## Spesifikasyonlar
 
-**Kalite kontrol > Spesifikasyonlar** sekmesinde her malzemenin ve aşamanın test sınırları vardır. Onaylı spesifikasyon değiştirilemez; kopyalayıp yeni sürüm açın, sınırları düzenleyin ve onaylayın. Test tanımları **Test tanımları** sekmesindedir.
+**Kalite kontrol > Spesifikasyonlar** sekmesinde her malzemenin ve aşamanın test sınırları vardır. Onaylı spesifikasyon değiştirilemez; kopyalayıp yeni sürüm açın, sınırları düzenleyin ve onaylayın. Sürümü onaylamak ayrı bir yetkidir (**Spesifikasyonlar ve test tanımları: Onaylar**; varsayılan olarak laboratuvarda). Test tanımları **Test tanımları** sekmesindedir.
 
 ## İzlenebilirlik ve geri çağırma
 

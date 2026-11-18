@@ -44,11 +44,13 @@ sunucuda elle doğrulanır; **Elle** satırlar sunucuda kontrol edilir.
 
 | # | Kontrol | Tür |
 |---|---|---|
-| 21 | Demo kullanıcılar yok (`create_demo_users` üretimde çalışmaz); her çalışanın kendi hesabı var | Elle |
-| 22 | Admin ve yönetim kullanıcıları iki aşamalı doğrulamayı kurdu, kurtarma kodlarını sakladı (04.11.2026'dan beri geçici olarak zorunlu değil, DECISIONS.md) | Elle |
+| 21 | Demo kullanıcılar yok (`create_demo_users` üretimde çalışmaz); her çalışanın kendi kişisel hesabı var, ortak hat, vardiya ya da tablet hesabı yok (ortak tablette herkes kendi hesabıyla girer, işi bitince çıkış yapar; DECISIONS.md 2026-11-18) | Elle |
+| 22 | İki aşamalı doğrulama admin ve yönetim rollerinde zorunlu (`OTP_REQUIRED_ROLES=admin,yonetim`); bu rollerdeki kullanıcılar kurdu, kurtarma kodlarını sakladı. 04.11.2026'dan beri geçici olarak zorunlu değil (DECISIONS.md); yetki ekranı (kişiye özel yetkiler, Paket B) canlıya alınmadan önce yeniden açılır | Elle |
 | 23 | Ortak saha tabletleri Sistem > Bu cihaz ile "saha tableti" işaretlendi | Elle |
 | 24 | Hesap kilidi ve hareketsizlik süresi bir kez denendi (yanlış şifre ×5; tablette 10 dk bekleme) | Elle |
-| 25 | Superuser hesabı yalnızca bir/iki kişide; yönetim paneline giriş 2FA istiyor (2FA geçici olarak zorunlu değil, madde 22) | Elle |
+| 25 | Superuser hesabı yalnızca bir/iki kişide; yönetim paneline giriş 2FA istiyor (madde 22 ile birlikte yeniden açılır). Django yönetim panelinde roller, süper kullanıcı ve panele giriş işaretleri salt okunur; mevcut bir kullanıcının rolleri yalnızca Sistem > Kullanıcılar > Yetkiler'den, gerekçe yazılarak değişir (Paket B ile) | Elle |
+| 31 | Canlıya geçiş > Hazırlık'ta "Her görevi alabilecek biri var" Tamam (Sistem > Sistem durumu'nda da Normal) | Elle |
+| 32 | Sistem > Rol yetkileri > **Excel'e aktar** dosyası gözden geçirildi: kişiye özel ayarlar gerekçeli ve beklenen kişilerde, görev ayrılığı sayfasındaki riskli birleşimler bilinçli | Elle |
 
 ## İzleme ve KVKK
 

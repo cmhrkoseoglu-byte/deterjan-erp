@@ -19,7 +19,7 @@ Satın alma; taleplerden ve önerilerden satın alma siparişi açar, onaya gön
 
 ## Onay ve gönderme
 
-1. Sipariş tutarı onay limitinin altındaysa **Onayla**'ya basın.
+1. Sipariş tutarı onay limiti içindeyse **Onayla**'ya basın.
 2. Limitin üstündeyse **Yönetim onayına gönder**'e basın. Yönetime görev düşer. Yönetim onaylar ya da **Taslağa geri gönder** ile notuyla size geri yollar. Geri gelen siparişi düzeltip yeniden gönderin.
 3. Onaylanan siparişte **Tedarikçiye gönder**'e basın. **PDF'i e-postayla gönder** ile tedarikçinin e-posta adresine sipariş PDF'i gider. Başka yolla ilettiyseniz **Gönderildi olarak işaretle (e-postasız)**'ı seçin.
 4. Depoya beklenen teslimat bildirimi gider.
@@ -30,6 +30,8 @@ Satın alma; taleplerden ve önerilerden satın alma siparişi açar, onaya gön
 
 > Onay limiti **Satın alma > Ayarlar** sekmesinden yönetim tarafından belirlenir. Limit boşsa her sipariş yönetim onayına gider.
 
+> Siparişi yazıp göndermek (**Satın alma siparişleri: Değiştirir**) ile onaylamak (**Satın alma siparişleri: Onaylar**) ayrı yetkilerdir; ikisi de **Fiyatları görür** hakkını gerektirir. **Onaylar** yalnızca onay limiti girilmişse ve siparişin TL tutarı limiti aşmıyorsa onaylar. Limit üstü ya da limit girilmemişken onaylamak ve **Taslağa geri gönder** için **Limit üstü sipariş onayı** yetkisi gerekir (varsayılan: yönetim).
+
 ## Teslimat takibi
 
 - **Beklenen teslimatlar** sekmesi onaylı ve gönderilmiş siparişlerin bekleyen satırlarını gösterir. Geciken satır işaretlidir.
@@ -39,7 +41,7 @@ Satın alma; taleplerden ve önerilerden satın alma siparişi açar, onaya gön
 
 ## Fiyat ve ek masraflar
 
-Mal kabul sayfasında **Fiyat ve ek masraf** bölümünü yalnızca satın alma ve yönetim görür. Birim fiyat, kur, nakliye ve gümrük gibi ek masrafları girip **Fiyatları kaydet**'e basın. Bu bilgiler lot maliyetine yansır. Kaydedilmiş mal kabulde değişiklik için **Düzeltme notu** zorunludur.
+Mal kabul sayfasında **Fiyat ve ek masraf** bölümünü **Fiyatları görür** hakkı olanlar görür (varsayılan: satın alma ve yönetim); fiyat ve masraf girmek **Mal kabul fiyat ve masrafları** yetkisini ister. Birim fiyat, kur, nakliye ve gümrük gibi ek masrafları girip **Fiyatları kaydet**'e basın. Bu bilgiler lot maliyetine yansır. Kaydedilmiş mal kabulde değişiklik için **Düzeltme notu** zorunludur.
 
 ## Tedarikçi performansı
 

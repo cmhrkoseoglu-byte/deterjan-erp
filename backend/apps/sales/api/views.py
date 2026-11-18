@@ -465,6 +465,8 @@ class ShipmentViewSet(
         response = HttpResponse(waybill_pdf(shipment), content_type="application/pdf")
         services.record_waybill_access(request.user, shipment, output="PDF")  # type: ignore[arg-type]
         response["Content-Disposition"] = f'inline; filename="irsaliye-{shipment.number}.pdf"'
+        # Şoförün açık TC kimlik numarasını taşır (KVKK): tarayıcı ve ara katmanlar saklamaz.
+        response["Cache-Control"] = "no-store"
         return response
 
 

@@ -1092,7 +1092,11 @@ Kural 12'ye 1. adımda bir geçiş cümlesi eklenir ve 8. adımın commit'inde s
   maliyetinden" (DECISIONS).
 - **İrsaliyedeki şoför kimlik numarası** (10. adımdan önce): irsaliye PDF'inde tam numarayı
   kimlerin göreceği KVKK.md ile birlikte netleşir; belge mi düzeltilsin, ayrı bir hak mı olsun?
-  Bugünkü durum size ayrıca sunulur.
+  Bugünkü durum size ayrıca sunulur. **Cevaplandı (2026-11-18):** bugünkü davranış korunur, belge
+  düzeltilir. Tam numara yalnızca irsaliye PDF'inde, Sevkiyatlar ve irsaliye: Görür ile (varsayılan
+  sevkiyat, yönetim, planlama, depo; admin); ekranlar, API ve irsaliye verisi maskeli; numara
+  kayıtlıysa her açılış denetim günlüğüne yazılır. PDF tarayıcıda saklanmaz (`no-store`); davranış
+  değişmez (DECISIONS).
 - **İki bildirimin hedefi** (7. adımdan önce). Alıcıları hedef sayfayı bugün açamıyor:
   - tartım sapması: laboratuvara gider, şarj sayfasına götürür;
   - ara kontrol reddi: üretim ve planlamaya gider, numune sayfasına götürür.
@@ -1102,7 +1106,9 @@ Kural 12'ye 1. adımda bir geçiş cümlesi eklenir ve 8. adımın commit'inde s
   **Cevaplandı (2026-11-17):** iki bildirim de lot sayfasına bağlanır; alıcılar ve paketler
   değişmez (DECISIONS).
 - **Ortak tablet ya da hat hesabı** (Paket B canlıya alınmadan önce; GECIS-PLANI'nda açık).
-  Kişiye özel yetki ve ISO kaydı herkesin kişisel hesabı olduğunu varsayar.
+  Kişiye özel yetki ve ISO kaydı herkesin kişisel hesabı olduğunu varsayar. **Cevaplandı
+  (2026-11-18):** herkesin kişisel hesabı olur, ortak hat ya da vardiya hesabı açılmaz; ortak
+  tablette her kişi kendi hesabıyla girer ve işi bitince çıkış yapar (DECISIONS).
 - **Faz B ayrıntıları** (Paket C'den önce). Lot sayfasından mal kabule ulaşma; müşteri ve
   tedarikçi iletişim bilgileri.
 

@@ -2885,3 +2885,29 @@ değiştirme zorunlu, yalnızca admin):
 - **Bilinen, 9. adımdan önce de var olan risk:** kullanıcıyı pasife alma son yönetici
   denetimini yönetici satırlarını kilitlemeden yapar; iki admin birbirini aynı anda pasife
   alırsa etkin admin kalmayabilir. Ayrıca düzeltilecek.
+
+## 2026-11-18 — Kişiye özel yetkiler: şoför kimlik numarası ve ortak hesap
+
+- **Bağlam:** plan §12'nin 10. adımdan (belgeler) ve Paket B canlıya alınmadan önce sorulacak iki
+  maddesi. Bugünkü durum sahibe sunuldu: şoförün TC kimlik numarası sevkiyat ekranlarında,
+  API'de ve irsaliye verisinde (JSON) maskelidir; tam hali yalnızca irsaliye PDF'ine basılır.
+  PDF'i Sevkiyatlar ve irsaliye: Görür yetkisi olan herkes açar (varsayılan sevkiyat, yönetim,
+  planlama, depo; admin her zaman). KVKK.md ise tam numarayı "irsaliye verisinde" de gösteriyor
+  ve yalnızca sevkiyat ve yönetim rollerini yazıyordu. Kişiye özel yetki ve ISO kaydı da herkesin
+  kişisel hesabı olduğunu varsayar; GECIS-PLANI'nda tabletlerin hat ya da vardiya hesabıyla
+  açılıp açılmayacağı açık bir soruydu.
+- **Karar (CUMHUR, 2026-11-18):**
+  - **Şoför kimlik numarası:** bugünkü davranış korunur, belgeler düzeltilir. Tam numara yalnızca
+    irsaliye PDF'indedir ve Sevkiyatlar ve irsaliye: Görür yetkisini izler (varsayılan sevkiyat,
+    yönetim, planlama, depo; admin). Ekranlar, API ve irsaliye verisi (JSON) maskeli kalır. Numara
+    kayıtlıysa her PDF ve veri açılışı denetim günlüğüne yazılır. Ayrı bir hak açılmaz. Davranışı
+    değiştirmeyen bir ek: irsaliye PDF'i, personel belgeleri ve ön bordro çıktıları gibi
+    tarayıcıda saklanmaz (`Cache-Control: no-store`).
+  - **Ortak tablet ya da hat hesabı:** herkesin kişisel hesabı olur; ortak hat ya da vardiya
+    hesabı açılmaz. Ortak bir tablette her kişi kendi hesabıyla girer, işi bitince çıkış yapar.
+  - 10. adımda KVKK.md (şoför satırı ve irsaliye görüntüleme kaydı), CANLI-KONTROL-LISTESI ve
+    GECIS-PLANI bu kararlara göre düzeltildi.
+- **Gerekçe:** irsaliye yasal belgedir ve yük ile birlikte giden kopyayı bugün bu rollerden biri
+  basabilir; maskeli bir kopya sorun çıkarabilirdi. Tam numaranın tek yerde kalması ve her
+  açılışın izi KVKK için yeterli görüldü. Kişisel hesap olmadan kişiye özel yetki, görev ayrılığı
+  ve denetim kaydı (kim neyi yaptı) anlamını yitirir.

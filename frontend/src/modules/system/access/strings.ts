@@ -40,7 +40,7 @@ export const ua = {
   // Bölümler
   sensitiveTitle: "Hassas veriler",
   kvkkNote:
-    "Personel, bordro, personel maliyeti, olaylar ve kazalar ve denetim günlüğü yetkileri yalnız yönetim rolündeki kullanıcılara verilebilir (KVKK).",
+    "Personel, bordro, personel maliyeti, olaylar ve kazalar ile denetim günlüğü yetkileri yalnız yönetim rolündeki kullanıcılara verilebilir (KVKK).",
   modulesTitle: "Modül yetkileri",
   sectionColumn: "Bölüm",
   inMenu: "Menüde",

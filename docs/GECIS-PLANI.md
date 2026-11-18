@@ -6,8 +6,11 @@ başlamadan önce fabrikanın hazırlaması gerekenleri ve araçların nasıl de
 
 ## Fabrikanın hazırlaması gerekenler
 
-1. **Kullanıcı listesi:** ad soyad, kullanıcı adı ve rol (birden fazla olabilir). Tabletler hat ya da
-   vardiya kullanıcısıyla mı, kişisel kullanıcıyla mı açılacak?
+1. **Kullanıcı listesi:** ad soyad, kullanıcı adı ve rol (birden fazla olabilir). Rol, varsayılan
+   yetki paketidir; bir kişiye paketinde olmayan bir yetki eklemek ya da paketinden geleni kaldırmak
+   gerekirse admin bunu Sistem > Kullanıcılar > Yetkiler sayfasından, gerekçe yazarak yapar. Herkesin
+   kişisel hesabı olur; ortak hat ya da vardiya hesabı açılmaz. Ortak bir tablette her kişi kendi
+   hesabıyla girer, işi bitince çıkış yapar (DECISIONS.md 2026-11-18).
 2. **Excel listeleri (şablonlar uygulamada "Şablonu indir" ile alınır):**
    - Malzemeler: kod, ad, tür, temel birim; varsa yoğunluk, raf ömrü, minimum stok, giriş kontrolü,
      tehlikeli madde.
@@ -25,7 +28,7 @@ başlamadan önce fabrikanın hazırlaması gerekenleri ve araçların nasıl de
 
 ## Araçlar ve nerede
 
-| İş | Ekran | Rol |
+| İş | Ekran | Varsayılan rol (yetki) |
 |---|---|---|
 | Malzeme, dönüşüm, tedarikçi, müşteri, depo, lokasyon, ekipman yükleme | Ana veriler > ilgili sekme > Excel'den içe aktar | planlama |
 | Reçete yükleme (taslak sürüm) | Reçeteler > Excel'den içe aktar | planlama, laboratuvar |

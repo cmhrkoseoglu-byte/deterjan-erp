@@ -30,6 +30,8 @@ Laboratuvar spesifikasyon dışı sonuçla **Şartlı kabul** verirse size göre
 3. Kabul ediyorsanız **Onayla**'ya basın. Lot serbest bırakılır.
 4. Kabul etmiyorsanız **Reddet**'e basın ve nedeni yazın. Numune laboratuvara geri döner.
 
+> Şartlı kabulü öneren kişi onu onaylayamaz (sistem yöneticisi de); yalnızca reddedebilir. Onayı başka bir yetkili verir.
+
 ![Şartlı kabul onayı](/kilavuz/yonetim-sartli-kabul.jpg)
 
 ## Satın alma onayı
@@ -47,7 +49,7 @@ Onay limitini aşan satın alma siparişi size görev olarak gelir.
 
 ## Maliyet
 
-**Maliyet** menüsünü yalnızca yönetim görür.
+**Maliyet** menüsü varsayılan olarak yalnızca yönetimdedir. Sistem yöneticisi lot maliyetleri, raporlar ve gider oranları yetkilerini başka birine de verebilir; bunun için kişide **Maliyetleri görür** ve **Fiyatları görür** hakları da olmalıdır. **Personel maliyeti** yalnızca yönetim rolündeki kullanıcılara verilebilir ve ücret ile bordro görme yetkisini de ister.
 
 - **Lot maliyetleri**: her lotun toplam ve birim maliyeti. Lota tıklayınca malzeme, genel gider ve fire kalemleri görünür. Fiyat sonradan değiştiyse lotun maliyet sayfasında **Yeniden hesapla**'ya basın ve **Sürüm notu** yazın; yeni sürüm hesaplanır.
 - **Raporlar**: şarj maliyeti, fire ve stok değeri raporları (Excel).
@@ -87,6 +89,8 @@ Personel maliyeti **Personel > Bordro**'daki ön bordro hesabından gelir: brüt
 ## Personel
 
 **Personel** menüsünü yalnızca yönetim ve sistem yöneticisi görür. Sahadaki ve ofisteki bütün çalışanların kartları buradadır; sistemi kullanmayan çalışanlar (ör. forklift ve dolum operatörleri) da kaydedilir. Brüt aylık ücretler **Personel > Ücretler** sekmesinde girilir (bkz. "Personel maliyeti").
+
+> Personel kartı, puantaj, ücret, bordro, personel ayarları ve personel maliyeti yetkileri yalnızca yönetim rolündeki kullanıcılara verilebilir (KVKK). Sistem yöneticisi bu yetkileri bir yönetim kullanıcısından tek tek kaldırabilir; kişinin yönetim rolü kaldırılınca bu yetkiler de düşer.
 
 1. **Yeni personel**'e basın.
 2. **Ad soyad** ve **Birim** zorunludur. Birimi listeden seçin ya da yeni birimi yazın; aynı birim farklı yazılırsa (depo / Depo) var olan yazım kullanılır.
@@ -212,7 +216,7 @@ Firmanın ticari bilgileri **Ana veriler > Firma bilgileri** sekmesindedir. Sevk
 
 ![Firma bilgileri](/kilavuz/yonetim-firma-bilgileri.jpg)
 
-> Bilgileri yönetim ve sistem yöneticisi değiştirir; planlama yalnızca görür. Her değişiklik denetim günlüğüne yazılır.
+> Bilgileri varsayılan olarak yönetim ve sistem yöneticisi değiştirir; planlama yalnızca görür. Her değişiklik denetim günlüğüne yazılır.
 
 ## Canlı başlangıç tarihi
 
@@ -226,7 +230,7 @@ Ayrıntılı plan **Canlıya geçiş ve sayım günü** kılavuzundadır.
 
 ## Dolumu geri alma
 
-Dolum emri sistemde başlatıldığı hâlde dolum fabrikada fiilen yapılmadıysa emri geri alabilirsiniz. Bunu yalnızca yönetim ve sistem yöneticisi yapar.
+Dolum emri sistemde başlatıldığı hâlde dolum fabrikada fiilen yapılmadıysa emri geri alabilirsiniz. Bunu yönetim ve sistem yöneticisi yapar; sistem yöneticisi **Dolum emrini geri alma** yetkisini başka birine de verebilir.
 
 1. **Dolum > Dolum emirleri** sekmesinde emri açın. Emir **Ambalaj hazır**, **Dolumda** ya da **Analiz bekliyor** durumunda olmalıdır.
 2. Emir sayfasının üstündeki kırmızı **Dolumu geri al** düğmesine basın.
@@ -239,4 +243,5 @@ Emrin bütün stok hareketleri ters kayıtla geri alınır: tüketilen bulk kend
 ## Diğer görevler
 
 - **İSG olayı**: Bildirilen kaza ve ramak kala olayları size görev olarak gelir. **İSG ve çevre** menüsünde olayı inceleyip kapatın.
-- **Siparişler ve ana veriler**: Yönetim satış siparişi açabilir, ana verileri düzenleyebilir ve tüm ekranları okuyabilir.
+- **Siparişler ve ana veriler**: Yönetim satış siparişi açabilir ve onaylayabilir. Ana veri kartlarını görür; malzeme, tedarikçi, müşteri, depo, lokasyon ve ekipman kartlarını planlama değiştirir. Firma bilgilerini yönetim değiştirir (yukarıda).
+- **Yetkileriniz**: Hangi ekranları görebildiğiniz, neyi değiştirip onaylayabildiğiniz adınıza tıklayınca açılan **Yetkilerim** sayfasında yazar.
