@@ -245,7 +245,7 @@ describe("ön yüz eşlik anlık görüntüsü", () => {
     "rota korumaları: her rota personayı içeri alıyor mu",
     async () => {
       const cases = routeCases(routes);
-      expect(cases).toHaveLength(58);
+      expect(cases).toHaveLength(60);
       expect(new Set(cases.map((item) => item.name)).size).toBe(cases.length);
       const result: Cases = {};
       for (const { name, chain } of cases) {

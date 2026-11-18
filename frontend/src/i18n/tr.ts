@@ -51,6 +51,7 @@ export const tr = {
     openMenu: "Menüyü aç/kapat",
     roles: "Roller",
     security: "Güvenlik",
+    myAccess: "Yetkilerim",
     nightTheme: "Gece temasına geç",
     dayTheme: "Gündüz temasına geç",
     search: "Lot ya da belge no ara",
@@ -294,5 +295,24 @@ export const tr = {
     crashText:
       "Ekran beklenmeyen bir hatayla karşılaştı. Hata sistem yöneticilerine iletildi. Sayfayı yenileyip tekrar deneyin.",
     reload: "Sayfayı yenile",
+    myAccess: "Yetkilerimi gör",
+  },
+  // Yetkilerim (plan §6.4): salt okunur; not, değiştiren ve geçmiş gösterilmez.
+  myAccess: {
+    title: "Yetkilerim",
+    intro: "Bu sayfa salt okunurdur. Bir yetki gerekiyorsa sistem yöneticinizden isteyin.",
+    admin: "Sistem yöneticisi olarak her ekranı görür ve her işlemi yaparsınız.",
+    roles: "Rolleriniz",
+    noRole:
+      "Rolünüz yok; yalnız herkese açık ekranları ve size özel verilen yetkileri kullanırsınız.",
+    sensitive: "Hassas haklar",
+    modules: "Ekranlar ve işlemler",
+    none: "Yok",
+    fromRole: (roles: string) => `Rolünüzden (${roles})`,
+    everyone: "Herkese açık",
+    anyRole: "Rolü olan herkese açık",
+    granted: "Size özel verildi",
+    revoked: "Sizin için kaldırıldı",
+    closed: (module: string) => `Sizin için kapalı: ${module} kayıtları`,
   },
 } as const;

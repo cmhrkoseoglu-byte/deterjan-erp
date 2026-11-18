@@ -4,7 +4,7 @@
 //   docker compose exec -T backend python manage.py export_access --format=ts \
 //     > frontend/src/auth/access.gen.ts
 
-export const ACCESS_CATALOG_HASH = "65c55deb24b1bc81b212f334d421cc390bd957defd4ada170b543de72bd5833d";
+export const ACCESS_CATALOG_HASH = "08d025ab179ea91ea1383a7da50012aa851b609dc2d6e812dfb59758e6a6a1c8";
 
 export type AccessLevel = "read" | "view" | "change" | "approve";
 export type ReadScope = "view" | "shared" | "any_role" | "open";
@@ -386,7 +386,7 @@ export const SECTIONS: Readonly<Record<PermKey, SectionMeta>> = {
       "view"
     ],
     "help": {
-      "view": "Alış fiyatları: mal kabul fiyat ve masrafları, satın alma tutarları ve sipariş PDF'i. Satış fiyatları bu hakka bağlı değildir."
+      "view": "Alış fiyatları: mal kabul fiyat ve masrafları, satın alma tutarları ve sipariş PDF'i; cari hesap tutarları ve ekstre PDF'i. Satış siparişindeki fiyatlar bu hakka bağlı değildir."
     },
     "read": "view",
     "requires": [],

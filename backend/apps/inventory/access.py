@@ -96,7 +96,15 @@ MANUAL_RELEASE = register_section(
     help={APPROVE: "Lotu kalite kararı olmadan serbest bırakır (yalnız sistem yöneticisi)."},
     admin_only=(APPROVE,),
 )
-OPEN_RECORDS = register_open_records("inventory")
+# Açık kayıtlar kapatılınca etkilenen öteki ekranlar (plan §5.1, §5.3; kaydetme özetindeki
+# uyarı ve Yetkiler ekranındaki satır notu). Sahip PR'da gözden geçirir.
+OPEN_RECORDS = register_open_records(
+    "inventory",
+    affects=(
+        "Lot sayfasındaki, satın alma sipariş sayfasındaki, izlenebilirlikteki ve cari "
+        "ekstresindeki mal kabul bağlantıları düz metin olur.",
+    ),
+)
 
 register_readers("inventory.lot", LOTS)
 register_readers("inventory.goodsreceipt", RECEIPTS)

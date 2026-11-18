@@ -175,6 +175,40 @@ def test_access_records_are_admin_only(make_user: Callable[..., User]) -> None:
     assert api(admin).get(f"{URL}{hidden[0].pk}/").status_code == 200
 
 
+def _save_access(admin: User, target: User, **kwargs: Any) -> None:
+    from apps.core import services, user_access
+
+    services.set_user_access(
+        admin, target, version=user_access.access_version(target, []), **kwargs
+    )
+
+
+def test_yonetim_sees_role_change_but_not_access_or_note(make_user: Callable[..., User]) -> None:
+    """Yetkiler ekranında yalnız rol değişse de gerekçe yalnız admine görünür (plan §5.6):
+    `set_user_access` kaydı her zaman `access` anahtarını yazar."""
+    admin, manager = make_user("admin"), make_user("yonetim")
+    target = make_user("depo", full_name=f"{MARK} Ayşe")
+    _save_access(admin, target, overrides=[], roles=["depo", "planlama"], note="Gizli gerekçe")
+
+    (row,) = listed(manager).values()
+    assert row["changes"] == {"roles": [["depo"], ["depo", "planlama"]]}
+    assert row["note"] == ""
+    (full,) = listed(admin).values()
+    assert full["note"] == "Gizli gerekçe" and set(full["changes"]) == {"access", "roles"}
+
+
+def test_yonetim_does_not_list_override_only_save(make_user: Callable[..., User]) -> None:
+    from apps.core.user_access import OverrideSpec
+
+    admin, manager = make_user("admin"), make_user("yonetim")
+    target = make_user("depo", full_name=f"{MARK} Ali")
+    spec = OverrideSpec("production.prep", "change", "revoke")
+    _save_access(admin, target, overrides=[spec], note="Hazırlığı amir yapacak")
+
+    assert listed(manager) == {}
+    assert len(listed(admin)) == 1
+
+
 # --- personel (KVKK) ----------------------------------------------------------------------------
 
 

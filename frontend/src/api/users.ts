@@ -1,6 +1,7 @@
-// /api/v1/users/* (yalnızca admin): kullanıcı listesi, yeni kullanıcı (geçici şifreyle), bilgi ve
-// rol güncelleme, pasife alma / etkinleştirme, şifre sıfırlama, kilit açma, 2FA sıfırlama.
-// Kullanıcılar silinmez; ayrılan çalışan pasife alınır.
+// /api/v1/users/* (yalnızca admin): kullanıcı listesi, yeni kullanıcı (geçici şifreyle), bilgi
+// güncelleme, pasife alma / etkinleştirme, şifre sıfırlama, kilit açma, 2FA sıfırlama.
+// Kullanıcılar silinmez; ayrılan çalışan pasife alınır. Roller ve kişiye özel yetkiler kişinin
+// Yetkiler ekranından değişir (api/access.ts, plan §8 madde 13).
 import { api } from "./client";
 import type { Paginated, Role } from "./types";
 
@@ -20,6 +21,8 @@ export interface UserRecord {
   /** Hatalı girişler yüzünden şu an kilitli mi? */
   is_locked: boolean;
   otp_enabled: boolean;
+  /** Etkin kişiye özel ayarlar (etkisizler dahil): eklenen ve kaldırılan yetki sayısı. */
+  personal_counts: { granted: number; revoked: number };
 }
 
 /** Yeni kullanıcı bilgileri. Şifre girilmez; sistem geçici şifre üretir. */
@@ -31,8 +34,21 @@ export interface NewUser {
   roles: Role[];
 }
 
-/** Güncellenebilen alanlar (kullanıcı adı değişmez); yalnızca gönderilenler değişir. */
-export type UserChanges = Partial<Omit<NewUser, "username">>;
+/**
+ * Güncellenebilen alanlar (kullanıcı adı değişmez); yalnızca gönderilenler değişir. Roller burada
+ * değişmez (`roles_on_access_page`): Yetkiler ekranında, gerekçe yazılarak değişir.
+ */
+export type UserChanges = Partial<Omit<NewUser, "username" | "roles">>;
+
+/** Kullanıcı listesi süzgeçleri (adreste saklanır). */
+export interface UserFilters {
+  search?: string;
+  role?: Role | "";
+  /** "true" etkin, "false" pasif, boş hepsi. */
+  active?: "true" | "false" | "";
+  /** Yalnız kişiye özel yetkisi olanlar. */
+  personal?: boolean;
+}
 
 /** Yeni kullanıcı ya da şifre sıfırlama yanıtı: geçici şifre yalnızca burada, bir kez görünür. */
 export interface IssuedPassword {
@@ -40,9 +56,15 @@ export interface IssuedPassword {
   temporary_password: string;
 }
 
-export async function listUsers(search = ""): Promise<Paginated<UserRecord>> {
+export async function listUsers(filters: UserFilters = {}): Promise<Paginated<UserRecord>> {
   const { data } = await api.get<Paginated<UserRecord>>("/users/", {
-    params: { page_size: 200, search: search || undefined },
+    params: {
+      page_size: 200,
+      search: filters.search || undefined,
+      role: filters.role || undefined,
+      is_active: filters.active || undefined,
+      has_personal: filters.personal ? "true" : undefined,
+    },
   });
   return data;
 }
@@ -53,19 +75,9 @@ export async function createUser(input: NewUser): Promise<IssuedPassword> {
   return data;
 }
 
-/** Güncelleme yanıtı: kullanıcı ve kaydı engellemeyen uyarılar. */
-export interface SavedUser extends UserRecord {
-  /**
-   * Rol değişikliği bir görevi ya da bildirimi alabilecek kimse bırakmıyorsa her biri için bir
-   * Türkçe uyarı (ör. "Depo rolünde … yetkisi olan etkin kimse yok; 2 görev kimseye düşmez.").
-   * Kayıt yine de yapılmıştır.
-   */
-  coverage_warnings: string[];
-}
-
-/** Hata kodları: cannot_remove_own_admin, last_admin, full_name_required, validation_error. */
-export async function updateUser(id: number, changes: UserChanges): Promise<SavedUser> {
-  const { data } = await api.patch<SavedUser>(`/users/${id}/`, changes);
+/** Hata kodları: full_name_required, validation_error, roles_on_access_page. */
+export async function updateUser(id: number, changes: UserChanges): Promise<UserRecord> {
+  const { data } = await api.patch<UserRecord>(`/users/${id}/`, changes);
   return data;
 }
 

@@ -42,11 +42,9 @@ import { useCan } from "../../auth/access";
 import { formatDate, formatMoney, formatNumber } from "../../i18n/format";
 import { normalizeDecimal } from "../common/forms";
 import { today } from "../inventory/config";
-import { receiptPath } from "../inventory/config";
-import { returnPath } from "../returns/config";
-import { shipmentPath } from "../sales/config";
 import { LEDGER_BASE, PRICES, balanceText, sideBySlug, type SideConfig } from "./config";
 import { lt } from "./strings";
+import { RecordLink } from "../../workflow/RecordLink";
 
 const CURRENCIES = (["TRY", "EUR", "USD"] as const).map((value) => ({ value, label: value }));
 const METHODS = (Object.keys(lt.method_) as PaymentMethod[]).map((value) => ({
@@ -428,23 +426,23 @@ function BalanceCard({ balance }: { balance: LedgerBalance }) {
 function documentLink(entry: LedgerEntry) {
   if (entry.shipment && entry.shipment_number) {
     return (
-      <Anchor component={Link} to={shipmentPath(entry.shipment)} size="sm">
+      <RecordLink model="sales.shipment" id={entry.shipment} size="sm">
         {entry.shipment_number}
-      </Anchor>
+      </RecordLink>
     );
   }
   if (entry.goods_receipt && entry.goods_receipt_number) {
     return (
-      <Anchor component={Link} to={receiptPath(entry.goods_receipt)} size="sm">
+      <RecordLink model="inventory.goodsreceipt" id={entry.goods_receipt} size="sm">
         {entry.goods_receipt_number}
-      </Anchor>
+      </RecordLink>
     );
   }
   if (entry.customer_return && entry.customer_return_number) {
     return (
-      <Anchor component={Link} to={returnPath(entry.customer_return)} size="sm">
+      <RecordLink model="returns.customerreturn" id={entry.customer_return} size="sm">
         {entry.customer_return_number}
-      </Anchor>
+      </RecordLink>
     );
   }
   return entry.reversal_of_number ?? entry.reference;
@@ -580,17 +578,15 @@ export function PartnerLedgerPage() {
                 {(missing.data ?? []).map((line) => (
                   <Table.Tr key={`${line.kind}-${line.line_id}`}>
                     <Table.Td>
-                      <Anchor
-                        component={Link}
-                        to={
-                          line.kind === "shipment"
-                            ? shipmentPath(line.document_id)
-                            : receiptPath(line.document_id)
+                      <RecordLink
+                        model={
+                          line.kind === "shipment" ? "sales.shipment" : "inventory.goodsreceipt"
                         }
+                        id={line.document_id}
                         size="sm"
                       >
                         {line.document_number}
-                      </Anchor>
+                      </RecordLink>
                     </Table.Td>
                     <Table.Td>{formatDate(line.document_date)}</Table.Td>
                     <Table.Td>
@@ -761,9 +757,9 @@ export function PartnerLedgerPage() {
           <Title order={5}>{lt.returnsTitle}</Title>
           {returns.map((item) => (
             <Group key={item.id} gap="xs">
-              <Anchor component={Link} to={returnPath(item.id)} size="sm">
+              <RecordLink model="returns.customerreturn" id={item.id} size="sm">
                 {item.number}
-              </Anchor>
+              </RecordLink>
               <Text size="sm">{formatDate(item.return_date)}</Text>
               <Badge variant="light" color={item.has_credit ? "green" : "orange"}>
                 {item.has_credit ? lt.returnCredited : lt.returnNotCredited}

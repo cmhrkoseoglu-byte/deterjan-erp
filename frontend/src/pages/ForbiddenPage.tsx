@@ -1,15 +1,17 @@
-import { Button, Stack, Text, Title } from "@mantine/core";
+import { Button, Group, Stack, Text, Title } from "@mantine/core";
 import { IconLock } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
 import { getErrorRequired } from "../api/client";
 import type { RequiredAccess } from "../api/types";
 import { describeAccess } from "../auth/access";
+import { MY_ACCESS_PATH } from "../auth/paths";
 import { tr } from "../i18n/tr";
 
 /**
  * "Yetkiniz yok" sayfası (plan §5.9, §8 madde 4). Eksik yetki biliniyorsa (rota korumasının
  * `need`'i ya da 403 yanıtındaki `required`) "Gerekli yetki: Modül › Bölüm (Düzey)" satırı çıkar;
- * birden çok seçenek "ya da" ile birleşir. Başlık eşlik testinin okuduğu metindir; değişmez.
+ * birden çok seçenek "ya da" ile birleşir. "Yetkilerimi gör" kişinin kendi yetkilerine götürür
+ * (plan §5.9). Başlık eşlik testinin okuduğu metindir; değişmez.
  */
 export function ForbiddenPage({
   need,
@@ -33,9 +35,14 @@ export function ForbiddenPage({
           {tr.errors.requiredAccess(described.join(" ya da "))}
         </Text>
       )}
-      <Button component={Link} to="/" size="md" variant="light">
-        {tr.common.backToHome}
-      </Button>
+      <Group justify="center">
+        <Button component={Link} to="/" size="md" variant="light">
+          {tr.common.backToHome}
+        </Button>
+        <Button component={Link} to={MY_ACCESS_PATH} size="md" variant="default">
+          {tr.errors.myAccess}
+        </Button>
+      </Group>
     </Stack>
   );
 }

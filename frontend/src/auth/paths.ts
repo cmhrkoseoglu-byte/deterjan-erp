@@ -3,12 +3,19 @@ import { can } from "./access";
 
 /** Güvenlik sayfası (şifre, iki aşamalı doğrulama). Her giriş yapmış kullanıcıya açık. */
 export const SECURITY_PATH = "/guvenlik";
+/** Yetkilerim: kişinin kendi rolleri ve yetkileri, salt okunur (plan §6.4). Herkese açık. */
+export const MY_ACCESS_PATH = "/yetkilerim";
 /** Görevlerim: herkesin görev listesi. */
 export const TASKS_PATH = "/gorevlerim";
 /** Yönetim panosu: yönetim rolünün açılış ekranı. */
 export const DASHBOARD_PATH = "/pano";
 /** Lot ve belge numarası araması (üst çubuktaki arama kutusu buraya götürür). */
 export const SEARCH_PATH = "/ara";
+
+/** Sistem > Kullanıcılar > Yetkiler (yalnız admin; plan §6.1); `gecmis` Geçmiş sekmesini açar. */
+export function userAccessPath(id: number, tab?: "gecmis"): string {
+  return `/sistem/kullanicilar/${id}/yetkiler${tab ? `?sekme=${tab}` : ""}`;
+}
 
 export function searchPath(query: string): string {
   return `${SEARCH_PATH}?q=${encodeURIComponent(query.trim())}`;

@@ -16,6 +16,11 @@ USER_LOCKED = "user.locked"
 # `{"user_id": int}`. workflow kişinin açık sayfalarına WebSocket iletisi gönderir; bildirim ve
 # denetim kaydı üretmez (iş akışı kural tablosunda değildir).
 ACCESS_CHANGED = "access.changed"
+# Kişiye özel yetkiler Paket B (plan §6.1): Sistem › Kullanıcılar › Yetkiler ekranında yapılan,
+# bir şeyi değiştiren gerçek kayıt (`set_user_access`; deneme hesabı yayınlamaz). Payload:
+# `{"user_id": int}`. workflow kişiye "Yetkileriniz güncellendi" bildirimini doğrudan gönderir
+# (kural tablosunda değildir); gerekçe notu bildirime girmez.
+ACCESS_UPDATED = "access.updated"
 
 # core — zamanlanmış işler (Celery Beat). Her sabah 07:00'de yayınlanır; modüller kendi günlük
 # kontrollerini bu olaya bağlar (ör. inventory: SKT'si yaklaşan lotlar, minimum stok altı).

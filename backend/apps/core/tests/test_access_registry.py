@@ -251,3 +251,89 @@ def test_temporary_catalog_restores_state() -> None:
 def test_unknown_section_lookup_raises() -> None:
     with pytest.raises(KeyError, match="Tanımsız yetki bölümü"):
         access.section("nope.nothing")
+
+
+# --- riskli çiftler ve açık kayıtların etkilediği ekranlar (adım 9) -----------------------------
+
+
+def test_risky_pair_registration_errors(demo: None) -> None:
+    from apps.core.access import register_risky_pair
+
+    orders = register_section("demo.orders", "Emirler", levels=(VIEW, CHANGE, APPROVE))
+    with pytest.raises(ValueError, match="ikinci yetkisi"):
+        register_risky_pair((orders, CHANGE))
+    with pytest.raises(ValueError, match="kendisiyle"):
+        register_risky_pair((orders, CHANGE), (orders, CHANGE))
+    register_risky_pair((orders, CHANGE), (orders, APPROVE))
+    with pytest.raises(ValueError, match="iki kez"):
+        register_risky_pair((orders, CHANGE), (orders, APPROVE))
+    assert access.risky_pairs()[-1] == access.RiskyPair(
+        first=("demo.orders", CHANGE), second=(("demo.orders", APPROVE),)
+    )
+
+
+def test_risky_pairs_validate_keys(demo: None) -> None:
+    from apps.core.access import register_risky_pair
+
+    register_section("demo.orders", "Emirler", levels=(VIEW, CHANGE))
+    register_risky_pair(("demo.orders", CHANGE), ("demo.none", APPROVE))
+    register_risky_pair(("demo.orders", CHANGE), ("demo.orders", APPROVE))
+    errors = access.validate()
+    assert "Riskli çift tanımsız bölüm içeriyor (demo.none)." in errors
+    assert "Riskli çiftin düzeyi demo.orders bölümünde yok (approve)." in errors
+
+
+def test_registered_risky_pairs_are_the_plans_five() -> None:
+    pairs = {(pair.first, pair.second) for pair in access.risky_pairs()}
+    samples = (("quality.samples", APPROVE),)
+    assert pairs == {
+        (("production.batches", CHANGE), samples),
+        (("filling.runs", CHANGE), samples),
+        (("inventory.receipts", CHANGE), samples),
+        (
+            ("purchasing.settings", CHANGE),
+            (("purchasing.orders", APPROVE), ("purchasing.over_limit", APPROVE)),
+        ),
+        (("quality.samples", APPROVE), (("quality.conditional", APPROVE),)),
+    }
+    assert access.validate() == []
+
+
+def test_open_records_effects_registry(demo: None) -> None:
+    register_open_records("demo", affects=("  Lot sayfası düz metin olur.  ",))
+    assert access.open_records_effects("demo") == ("Lot sayfası düz metin olur.",)
+    assert access.all_open_records_effects()["demo"] == ("Lot sayfası düz metin olur.",)
+    assert access.open_records_effects("yok") == ()
+
+
+def test_open_records_effects_reject_empty_text() -> None:
+    with temporary_catalog():
+        register_module("demo", "Deneme", order=999)
+        with pytest.raises(ValueError, match="boş olamaz"):
+            register_open_records("demo", affects=(" ",))
+
+
+def test_open_records_effects_need_an_open_records_row(demo: None) -> None:
+    access._OPEN_RECORDS_EFFECTS["demo"] = ("Bir ekran.",)
+    assert "demo: etkilenen ekranlar verilen modülde Açık kayıtlar yok." in access.validate()
+
+
+def test_every_open_records_module_has_effect_texts() -> None:
+    modules = {item.module for item in access.sections() if item.kind is Kind.OPEN_RECORDS}
+    assert modules == set(access.all_open_records_effects())
+    assert all(
+        text.endswith(".") for texts in access.all_open_records_effects().values() for text in texts
+    )
+
+
+def test_risky_pairs_and_effects_are_not_in_catalog_hash() -> None:
+    from apps.core.access import register_risky_pair
+
+    before, catalog = access.catalog_hash(), access.catalog()
+    with temporary_catalog():
+        register_risky_pair(("production.prep", CHANGE), ("production.orders", APPROVE))
+        access._OPEN_RECORDS_EFFECTS["production"] = ("Başka bir metin.",)
+        assert access.catalog_hash() == before
+        assert access.catalog() == catalog
+    assert len(access.risky_pairs()) == 5
+    assert access.open_records_effects("production") != ("Başka bir metin.",)

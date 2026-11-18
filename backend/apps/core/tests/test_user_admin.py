@@ -9,7 +9,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.test import Client
 from rest_framework.test import APIClient
 
-from apps.core import security, services
+from apps.core import security, services, user_access
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog, User
 from apps.core.roles import ADMIN, DEPO, SEVKIYAT, YONETIM
@@ -190,17 +190,13 @@ def test_users_are_never_deleted_or_replaced(admin_client, make_user):
 # --- güncelleme ---------------------------------------------------------------------------------
 
 
-def test_admin_updates_details_and_roles_but_not_username(admin_client, make_user):
+def test_admin_updates_details_but_not_username(admin_client, make_user):
+    """Roller artık burada değişmez (Yetkiler ekranı, plan §8 madde 13)."""
     user = make_user(DEPO, username="ayse", full_name="Ayşe")
 
     response = admin_client.patch(
         f"{USERS}{user.pk}/",
-        {
-            "full_name": "Ayşe Yılmaz",
-            "phone": "0532 111 22 33",
-            "roles": [SEVKIYAT, DEPO],
-            "username": "baska",
-        },
+        {"full_name": "Ayşe Yılmaz", "phone": "0532 111 22 33", "username": "baska"},
         format="json",
     )
 
@@ -208,10 +204,32 @@ def test_admin_updates_details_and_roles_but_not_username(admin_client, make_use
     body = response.json()
     assert body["username"] == "ayse"
     assert body["full_name"] == "Ayşe Yılmaz"
-    assert body["roles"] == [DEPO, SEVKIYAT]
+    assert body["roles"] == [DEPO]
     entries = user_entries(user)
     assert entries.filter(changes__full_name=["Ayşe", "Ayşe Yılmaz"]).exists()
-    assert entries.filter(changes__roles=[[DEPO], [DEPO, SEVKIYAT]]).exists()
+    assert not entries.filter(changes__has_key="roles").exists()
+
+
+def test_roles_change_on_the_access_page_with_a_note(admin_client, make_user):
+    user = make_user(DEPO, username="ayse", full_name="Ayşe")
+    version = admin_client.get(f"{USERS}{user.pk}/access/").json()["version"]
+
+    response = admin_client.put(
+        f"{USERS}{user.pk}/access/",
+        {
+            "version": version,
+            "overrides": [],
+            "roles": [SEVKIYAT, DEPO],
+            "note": "Sevkiyata da bakacak",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["matrix"]["roles"] == [DEPO, SEVKIYAT]
+    entry = user_entries(user).get(changes__has_key="roles")
+    assert entry.changes["roles"] == [[DEPO], [DEPO, SEVKIYAT]]
+    assert entry.note == "Sevkiyata da bakacak"
 
 
 def test_partial_update_changes_only_given_fields(admin_client, make_user):
@@ -227,7 +245,12 @@ def test_partial_update_changes_only_given_fields(admin_client, make_user):
 
 
 def test_admin_cannot_remove_own_admin_role(admin_client, admin):
-    response = admin_client.patch(f"{USERS}{admin.pk}/", {"roles": [YONETIM]}, format="json")
+    version = admin_client.get(f"{USERS}{admin.pk}/access/").json()["version"]
+    response = admin_client.put(
+        f"{USERS}{admin.pk}/access/",
+        {"version": version, "overrides": [], "roles": [YONETIM], "note": "Rol değişikliği"},
+        format="json",
+    )
 
     assert response.status_code == 400
     assert response.json()["code"] == "cannot_remove_own_admin"
@@ -239,12 +262,20 @@ def test_last_active_admin_keeps_admin_role(make_user):
     only = make_user(ADMIN, username="tek.yonetici")
     actor = make_user(YONETIM)
 
+    # Kaydı yapan her zaman aktif bir yöneticidir; son admin kuralı aynı denetimden geçer.
     with pytest.raises(BusinessRuleError) as exc:
-        services.update_user(actor, only, roles=[DEPO])
+        services._admin_removal_guard(actor, only, [DEPO])
     assert exc.value.code == "last_admin"
 
-    make_user(ADMIN, username="ikinci.yonetici")
-    services.update_user(actor, only, roles=[DEPO])
+    second = make_user(ADMIN, username="ikinci.yonetici")
+    services.set_user_access(
+        second,
+        only,
+        version=user_access.access_version(only, []),
+        overrides=[],
+        roles=[DEPO],
+        note="Yönetici değişiyor",
+    )
     only.refresh_roles()
     assert only.roles == [DEPO]
 

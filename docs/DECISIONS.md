@@ -2142,6 +2142,8 @@ değiştirme zorunlu, yalnızca admin):
 - **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=admin,yonetim` ve aynı yeniden başlatma. Bu
   rollerdeki kullanıcılar bir sonraki işleminde Güvenlik sayfasında kurulumu yapar; kontrol listesi
   madde 22 ve 25 o zaman yeniden işaretlenir.
+- **Sona erdi (2026-11-18):** 2FA yeniden zorunlu; bkz. "2026-11-18 — İki aşamalı doğrulama canlıda
+  yeniden zorunlu (yetki ekranından önce)".
 
 ## 2026-11-04 — Kodlama sistematiği
 
@@ -2802,6 +2804,130 @@ değiştirme zorunlu, yalnızca admin):
     `me` bir kez yenilenir.
   - **Rapor indirme bağlantısı** dosyayı indirmek için eksik yetki yoksa görünür
     (`download_required`).
+
+## 2026-11-17 — Kişiye özel yetkiler: 9. adımdan önce sahip kararları
+
+- **Bağlam:** 9. adım (Paket B, yetki ekranı) planı onaylandı; kod haritası planın açık
+  bıraktığı dört iş kuralını çıkardı. CUMHUR önerilen seçenekleri seçti (2026-11-17).
+- **Kararlar:**
+  - **"Yalnız görsün"** (modül satırı toplu işlemi) erişimi yalnız daraltır: kişinin o modülde
+    zaten bir yetkisi olan bölümlerde Görür kalır, Değiştirir ve Onaylar kapanır; hiçbir
+    bölümde yeni Görür açmaz.
+  - **İki aşamalı doğrulama uyarısı** (kaydı engellemez) Fiyatları görür, Maliyetleri görür ve
+    yalnız yönetime verilebilen KVKK bölümleri (personel, bordro, personel maliyeti, olaylar,
+    denetim günlüğü) verilirken çıkar.
+  - **"Etkisiz ayarları temizle"** yalnız rolün zaten verdiği eklemeleri ve rolün artık
+    vermediği kaldırmaları bitirir. KVKK kuralı ya da eksik ön koşul yüzünden işlemeyen
+    eklemeler kalır ve ekranda "düştü" diye görünür.
+  - **"Excel'e aktar"** (paketler ve kişilerin geçerli yetkileri) kontrollü dokümandır:
+    LS-SIS-001.
+- **Planla uyumlu, sorulmadan uygulanacaklar:** "Kim neyi görür" raporu ve Excel yalnız etkin
+  kullanıcıları içerir (plan §6.2 "etkin olarak taşıyan"). Açık kayıtlar kapatılınca gösterilen
+  "etkilenen ekranlar" metinleri Üretim, Dolum ve İadeler için de kodla birlikte yazılır ve
+  sahibin onayına PR'da sunulur.
+- **Gerekçe:** ekranın kısayolları erişimi beklenmedik biçimde genişletmemeli; KVKK verisi de
+  fiyat ve maliyet kadar hassastır; temizleme yalnız gerçekten işe yaramayan ayarı kaldırmalı;
+  rapor ISO denetimi ve paketlerin imzalanması için kullanılacak.
+
+## 2026-11-18 — Kişiye özel yetkiler: 9. adımın uygulama kararları
+
+- **Bağlam:** 9. adımda kişiye özel yetki yazılabilir oldu: Sistem > Kullanıcılar > Yetkiler
+  ekranı, Rol yetkileri sekmesi, "Kim neyi görür" raporu ve Yetkilerim sayfası (plan §5.10,
+  §5.11, §6). Planın harfiyen söylemediği noktalar.
+- **Kayıt kuralları:**
+  - Ekran istenen ayarların **tamamını** gönderir; servis hangilerinin kalacağını, biteceğini ve
+    açılacağını kendisi hesaplar. Ayrı bir sürüm belirteci (roller, etkin ayarlar, süper
+    kullanıcı ve etkinlik durumu) eşzamanlı değişikliği yakalar: `access_changed`.
+  - Kaydetmeden önce aynı istekle bir deneme hesabı yapılır (`dry_run`); özet ve uyarılar
+    sunucudan gelir. Hiçbir şey değişmiyorsa kayıt yazılmaz, gerekçe istenmez.
+  - Pasif kullanıcının yetkisi etkinmiş gibi hesaplanır ve kaydedilebilir; ekranda "Kullanıcı
+    pasif" uyarısı çıkar.
+  - Bir ayar biterken nedeni tek ve sabittir. Öncelik sırası: sistem yöneticisi oldu, gerekli
+    rol kaldırıldı, yetki tanımı kaldırıldı, yeni kayıtla değişti, etkisiz kaldı, rol
+    varsayılanına dönüldü.
+  - Rol değişikliği de bu ekrandan yapılır. Kullanıcı düzenleme penceresi rol göndermez; gelirse
+    `roles_on_access_page`. Yeni kullanıcının ilk rolleri açılış penceresinde verilir.
+  - Yeni hata kodları: `access_duplicate` (aynı hücre iki kez), `access_locked` (kilitli
+    düzey), `roles_on_access_page`.
+  - Son sistem yöneticisi denetimi yönetici satırlarını kilitledikten sonra yapılır; iki admin
+    birbirinin admin rolünü aynı anda kaldıramaz.
+- **Uyarılar** yalnız gerçekten bir şey değişiyorsa ve yalnız bu kayıtla ortaya çıkan durum
+  için hesaplanır: görev ayrılığı yalnız bu kayıtla tamamlanan çiftte; "etkisiz" yalnız yeni
+  etkisiz kalan ayarda; "göreve yönlenmez" yalnız işleyen yeni eklemede (rolü olmayan kişide
+  yerine "rolü yok, görev almaz"); "bağlı yetkiler düşer" yalnız yeni kaldırmada. İki aşamalı
+  doğrulama uyarısı yalnız kişiye özel eklemede çıkar; rol yoluyla gelen hassas yetki için
+  plan §8 madde 16 (admin ve yönetimde iki aşamalı doğrulama yeniden zorunlu) geçerlidir.
+- **Bildirim:** kişiye "Yetkileriniz güncellendi" bildirimi gider (gerekçe ve değiştiren kişi
+  yazılmaz), tıklanınca Yetkilerim açılır. Değiştiren admin kendisine bildirim almaz.
+- **Yetkilerim** Görür'ü kaldırıldığı için düşen Değiştirir ve Onaylar'ı da "kaldırılan"
+  listesinde gösterir ("Kimde var?" raporuyla aynı).
+- **Ekran:**
+  - Matris anlık ipuçları için sunucunun hesabını ön yüzde yineler; kaydın doğruluğu sunucunun
+    deneme hesabıdır.
+  - Değiştirir ya da Onaylar açılınca Görür de yazılır; ön koşul kendiliğinden verilir ve not
+    düşülür. Ön koşul bu kişiye verilemiyorsa hücre değişmez ve kırmızı not çıkar.
+  - "Yalnız görsün" Görür'ü her zaman açık yazar; Görür yalnız Değiştirir'den geliyor olsa bile
+    düşmez.
+  - Ekran sunucunun reddedeceği bir taslağı tutmaz: kaydedilmemiş bir ekleme KVKK rolü
+    kaldırıldığı ya da ön koşulu kapatıldığı için geçersiz kalırsa taslaktan çıkar ve satırda
+    not görünür. Kaydedilmiş ayarlar kalır; sunucu onları bitirir ("gerekli rol kaldırıldı")
+    ya da "bağlı yetkiler düşer" uyarısıyla tutar.
+  - "Etkisiz ayarları temizle" taslaktaki rollere bakar; roller değiştiyse sunucunun eski
+    rollere göre verdiği "etkisiz" işareti kullanılmaz.
+  - Kişi kendi ekranında yalnız rollerini görür ve değiştirebilir; kendi kişiye özel ayarını ve
+    kendi admin rolünü değiştiremez.
+- **Açık kayıtlar kapatılınca gösterilen "etkilenebilecek başka ekranlar" metinleri** kodda
+  modül bazında (`register_open_records(..., affects=...)`). Üretim, Dolum ve İadeler metinleri
+  yeni yazıldı; sahibin onayına PR'da sunulur. Bu üç modülde kayıt bağlantıları zaten modülde
+  Görür ister; görünür etki yorumlarda kişiden bahsedilememesidir (ve Dolum'da yalnız Ambalaj
+  reçetelerini gören kişide emir ve parti sayfalarının okunamaması).
+- **Rapor (LS-SIS-001):** dört sayfa (paketler, kişilerin yetkileri, kişiye özel ayarlar,
+  görev ayrılığı); yalnız etkin kullanıcılar; tarayıcıda saklanmaz (`no-store`). Elle yazılan
+  metin (gerekçe, ad) Excel'de formül olarak değil, metin olarak yazılır.
+- **Bilinen, 9. adımdan önce de var olan risk:** kullanıcıyı pasife alma son yönetici
+  denetimini yönetici satırlarını kilitlemeden yapar; iki admin birbirini aynı anda pasife
+  alırsa etkin admin kalmayabilir. Ayrıca düzeltilecek.
+
+## 2026-11-18 — Kişiye özel yetkiler: şoför kimlik numarası ve ortak hesap
+
+- **Bağlam:** plan §12'nin 10. adımdan (belgeler) ve Paket B canlıya alınmadan önce sorulacak iki
+  maddesi. Bugünkü durum sahibe sunuldu: şoförün TC kimlik numarası sevkiyat ekranlarında,
+  API'de ve irsaliye verisinde (JSON) maskelidir; tam hali yalnızca irsaliye PDF'ine basılır.
+  PDF'i Sevkiyatlar ve irsaliye: Görür yetkisi olan herkes açar (varsayılan sevkiyat, yönetim,
+  planlama, depo; admin her zaman). KVKK.md ise tam numarayı "irsaliye verisinde" de gösteriyor
+  ve yalnızca sevkiyat ve yönetim rollerini yazıyordu. Kişiye özel yetki ve ISO kaydı da herkesin
+  kişisel hesabı olduğunu varsayar; GECIS-PLANI'nda tabletlerin hat ya da vardiya hesabıyla
+  açılıp açılmayacağı açık bir soruydu.
+- **Karar (CUMHUR, 2026-11-18):**
+  - **Şoför kimlik numarası:** bugünkü davranış korunur, belgeler düzeltilir. Tam numara yalnızca
+    irsaliye PDF'indedir ve Sevkiyatlar ve irsaliye: Görür yetkisini izler (varsayılan sevkiyat,
+    yönetim, planlama, depo; admin). Ekranlar, API ve irsaliye verisi (JSON) maskeli kalır. Numara
+    kayıtlıysa her PDF ve veri açılışı denetim günlüğüne yazılır. Ayrı bir hak açılmaz. Davranışı
+    değiştirmeyen bir ek: irsaliye PDF'i, personel belgeleri ve ön bordro çıktıları gibi
+    tarayıcıda saklanmaz (`Cache-Control: no-store`).
+  - **Ortak tablet ya da hat hesabı:** herkesin kişisel hesabı olur; ortak hat ya da vardiya
+    hesabı açılmaz. Ortak bir tablette her kişi kendi hesabıyla girer, işi bitince çıkış yapar.
+  - 10. adımda KVKK.md (şoför satırı ve irsaliye görüntüleme kaydı), CANLI-KONTROL-LISTESI ve
+    GECIS-PLANI bu kararlara göre düzeltildi.
+- **Gerekçe:** irsaliye yasal belgedir ve yük ile birlikte giden kopyayı bugün bu rollerden biri
+  basabilir; maskeli bir kopya sorun çıkarabilirdi. Tam numaranın tek yerde kalması ve her
+  açılışın izi KVKK için yeterli görüldü. Kişisel hesap olmadan kişiye özel yetki, görev ayrılığı
+  ve denetim kaydı (kim neyi yaptı) anlamını yitirir.
+
+## 2026-11-18 — İki aşamalı doğrulama canlıda yeniden zorunlu (yetki ekranından önce)
+
+- **Karar (CUMHUR, "Önce 2FA'yı birlikte açalım", zamanlama sorusuna "Evet, şimdi aç"):** admin ve
+  yönetim rollerinde iki aşamalı doğrulama canlıda yeniden zorunlu. Kişiye özel yetkiler planının
+  Paket B'si (yetki ekranı) canlıya alınmadan önceki koşul (plan karar 11, §8 madde 16) böylece
+  karşılandı. "2026-11-04 — İki aşamalı doğrulama canlıda yine geçici olarak zorunlu değil"
+  kararının yerine geçer.
+- **Uygulama (kod değişmedi):** canlı `.env.prod` içinde `OTP_REQUIRED_ROLES=admin,yonetim`, ardından
+  `scripts/prod-compose.sh up -d --wait`. Öncesinde `.env.prod` ve veritabanı yedeği alındı
+  (`20261118T170635`).
+- **Etkisi:** bu rollerdeki kullanıcılar bir sonraki işleminde Güvenlik sayfasına yönlendirilir ve
+  kurulumu bitirmeden başka işlem yapamaz; yönetim paneli girişi de kod ister. Öteki roller
+  değişmez. Kontrol listesi madde 22 ve 25 kurulumlar bitince işaretlenir.
+- **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=` (boş) ve aynı yeniden başlatma.
 
 ## 2026-11-18 — Cari hesaplar (tedarikçi ve müşteri paneli)
 

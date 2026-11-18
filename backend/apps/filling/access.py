@@ -74,7 +74,18 @@ REVERT = register_section(
     },
     requires={CHANGE: [(ORDERS, VIEW)]},
 )
-OPEN_RECORDS = register_open_records("filling")
+# Açık kayıtlar kapatılınca etkilenen öteki ekranlar (plan §5.1, §5.3; kaydetme özetindeki
+# uyarı ve Yetkiler ekranındaki satır notu). Sahip PR'da gözden geçirir.
+OPEN_RECORDS = register_open_records(
+    "filling",
+    affects=(
+        "Dolum emri, dolum partisi ve ambalaj reçetesi yorumlarında bu kişiden bahsedilemez, "
+        "bahsedilse de bildirim almaz.",
+        "Görevlerdeki, bildirimlerdeki, aramadaki ve panolardaki dolum bağlantıları değişmez. "
+        "Dolum'da yalnız Ambalaj reçetelerini gören kişide dolum emri ve dolum partisi "
+        "sayfaları açılır ama kayıt okunamaz.",
+    ),
+)
 
 register_readers("filling.fillingorder", ORDERS, PREP, RUNS)
 register_readers("filling.fillingrun", ORDERS, PREP, RUNS)

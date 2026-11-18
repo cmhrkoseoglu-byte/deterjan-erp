@@ -1,6 +1,18 @@
 import type { CurrentUser } from "../api/types";
 import type { RelatedRecord } from "../api/workflow";
 import { canOpenPage, type PageKey, type PageParams } from "../auth/pageAccess";
+import { MY_ACCESS_PATH } from "../auth/paths";
+
+/** "Yetkileriniz güncellendi" bildiriminin olay adı (backend `ACCESS_UPDATED`). */
+export const ACCESS_UPDATED_EVENT = "access.updated";
+
+/**
+ * Kaydı olmayan bildirimlerin hedefi, olay adına göre (plan §6.5). Kayıt bağlantıları
+ * (`RECORD_ROUTES`) önce gelir.
+ */
+export const EVENT_ROUTES: Readonly<Record<string, string>> = {
+  [ACCESS_UPDATED_EVENT]: MY_ACCESS_PATH,
+};
 
 /**
  * Kayıt türü ("app_label.model") → detay sayfası adresi. Görev ve bildirimlerdeki

@@ -25,6 +25,7 @@ from openpyxl import Workbook, load_workbook
 from rest_framework.test import APIClient
 
 from apps.core import pdf as core_pdf
+from apps.core.access_report_xlsx import ACCESS_REPORT_OUTPUT
 from apps.core.coding import outputs, registry
 from apps.core.coding.outputs import DocumentControl
 from apps.core.models import OutputBandChange, OutputDocument, OutputDocumentRevision, User
@@ -73,6 +74,8 @@ from apps.traceability.exports import RECALL_OUTPUT, recall_pdf, recall_xlsx
 from apps.traceability.selectors import recall_simulation
 
 pytestmark = pytest.mark.django_db
+
+ACCESS_REPORT_EXPORT = "/api/v1/access/report/export/"
 
 ISSUED, REV_00, REV_01, BAND_ON, DOCUMENT = 90, 60, 10, 75, 30
 PDF, XLSX = ReportJob.Format.PDF, ReportJob.Format.XLSX
@@ -445,6 +448,13 @@ def costing_outputs(make_user: Callable[..., User], client_for: Any) -> list[Pri
     return printed
 
 
+def core_outputs(make_user: Callable[..., User], client_for: Any) -> list[Printed]:
+    """Kim neyi görür (yetki raporu, tarihsiz): yalnız admin, API'den indirilir."""
+    make_user(DEPO)
+    client = client_for(ADMIN)
+    return [Printed(ACCESS_REPORT_OUTPUT, XLSX, 1, partial(download, client, ACCESS_REPORT_EXPORT))]
+
+
 def ledger_outputs(make_user: Callable[..., User], client_for: Any) -> list[Printed]:
     """Cari hesap ekstresi (tarihsiz; PDF ve Excel) ve cari listesi (Excel). 40 hareket: PDF iki
     sayfa."""
@@ -530,6 +540,7 @@ GROUPS: dict[str, Group] = {
     "traceability": Group(traceability_outputs, lambda: {RECALL_OUTPUT}),
     "costing": Group(costing_outputs, lambda: {*COSTING_REPORTS.values(), PERSONNEL_COST}),
     "hse": Group(hse_outputs, lambda: {"hse.sds-gaps"}),
+    "core": Group(core_outputs, lambda: {ACCESS_REPORT_OUTPUT}),
     "ledger": Group(
         ledger_outputs,
         lambda: {ledger_exports.STATEMENT_OUTPUT, ledger_exports.PARTNERS_OUTPUT},

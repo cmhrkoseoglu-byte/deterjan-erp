@@ -1986,6 +1986,65 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   yetkide gizli 403, oturum tazeleme, backend ve sözleşmeler) tek bir bulgu sınıfı çıkardı: kendi
   ekranı olmayan bölümler menüyü açıyordu; düzeltildi (DECISIONS).
 
+## 2026-11-18 — Kişiye özel yetkiler: 9. adım (Paket B, yetki ekranı)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-17); planın açık
+  bıraktığı dört iş kuralı önceden soruldu (DECISIONS 2026-11-17).
+- **Sistem > Kullanıcılar > Yetkiler:** kişinin rolleri ve bölüm × düzey matrisi; her hücre
+  kaynağını söyler (rol, rolü olan herkes, kişiye özel ekleme ya da kaldırma, düştü, etkisiz).
+  Bağlı düzeyler ve ön koşullar kendiliğinden uygulanır; modül satırında "Yalnız görsün",
+  "Bütün yetkileri kaldır" ve "Rol varsayılanına dön"; "Etkisiz ayarları temizle". Kaydetmeden
+  önce sunucunun deneme hesabı özetler ve uyarır (görev ayrılığı, kapsam boşluğu, KVKK,
+  iki aşamalı doğrulama, açık kayıtlar); gerekçe zorunlu; geçmiş silinmez ve ekranda görünür.
+  Kaydedilmemiş değişiklikle sayfadan çıkarken sorar.
+- **Kural katmanı:** `core.services.set_user_access` (tek yazma yolu, yalnız admin, sürüm
+  belirteciyle eşzamanlılık denetimi, denetim günlüğü, `access.changed` ve kişiye "Yetkileriniz
+  güncellendi" bildirimi). Roller de buradan değişir; kullanıcı düzenleme penceresi artık rol
+  göndermez. Rol değişince işlemeyen kişiye özel ayarlar nedeniyle biter.
+- **Rol yetkileri sekmesi** (paketler, tıklayınca "Kimde var?"), **"Kim neyi görür" raporu ve
+  Excel'i** (LS-SIS-001), **Yetkilerim** sayfası (herkes kendi yetkisini ve kaynağını görür;
+  "Yetkiniz yok" sayfasından ve bildirimden açılır). Kullanıcı listesinde kişiye özel ayar
+  sayısı ve süzgeci.
+- **CLAUDE.md §5:** rollerin ve kişiye özel yetkilerin yalnız bu ekrandan, gerekçeyle
+  değiştirildiği cümlesi eklendi (plan §11).
+- **Doğrulama:** backend 2870, ön yüz 751 test yeşil; mypy, ruff, ESLint, Prettier,
+  tsc, build, `manage.py check`, göç, OpenAPI şeması ve `access.gen.ts` temiz. Kişiye özel ayar
+  yokken davranış değişmez (sözleşme testleri, izin listesi yalnız 9. adımın yeni uçlarını ve
+  sekmesini içerir). Paket doğrulayıcıları ve bağımsız çapraz inceleme (güvenlik, kural
+  katmanı, ekran davranışı, sözleşmeler) bulguları düzeltildi ve testlendi.
+- **Canlıya almadan önce:** admin ve yönetimde iki aşamalı doğrulama yeniden zorunlu olmalı
+  (plan §8 madde 16) ve ortak tablet/hat hesabı sorusu (plan §12) yanıtlanmalı.
+- **Sırada:** 10. adım (belgeler: KVKK, kılavuzlar, ekran görüntüleri).
+
+## 2026-11-18 — Kişiye özel yetkiler: 10. adım (belgeler)
+
+- Adımın planı CUMHUR tarafından onaylandı ("Onaylıyorum, başla", 2026-11-18). Planın §12'de
+  10. adımdan önce sorulacak dediği iki soru yanıtlandı (DECISIONS 2026-11-18): şoför kimlik
+  numarası bugünkü gibi kalır (tam numara yalnız irsaliye PDF'inde, belgeler düzeltildi);
+  herkes kişisel hesapla girer, ortak hat ya da vardiya hesabı açılmaz.
+- **KVKK.md:** teknik tedbir satırı bölüm ve düzey bazında; "Kim görür" sütunu bölüm ve
+  varsayılan rol olarak yeniden yazıldı (müşteri ve tedarikçi iletişim bilgileri, firma bilgileri,
+  şoför kimlik numarası, personel ve bordro, olaylar, denetim günlüğü, ekler); kişiye özel yetki
+  değişiklikleri için yeni envanter satırı; veri yeri bulut sunucusu (D-21); iki aşamalı doğrulama.
+- **Canlı kontrol listesi ve geçiş planı:** iki aşamalı doğrulamanın yetki ekranından önce yeniden
+  açılması, panelde rollerin salt okunur olması, kişisel hesap, "Her görevi alabilecek biri var"
+  ve Rol yetkileri Excel'inin gözden geçirilmesi.
+- **Kılavuzlar:** admin'e "Kullanıcı yetkileri" bölümü; genel'e Yetkilerim, "Yetkiniz yok" ve
+  "Yetkileriniz güncellendi"; yönetim, laboratuvar, satın alma ve sevkiyatta Onaylar yetkisi,
+  yalnız yönetime verilebilen yetkiler ve irsaliye; geçişte kişisel hesap. Beş yeni ekran görüntüsü
+  (yetki matrisi, kaydetme özeti, Rol yetkileri, Kimde var?, Yetkilerim), kullanıcı listesi
+  yeniden çekildi; betikte kaydedilmiş bir kişiye özel ayar açılmaz.
+- **Küçük kod işi (davranış değişmez):** irsaliye PDF'i tarayıcıda saklanmaz (`no-store`), PDF'in
+  tam numarayı yazdığı ve açılışın günlüğe yalnız numara varken yazıldığı testlendi.
+  `docs/YETKI-PAKETLERI.md` rol paketlerini `export_access --format=markdown` ile üretilen tablo
+  olarak gösterir (ekrandaki G/D/O harfleriyle); CI güncelliğini denetler.
+- **Doğrulama:** backend 2876, ön yüz 751 test yeşil; mypy, ruff, ESLint, Prettier, tsc,
+  build, `manage.py check`, göç, şema ve `access.gen.ts` temiz. Belgeler dosya dosya ve
+  çapraz olarak kodla karşılaştırıldı; bulunan uyuşmazlıklar düzeltildi.
+- **Canlıya almadan önce:** admin ve yönetimde iki aşamalı doğrulama yeniden zorunlu olmalı
+  (plan §8 madde 16).
+- **Sırada:** Paket B'nin canlıya alınması (sahibin onayıyla); sonra Paket C (Faz B, ayrı onay).
+
 ## 2026-11-18 — Cari hesaplar (tedarikçi ve müşteri paneli)
 
 - Plan `docs/plan/cari-hesaplar.md`; sahibin kararları ve uygulama kararları DECISIONS'ta

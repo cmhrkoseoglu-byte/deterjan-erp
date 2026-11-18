@@ -175,37 +175,64 @@ def test_giving_role_to_roleless_user_never_warns(only_test_rules, make_user):
     assert coverage.role_change_warnings(nobody, [], [DEPO]) == []
 
 
-def test_user_patch_returns_non_blocking_warning(only_test_rules, client_for, make_user):
+def _save_access(actor: User, user: User, **kwargs: object):
+    """Yetkiler ekranı kaydı (`set_user_access`), ekranın açılıştaki sürümüyle."""
+    from apps.core import services, user_access
+    from apps.core.effective_access import active_overrides
+
+    version = user_access.access_version(user, list(active_overrides().filter(user=user)))
+    options: dict = {"overrides": [], "note": "Rol değişikliği", **kwargs}
+    return services.set_user_access(actor, user, version=version, **options)
+
+
+def test_access_save_returns_non_blocking_coverage_warning(only_test_rules, make_user):
     access.register_rule("deneme_depo", TASK, (DEPO,), READINESS)
     depo = make_user(DEPO)
-    admin = client_for(ADMIN)
+    admin = make_user(ADMIN)
 
-    response = admin.patch(f"{USERS}{depo.pk}/", {"roles": [PLANLAMA]}, format="json")
+    plan = _save_access(admin, depo, roles=[PLANLAMA], dry_run=True)
+    (warning,) = [item for item in plan.warnings if item.code == "coverage_gap"]
+    assert warning.text.startswith("Depo rolünde")
 
-    assert response.status_code == 200, response.content
-    body = response.json()
-    assert body["roles"] == [PLANLAMA]
-    assert len(body["coverage_warnings"]) == 1
-    assert "Depo rolünde" in body["coverage_warnings"][0]
-    depo.refresh_from_db()
+    plan = _save_access(admin, depo, roles=[PLANLAMA])
+    assert [item.code for item in plan.warnings] == ["coverage_gap"]
+    depo.refresh_roles()
     assert depo.role_names == {PLANLAMA}
 
     other = make_user(DEPO)
-    response = admin.patch(f"{USERS}{other.pk}/", {"full_name": "Ali Veli"}, format="json")
-    assert response.json()["coverage_warnings"] == []
+    assert _save_access(admin, other, roles=[DEPO], dry_run=True).warnings == ()
 
 
-def test_user_patch_warning_counts_revoked_override(only_test_rules, client_for, make_user):
+def test_access_save_warning_counts_revoked_override(only_test_rules, make_user):
     """İkinci depo üyesinin Hazırlık listesi yetkisi kaldırılmışsa görevi alamaz: ilk üyenin rolü
     değişince uyarı çıkar."""
     access.register_rule("deneme_depo", TASK, (DEPO,), READINESS)
     depo = make_user(DEPO)
     override(make_user(DEPO), *READINESS, AccessOverride.Effect.REVOKE)
 
-    response = client_for(ADMIN).patch(f"{USERS}{depo.pk}/", {"roles": [PLANLAMA]}, format="json")
+    plan = _save_access(make_user(ADMIN), depo, roles=[PLANLAMA], dry_run=True)
 
-    assert response.status_code == 200
-    assert len(response.json()["coverage_warnings"]) == 1
+    assert [item.code for item in plan.warnings] == ["coverage_gap"]
+
+
+def test_access_save_warning_counts_the_saved_overrides(only_test_rules, make_user):
+    """Kişinin kendi kaldırması da sayılır: tek depo üyesinden kuralın yetkisi kaldırılınca görev
+    kimseye düşmez (`access_change_gaps`)."""
+    from apps.core.user_access import OverrideSpec
+
+    access.register_rule("deneme_depo", TASK, (DEPO,), READINESS)
+    depo = make_user(DEPO)
+    revoke = OverrideSpec(*READINESS, AccessOverride.Effect.REVOKE)
+
+    plan = _save_access(make_user(ADMIN), depo, overrides=[revoke], dry_run=True)
+
+    assert [item.code for item in plan.warnings] == ["coverage_gap"]
+    assert coverage.access_change_gaps(
+        depo, before=([DEPO], [], []), after=([DEPO], [], [READINESS])
+    )
+    assert not coverage.access_change_gaps(
+        depo, before=([DEPO], [], []), after=([DEPO], [READINESS], [])
+    )
 
 
 # --- access.changed ---------------------------------------------------------------------------
@@ -221,18 +248,20 @@ def access_events() -> list[dict]:
 
 
 def test_role_change_publishes_access_changed_after_commit(
-    client_for, make_user, access_events, django_capture_on_commit_callbacks
+    make_user, access_events, django_capture_on_commit_callbacks
 ):
+    from apps.core import services
+
     depo = make_user(DEPO)
-    admin = client_for(ADMIN)
+    admin = make_user(ADMIN)
 
     with django_capture_on_commit_callbacks(execute=True):
-        admin.patch(f"{USERS}{depo.pk}/", {"roles": [DEPO]}, format="json")
-        admin.patch(f"{USERS}{depo.pk}/", {"full_name": "Ali"}, format="json")
+        _save_access(admin, depo, roles=[DEPO])  # değişiklik yok
+        services.update_user(admin, depo, full_name="Ali")
     assert access_events == []
 
     with django_capture_on_commit_callbacks(execute=True):
-        admin.patch(f"{USERS}{depo.pk}/", {"roles": [DEPO, PLANLAMA]}, format="json")
+        _save_access(admin, depo, roles=[DEPO, PLANLAMA])
     assert access_events == [{"user_id": depo.pk}]
 
 
@@ -287,26 +316,49 @@ def _panel_form(user: User, **changes: object) -> dict:
     return {key: value for key, value in data.items() if value is not None}
 
 
-@pytest.mark.parametrize("change", ["groups", "is_superuser", "is_active"])
-def test_admin_panel_publishes_access_changed(
-    panel, make_user, access_events, django_capture_on_commit_callbacks, change
+def test_admin_panel_publishes_access_changed_for_is_active(
+    panel, make_user, access_events, django_capture_on_commit_callbacks
 ):
-    from django.contrib.auth.models import Group
-
+    """Panelde geçerli yetkiyi değiştiren tek alan etkinliktir (roller ve süper kullanıcı salt
+    okunur; plan §5.10)."""
     target = make_user(DEPO, username="depo1", full_name="Ayşe")
-    changes: dict[str, object] = {
-        "groups": {"groups": [Group.objects.get(name=PLANLAMA).pk]},
-        "is_superuser": {"is_superuser": "on"},
-        "is_active": {"is_active": None},
-    }[change]
 
     with django_capture_on_commit_callbacks(execute=True):
         response = panel.post(
-            f"/admin/core/user/{target.pk}/change/", _panel_form(target, **changes)
+            f"/admin/core/user/{target.pk}/change/", _panel_form(target, is_active=None)
         )
 
     assert response.status_code == 302, response.content[:500]
     assert access_events == [{"user_id": target.pk}]
+
+
+def test_admin_panel_roles_superuser_and_staff_are_read_only(
+    panel, make_user, access_events, django_capture_on_commit_callbacks
+):
+    from django.contrib.auth.models import Group
+
+    target = make_user(DEPO, username="depo1", full_name="Ayşe")
+    form = _panel_form(
+        target,
+        groups=[Group.objects.get(name=ADMIN).pk],
+        is_superuser="on",
+        is_staff="on",
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = panel.post(f"/admin/core/user/{target.pk}/change/", form)
+
+    assert response.status_code == 302, response.content[:500]
+    target.refresh_from_db()
+    target.refresh_roles()
+    assert target.role_names == {DEPO}
+    assert not target.is_superuser and not target.is_staff
+    assert access_events == []
+    assert not AuditLog.objects.filter(
+        content_type=ContentType.objects.get_for_model(User),
+        object_id=target.pk,
+        changes__has_key="roles",
+    ).exists()
 
 
 def test_admin_panel_name_change_does_not_publish(

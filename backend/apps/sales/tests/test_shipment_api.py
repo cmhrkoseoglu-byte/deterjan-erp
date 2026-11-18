@@ -1,5 +1,6 @@
 """Sevkiyat API'si: planla, okut (lot no / etiket), farklı lot gerekçesi, geri al, yükle, sevk et,
-irsaliye (JSON ve PDF), toplama önerisi, müşteriye sevk edilen lotlar ve rol yetkileri."""
+irsaliye (JSON ve PDF; şoför TC kimlik no ve açılış kaydı), toplama önerisi, müşteriye sevk
+edilen lotlar ve rol yetkileri."""
 
 from collections.abc import Callable
 from datetime import timedelta
@@ -11,10 +12,10 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.core.labels import gs1_check_digit
-from apps.core.models import User
+from apps.core.models import AuditLog, User
 from apps.masterdata.models import Location, MaterialUnitConversion, RetiredGtin
 from apps.masterdata.tests.factories import CustomerFactory
-from apps.sales import services
+from apps.sales import services, waybill
 from apps.sales.models import SalesOrder, Shipment
 from apps.sales.tests.factories import (
     confirmed_order,
@@ -490,3 +491,87 @@ def test_order_shows_reservation_location_type(
     data = client_for("sevkiyat").get(f"/api/v1/sales/orders/{order.pk}/").json()
     active = [r for r in data["reservations"] if r["status"] == "ACTIVE"]
     assert [(r["location_code"], r["location_type"]) for r in active] == [("SEVK", "SHIPPING")]
+
+
+WAYBILL_OPENED = "İrsaliye görüntülendi"
+
+
+def loaded_shipment(seller: User, picker: User, **vehicle: str) -> Shipment:
+    product = finished_product()
+    lot = finished_lot(product, "10", expiry_date=timezone.localdate() + timedelta(days=300))
+    order = confirmed_order(seller, [(product, "5", "ADET")])
+    shipment = services.plan_shipment(
+        seller, order, {"planned_date": timezone.localdate(), **vehicle}
+    )
+    services.pick_lot(picker, shipment, lot)
+    return services.mark_loaded(picker, shipment)
+
+
+def waybill_open_notes(shipment: Shipment) -> list[str]:
+    logs = AuditLog.objects.filter(
+        object_id=shipment.pk,
+        content_type__model="shipment",
+        action=AuditLog.Action.CUSTOM,
+        note__startswith=WAYBILL_OPENED,
+    )
+    return sorted(logs.values_list("note", flat=True))
+
+
+@pytest.mark.parametrize("role", ["sevkiyat", "yonetim", "planlama", "depo", "admin"])
+def test_waybill_pdf_prints_the_full_driver_id_for_shipment_viewers(
+    client_for: Client,
+    make_user: Callable[..., User],
+    seller: User,
+    dock: Location,
+    monkeypatch: pytest.MonkeyPatch,
+    role: str,
+) -> None:
+    """Şoförün açık TC kimlik numarası yalnız irsaliye PDF'inde; PDF'i Sevkiyatlar ve irsaliye:
+    Görür olan her rol (varsayılan sevkiyat, yönetim, planlama, depo; admin) açar. İrsaliye
+    verisi (JSON) maskelidir. PDF tarayıcıda saklanmaz (Cache-Control: no-store)."""
+    shipment = loaded_shipment(
+        seller, make_user("depo"), driver_name="Ali Veli", driver_id_no="12345678901"
+    )
+    texts: list[str] = []
+    real = waybill.Paragraph
+
+    def spy(text: str, *args: Any, **kwargs: Any) -> Any:
+        texts.append(text)
+        return real(text, *args, **kwargs)
+
+    monkeypatch.setattr(waybill, "Paragraph", spy)
+    client = client_for(role)
+
+    pdf = client.get(f"{URL}{shipment.pk}/waybill.pdf")
+    assert pdf.status_code == 200
+    assert pdf.content.startswith(b"%PDF")
+    assert pdf["Cache-Control"] == "no-store"
+    assert "Şoför TCKN: 12345678901" in texts
+
+    data = client.get(f"{URL}{shipment.pk}/waybill/")
+    assert data.status_code == 200
+    assert data.json()["driver_id_no"] == "*******8901"
+    assert "12345678901" not in data.content.decode()
+
+
+def test_waybill_open_is_logged_only_when_a_driver_id_is_stored(
+    client_for: Client, make_user: Callable[..., User], seller: User, dock: Location
+) -> None:
+    """İrsaliyenin her açılışı (PDF ve veri) denetim günlüğüne yazılır; kayıtta numara yoktur.
+    Şoför TC kimlik numarası girilmemişse açılış yazılmaz."""
+    picker = make_user("depo")
+    with_id = loaded_shipment(seller, picker, driver_name="Ali Veli", driver_id_no="12345678901")
+    without_id = loaded_shipment(seller, picker, driver_name="Ali Veli")
+    client = client_for("sevkiyat")
+
+    for shipment in (with_id, without_id):
+        assert client.get(f"{URL}{shipment.pk}/waybill.pdf").status_code == 200
+        assert client.get(f"{URL}{shipment.pk}/waybill/").status_code == 200
+
+    assert waybill_open_notes(with_id) == [
+        "İrsaliye görüntülendi (PDF); şoför TC kimlik numarası içerir",
+        "İrsaliye görüntülendi (veri); şoför TC kimlik numarası içerir",
+    ]
+    logs = AuditLog.objects.filter(object_id=with_id.pk, content_type__model="shipment")
+    assert "12345678901" not in str(list(logs.values_list("note", "changes")))
+    assert waybill_open_notes(without_id) == []

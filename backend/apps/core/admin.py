@@ -7,7 +7,6 @@ from django.db.models import Model
 from django.forms import ModelForm
 from django.http import HttpRequest
 
-from apps.core.audit import log_change
 from apps.core.coding.registry import MASTER, master_type_for_model
 from apps.core.models import (
     AccessCatalogSnapshot,
@@ -20,7 +19,7 @@ from apps.core.roles import ROLE_LABELS
 from apps.core.services import publish_access_changed, save_with_audit
 
 # Roller (Group) seed_roles ile oluşturulur ve sabittir; panelden eklenemez, yeniden
-# adlandırılamaz, silinemez (adı yetkinin kendisidir). Rol ataması kullanıcı ekranından yapılır.
+# adlandırılamaz, silinemez (adı yetkinin kendisidir). Rol ataması Yetkiler ekranından yapılır.
 admin.site.unregister(Group)
 
 
@@ -73,7 +72,11 @@ class UserAdmin(AuditedAdminMixin, DjangoUserAdmin):
                     "is_staff",
                     "is_superuser",
                     "groups",
-                )
+                ),
+                "description": (
+                    "Roller ve yetkiler Sistem › Kullanıcılar › Yetkiler ekranından, gerekçe "
+                    "yazılarak değişir. Süper kullanıcı yalnız sunucuda createsuperuser ile açılır."
+                ),
             },
         ),
         ("Önemli tarihler", {"fields": ("last_login", "date_joined")}),
@@ -87,30 +90,26 @@ class UserAdmin(AuditedAdminMixin, DjangoUserAdmin):
             },
         ),
     )
-    readonly_fields = ("last_login", "date_joined")
+    # Roller, süper kullanıcı ve panele giriş işaretleri salt okunurdur (plan §5.10, §8 madde 13).
+    readonly_fields = (
+        "last_login",
+        "date_joined",
+        "groups",
+        "is_superuser",
+        "is_staff",
+        "user_permissions",
+    )
 
     @admin.display(description="Roller")
     def role_list(self, obj: User) -> str:
         return ", ".join(obj.roles)
 
     def save_related(self, request: HttpRequest, form: Any, formsets: Any, change: bool) -> None:
-        user: User = form.instance
-        before = sorted(user.groups.values_list("name", flat=True)) if change else []
         super().save_related(request, form, formsets, change)
-        after = sorted(user.groups.values_list("name", flat=True))
+        user: User = form.instance
         user.refresh_roles()
-        if before != after:
-            log_change(
-                request.user,  # type: ignore[arg-type]
-                user,
-                AuditLog.Action.UPDATE,
-                {"roles": [before, after]},
-                "Yönetim paneli",
-            )
-        # Geçerli yetkiyi değiştiren alanlar: roller, süper kullanıcı, etkinlik (plan §8 madde 11).
-        if change and (
-            before != after or {"is_superuser", "is_active"} & set(form.changed_data or ())
-        ):
+        # Panelde geçerli yetkiyi değiştiren tek alan etkinliktir (plan §8 madde 11).
+        if change and "is_active" in set(form.changed_data or ()):
             publish_access_changed(user, request.user)  # type: ignore[arg-type]
 
 

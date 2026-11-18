@@ -23,7 +23,7 @@ export const MISSING = "<yok>";
 export const ANY = "<her>";
 
 /** Uygulanan adım (plan §10). Her adım bu sayıyı artırır ve kendi kayıtlarını ekler. */
-export const CURRENT_STEP = 8;
+export const CURRENT_STEP = 9;
 
 export interface Allowed {
   /** Planın maddesi, ör. "§8 madde 1". */
@@ -172,6 +172,14 @@ export const ALLOWED: readonly Allowed[] = [
       item: "yeni sayfa: Sistem > Rol yetkileri sekmesi (plan §6.2)",
       section: "pageTabs",
       step: 9,
+      old: ["/sistem/durum", "/sistem/kullanicilar", "/sistem/kodlama", "/sistem/bu-cihaz"],
+      new: [
+        "/sistem/durum",
+        "/sistem/kullanicilar",
+        "/sistem/rol-yetkileri",
+        "/sistem/kodlama",
+        "/sistem/bu-cihaz",
+      ],
     },
     { "/sistem": ["admin", "superuser"] },
   ),

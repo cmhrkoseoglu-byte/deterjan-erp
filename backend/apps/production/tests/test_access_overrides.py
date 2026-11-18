@@ -26,6 +26,9 @@ from apps.production.tests.factories import (
 )
 from apps.quality.access import SAMPLES
 from apps.quality.models import Sample, SampleStage
+from apps.workflow import selectors as workflow_selectors
+from apps.workflow import services as workflow
+from apps.workflow.models import Notification
 
 pytestmark = pytest.mark.usefixtures("invariants")
 D = Decimal
@@ -182,6 +185,27 @@ def test_closing_open_records_closes_reads_for_people_outside_production(
     member = api(override(depo, "production.open_records", READ))
     assert member.get(url("order-list")).status_code == 200
     assert member.get(url("order-approve", order.pk)).status_code == 405
+
+
+def test_closing_open_records_stops_mentions_in_production_comments(
+    plant: Plant, planner: User, lab: User
+) -> None:
+    """Etkilenen ekranlar metni (`production.access.OPEN_RECORDS`): açık kayıtları kapatılan kişi
+    üretim emri yorumunda bahsedilecekler arasında çıkmaz, bahsedilse de bildirim almaz."""
+    order = approved_order(plant, planner)
+    assert lab in workflow_selectors.mentionable_users_for(order, "laboratuvar")
+
+    override(lab, "production.open_records", READ)
+
+    assert lab not in workflow_selectors.mentionable_users_for(order, "laboratuvar")
+    comment = workflow.add_comment(
+        planner,
+        content_type="production.productionorder",
+        object_id=order.pk,
+        body="@laboratuvar numuneye bakar mısın?",
+    )
+    assert list(comment.mentions.all()) == []
+    assert not Notification.objects.filter(recipient=lab).exists()
 
 
 def test_lot_release_completes_the_order_without_production_rights(

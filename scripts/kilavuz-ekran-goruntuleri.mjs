@@ -544,6 +544,51 @@ async function scrollTop(page) {
   await page.waitForTimeout(300);
 }
 
+/** Demo kullanıcının (kullanıcı adı = rol kodu) kayıt numarası; yönetici oturumuyla aranır. */
+async function userId(s, username) {
+  const data = await s.get(`/users/?search=${encodeURIComponent(username)}`);
+  const user = data.results.find((u) => u.username === username);
+  if (!user) throw new Error(`${username} kullanıcısı bulunamadı`);
+  return user.id;
+}
+
+/**
+ * Yetkiler sayfasında kaydedilmemiş taslak bırakılır; sonraki görüntüye geçerken tarayıcının
+ * "Sayfadan çıkılsın mı?" sorusu kabul edilir (taslak atılır, hiçbir şey kaydedilmez). Diğer
+ * pencereler Playwright'ın varsayılanı gibi kapatılır.
+ */
+const leaveHandled = new WeakSet();
+function allowLeavingDraft(page) {
+  if (leaveHandled.has(page)) return;
+  leaveHandled.add(page);
+  page.on("dialog", (dialog) =>
+    (dialog.type() === "beforeunload" ? dialog.accept() : dialog.dismiss()).catch(() => {}),
+  );
+}
+
+/**
+ * Planlama kullanıcısının Yetkiler sayfası: Üretim modülü açık, iki hücrede kaydedilmemiş taslak
+ * (biri eklenen, biri kaldırılan). Kaydet'e basılmaz.
+ */
+async function draftUserAccess(page, s) {
+  allowLeavingDraft(page);
+  const id = await userId(s, "planlama");
+  await go(page, `/sistem/kullanicilar/${id}/yetkiler`, "Modül yetkileri");
+  const module = page.getByRole("region", { name: "Üretim", exact: true }).first();
+  const header = module.locator("[aria-expanded]").first();
+  if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
+  await module
+    .getByRole("button", { name: "Malzeme hazırlama: Görür — Verilmedi" })
+    .click();
+  await module
+    .getByRole("button", { name: "Şarj ve tartım: Görür — Rolden" })
+    .click();
+  await page.getByText("değişiklik kaydedilmedi").first().waitFor({ timeout: 15000 });
+  // Son tıklanan hücrenin ipucu görüntüde kalmasın.
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.waitForTimeout(400);
+}
+
 /** Açılış stoku şablonunu oturumla indirir ve geçici dosyaya yazar (önizleme için; aktarılmaz). */
 async function openingTemplate(s) {
   const response = await s.context.request.get(
@@ -633,6 +678,12 @@ const SHOTS = [
     name: "genel-yardim",
     user: "depo",
     run: async (page) => go(page, "/yardim/genel", "Rolünüzün kılavuzları"),
+  },
+  {
+    // Kişiye özel ayarı olmayan bir rol kullanıcısı: "Size özel verildi" rozeti çıkmaz.
+    name: "genel-yetkilerim",
+    user: "satin_alma",
+    run: async (page) => go(page, "/yetkilerim", "Ekranlar ve işlemler"),
   },
 
   // depo.md
@@ -1026,6 +1077,50 @@ const SHOTS = [
     name: "admin-kodlama-gs1",
     user: "admin",
     run: async (page) => go(page, "/sistem/kodlama?bolum=gs1", "Sıradaki SSCC seri no"),
+  },
+  {
+    name: "admin-rol-yetkileri",
+    user: "admin",
+    run: async (page) => go(page, "/sistem/rol-yetkileri", "Excel'e aktar"),
+  },
+  {
+    name: "admin-kimde-var",
+    user: "admin",
+    run: async (page) => {
+      await go(page, "/sistem/rol-yetkileri", "Excel'e aktar");
+      await page
+        .getByRole("button", {
+          name: "Depo: Üretim › Malzeme hazırlama (Değiştirir) — kimde var?",
+        })
+        .click();
+      const dialog = page.getByRole("dialog");
+      await dialog.waitFor();
+      await dialog.locator("table").first().waitFor({ timeout: 15000 });
+      await page.waitForTimeout(500);
+    },
+  },
+  {
+    // Kişiye özel ayar kaydedilmez: hücreler yalnız taslak olarak işaretlenir.
+    name: "admin-yetkiler",
+    user: "admin",
+    viewport: { width: 1366, height: 1100 },
+    run: async (page, s) => draftUserAccess(page, s),
+  },
+  {
+    // Özet penceresi kaydetmeden hesaplar (dry_run); son "Kaydet" düğmesine asla basılmaz.
+    name: "admin-yetkiler-ozet",
+    user: "admin",
+    viewport: { width: 1366, height: 1100 },
+    run: async (page, s) => {
+      await draftUserAccess(page, s);
+      await page.getByRole("button", { name: "Kaydet…" }).click();
+      const dialog = page.getByRole("dialog", { name: "Değişikliklerin özeti" });
+      await dialog.waitFor();
+      await dialog
+        .getByText("Değişiklikler hesaplanıyor…")
+        .waitFor({ state: "hidden", timeout: 15000 });
+      await page.waitForTimeout(500);
+    },
   },
 
   // gecis.md

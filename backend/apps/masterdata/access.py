@@ -49,7 +49,16 @@ COMPANY = register_section(
 # Müşteri ve tedarikçinin vergi, adres ve iletişim bilgileri Ana veriler'in açık kayıtlarıdır
 # (plan §3.1). Kapatılan kişi kartı yalnız tam görebilen bir bölümle görür; sales müşteri kartı
 # için kendi bölümünü ekler.
-OPEN_RECORDS = register_open_records("masterdata")
+# Açık kayıtlar kapatılınca etkilenen öteki ekranlar (plan §5.1, §5.3; kaydetme özetindeki
+# uyarı ve Yetkiler ekranındaki satır notu). Sahip PR'da gözden geçirir.
+OPEN_RECORDS = register_open_records(
+    "masterdata",
+    affects=(
+        "Sevkiyattaki ve öteki ekranlardaki müşteri ve tedarikçi kartları, Satış siparişleri: "
+        "Görür'ü olmayan kişide sade görünür (vergi, adres ve iletişim bilgileri olmadan).",
+        "Cari hesap ekstresi PDF'inde carinin adresi ve vergi bilgileri basılmaz.",
+    ),
+)
 register_field_openers("masterdata.customer.contact", CARDS)
 register_field_openers("masterdata.supplier.contact", CARDS)
 

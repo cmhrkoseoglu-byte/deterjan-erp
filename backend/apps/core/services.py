@@ -21,7 +21,16 @@ from django.db.models import F, Q, QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 
-from apps.core import access, attachments, event_names, events, records, security
+from apps.core import (
+    access,
+    attachments,
+    event_names,
+    events,
+    records,
+    security,
+    user_access,
+)
+from apps.core.access import APPROVE, CHANGE, VIEW
 from apps.core.audit import EXCLUDED_FIELDS, diff, log_change
 from apps.core.coding import formats as coding_formats
 from apps.core.coding import registry as coding_registry
@@ -29,14 +38,17 @@ from apps.core.coding import selectors as coding_selectors
 from apps.core.exceptions import BusinessRuleError
 from apps.core.models import (
     AccessCatalogSnapshot,
+    AccessOverride,
     Attachment,
     AuditLog,
     DocumentModel,
     DocumentSequence,
     User,
 )
+from apps.core.permissions import ACCESS_ADMIN_MESSAGE, require_admin
 from apps.core.roles import ADMIN, ALL_ROLES
 from apps.core.state import StateMachine
+from apps.core.user_access import GRANT, REVOKE, AccessPlan, OverrideSpec
 
 _PREFIX_RE = re.compile(r"^[A-Z][A-Z0-9]{0,9}$")
 CANCELLED = "CANCELLED"
@@ -291,30 +303,84 @@ def _apply_transition[D: DocumentModel](
     return instance
 
 
+LAST_ADMIN_ROLE_MESSAGE = "Başka aktif sistem yöneticisi olmadığı için bu rol kaldırılamaz."
+
+
+def _check_roles(wanted: Iterable[str]) -> None:
+    unknown = [role for role in wanted if role not in ALL_ROLES]
+    if unknown:
+        raise BusinessRuleError("unknown_role", f"Tanımsız rol: {', '.join(unknown)}")
+
+
+def _role_groups(wanted: list[str]) -> list[Group]:
+    """Rollerin grupları; tanımsız rolde `unknown_role`, `seed_roles` çalışmamışsa
+    `role_not_seeded`."""
+    _check_roles(wanted)
+    groups = list(Group.objects.filter(name__in=wanted))
+    if len(groups) != len(wanted):
+        raise BusinessRuleError(
+            "role_not_seeded", "Roller tanımlı değil; önce seed_roles komutunu çalıştırın."
+        )
+    return groups
+
+
+def _end_overrides(
+    endings: Iterable[tuple[AccessOverride, str]], actor: User | None, note: str
+) -> None:
+    """Kişiye özel satırları bitirir (silmez). `note` boşsa bitiş nedeninin adı yazılır."""
+    now = timezone.now()
+    for row, reason in endings:
+        row.ended_at = now
+        row.ended_by = actor
+        row.end_reason = reason
+        row.end_note = note or AccessOverride.EndReason(reason).label
+        row.save(update_fields=sorted(AccessOverride.END_FIELDS))
+
+
+def _active_rows(user: User) -> list[AccessOverride]:
+    """Kişinin etkin kişiye özel satırları, kilitli ve numara sırasıyla."""
+    if user.pk is None:
+        return []
+    return list(
+        AccessOverride.objects.select_for_update()
+        .filter(user_id=user.pk, ended_at__isnull=True)
+        .order_by("pk")
+    )
+
+
 def set_user_roles(user: User, roles: Iterable[str], actor: User | None, *, note: str = "") -> None:
     """Kullanıcının rollerini verilen listeyle değiştirir ve değişikliği denetim günlüğüne yazar.
+
+    Kullanıcı açma ve yönetim komutları kullanır; var olan kullanıcının rolleri Yetkiler ekranında
+    `set_user_access` ile değişir. Rol kancası burada da çalışır (plan §5.2): admin rolü verilince
+    kişinin etkin kişiye özel ayarları `admin`, kaldırılan rolün KVKK bölümlerindeki eklemeler
+    `role_removed` nedeniyle biter; o zaman denetim kaydına `access` (önce/sonra satırlar) da
+    yazılır.
 
     Tanımsız rol kodunda `BusinessRuleError("unknown_role")`; rol henüz oluşturulmamışsa
     (`seed_roles` çalışmamış) `BusinessRuleError("role_not_seeded")`.
     """
     wanted = sorted(set(roles))
-    unknown = [role for role in wanted if role not in ALL_ROLES]
-    if unknown:
-        raise BusinessRuleError("unknown_role", f"Tanımsız rol: {', '.join(unknown)}")
+    _check_roles(wanted)
     with transaction.atomic():
-        groups = list(Group.objects.filter(name__in=wanted))
-        if len(groups) != len(wanted):
-            raise BusinessRuleError(
-                "role_not_seeded", "Roller tanımlı değil; önce seed_roles komutunu çalıştırın."
-            )
+        groups = _role_groups(wanted)
         before = sorted(user.groups.values_list("name", flat=True))
         if before == wanted:
             return
+        active = _active_rows(user)
         user.groups.set(groups)
         user.refresh_roles()
-        log_change(
-            _real_actor(actor), user, AuditLog.Action.UPDATE, {"roles": [before, wanted]}, note
-        )
+        endings = user_access.role_change_endings(active, before, wanted)
+        changes: dict[str, Any] = {"roles": [before, wanted]}
+        if endings:
+            _end_overrides(endings, _real_actor(actor), note)
+            ended = {row.pk for row, _reason in endings}
+            remaining = [row for row in active if row.pk not in ended]
+            changes["access"] = [
+                user_access.override_rows(active),
+                user_access.override_rows(remaining),
+            ]
+        log_change(_real_actor(actor), user, AuditLog.Action.UPDATE, changes, note)
         publish_access_changed(user, actor)
 
 
@@ -323,6 +389,191 @@ def publish_access_changed(user: User, actor: User | None = None) -> None:
     (açık sayfaları menüyü ve düğmeleri yeniler; plan §8 madde 11). Bildirim ve denetim kaydı
     üretmez; değişikliğin kaydını çağıran yazar."""
     events.publish(event_names.ACCESS_CHANGED, {"user_id": user.pk}, _real_actor(actor))
+
+
+def _admin_removal_guard(actor: User, user: User, roles: Iterable[str]) -> None:
+    """Admin rolü kaldırılırken: kendi admin rolünüz kaldırılamaz (`cannot_remove_own_admin`);
+    başka aktif yönetici kalmayacaksa kaldırılamaz (`last_admin`). Çağıran, yöneticilerin
+    satırlarını önceden kilitler (`_lock_active_admins`)."""
+    wanted = set(roles)
+    if user.has_role(ADMIN) and ADMIN not in wanted:
+        if user.pk == actor.pk:
+            raise BusinessRuleError(
+                "cannot_remove_own_admin", "Kendi sistem yöneticisi rolünüzü kaldıramazsınız."
+            )
+        if user.is_active and not user.is_superuser:
+            _ensure_another_admin(user, LAST_ADMIN_ROLE_MESSAGE)
+
+
+def _lock_active_admins() -> None:
+    """Aktif yöneticilerin satırlarını numara sırasıyla kilitler: iki admin aynı anda birbirinin
+    admin rolünü kaldıramaz (son admin kuralı yarışı; critic §3.1). PostgreSQL `DISTINCT`
+    sorguda kilit vermediği için numaralar alt sorguyla seçilir."""
+    list(
+        User.objects.select_for_update()
+        .filter(pk__in=active_admins().values("pk"))
+        .order_by("pk")
+        .values_list("pk", flat=True)
+    )
+
+
+def _check_access_request(
+    actor: User,
+    user: User,
+    active: list[AccessOverride],
+    desired: list[OverrideSpec],
+    roles_after: tuple[str, ...],
+) -> None:
+    """Yetkiler kaydının kuralları, critic §4.1 sırasıyla (`access_changed`'dan sonra; gerekçe
+    kuralı kaydın kendisindedir)."""
+    active_specs = {OverrideSpec.of(row) for row in active}
+    new_rows = [spec for spec in desired if spec not in active_specs]
+    admin_after = user.is_superuser or ADMIN in roles_after
+    changed = bool(new_rows) or (not admin_after and set(desired) != active_specs)
+    if actor.pk == user.pk and changed:
+        raise BusinessRuleError("cannot_edit_own_access", "Kendi yetkilerinizi değiştiremezsiniz.")
+    if admin_after and new_rows:
+        raise BusinessRuleError(
+            "admin_has_all_access",
+            "Sistem yöneticisi bütün yetkilere sahiptir; kişiye özel yetki tanımlanmaz.",
+        )
+    _role_groups(list(roles_after))
+    _admin_removal_guard(actor, user, roles_after)
+
+    seen: set[tuple[str, str]] = set()
+    for spec in desired:
+        if spec.entry in seen:
+            raise BusinessRuleError(
+                "access_duplicate", f"Aynı yetki iki kez seçilmiş: {spec.key} ({spec.level})."
+            )
+        seen.add(spec.entry)
+    for spec in new_rows:
+        _check_new_row(spec, roles_after)
+
+    revoked_views = {spec.key for spec in desired if spec.effect == REVOKE and spec.level == VIEW}
+    if any(
+        spec.effect == GRANT and spec.level in (CHANGE, APPROVE) and spec.key in revoked_views
+        for spec in desired
+    ):
+        raise BusinessRuleError(
+            "access_conflict",
+            "Görmeyi kaldırdığınız bölümde değiştirme ya da onay yetkisi verilemez.",
+        )
+
+    after = user_access.preview_access(roles_after, desired)
+    for spec in new_rows:
+        if spec.effect != GRANT or spec.entry in after.entries:
+            continue
+        for need in access.section(spec.key).requirements(spec.level):
+            if need not in after.entries:
+                raise BusinessRuleError(
+                    "access_requires",
+                    f"Bu yetki için önce “{user_access.access_label(need)}” yetkisi gerekir.",
+                )
+
+
+def _check_new_row(spec: OverrideSpec, roles_after: tuple[str, ...]) -> None:
+    """Yeni bir kişiye özel satırın kuralları (kalan satırlar yeniden denetlenmez)."""
+    if spec.effect not in (GRANT, REVOKE) or not user_access.is_known(spec):
+        raise BusinessRuleError("unknown_access", f"Tanımsız yetki: {spec.key} ({spec.level}).")
+    item = access.section(spec.key)
+    if item.kind is access.Kind.OPEN_RECORDS and spec.effect == GRANT:
+        raise BusinessRuleError(
+            "open_records_revoke_only",
+            "Açık kayıtları herkes okur; bu satır yalnız bir kişi için kapatılabilir.",
+        )
+    if spec.level in item.admin_only:
+        raise BusinessRuleError(
+            "access_not_grantable", "Bu yetki yalnızca sistem yöneticisine aittir."
+        )
+    if spec.effect == REVOKE and spec.level in item.locked:
+        raise BusinessRuleError("access_locked", "Bu yetki herkese açıktır; kişiden kaldırılamaz.")
+    if (
+        spec.effect == GRANT
+        and item.restricted_to_role is not None
+        and item.restricted_to_role not in roles_after
+    ):
+        raise BusinessRuleError(
+            "access_requires_role",
+            "Bu yetki yalnızca yönetim rolündeki kullanıcılara verilebilir (KVKK).",
+        )
+
+
+def set_user_access(
+    actor: User,
+    user: User,
+    *,
+    version: str,
+    overrides: Iterable[OverrideSpec],
+    roles: Iterable[str] | None = None,
+    note: str = "",
+    dry_run: bool = False,
+) -> AccessPlan:
+    """Sistem › Kullanıcılar › Yetkiler kaydı (plan §5.2, §5.10, §6.1): rolleri (verilirse) ve
+    kişiye özel ayarların istenen etkin kümesini (`overrides`, tam liste) bir arada kaydeder.
+
+    Yalnız sistem yöneticisi çağırır (değilse 403). `version` ekran açıldığındaki sürüm
+    belirtecidir (`user_access.access_version`); uymazsa `access_changed`. `dry_run=True` hiçbir
+    şey yazmaz, aynı planı (uyarılarla) döner. Değişiklik yoksa yazmaz ve olay yayınlamaz; gerçek
+    kayıtta gerekçe (`note`, en az 5 karakter) zorunludur. Hata kodları ve sırası: critic §4.1.
+
+    Kilit sırası: (admin rolü kaldırılıyorsa) aktif yöneticiler → kişi → kişinin etkin satırları.
+    Gerçek kayıtta önce satırlar biter, sonra yenileri açılır; kullanıcı üzerinde tek denetim
+    kaydı yazılır (`roles` değiştiyse, `access` her zaman; satırlar numaralarıyla). Commit sonrası
+    `access.changed` (açık oturumlar yenilenir) ve `access.updated` (kişiye bildirim) yayınlanır.
+    """
+    require_admin(actor, ACCESS_ADMIN_MESSAGE)
+    desired = list(overrides)
+    wanted = None if roles is None else sorted(set(roles))
+    with transaction.atomic():
+        current = set(Group.objects.filter(user__pk=user.pk).values_list("name", flat=True))
+        if wanted is not None and ADMIN in current and ADMIN not in wanted:
+            _lock_active_admins()
+        target = User.objects.select_for_update().get(pk=user.pk)
+        active = _active_rows(target)
+        if user_access.access_version(target, active) != version:
+            raise BusinessRuleError(
+                "access_changed", "Yetkiler siz düzenlerken değişti; sayfayı yenileyin."
+            )
+        roles_before = tuple(target.roles)
+        roles_after = roles_before if wanted is None else tuple(wanted)
+        _check_access_request(actor, target, active, desired, roles_after)
+        plan = user_access.build_plan(target, active, roles_after=roles_after, desired=desired)
+        if dry_run or not plan.changed:
+            return plan
+        note = note.strip()
+        if len(note) < 5:
+            raise BusinessRuleError("access_note_required", "Değişikliğin gerekçesini yazın.")
+        actor_or_none = _real_actor(actor)
+        roles_changed = plan.roles_after != plan.roles_before
+        if roles_changed:
+            target.groups.set(_role_groups(list(plan.roles_after)))
+        _end_overrides(plan.end, actor_or_none, note)
+        created = AccessOverride.objects.bulk_create(
+            [
+                AccessOverride(
+                    user=target,
+                    key=spec.key,
+                    level=spec.level,
+                    effect=spec.effect,
+                    note=note,
+                    created_by=actor_or_none,
+                )
+                for spec in plan.create
+            ]
+        )
+        target.refresh_access()
+        changes: dict[str, Any] = {}
+        if roles_changed:
+            changes["roles"] = [list(plan.roles_before), list(plan.roles_after)]
+        changes["access"] = [
+            user_access.override_rows(active),
+            user_access.override_rows([*plan.keep, *created]),
+        ]
+        log_change(actor_or_none, target, AuditLog.Action.UPDATE, changes, note)
+        publish_access_changed(target, actor)
+        events.publish(event_names.ACCESS_UPDATED, {"user_id": target.pk}, actor_or_none)
+    return plan
 
 
 # --- kullanıcı yönetimi (Sistem > Kullanıcılar; API yalnızca admin'e açık) ----------------------
@@ -433,13 +684,13 @@ def update_user(
     full_name: str | None = None,
     email: str | None = None,
     phone: str | None = None,
-    roles: Iterable[str] | None = None,
 ) -> User:
-    """Kullanıcının kişisel bilgilerini ve rollerini günceller; verilmeyen alan değişmez.
+    """Kullanıcının kişisel bilgilerini günceller; verilmeyen alan değişmez.
 
-    Kullanıcı adı değiştirilemez (denetim kayıtlarında ve @bahsetmelerde geçer). Admin kendi
-    `admin` rolünü kaldıramaz (`cannot_remove_own_admin`); başka aktif yönetici kalmayacaksa
-    `admin` rolü kaldırılamaz (`last_admin`). Değişiklikler denetim günlüğüne yazılır.
+    Kullanıcı adı değiştirilemez (denetim kayıtlarında ve @bahsetmelerde geçer). Roller burada
+    değişmez: var olan kullanıcının rolleri ve kişiye özel yetkileri Sistem › Kullanıcılar ›
+    Yetkiler ekranında, gerekçe yazılarak `set_user_access` ile değişir (plan §8 madde 13).
+    Değişiklikler denetim günlüğüne yazılır.
     """
     with transaction.atomic():
         user = User.objects.select_for_update().get(pk=user.pk)
@@ -450,19 +701,6 @@ def update_user(
         if phone is not None:
             user.phone = phone.strip()
         save_with_audit(user, actor, note="Kullanıcı bilgileri güncellendi")
-        if roles is not None:
-            wanted = set(roles)
-            if user.has_role(ADMIN) and ADMIN not in wanted:
-                if user.pk == actor.pk:
-                    raise BusinessRuleError(
-                        "cannot_remove_own_admin",
-                        "Kendi sistem yöneticisi rolünüzü kaldıramazsınız.",
-                    )
-                if user.is_active and not user.is_superuser:
-                    _ensure_another_admin(
-                        user, "Başka aktif sistem yöneticisi olmadığı için bu rol kaldırılamaz."
-                    )
-            set_user_roles(user, wanted, actor, note="Roller güncellendi")
     return user
 
 

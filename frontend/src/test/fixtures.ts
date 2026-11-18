@@ -1,18 +1,7 @@
 import { AxiosError, AxiosHeaders } from "axios";
 import type { CurrentUser, Role } from "../api/types";
 import { ROLE_ACCESS } from "../auth/access.gen";
-
-/** Harf kümelerini birleştirir ("rv" + "vc" → "rvc"). */
-function unionLetters(tables: readonly Readonly<Record<string, string>>[]): Record<string, string> {
-  const merged: Record<string, string> = {};
-  for (const table of tables) {
-    for (const [key, text] of Object.entries(table)) {
-      const letters = new Set([...(merged[key] ?? ""), ...text]);
-      merged[key] = [..."rvca"].filter((letter) => letters.has(letter)).join("");
-    }
-  }
-  return merged;
-}
+import { unionLetters } from "../modules/system/access/matrix";
 
 /**
  * Kişiye özel ayar yokken `me.access`: admin rolünde (ya da süper kullanıcıda) admin harfleri,

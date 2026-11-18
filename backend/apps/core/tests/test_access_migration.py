@@ -125,6 +125,9 @@ ALLOWED: dict[str, str] = {
         "reporting/selectors.py: from apps.core.roles import ROLE_LABELS"
     ): "görev süreleri raporunun rol sütunu etiketleri; rol denetimi değil",
     "core/coverage.py: from apps.core.roles import ADMIN, ROLE_LABELS": ROLE_PRIMITIVE,
+    "core/user_access.py: from apps.core.roles import ADMIN, ROLE_LABELS": (
+        "Yetkiler kaydının planı: admin rol kancası ve uyarılardaki rol adları (plan §5.2, §5.10)"
+    ),
     "workflow/rules.py: from apps.core.roles import (": ROUTING,
     "workflow/rules.py: roles=(DEPO, SATIN_ALMA),": ROUTING,
     "workflow/rules.py: roles=(PLANLAMA, LABORATUVAR),": ROUTING,

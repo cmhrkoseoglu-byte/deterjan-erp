@@ -4,6 +4,7 @@ export const sy = {
   tabs: {
     status: "Sistem durumu",
     users: "Kullanıcılar",
+    roles: "Rol yetkileri",
     coding: "Kodlama sistematiği",
     device: "Bu cihaz",
   },
@@ -36,7 +37,24 @@ export const sy = {
     `${table}: beklenen ${expected}, bulunan ${actual}`,
   // Kullanıcılar
   usersNote:
-    "Yeni çalışana buradan hesap açın: sistem geçici şifre üretir, çalışan ilk girişte kendi şifresini belirler. Kullanıcılar silinmez; ayrılan çalışanı pasife alın.",
+    "Yeni çalışana buradan hesap açın: sistem geçici şifre üretir, çalışan ilk girişte kendi şifresini belirler. Kullanıcılar silinmez; ayrılan çalışanı pasife alın. Rolleri ve yetkileri kişinin Yetkiler sayfasından, gerekçe yazarak değiştirin.",
+  accessButton: "Yetkiler",
+  personalBadge: (n: number) => `Kişiye özel: ${n}`,
+  personalTooltip: (granted: number, revoked: number) =>
+    [
+      granted > 0 ? `${granted} yetki eklendi` : "",
+      revoked > 0 ? `${revoked} yetki kaldırıldı` : "",
+    ]
+      .filter(Boolean)
+      .join(", "),
+  filterRole: "Rol",
+  filterState: "Durum",
+  stateAll: "Tümü",
+  stateActive: "Etkin",
+  stateInactive: "Pasif",
+  filterPersonal: "Yalnız kişiye özel yetkisi olanlar",
+  allRoles: "Tüm roller",
+  clearRoleFilter: "Rol süzgecini temizle",
   newUser: "Yeni kullanıcı",
   edit: "Düzenle",
   moreActions: (name: string) => `${name}: diğer işlemler`,
@@ -89,14 +107,39 @@ export const sy = {
   rolesHelp:
     "Kullanıcı yalnızca rollerinin ekranlarında işlem yapar; birden fazla rol seçilebilir.",
   noRoleWarning: "Rol seçmediniz: kullanıcı sistemde işlem yapamaz.",
-  ownAdminLocked: "Kendi sistem yöneticisi rolünüzü kaldıramazsınız.",
+  changeRolesLink: "Rolleri ve yetkileri değiştir",
+  noRoles: "Rolü yok",
   required: "Gerekli",
   createAccount: "Hesabı aç",
   save: "Kaydet",
   cancel: "Vazgeç",
   saved: (name: string) => `${name} kullanıcısının bilgileri kaydedildi.`,
-  coverageWarningTitle: "Kaydedildi; bazı görevleri alacak kimse kalmadı",
-  coverageWarningHint: "Bu rollere yetkili birini ekleyin ya da rol değişikliğini geri alın.",
+  // Rol yetkileri (salt okunur; plan §6.2)
+  roleAccessIntro:
+    "Rollerin varsayılan yetki paketleri. Paketler yeni sürümle değişir; kişiye özel değişiklikler Kullanıcılar › Yetkiler'den yapılır. Bir harfe basınca o yetkiyi taşıyan kişiler listelenir.",
+  roleSelect: "Rol",
+  roleSelectAll: "Bütün roller",
+  exportExcel: "Excel'e aktar",
+  sectionColumn: "Bölüm",
+  levelLetters: { view: "G", change: "D", approve: "O", read: "Okur" } as Record<string, string>,
+  legend:
+    "G: Görür · D: Değiştirir · O: Onaylar · Okur: kayıtları okur. Soluk harf: rolü olan herkese açık.",
+  anyRoleHint: "Rolü olan herkes",
+  whoHasTitle: (text: string) => `Kimde var? ${text}`,
+  whoHasCell: (holder: string, text: string) => `${holder}: ${text} — kimde var?`,
+  whoHasEmpty: "Bu yetkiyi taşıyan etkin kullanıcı yok.",
+  holderColumn: "Kullanıcı",
+  sourceColumn: "Kaynak",
+  sources: {
+    everyone: "Herkese açık",
+    any_role: "Rolü olan herkese açık",
+    granted: "Kişiye özel eklendi",
+    implied: "Değiştirir ya da Onaylar ile gelir",
+    admin: "Sistem yöneticisi",
+    revoked: "Rolde var ama kaldırıldı",
+  } as Record<string, string>,
+  fromRoleSource: (roles: string) => `Rolden (${roles})`,
+  segregation: "Görev ayrılığı",
   // Geçici şifre
   tempTitle: "Geçici şifre",
   tempIntro: (name: string, username: string) =>

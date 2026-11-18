@@ -102,7 +102,7 @@ def test_markdown_export_has_one_row_per_section() -> None:
 
     assert rows[0].startswith("| Modül | Bölüm | Herkes | Rolü olan herkes | Yönetim |")
     assert len(rows) == 1 + len(access.sections())
-    assert any("| Malzeme hazırlama |" in row and "| vc |" in row for row in rows)
+    assert any("| Malzeme hazırlama |" in row and "| G D |" in row for row in rows)
 
 
 def test_export_command_writes_and_checks(tmp_path: Path) -> None:

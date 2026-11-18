@@ -33,7 +33,7 @@ Sipariş sayfasında her satırın **Rezerve**, **Sevkiyatta**, **Sevk edilen** 
 3. Her satırın **Bu sevkiyatta** miktarı kalan miktarla gelir. Araca sığmayan kısmı azaltın; kalan sonraki sevkiyata kalır.
 4. **Planla**'ya basın. Depoya toplama görevi düşer.
 
-> Şoförün TC kimlik no ekranda maskeli görünür; tam numara yalnızca irsaliyede yazılır.
+> Şoförün TC kimlik no ekranlarda maskeli görünür; tam numara yalnızca irsaliye PDF'inde yazılır. PDF'i **Sevkiyatlar ve irsaliye: Görür** yetkisi olanlar açar (varsayılan: sevkiyat, yönetim, planlama ve depo; sistem yöneticisi her zaman). Numara girilmiş sevkiyatta irsaliyenin her açılışı kayda geçer.
 
 ## Sevk onayı ve irsaliye
 
@@ -56,7 +56,7 @@ Depo lotları okutup **Yükleme tamam** deyince size "sevk onayı" görevi gelir
 
 ## Müşteri carileri
 
-**Cari hesaplar > Müşteriler** sekmesinde müşterilerin hareketlerini ve ekstresini görürsünüz. Tutarlar yalnız fiyatları görme yetkisi olanlara görünür; tahsilatı yönetim girer.
+**Cari hesaplar > Müşteriler** sekmesinde müşterilerin hareketlerini ve ekstresini görürsünüz. Tutarlar, PDF ekstre ile birlikte, yalnız **Fiyatları görür** yetkisi olanlara görünür (varsayılan: yönetim ve satın alma; sevkiyatta yoktur). Tahsilat ve dekont girmek **Müşteri carileri: Değiştirir** ister (varsayılan: yönetim).
 
 ## Müşteri iadesi
 

@@ -21,13 +21,19 @@ Bu kılavuz her rol için ortaktır. Giriş, menü, görevler, bildirimler, yoru
 ## Üst çubuk ve menü
 
 - Üst çubuğun rengi rolünüzü gösterir: yönetim altın, planlama mavi, depo turuncu, üretim çivit, laboratuvar yeşil, dolum camgöbeği, sevkiyat mor, satın alma pembe, sistem yöneticisi lacivert. Sol üstte INNCOS logosu durur; logonun yazısının altında panelinizin adı yazar (telefonda yalnız logonun işareti görünür). Logoya basınca açılış ekranınıza dönersiniz. Ortak tablette hangi birimin ekranında olduğunuzu renkten anlarsınız.
-- Sol menüde yalnızca rolünüzün kullandığı ekranlar görünür. Bir ekranı göremiyorsanız rolünüzde yoktur.
+- Sol menüde yalnızca yetkinizin olduğu ekranlar görünür. Bir ekranı göremiyorsanız yetkiniz yoktur; gerekiyorsa sistem yöneticinizden isteyin. Yetkileriniz değişince ekran kendiliğinden yenilenir.
 - Telefonda ya da dikey tutulan küçük tablette menü gizlenir. Sol üstteki üç çizgili düğmeyle açıp kapatın.
 - Adınıza tıklayınca hangi rollere sahip olduğunuzu görürsünüz. Bir kişinin birden fazla rolü olabilir.
 
+**Yetkilerim:** Adınıza tıklayıp **Yetkilerim**'i seçin. Sayfada rolleriniz, hassas haklarınız (fiyat ve maliyet görme) ve hangi ekranlarda neyi görüp değiştirebildiğiniz, neyi onaylayabildiğiniz yazar. Her yetkinin yanında nereden geldiği görünür, ör. "Rolünüzden (Depo)", "Size özel verildi" ya da "Sizin için kaldırıldı". Sayfa salt okunurdur; bir yetki gerekiyorsa sistem yöneticinizden isteyin.
+
+![Yetkilerim sayfası](/kilavuz/genel-yetkilerim.jpg)
+
+> Bağlantıyla ya da adresle yetkiniz olmayan bir sayfayı açarsanız **Yetkiniz yok** sayfası çıkar; gereken yetki altında yazar (ör. "Gerekli yetki: Üretim › Üretim emirleri (Görür)"). **Ana sayfaya dön** ile açılış ekranınıza, **Yetkilerimi gör** ile kendi yetkilerinize gidersiniz. Sistem yöneticisi rollerinizi ya da yetkilerinizi değiştirince zile "Yetkileriniz güncellendi" bildirimi gelir; açık sayfanız artık izinli değilse Yetkiniz yok sayfası görünür.
+
 ## Arama
 
-Üst çubuktaki **Lot ya da belge no ara** kutusuna lot numarasını ya da belge numarasının bir kısmını (ör. `SS-2026`, bir lot no, müşteri ya da malzeme adı) yazıp Enter'a basın. Sonuçlar lot, emir, sipariş, sevkiyat, numune ve iade olarak gruplanır; numaraya basınca kayıt açılır. Yalnızca rolünüzün açabildiği listelerde aranır. Telefonda kutunun yerinde büyüteç simgesi vardır.
+Üst çubuktaki **Lot ya da belge no ara** kutusuna lot numarasını ya da belge numarasının bir kısmını (ör. `SS-2026`, bir lot no, müşteri ya da malzeme adı) yazıp Enter'a basın. Sonuçlar lot, emir, sipariş, sevkiyat, numune ve iade olarak gruplanır; numaraya basınca kayıt açılır. Yalnızca yetkinizin açabildiği listelerde aranır. Telefonda kutunun yerinde büyüteç simgesi vardır.
 
 ## Gündüz ve gece görünümü
 
@@ -41,7 +47,7 @@ Giriş yapınca **Görevlerim** ekranı açılır (yönetim rolünde **Yönetim 
 
 1. **Açık** sekmesinde bekleyen görevleri görün. Kartta işin ne olduğu, önceliği, hangi birime ait olduğu ve ne kadar süredir beklediği yazar.
 2. İşi siz yapacaksanız **Üstlen**'e basın. Böylece birimdeki diğer kişiler görevi sizin aldığınızı görür.
-3. **Kayda git** ile görevin bağlı olduğu kaydı (numune, emir, sevkiyat gibi) açın ve işi orada yapın.
+3. **Kayda git** ile görevin bağlı olduğu kaydı (numune, emir, sevkiyat gibi) açın ve işi orada yapın. Kaydı açma yetkiniz yoksa **Kayda git** görünmez.
 4. Çoğu görev, iş kayıtta tamamlanınca kendiliğinden kapanır. Kendiliğinden kapanmayan görevde **Tamamla**'ya basın, isterseniz not yazın.
 5. Kapanmış görevleri **Kapanan** sekmesinde bulursunuz.
 
