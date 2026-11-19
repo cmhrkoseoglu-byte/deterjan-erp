@@ -2928,6 +2928,8 @@ değiştirme zorunlu, yalnızca admin):
   kurulumu bitirmeden başka işlem yapamaz; yönetim paneli girişi de kod ister. Öteki roller
   değişmez. Kontrol listesi madde 22 ve 25 kurulumlar bitince işaretlenir.
 - **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=` (boş) ve aynı yeniden başlatma.
+- **Sona erdi (2026-11-19):** 2FA yine geçici olarak zorunlu değil; bkz. "2026-11-19 — İki aşamalı
+  doğrulama canlıda yine geçici olarak zorunlu değil".
 
 ## 2026-11-18 — Cari hesaplar (tedarikçi ve müşteri paneli)
 
@@ -2983,3 +2985,19 @@ değiştirme zorunlu, yalnızca admin):
     madde 7-8 kaydının genişletilmesi, bu kararla).
 - **Kapsam dışı:** fatura ve e-Fatura, kur farkı hesabı, çek/senet portföyü, banka entegrasyonu,
   muhasebeye aktarım (Faz 5.1; bu defter aktarımın kaynağı olabilir).
+
+## 2026-11-19 — İki aşamalı doğrulama canlıda yine geçici olarak zorunlu değil
+
+- **Karar (CUMHUR, "2 adımlı doğrulamayı kaldıralım"; kapsam sorusuna "Yalnız zorunluluk kalksın",
+  kayıt için "Geçici"):** canlıda admin ve yönetim rollerinde iki aşamalı doğrulama şimdilik zorunlu
+  değil; ileride yeniden zorunlu yapılacak. "2026-11-18 — İki aşamalı doğrulama canlıda yeniden
+  zorunlu (yetki ekranından önce)" kararının yerine geçer. Kişiye özel yetkiler planının bu koşulu
+  (karar 11, §8 madde 16) yetki ekranı canlıya alındıktan sonra geçici olarak askıya alındı.
+- **Uygulama (kod değişmedi):** canlı `.env.prod` içinde `OTP_REQUIRED_ROLES=` (boş), ardından
+  `scripts/prod-compose.sh up -d --wait`. Öncesinde `.env.prod` ve veritabanı yedeği alındı
+  (`20261119T090023`). Kurulu doğrulayıcılar sıfırlanmadı.
+- **Etkisi:** kimse 2FA kurmaya zorlanmaz. Kurmuş olanlar her girişte kod girmeye devam eder;
+  isterlerse Güvenlik sayfasından kendileri kapatabilir. Personel, bordro ve denetim günlüğüne
+  yetkili kişiler yalnızca şifreyle de erişebilir.
+- **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=admin,yonetim` ve aynı yeniden başlatma;
+  kontrol listesi madde 22 ve 25 o zaman yeniden işaretlenir.
