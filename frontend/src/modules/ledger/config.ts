@@ -21,6 +21,11 @@ export function sideBySlug(slug: string | undefined): SideConfig | undefined {
   return SIDES.find((item) => item.slug === slug);
 }
 
+/** Tarafın dönem notu (yalnız tedarikçiler; DECISIONS 2026-11-20). */
+export function sideNotice(side: LedgerSide): string | null {
+  return side === "suppliers" ? lt.supplierNotice : null;
+}
+
 export const partnerLedgerPath = (slug: string, id: number) => `${LEDGER_BASE}/${slug}/${id}`;
 
 /** Bakiye: tutar, para birimi ve (B) borçlu / (A) alacaklı. */

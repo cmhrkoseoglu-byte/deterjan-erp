@@ -492,3 +492,75 @@ def test_entries_cannot_be_changed_or_deleted(manager: User) -> None:
         entry.save()
     with pytest.raises(TypeError):
         entry.delete()
+
+
+# --- devir sıfırlama (DECISIONS 2026-11-20) ----------------------------------------------------
+
+
+def _supplier_balance(supplier: Any, currency: str, **filters: Any) -> Decimal:
+    rows = entries(supplier=supplier, currency=currency, **filters)
+    return sum((e.debit - e.credit for e in rows), D(0))
+
+
+def test_close_supplier_balances_zeroes_each_currency(buyer: User, manager: User) -> None:
+    today = timezone.localdate()
+    as_of = today - timedelta(days=1)
+    owed, advance = SupplierFactory.create(), SupplierFactory.create()
+    posted_receipt(
+        buyer,
+        [(raw_material(), "100", "12.5", "TRY", None), (raw_material(), "10", "2", "USD", "34")],
+        supplier=owed,
+        receipt_date=today - timedelta(days=3),
+    )
+    manual(manager, advance, Kind.PAYMENT, "300", method="TRANSFER", entry_date=as_of)
+    manual(manager, owed, Kind.PAYMENT, "50", method="CASH")  # kapanıştan sonra: kalır
+    customer = CustomerFactory.create()
+    manual(manager, customer, Kind.DEBIT_NOTE, "70", description="Fark")
+    services.sync_all()
+
+    written = services.close_supplier_balances(manager, as_of=as_of, description="Devir")
+
+    assert {(e.supplier_id, e.currency, e.debit, e.credit) for e in written} == {
+        (owed.pk, "TRY", D("1500.00"), D("0")),
+        (owed.pk, "USD", D("24.00"), D("0")),
+        (advance.pk, "TRY", D("0"), D("300.00")),
+    }
+    assert len(written) == 3
+    assert {(e.kind, e.entry_date, e.description, e.created_by) for e in written} == {
+        (Kind.OPENING, as_of, "Devir", manager)
+    }
+    assert _supplier_balance(owed, "TRY", entry_date__lte=as_of) == 0
+    assert _supplier_balance(owed, "USD") == 0
+    assert _supplier_balance(advance, "TRY") == 0
+    assert _supplier_balance(owed, "TRY") == D("50.00")  # kapanış sonrası ödeme
+    assert entries(customer=customer)[0].debit == D("70.00")  # müşteriye dokunulmaz
+    assert services.close_supplier_balances(manager, as_of=as_of) == []  # tekrar: yazmaz
+    assert_ledger_invariants(all_documents=True)
+
+
+def test_close_supplier_balances_rejects_future_date(buyer: User, manager: User) -> None:
+    posted_receipt(buyer, [(raw_material(), "1", "9", "TRY", None)])
+    services.sync_all()
+
+    with pytest.raises(BusinessRuleError) as error:
+        services.close_supplier_balances(manager, as_of=timezone.localdate() + timedelta(days=1))
+
+    assert error.value.code == "entry_date_in_future"
+    assert LedgerEntry.objects.filter(kind=Kind.OPENING).count() == 0
+
+
+def test_close_supplier_balances_command_is_dry_run_by_default(buyer: User, manager: User) -> None:
+    as_of = timezone.localdate() - timedelta(days=1)
+    posted_receipt(buyer, [(raw_material(), "1", "9", "TRY", None)], receipt_date=as_of)
+    services.sync_all()
+    args = ["close_supplier_balances", "--user", manager.username, "--as-of", as_of.isoformat()]
+
+    out = StringIO()
+    call_command(*args, stdout=out)
+    assert "Kuru çalıştırma: 1 kayıt" in out.getvalue()
+    assert LedgerEntry.objects.filter(kind=Kind.OPENING).count() == 0
+
+    call_command(*args, "--apply", stdout=out)
+    assert "1 kayıt yazıldı" in out.getvalue()
+    closing = LedgerEntry.objects.get(kind=Kind.OPENING)
+    assert (closing.debit, closing.created_by) == (D("10.80"), manager)

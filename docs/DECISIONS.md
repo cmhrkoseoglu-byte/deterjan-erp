@@ -3126,3 +3126,26 @@ değiştirme zorunlu, yalnızca admin):
 - **Yetki sözleşmesi:** iş akışı sondasındaki yeni hücreler "yeni bildirim: geciken teslim
   (DECISIONS 2026-11-19)" kaydıyla bağlandı; gözlenen değer planla aynı (sevkiyat, yönetim,
   depo+sevkiyat alır; ötekiler almaz).
+
+## 2026-11-20 — Tedarikçi cari bakiyeleri 20.11.2026 itibarıyla sıfırlandı
+
+- **İstek (CUMHUR):** tedarikçilere olan bütün verecek bakiyesi sıfırlansın; ekranlarda
+  "20.11.2026 sonrası cari bakiyeyi içerir" anlamında bir not görünsün.
+- **Sahibin kararları (kartlarla, hepsi önerilen seçenek):**
+  - **Yöntem "Kapanış kaydı":** defter değişmez kalır (kayıt silinmez, değiştirilmez); her
+    tedarikçi ve para birimi için 19.11.2026 tarihli, "Devir sıfırlama: 20.11.2026 öncesi bakiye
+    kapatıldı" açıklamalı **Açılış bakiyesi** kaydı yazılır (verecek borçla, avans alacakla
+    kapanır). Eski mal kabul kayıtları ekstrede görünmeye devam eder; 20.11.2026'dan başlayan
+    ekstre sıfır devreden bakiyeyle açılır. Kayıtlar `manage.py close_supplier_balances --user
+    <kullanıcı> --apply` ile yazılır (varsayılan kuru çalıştırma; tekrar çalıştırmak güvenli).
+  - **Kapsam "Yalnız tedarikçiler":** müşteri carilerine dokunulmaz (o gün müşteri carisinde
+    kayıt yoktu).
+  - **Not her yerde:** Cari hesaplar > Tedarikçiler listesi, tedarikçinin cari sayfası, ekstre
+    PDF'i ve Excel çıktıları (cari listesi, ekstre). Metin: "Cari bakiyeler 20 Kasım 2026
+    itibarıyla sıfırdan başlatılmıştır. Gösterilen bakiye bu tarih ve sonrasındaki hareketlerden
+    oluşur; önceki dönem kapatılmıştır." (`apps/ledger/notices.py` ve ön yüz `strings.ts`).
+  - **Mal kabul yazmaya devam eder:** 20.11.2026'dan sonraki mal kabuller tedarikçiye eskisi gibi
+    yazılır. Kapanış öncesi bir mal kabulün fiyatı sonradan düzeltilirse fark, düzeltme günü
+    tarihli olarak yeni bakiyeye girer (eşitleme kuralı değişmedi).
+- **Canlıda:** 11 tedarikçide 14 bakiye (TRY ve USD), hepsi 5-11 Kasım mal kabullerinden; kayıtlar
+  yedek alındıktan sonra sahibin onayıyla yazılır.

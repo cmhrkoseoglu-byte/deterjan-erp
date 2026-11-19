@@ -16,7 +16,13 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconArrowLeft, IconFileSpreadsheet, IconFileTypePdf, IconPlus } from "@tabler/icons-react";
+import {
+  IconArrowLeft,
+  IconFileSpreadsheet,
+  IconFileTypePdf,
+  IconInfoCircle,
+  IconPlus,
+} from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
@@ -42,7 +48,14 @@ import { useCan } from "../../auth/access";
 import { formatDate, formatMoney, formatNumber } from "../../i18n/format";
 import { normalizeDecimal } from "../common/forms";
 import { today } from "../inventory/config";
-import { LEDGER_BASE, PRICES, balanceText, sideBySlug, type SideConfig } from "./config";
+import {
+  LEDGER_BASE,
+  PRICES,
+  balanceText,
+  sideBySlug,
+  sideNotice,
+  type SideConfig,
+} from "./config";
 import { lt } from "./strings";
 import { RecordLink } from "../../workflow/RecordLink";
 
@@ -544,6 +557,11 @@ export function PartnerLedgerPage() {
             </Group>
           )}
         </Group>
+      )}
+      {sideNotice(side.side) && (
+        <Alert color="blue" variant="light" icon={<IconInfoCircle size={18} />}>
+          {sideNotice(side.side)}
+        </Alert>
       )}
       {!amounts && (
         <Alert color="gray" variant="light">

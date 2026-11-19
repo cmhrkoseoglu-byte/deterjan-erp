@@ -438,3 +438,47 @@ def test_statement_pdf_needs_prices(
     assert response["Content-Type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
     assert client_for(SEVKIYAT).get(url).status_code == 403
+
+
+def test_supplier_outputs_carry_balance_notice(
+    client_for: Callable[..., APIClient],
+    manager: User,
+    customer: Customer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from apps.ledger import exports
+    from apps.ledger.notices import SUPPLIER_NOTICE
+
+    supplier = SupplierFactory.create()
+    services.post_manual_entry(
+        manager,
+        partner=supplier,
+        kind=Kind.PAYMENT,
+        entry_date=days_ago(1),
+        currency="TRY",
+        amount=D("10"),
+        method="CASH",
+    )
+    client = client_for(YONETIM)
+
+    listing = _sheet_values(client.get(f"{BASE}/suppliers/export-xlsx/").content)
+    statement = _sheet_values(client.get(f"{BASE}/suppliers/{supplier.pk}/statement-xlsx/").content)
+    assert ["Not", SUPPLIER_NOTICE] in [row[:2] for row in listing[:4]]
+    assert ["Not", SUPPLIER_NOTICE] in [row[:2] for row in statement[:5]]
+    assert listing[4][0] == "Kod"  # başlık notun altında
+
+    texts: list[str] = []
+    real = exports.Paragraph
+
+    def spy(text: str, *args: Any, **kwargs: Any) -> Any:
+        texts.append(text)
+        return real(text, *args, **kwargs)
+
+    monkeypatch.setattr(exports, "Paragraph", spy)
+    assert client.get(f"{BASE}/suppliers/{supplier.pk}/statement-pdf/").status_code == 200
+    assert SUPPLIER_NOTICE in texts
+    texts.clear()
+    assert client.get(f"{BASE}/customers/{customer.pk}/statement-pdf/").status_code == 200
+    assert SUPPLIER_NOTICE not in texts
+    customers = _sheet_values(client.get(f"{BASE}/customers/export-xlsx/").content)
+    assert all(row[0] != "Not" for row in customers)
