@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
-from apps.portal.api import customer, views
+from apps.portal.api import customer, supplier, views
 
 router = SimpleRouter()
 router.register("accounts", views.PortalAccountViewSet, basename="portal-account")
@@ -10,6 +10,12 @@ customer_router = SimpleRouter()
 customer_router.register("orders", customer.CustomerOrderViewSet, basename="portal-customer-order")
 customer_router.register(
     "shipments", customer.CustomerShipmentViewSet, basename="portal-customer-shipment"
+)
+
+supplier_router = SimpleRouter()
+supplier_router.register("orders", supplier.SupplierOrderViewSet, basename="portal-supplier-order")
+supplier_router.register(
+    "receipts", supplier.SupplierReceiptViewSet, basename="portal-supplier-receipt"
 )
 
 urlpatterns = [
@@ -30,5 +36,21 @@ urlpatterns = [
         name="portal-customer-statement-pdf",
     ),
     path("customer/", include(customer_router.urls)),
+    path(
+        "supplier/ledger/",
+        supplier.SupplierBalanceView.as_view(),
+        name="portal-supplier-ledger",
+    ),
+    path(
+        "supplier/ledger/statement/",
+        supplier.SupplierStatementView.as_view(),
+        name="portal-supplier-statement",
+    ),
+    path(
+        "supplier/ledger/statement-pdf/",
+        supplier.SupplierStatementPdfView.as_view(),
+        name="portal-supplier-statement-pdf",
+    ),
+    path("supplier/", include(supplier_router.urls)),
     path("", include(router.urls)),
 ]

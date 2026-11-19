@@ -90,7 +90,7 @@ def test_kind_prefixes_are_separate(
 
     blocked = customer_client.get("/api/v1/portal/supplier/orders/")
     assert blocked.status_code == 403 and blocked.json()["code"] == "portal_forbidden"
-    assert supplier_client.get("/api/v1/portal/supplier/orders/").status_code == 404  # henüz yok
+    assert supplier_client.get("/api/v1/portal/supplier/orders/").status_code == 200
     assert supplier_client.get("/api/v1/portal/customer/orders/").status_code == 403
 
 

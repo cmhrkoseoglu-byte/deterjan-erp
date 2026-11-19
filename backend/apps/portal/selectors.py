@@ -7,8 +7,11 @@ from typing import Any
 from django.db.models import Prefetch, QuerySet
 
 from apps.core.models import User
-from apps.masterdata.models import Customer
+from apps.inventory.models import GoodsReceipt, GoodsReceiptLine
+from apps.masterdata.models import Customer, Supplier
 from apps.portal.models import PortalAccount
+from apps.purchasing import selectors as purchasing_selectors
+from apps.purchasing.models import PurchaseOrder
 from apps.sales import selectors as sales_selectors
 from apps.sales.models import SalesOrder, Shipment
 from apps.sales.waybill import customer_copy_data
@@ -86,3 +89,35 @@ def shipment_lines(shipment: Shipment) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+# --- tedarikçi portalı (docs/plan/musteri-siparis-takibi.md §4.3a) ---------------------------
+
+
+def supplier_orders(supplier: Supplier) -> QuerySet[PurchaseOrder]:
+    """Tedarikçiye gönderilmiş satın alma siparişleri (`sent_at` dolu): Gönderildi, Kısmen teslim
+    alındı, Teslim alındı ve gönderildikten sonra iptal edilen. Satırlar teslim alınan miktarla."""
+    return (
+        PurchaseOrder.objects.filter(supplier=supplier, sent_at__isnull=False)
+        .prefetch_related(
+            Prefetch("lines", queryset=purchasing_selectors.order_lines().order_by("line_no"))
+        )
+        .order_by("-order_date", "-number")
+    )
+
+
+def supplier_receipts(supplier: Supplier) -> QuerySet[GoodsReceipt]:
+    """Bu tedarikçiden kaydedilmiş mal kabuller (taslak ve iptal yok); satırlar bağlı sipariş
+    satırıyla."""
+    return (
+        GoodsReceipt.objects.filter(supplier=supplier, status=GoodsReceipt.Status.POSTED)
+        .prefetch_related(
+            Prefetch(
+                "lines",
+                queryset=GoodsReceiptLine.objects.select_related(
+                    "material", "unit", "purchase_link__order_line__order"
+                ).order_by("line_no"),
+            )
+        )
+        .order_by("-receipt_date", "-number")
+    )

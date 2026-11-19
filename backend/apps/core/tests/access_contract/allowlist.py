@@ -191,6 +191,9 @@ _PORTAL_ME = "* /api/v1/portal/me/"
 # çalışan olduğundan giriş yapan herkes 403 alır.
 _PORTAL_CUSTOMER = "yeni uç nokta: müşteri portalı (DECISIONS 2026-11-19)"
 _PORTAL_CUSTOMER_PATH = "* /api/v1/portal/customer/*"
+# Tedarikçi portalı okumaları (B3): yalnız tedarikçi portalı kullanıcısı açar.
+_PORTAL_SUPPLIER = "yeni uç nokta: tedarikçi portalı (DECISIONS 2026-11-19)"
+_PORTAL_SUPPLIER_PATH = "* /api/v1/portal/supplier/*"
 _STAFF_NON_ADMIN = (
     "no_role",
     "yonetim",
@@ -502,6 +505,22 @@ ALLOWED: tuple[Allowed, ...] = (
         _PORTAL_CUSTOMER,
         "endpoints",
         {_PORTAL_CUSTOMER_PATH: (*_STAFF_NON_ADMIN, "admin", "superuser")},
+        step=9,
+        old=MISSING,
+        new="403",
+    ),
+    *_cells(
+        _PORTAL_SUPPLIER,
+        "endpoints",
+        {_PORTAL_SUPPLIER_PATH: _SIGNED_OUT},
+        step=9,
+        old=MISSING,
+        new="401",
+    ),
+    *_cells(
+        _PORTAL_SUPPLIER,
+        "endpoints",
+        {_PORTAL_SUPPLIER_PATH: (*_STAFF_NON_ADMIN, "admin", "superuser")},
         step=9,
         old=MISSING,
         new="403",

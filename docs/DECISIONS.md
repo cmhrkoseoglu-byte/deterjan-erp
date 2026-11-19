@@ -3209,3 +3209,22 @@ değiştirme zorunlu, yalnızca admin):
   basılmaz).
 - **Yetki sözleşmesi:** "yeni uç nokta: müşteri portalı (DECISIONS 2026-11-19)" kaydıyla bağlandı
   (personaların hepsi çalışan: giriş yapan herkes 403).
+
+## 2026-11-19 — Portal B3: tedarikçi portalı okumaları
+
+- **B3 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"); sipariş notu "Evet, PDF'teki gibi"
+  (not zaten tedarikçiye giden PDF'e basılıyor).
+- **Uç noktalar** (`/api/v1/portal/supplier/`, yalnız tedarikçi portalı kullanıcısı; her sorgu
+  bağlı tedarikçiyle başlar, başka tedarikçinin kaydı 404): `orders/` (gönderilmiş siparişler:
+  `sent_at` dolu olanlar — Gönderildi, Kısmen teslim alındı, Teslim alındı, gönderildikten sonra
+  iptal; süzgeç `status`), `orders/{id}/pdf/` (tedarikçiye giden PDF'in aynısı, `no-store`),
+  `receipts/` (kaydedilmiş mal kabuller), `ledger/`, `ledger/statement/`, `ledger/statement-pdf/`.
+- **Görünenler:** sipariş no, tarih, gönderim zamanı, para birimi, durum, notlar, tutar; satırda
+  malzeme, miktar ve birim, birim fiyat, satır tutarı, teslim tarihi, teslim alınan ve kalan (temel
+  birimde ve sipariş birimiyle). Mal kabulde no, tarih, tedarikçinin irsaliye no'su; satırda
+  malzeme, miktar, birim, tedarikçi lot no'su ve bağlı sipariş no.
+- **Görünmeyenler:** onay tutarı ve limiti, TL kuru, onaylayan, gönderen ve gönderilen e-posta,
+  kapanış notu, satır notu, satın alma talepleri; mal kabulde bizim lot numaramız, lokasyonlar,
+  kalite durumu, numune, birim fiyat ve ek masraflar, mal kabul notu.
+- **Cari:** müşteri portalıyla aynı görünümler (görünüm sınıfları ortak, firma alt sınıfta).
+- **Yetki sözleşmesi:** "yeni uç nokta: tedarikçi portalı (DECISIONS 2026-11-19)" kaydıyla bağlandı.

@@ -2144,3 +2144,11 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   nüshası (lotsuz, şoför TC'si maskeli, açılış denetimli), cari bakiye, ekstre ve PDF.
 - **Doğrulama:** backend 3029 test yeşil (10 yeni; müşteri nüshası testi iç nüshayla
   kırmızı), ruff, `ruff format --check`, mypy, OpenAPI uyarısız. Ön yüz değişmedi.
+
+## 2026-11-19 — Portal B3: tedarikçi portalı okumaları
+
+- `/api/v1/portal/supplier/`: gönderilmiş satın alma siparişleri (teslim alınan/kalan, notlar,
+  PDF), teslimatlar (kaydedilmiş mal kabuller), cari bakiye, ekstre ve PDF.
+- **Doğrulama:** backend tam tur 3035 geçti, tek kırmızı B1'in "tedarikçi ucu henüz yok" testiydi
+  (beklenen; 200'e güncellendi, portal + sözleşme 50/50). ruff, `ruff format --check`, mypy,
+  OpenAPI uyarısız. Ön yüz değişmedi.
