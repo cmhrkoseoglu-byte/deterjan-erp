@@ -3152,3 +3152,34 @@ değiştirme zorunlu, yalnızca admin):
 - **Sıralama:** önce görüntüleme sürümü (B1, B2, B3, okuma sayfaları) canlıya; sipariş talebi ve
   e-posta ikinci sürümde.
 
+## 2026-11-19 — Portal B1: portal hesabı ve varsayılan ret
+
+- **B1 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"); hesapları kapatma ve şifre sıfırlama
+  "Yalnız admin".
+- **Hesap türü:** `core.User.account_type` (göç core 0010): boş = çalışan, `customer_portal`,
+  `supplier_portal`. Çalışanda değer boş tutuldu: denetim günlüğü boş alanları yazmadığından
+  çalışanın kullanıcı açma kaydı bu değişiklikten önceki gibi kalır, portal hesabında tür kayda
+  geçer. API'de çalışan `staff` döner. Tür yalnız hesap açılırken verilir.
+- **Portal hesabı:** `portal.PortalAccount` (göç portal 0001) kullanıcıyı tam olarak bir müşteriye
+  ya da bir tedarikçiye bağlar (veritabanı kısıtı); firma sonradan değişmez, hesap silinmez.
+  Açma, şifre sıfırlama, kilit açma, pasife alma ve etkinleştirme yalnız admin
+  (`/api/v1/portal/accounts/`); ilk şifre sistemin ürettiği geçici şifredir, ilk girişte değişir.
+  Pasif firmaya hesap açılmaz, pasif firmanın hesabı yeniden açılmaz.
+- **Varsayılan ret:** `portal.middleware.PortalGateMiddleware`. Portal kullanıcısı yalnız giriş,
+  çıkış, `auth/me`, güvenlik, şifre, iki aşamalı doğrulama (isteğe bağlı), sağlık, site bilgisi,
+  istemci hata kaydı, `portal/me/` ve kendi türünün öneki (`portal/customer/` ya da
+  `portal/supplier/`) yollarını açar; geri kalan her istek `403 portal_forbidden` (yönetim paneli,
+  API şeması, herkese açık okumalar dahil). Bildirim kanalı (WebSocket) portal kullanıcısını
+  reddeder. Bağlı firma ya da hesap pasifse yalnız çıkış açıktır (`portal_account_inactive`).
+  `portal/tests/test_gate.py` bütün DRF uç noktalarını gezer; ara katman kaldırılınca kırmızıdır.
+- **Rol ve yetki:** portal kullanıcısına rol ya da kişiye özel yetki verilemez
+  (`portal_user_roles`); `auth/me` yanıtında `access` boş, `account_type` dolu. Çalışan listeleri
+  (Sistem > Kullanıcılar, @bahsetme, yetki raporu, personel kartına bağlanacak kullanıcı, numune
+  alan) portal kullanıcılarını göstermez; çekirdek kullanıcı uçları portal hesabına 404 döner.
+- **Oturum:** portal kullanıcısında hareketsizlik süresi 30 dakika (`PORTAL_IDLE_TIMEOUT_MINUTES`);
+  giriş sınırı ve hesap kilidi çalışanlarla aynı.
+- **Yetki sözleşmesi:** yeni uç noktalar ve model "yeni uç nokta: portal hesapları" ve "yeni
+  model: portal hesabı" (DECISIONS 2026-11-19) kayıtlarıyla bağlandı; `portal` modülü bölüm
+  denetimi listesinde (`ENFORCED_APPS`).
+- **CLAUDE.md:** §3 modül tablosu ve bağımlılık satırı, §5 portal kullanıcısı paragrafı (onaylı
+  metin).

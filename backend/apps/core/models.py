@@ -23,7 +23,18 @@ if TYPE_CHECKING:
 
 
 class User(AbstractUser):
-    """Sistem kullanıcısı. Roller Django `Group` ilişkisiyle tutulur (grup adı = rol kodu)."""
+    """Sistem kullanıcısı. Roller Django `Group` ilişkisiyle tutulur (grup adı = rol kodu).
+
+    `account_type`: çalışan ya da portal kullanıcısı (müşteri ya da tedarikçi yetkilisi;
+    docs/plan/musteri-siparis-takibi.md §4.2). Portal kullanıcısı rol ve kişiye özel yetki
+    taşımaz, çalışan listelerinde görünmez; hangi firmaya bağlı olduğu `portal` modülündedir.
+    Tür yalnız hesap açılırken verilir, sonra değişmez."""
+
+    class AccountType(models.TextChoices):
+        # Çalışanda boş: çalışanın kullanıcı açma kaydı bu alan eklenmeden önceki gibi kalır.
+        STAFF = "", "Çalışan"
+        CUSTOMER_PORTAL = "customer_portal", "Müşteri portalı"
+        SUPPLIER_PORTAL = "supplier_portal", "Tedarikçi portalı"
 
     full_name = models.CharField("ad soyad", max_length=150, blank=True)
     phone = models.CharField("telefon", max_length=32, blank=True)
@@ -32,6 +43,14 @@ class User(AbstractUser):
         default=False,
         help_text="Şifreyi yönetici verdiyse (yeni kullanıcı, şifre sıfırlama) kullanıcı kendi "
         "şifresini belirleyene kadar sistemde başka işlem yapamaz.",
+    )
+    account_type = models.CharField(
+        "hesap türü",
+        max_length=16,
+        choices=AccountType.choices,
+        default=AccountType.STAFF,
+        blank=True,
+        editable=False,
     )
 
     class Meta:
@@ -50,6 +69,11 @@ class User(AbstractUser):
         if "groups" in prefetched:
             return frozenset(group.name for group in prefetched["groups"])
         return frozenset(self.groups.values_list("name", flat=True))
+
+    @property
+    def is_portal(self) -> bool:
+        """Müşteri ya da tedarikçi portalı kullanıcısı (çalışan değil)."""
+        return self.account_type != self.AccountType.STAFF
 
     @property
     def roles(self) -> list[str]:

@@ -2129,3 +2129,11 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
 - **Doğrulama:** ön yüz 769 test (tam turda bir personel testi yük altında zaman aşımına düştü,
   tek başına 19/19 yeşil), değişen yardım dosyaları Prettier temiz. Backend değişmedi.
 
+## 2026-11-19 — Portal B1: portal hesabı ve varsayılan ret
+
+- Yeni `portal` modülü: `PortalAccount` (müşteri ya da tedarikçi), admin uçları
+  (`/api/v1/portal/accounts/`: aç, şifre sıfırla, kilit aç, pasife al, etkinleştir),
+  `/api/v1/portal/me/`, varsayılan ret ara katmanı. `User.account_type` (göç core 0010, portal
+  0001). Portal kullanıcısı rol/yetki almaz, çalışan listelerinde yok, bildirim kanalı kapalı,
+  hareketsizlik 30 dk. CLAUDE.md güncellendi. Ekranlar B6'da.
+- **Doğrulama:** backend 3019 test yeşil (28 yeni portal testi; geçit testi ara katman kaldırılınca kırmızı), ruff, `ruff format --check`, mypy, `makemigrations --check`, OpenAPI uyarısız. Ön yüz değişmedi.

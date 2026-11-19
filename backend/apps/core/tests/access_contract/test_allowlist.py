@@ -64,6 +64,8 @@ PLANNED_ITEMS: dict[str, frozenset[int]] = {
     "yeni uç nokta: sipariş termini (DECISIONS 2026-11-19)": frozenset({9}),
     "yeni uç nokta: müşteri sipariş takibi (DECISIONS 2026-11-19)": frozenset({9}),
     "yeni bildirim: geciken teslim (DECISIONS 2026-11-19)": frozenset({9}),
+    "yeni uç nokta: portal hesapları (DECISIONS 2026-11-19)": frozenset({9}),
+    "yeni model: portal hesabı (DECISIONS 2026-11-19)": frozenset({9}),
 }
 _ITEM = re.compile(r"^§8 madde (\d+)\b")
 PIN = "adımı açıldı; yeni değer gözlenen değere sabitlenmeli (daraltmak onay istemez)."

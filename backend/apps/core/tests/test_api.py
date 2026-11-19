@@ -58,6 +58,7 @@ def test_login_success_returns_me_and_audits(make_user):
         "roles": ["depo"],
         "is_superuser": False,
         "is_admin": False,
+        "account_type": "staff",
         "otp_enabled": False,
         "password_change_required": False,
         "otp_setup_required": False,

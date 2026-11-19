@@ -135,7 +135,7 @@ def employee_documents(employee: Employee) -> QuerySet[EmployeeDocument]:
 def linkable_users(employee: Employee | None = None) -> QuerySet[User]:
     """Karta bağlanabilecek kullanıcılar: aktif ve başka bir karta bağlı olmayanlar. Düzenlenen
     kartın bağlı kullanıcısı (pasif olsa da) listede kalır."""
-    condition = Q(is_active=True, employee__isnull=True)
+    condition = Q(is_active=True, employee__isnull=True, account_type=User.AccountType.STAFF)
     if employee is not None:
         condition |= Q(employee=employee)
     return User.objects.filter(condition).order_by("full_name", "username")

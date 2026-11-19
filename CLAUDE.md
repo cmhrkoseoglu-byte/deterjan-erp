@@ -56,6 +56,7 @@ Tek Django projesi, her iş alanı ayrı bir Django uygulaması (`backend/apps/<
 | `hse` | GBF arşivi, tehlikeli madde limitleri, atık | 4 |
 | `personnel` | Personel kartı (kimlik ve görev bilgileri, isteğe bağlı sistem kullanıcısı), özlük bilgileri ve belgeleri, puantaj ve tatil takvimi, ücretler ve ön bordro (brütten nete, işverene maliyet); yalnız admin ve yönetim | canlı sonrası |
 | `reporting` | Panolar, raporlar, Excel çıktıları | 4 |
+| `portal` | Müşteri ve tedarikçi portalı: portal hesabı, müşterinin sipariş, irsaliye ve cari görünümü, sipariş talebi, müşteriye e-posta; tedarikçinin satın alma siparişi, teslimat ve cari görünümü | canlı sonrası |
 
 ### Modül sınırları
 
@@ -68,6 +69,8 @@ Tek Django projesi, her iş alanı ayrı bir Django uygulaması (`backend/apps/<
   `workflow` herkesi dinleyebilir, kimse `workflow`'a doğrudan bağımlı olmaz (sadece olay).
   `personnel` yalnızca `core` ve `masterdata`'ya bağlıdır; `costing` personel maliyeti için `personnel`'i
   okur (kartlar, puantaj, ücretler, bordro), `personnel` maliyeti bilmez.
+  `portal` yalnızca `core`, `masterdata`, `inventory`, `sales`, `purchasing` ve `ledger`'a bağlıdır
+  (okur; yazmayı o modülün servisleriyle yapar); kimse `portal`'a bağımlı olmaz.
 
 ### Katmanlar (her modülde)
 
@@ -130,6 +133,9 @@ kullanıcılara verilebilir (KVKK). Görevler role ya da kişiye atanabilir; rol
 gerektirdiği yetkisi olmayanlar görevi ve bildirimini almaz. Var olan kullanıcının rolleri ve kişiye
 özel yetkileri yalnızca admin tarafından, gerekçe yazılarak **Sistem > Kullanıcılar > Yetkiler**
 ekranında değiştirilir; geçmişi silinmez. Yeni kullanıcının ilk rolleri açılış penceresinde verilir.
+
+Portal kullanıcısı (müşteri ya da tedarikçi yetkilisi; `User.account_type`) rol taşımaz; yalnızca giriş
+ve portal uç noktalarını açar, başka her istek reddedilir (`portal.middleware`, varsayılan ret).
 
 ## 6. Kod kuralları
 

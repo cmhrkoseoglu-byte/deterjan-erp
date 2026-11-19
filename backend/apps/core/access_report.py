@@ -114,7 +114,9 @@ def _sort_name(user: User) -> tuple[str, str]:
 def people(user_id: int | None = None) -> list[User]:
     """Raporun kişileri: etkin kullanıcılar (sahibin 2026-11-17 kararı), roller ve etkin kişiye
     özel ayarlar önceden yüklenmiş, ad soyada göre sıralı."""
-    found: QuerySet[User] = User.objects.filter(is_active=True).prefetch_related(
+    found: QuerySet[User] = User.objects.filter(
+        is_active=True, account_type=User.AccountType.STAFF
+    ).prefetch_related(
         "groups",
         Prefetch(
             "access_overrides",

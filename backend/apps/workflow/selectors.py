@@ -122,8 +122,8 @@ def record_history(content_type: ContentType, object_id: int) -> QuerySet[AuditL
 
 
 def mentionable_users(search: str = "", limit: int = 10) -> QuerySet[User]:
-    """@bahsetme önerisi için aktif kullanıcılar."""
-    queryset = User.objects.filter(is_active=True)
+    """@bahsetme önerisi için aktif çalışanlar (portal kullanıcıları hariç)."""
+    queryset = User.objects.filter(is_active=True, account_type=User.AccountType.STAFF)
     search = search.strip()
     if search:
         queryset = queryset.filter(Q(username__istartswith=search) | Q(full_name__icontains=search))

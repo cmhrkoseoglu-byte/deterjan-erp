@@ -508,7 +508,7 @@ def parse_mentions(body: str) -> list[User]:
     query = Q()
     for name in names:
         query |= Q(username__iexact=name)
-    return list(User.objects.filter(query, is_active=True))
+    return list(User.objects.filter(query, is_active=True, account_type=User.AccountType.STAFF))
 
 
 def _clean_body(body: str) -> str:
