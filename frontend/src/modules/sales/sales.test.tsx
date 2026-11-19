@@ -22,6 +22,7 @@ vi.mock("../../api/sales", async (importOriginal) => ({
   releaseReservation: vi.fn(),
   reserveLot: vi.fn(),
   listCandidates: vi.fn(),
+  listTrackedOrders: vi.fn(),
 }));
 vi.mock("../../api/masterdata", async (importOriginal) => ({
   ...(await importOriginal<typeof mdApi>()),
@@ -125,6 +126,7 @@ beforeEach(() => {
   vi.mocked(salesApi.listSalesOrders).mockResolvedValue(page([summary()]));
   vi.mocked(salesApi.getSalesOrder).mockResolvedValue(detail());
   vi.mocked(salesApi.listCandidates).mockResolvedValue([]);
+  vi.mocked(salesApi.listTrackedOrders).mockResolvedValue(page([]));
 });
 
 describe("satış siparişleri", () => {

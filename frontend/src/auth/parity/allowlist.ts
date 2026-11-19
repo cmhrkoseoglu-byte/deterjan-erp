@@ -56,6 +56,8 @@ function cells(
   );
 }
 
+const TRACKING_ITEM = "yeni sekme: Sevkiyat > Sipariş takibi (DECISIONS 2026-11-19)";
+
 // Cari hesaplar (DECISIONS 2026-11-18): personaların varsayılan paketlere göre grupları.
 const LEDGER_ITEM = "yeni sayfa: Cari hesaplar (DECISIONS 2026-11-18)";
 const LEDGER_ALL = ["admin", "superuser", "yonetim"];
@@ -182,6 +184,45 @@ export const ALLOWED: readonly Allowed[] = [
       ],
     },
     { "/sistem": ["admin", "superuser"] },
+  ),
+
+  // Plan dışı; sahibin onayladığı müşteri sipariş takibi planı (DECISIONS 2026-11-19): Sevkiyat'a
+  // "Sipariş takibi" sekmesi, Satış siparişleri: Görür olana (sekme listesi değişir, yetki değişmez).
+  ...cells(
+    {
+      item: TRACKING_ITEM,
+      section: "pageTabs",
+      step: 9,
+      old: ["/sevkiyat/siparisler", "/sevkiyat/sevkiyatlar", "/sevkiyat/musteriler"],
+      new: [
+        "/sevkiyat/siparisler",
+        "/sevkiyat/sevkiyatlar",
+        "/sevkiyat/takip",
+        "/sevkiyat/musteriler",
+      ],
+    },
+    { "/sevkiyat": ["yonetim", "planlama", "sevkiyat"] },
+  ),
+  ...cells(
+    {
+      item: TRACKING_ITEM,
+      section: "pageTabs",
+      step: 9,
+      old: [
+        "/sevkiyat/siparisler",
+        "/sevkiyat/sevkiyatlar",
+        "/sevkiyat/toplama",
+        "/sevkiyat/musteriler",
+      ],
+      new: [
+        "/sevkiyat/siparisler",
+        "/sevkiyat/sevkiyatlar",
+        "/sevkiyat/toplama",
+        "/sevkiyat/takip",
+        "/sevkiyat/musteriler",
+      ],
+    },
+    { "/sevkiyat": ["inactive", "depo", "admin", "superuser", "depo+sevkiyat"] },
   ),
 
   // 9. adım — Yeni ekran: Sistem > Kullanıcılar > Yetkiler (yalnız admin; plan §6.1).
@@ -394,6 +435,8 @@ export const PLANNED_ITEMS: Readonly<Record<string, readonly number[]>> = {
   "yeni sayfa: Sistem > Rol yetkileri sekmesi (plan §6.2)": [9],
   // Plan dışı; sahibin onayladığı cari hesaplar planına dayanır (DECISIONS 2026-11-18).
   "yeni sayfa: Cari hesaplar (DECISIONS 2026-11-18)": [8],
+  // Plan dışı; sahibin onayladığı müşteri sipariş takibi planı (DECISIONS 2026-11-19).
+  [TRACKING_ITEM]: [9],
 };
 
 type FrozenSections = Readonly<

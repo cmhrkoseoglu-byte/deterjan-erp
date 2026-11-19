@@ -3067,3 +3067,23 @@ değiştirme zorunlu, yalnızca admin):
 - **Yetki sözleşmesi:** iki uç nokta izin listesine "yeni uç nokta: müşteri sipariş takibi
   (DECISIONS 2026-11-19)" kaydıyla bağlandı; hücreler gözlenen değere sabitlendi.
 
+## 2026-11-19 — Müşteri sipariş takibi: A3 (ekran)
+
+- **A3 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum").
+- **Sekme:** Sevkiyat > "Sipariş takibi" (`/sevkiyat/takip`), Toplama ile Müşteriler arasında;
+  Satış siparişleri: Görür olana açılır. Üstte açık siparişi olan müşteriler (açık, geciken, 7 günde
+  vadesi gelen, en uzun gecikme; arama, "Yalnız gecikenler"); müşteri seçilince altta siparişleri.
+- **Sipariş listesi:** no (sipariş sayfasına bağlantı), vade, durum, geciken siparişte kırmızı satır
+  ve "N gün gecikti" rozeti, sevk / sipariş miktarı (sipariş birimiyle), tutar; "Satırları göster"
+  ile ürün başına sipariş / sevk edilen / sevke planlanan / kalan ve sevkiyatlar. Süzgeçler: "Yalnız
+  gecikenler", "Bu hafta vadesi gelenler" (bugün + 7 güne kadar vadesi gelen, gecikenler dahil),
+  "Biten siparişleri de göster (son 90 gün)".
+- **Müşteri kartı:** sipariş geçmişinin üstünde aynı içerikte "Açık siparişler" paneli; sipariş
+  geçmişiyle aynı koşulla (Satış siparişleri kayıtlarını okuyan) görünür.
+- **Cari bakiye (CUMHUR, 2026-11-19, "Seçili müşteride"):** listede kolon yok; seçili müşteride ve
+  müşteri kartında, yalnız Müşteri carileri: Görür + Fiyatları görür olana, Cari hesaplar
+  API'sinden bakiye ve vadesi geçen tutar, cari ekstresine bağlantı. Yetkisi olmayan için istek
+  hiç gitmez.
+- **Ön yüz eşlik listesi:** Sevkiyat sekme listesindeki değişiklik "yeni sekme: Sevkiyat > Sipariş
+  takibi (DECISIONS 2026-11-19)" kaydıyla bağlandı; hücreler gözlenen değere sabitlendi. Yetki
+  değişmedi.

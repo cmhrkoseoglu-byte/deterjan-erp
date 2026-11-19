@@ -2098,3 +2098,13 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
 - **Doğrulama:** backend 2983 test yeşil; mypy, ruff, göç denetimi ve OpenAPI şeması (uyarısız)
   temiz. Ön yüz değişmedi (A3).
 
+## 2026-11-19 — Müşteri sipariş takibi: A3 (ekran)
+
+- Sevkiyat > "Sipariş takibi" sekmesi: açık siparişi olan müşteriler, seçilen müşterinin
+  siparişleri (vade, gecikme rozeti, sevk / sipariş, tutar; satırlarda sevk edilen / planlanan /
+  kalan ve sevkiyatlar), süzgeçler "Yalnız gecikenler", "Bu hafta vadesi gelenler", "Biten
+  siparişleri de göster". Müşteri kartında "Açık siparişler" paneli.
+- Cari bakiye seçili müşteride ve kartta, yalnız Müşteri carileri: Görür + Fiyatları görür olana.
+- **Doğrulama:** ön yüz 769/769 Vitest (6 yeni), tsc ve ESLint temiz, değişen dosyalar Prettier
+  temiz; eşlik anlık görüntüsü izin listesiyle yeşil. Backend değişmedi. Gerçek uygulamada elle
+  bakılmadı.

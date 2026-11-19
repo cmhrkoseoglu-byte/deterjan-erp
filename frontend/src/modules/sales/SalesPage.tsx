@@ -44,6 +44,7 @@ import {
   shipmentPath,
 } from "./config";
 import { ShipmentStatusBadge } from "./shared";
+import { TrackingTab } from "./TrackingPanel";
 import { st } from "./strings";
 
 const PAGE_SIZE = 50;
@@ -306,6 +307,12 @@ const TABS: TabDef[] = [
     label: st.tabs.picking,
     section: PERM.SALES_PICKING,
     render: () => <PickingTab />,
+  },
+  {
+    slug: "takip",
+    label: st.tabs.tracking,
+    section: PERM.SALES_ORDERS,
+    render: () => <TrackingTab />,
   },
   {
     slug: "musteriler",

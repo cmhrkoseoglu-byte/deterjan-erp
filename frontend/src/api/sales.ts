@@ -377,3 +377,105 @@ export async function listShippedLots(customer: number, page = 1): Promise<Pagin
   });
   return data;
 }
+
+// --- Müşteri sipariş takibi (/sales/tracking/*) -------------------------------------------------
+
+export interface TrackingLine {
+  id: number;
+  line_no: number;
+  product: number;
+  product_code: string;
+  product_name: string;
+  quantity: string;
+  unit_code: string;
+  base_quantity: string;
+  base_unit_code: string;
+  /** Temel birimde. */
+  shipped_quantity: string | null;
+  planned_quantity: string | null;
+  remaining_quantity: string;
+  /** Sipariş birimiyle. */
+  shipped_in_unit: string;
+  remaining_in_unit: string;
+  unit_price: string | null;
+  currency: Currency | "";
+  line_total: string | null;
+}
+
+export interface TrackingShipment {
+  id: number;
+  number: string;
+  status: ShipmentStatus;
+  status_display: string;
+  planned_date: string;
+  dispatched_at: string | null;
+}
+
+export interface TrackedOrder {
+  id: number;
+  number: string;
+  status: SalesOrderStatus;
+  status_display: string;
+  customer: number;
+  customer_code: string;
+  customer_name: string;
+  order_date: string;
+  requested_delivery_date: string | null;
+  promised_date: string | null;
+  /** Termin, yoksa istenen teslim tarihi. */
+  due_date: string | null;
+  days_late: number | null;
+  is_late: boolean;
+  last_dispatched_at: string | null;
+  customer_po_no: string;
+  lines: TrackingLine[];
+  shipments: TrackingShipment[];
+  totals: OrderTotal[];
+}
+
+export interface CustomerTracking {
+  id: number;
+  code: string;
+  name: string;
+  open_orders: number;
+  late_orders: number;
+  due_soon: number;
+  oldest_due_date: string | null;
+  max_days_late: number | null;
+}
+
+export interface TrackingParams {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  customer?: number;
+  late?: boolean;
+  due_before?: string;
+  include_finished?: boolean;
+}
+
+function trackingParams(params: TrackingParams): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(params).filter(
+      ([, value]) => value !== undefined && value !== "" && value !== false,
+    ),
+  );
+}
+
+export async function listTrackedOrders(
+  params: TrackingParams = {},
+): Promise<Paginated<TrackedOrder>> {
+  const { data } = await api.get<Paginated<TrackedOrder>>("/sales/tracking/orders/", {
+    params: trackingParams(params),
+  });
+  return data;
+}
+
+export async function listCustomerTracking(
+  params: Pick<TrackingParams, "page" | "page_size" | "search" | "late"> = {},
+): Promise<Paginated<CustomerTracking>> {
+  const { data } = await api.get<Paginated<CustomerTracking>>("/sales/tracking/customers/", {
+    params: trackingParams(params),
+  });
+  return data;
+}
