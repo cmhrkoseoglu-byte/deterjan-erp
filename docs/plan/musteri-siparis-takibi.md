@@ -4,6 +4,14 @@
 Plan onayı: CUMHUR, 2026-11-19 ("Onaylıyorum"; §3-4'teki ek kurallar "Hepsi uygun"; §5 CLAUDE.md
 değişikliği "Evet, B1'de eklensin"). Uygulamaya geçmek ayrı onayla.
 
+Genişletme (CUMHUR, 2026-11-19, Paket A canlıya alındıktan sonra): "müşterilerin ve tedarikçilerin
+platforma giriş yapabilmelerini sadece ilgili alanlardan hareketleri görebilmeleri için kullanıcı
+şifresi ve adı tanımlayalım. Tedarikçiler güncel bakiyeyi ve kendileri ile alakalı siparişleri
+görebilsinler. Müşteriler platformdan sipariş verebilsinler, sevkiyat ilerlemesini görebilsinler ve
+güncel bakiyeyi görebilsinler." Paket B buna göre **müşteri ve tedarikçi portalı** oldu (§4).
+Genişletilmiş Paket B planı CUMHUR onayıyla (2026-11-19, "Onaylıyorum"; §5 yeni CLAUDE.md metni
+"Evet, B1'de eklensin"; sıralama "Önce görüntüleme").
+
 İki paket: **Paket A** çalışanlar için müşteri bazında sipariş takibi (dışarıya bir şey açılmaz).
 **Paket B** müşterinin kendi hesabıyla girdiği portal (ayrı onayla, Paket A canlıya alındıktan
 sonra). Her adımdan önce o adımın kısa planı yeniden onaya sunulur (CLAUDE.md §8 madde 2).
@@ -24,6 +32,11 @@ sonra). Her adımdan önce o adımın kısa planı yeniden onaya sunulur (CLAUDE
 | Portal kullanıcısı ne görür | **Bağlı olduğu müşterinin tüm siparişlerini**, irsaliyelerini ve cari bakiyesini. |
 | Bildirim | **İç: geciken teslim uyarısı** (sevkiyat ve yönetime, günlük). **Müşteriye e-posta: sipariş onaylandı ve sevk edildi.** |
 | E-posta alıcısı | **Portal kullanıcıları** (e-postayı kapatmamış olanlar). Portal hesabı olmayan müşteriye e-posta gitmez. |
+| Tedarikçi portalı (genişletme) | Tedarikçi yetkilisi de kendi hesabıyla girer; hesap tek bir tedarikçi kartına bağlıdır. |
+| Tedarikçi ne görür | **Gönderilen satın alma siparişleri, fiyatlı**: Gönderildi, Kısmen teslim alındı, Teslim alındı ve gönderildikten sonra iptal edilenler; satır fiyatı ve tutar görünür. Taslak, yönetim onayındaki ve henüz gönderilmemiş onaylı sipariş görünmez. |
+| Tedarikçi ne yapar | **Yalnız görür.** Teyit, tarih önerisi ya da belge yükleme yok (ilk sürüm). |
+| Cari görünümü | **Bakiye + ekstre** (müşteri ve tedarikçi): para birimi başına bakiye, vadesi geçen, ekstre (tarih aralığı) ve PDF; tedarikçide ayrıca teslim aldığımız mal kabuller. |
+| Portal girişi (değişti) | **Kullanıcı adı ve şifre**; iki aşamalı doğrulama zorunlu değil (CUMHUR, 2026-11-19). Önceki "2FA zorunlu" kararının yerine geçer. Kullanıcı isterse Güvenlik sayfasından kendisi açar. |
 
 ## 2. Bugünkü durum (2026-11-19, main = 47c4b15)
 
@@ -108,19 +121,22 @@ sonra). Her adımdan önce o adımın kısa planı yeniden onaya sunulur (CLAUDE
 Her adımda: `pytest`, `ruff check`, `ruff format --check`, `mypy`, ön yüzde lint/typecheck/Vitest
 yeşil; PROGRESS güncel; anlamlı commit.
 
-## 4. Paket B — Müşteri portalı (ayrı onayla)
+## 4. Paket B — Müşteri ve tedarikçi portalı (ayrı onayla)
 
 ### 4.1 Yeni modül `portal`
 
-Bağımlılık: `core ← masterdata ← sales, ledger ← portal`. `portal` satış ve cari modellerini okur;
-siparişe çevirme `sales.services.create_order` ile yapılır. Kimse `portal`'a bağımlı olmaz; e-postalar
+Bağımlılık: `core ← masterdata ← inventory, sales, purchasing, ledger ← portal`. `portal` satış,
+satın alma, mal kabul ve cari modellerini okur (yazmaz); siparişe çevirme
+`sales.services.create_order` ile yapılır. Kimse `portal`'a bağımlı olmaz; e-postalar
 olayları dinleyerek gönderilir. **CLAUDE.md §3 tablosuna ve bağımlılık satırına eklenmesi onay ister
 (§7).**
 
 ### 4.2 Portal hesabı
 
-- `portal.PortalAccount(user (1-1), customer, email_notifications=True, is_active)`. Hesabı olan
-  kullanıcı **portal kullanıcısıdır**: rol taşıyamaz (rol verilirse servis reddeder), kişiye özel yetki
+- `portal.PortalAccount(user (1-1), customer | supplier, email_notifications=True, is_active)`:
+  hesap **ya bir müşteriye ya bir tedarikçiye** bağlıdır (veritabanı kısıtıyla tam olarak biri).
+  Bir firma hem müşteri hem tedarikçiyse iki ayrı hesap açılır. Hesabı olan kullanıcı **portal
+  kullanıcısıdır**: rol taşıyamaz (rol verilirse servis reddeder), kişiye özel yetki
   alamaz, yönetim paneline giremez, `is_staff` olamaz.
 - **Varsayılan ret (en önemli kural):** portal kullanıcısı yalnız `/api/v1/auth/` (giriş, çıkış,
   şifre, iki aşamalı doğrulama) ve `/api/v1/portal/` uç noktalarını açabilir. Bunun dışındaki her
@@ -129,15 +145,18 @@ olayları dinleyerek gönderilir. **CLAUDE.md §3 tablosuna ve bağımlılık sa
   (uç nokta tek tek işaretlenmez); bir sözleşme testi tüm URL'leri gezer ve izin listesi dışında
   kalanların portal kullanıcısına 403 döndüğünü doğrular. Tersine, çalışan hesapları portal uç
   noktalarını açamaz.
-- **İki aşamalı doğrulama zorunlu** (`OTP_REQUIRED_ROLES`'tan bağımsız, her ortamda). Kurulum yapmadan
-  yalnız Güvenlik sayfası açılır. Hareketsizlik süresi 30 dakika. Şifre politikası ve hesap kilidi
-  çalışanlarla aynı.
-- Hesabı yalnız admin açar ve kapatır: Sistem > Kullanıcılar'da "Portal kullanıcısı" türü, müşteri
-  seçimi; listede ayrı süzgeç. Müşteri kartı pasife alınınca portal hesapları da kapanır.
-- Bağlı müşteri değiştirilemez (yanlış bağlanan hesap kapatılıp yenisi açılır): böylece eski
-  müşterinin verisi yeni müşteriye karışmaz.
+- **Giriş kullanıcı adı ve şifreyle** (CUMHUR, 2026-11-19); iki aşamalı doğrulama zorunlu değil,
+  kullanıcı isterse Güvenlik sayfasından açar. Yerine: admin'in verdiği ilk şifre geçicidir, ilk
+  girişte değiştirilir (mevcut "şifre değiştirme zorunlu" kapısı); şifre politikası ve hesap kilidi
+  çalışanlarla aynı, giriş için IP başına sınır; hareketsizlik süresi 30 dakika; son giriş zamanı
+  admin listesinde görünür.
+- Hesabı yalnız admin açar ve kapatır: Sistem > Kullanıcılar'da "Müşteri portalı" ya da "Tedarikçi
+  portalı" türü, müşteri ya da tedarikçi seçimi, kullanıcı adı ve sistemin ürettiği geçici şifre;
+  listede ayrı süzgeç. Kart pasife alınınca portal hesapları da kapanır.
+- Bağlı firma değiştirilemez (yanlış bağlanan hesap kapatılıp yenisi açılır): böylece eski
+  firmanın verisi yenisine karışmaz.
 
-### 4.3 Portalın gösterdikleri (`/api/v1/portal/`, hep bağlı müşteriyle süzülür)
+### 4.3 Müşteri portalının gösterdikleri (`/api/v1/portal/customer/`, hep bağlı müşteriyle süzülür)
 
 - **Siparişlerim**: Onaylandı ve sonraki durumlar (taslak ve iptal edilmiş taslak görünmez; onaylıyken
   iptal edilen "İptal" görünür). Sipariş no, müşteri sipariş no, tarih, termin, durum, teslim adresi;
@@ -153,20 +172,35 @@ olayları dinleyerek gönderilir. **CLAUDE.md §3 tablosuna ve bağımlılık sa
   diye bilgi satırıdır.
 - **Taleplerim** (bkz. 4.4).
 
+### 4.3a Tedarikçi portalının gösterdikleri (`/api/v1/portal/supplier/`, hep bağlı tedarikçiyle süzülür)
+
+- **Siparişlerim** (satın alma siparişleri): gönderilmiş olanlar (`sent_at` dolu) — Gönderildi,
+  Kısmen teslim alındı, Teslim alındı ve gönderildikten sonra iptal edilen ("İptal"). Sipariş no,
+  sipariş tarihi, para birimi, durum; satırlar: malzeme kodu ve adı, miktar ve birim, birim fiyat,
+  tutar, teslim tarihi, teslim alınan ve kalan miktar. Sipariş PDF'i (tedarikçiye giden belgeyle
+  aynı) iner. **Gösterilmez:** iç notlar, satır notu, onay tutarı ve limit, kur (TL karşılığı),
+  onaylayan ve gönderen kişiler, satın alma talepleri, kapanış notu.
+- **Teslimatlarım** (bu tedarikçiden kaydettiğimiz mal kabuller): mal kabul no, tarih, tedarikçinin
+  irsaliye no'su, satırlar (malzeme, miktar, birim, bağlı sipariş no). **Gösterilmez:** iç lot
+  numarası, depo/lokasyon, kalite durumu ve numuneler, ek masraflar, birim maliyet.
+- **Cari hesabım**: müşteridekiyle aynı (bakiye, vadesi geçen, yaşlandırma, ekstre, PDF); tutarı
+  eksik belge "fiyatı netleşmedi" diye bilgi satırıdır.
+- Tedarikçi bir şey değiştiremez, belge yükleyemez, teyit vermez (CUMHUR, "Yalnız görsün").
+
 ### 4.4 Sipariş talebi
 
-- `portal.OrderRequest` (belge numarası kodlama sistematiğine göre; öneri `ST-` "Sipariş talebi",
-  adım B3 öncesi kodlama listesine eklenir) ve satırları: aktif mamul, miktar (> 0), birim (malzemenin
+- `portal.OrderRequest` (belge numarası kodlama sistematiğine göre; öneri `MT-` "Müşteri talebi";
+  `ST-` satın alma talebinde kullanılıyor; adım B4 öncesi kodlama listesine eklenir) ve satırları: aktif mamul, miktar (> 0), birim (malzemenin
   tanımlı birimleri: ADET / KOLI / PALET), istenen teslim tarihi, müşteri sipariş no, teslim adresi
   (varsayılan kart adresi), not.
 - Durum makinesi (`state.py`): **Gönderildi → Siparişe çevrildi / Reddedildi**, Gönderildi →
   **Geri çekildi** (yalnız müşteri, yalnız Gönderildi'de). Her geçiş olay yayınlar ve denetlenir.
 - İç taraf: Sevkiyat'a "Portal talepleri" sekmesi. **Siparişe çevir** (Satış siparişleri:
   Değiştirir): talepten taslak sipariş açılır (satırlar, istenen tarih, müşteri sipariş no, adres,
-  not → sipariş notuna "Portal talebi ST-…" ile); fiyat ve termin taslakta girilir, onay bugünkü gibi
+  not → sipariş notuna "Portal talebi MT-…" ile); fiyat ve termin taslakta girilir, onay bugünkü gibi
   (Onaylar). Talep ile sipariş birbirine bağlanır; müşteri talebinden siparişe gider. **Reddet**:
   gerekçe zorunlu, müşteri gerekçeyi portalda görür.
-- `order_request.submitted` olayı → workflow: sevkiyat rolüne görev ("Portal talebi ST-… incele"),
+- `order_request.submitted` olayı → workflow: sevkiyat rolüne görev ("Portal talebi MT-… incele"),
   siparişe çevrilince ya da reddedilince kapanır.
 - Portal stok, fiyat listesi ya da teslim tarihi vaadi göstermez.
 
@@ -180,6 +214,7 @@ olayları dinleyerek gönderilir. **CLAUDE.md §3 tablosuna ve bağımlılık sa
     sayısı ve portal bağlantısı. **Fiyat yazılmaz** (e-posta yönlendirilebilir; fiyat portalda).
   - **Sevk edildi** (`shipment.dispatched`): sevkiyat no, sipariş no, sevk tarihi, plaka, ürün ve
     miktarlar, portal bağlantısı. Şoför adı ve TC yazılmaz, irsaliye eklenmez (portaldan iner).
+- Tedarikçiye portaldan e-posta gönderilmez (satın alma siparişinin bugünkü e-postası değişmez).
 - Alıcı: müşterinin **etkin, e-postası dolu ve e-postayı kapatmamış** portal kullanıcıları. Portal
   kullanıcısı e-postayı Güvenlik sayfasından kapatıp açabilir. Gönderilemeyen e-posta işlemi
   bozmaz (olay commit sonrası), günlükte "başarısız" kalır, admin'e bildirim gider.
@@ -188,58 +223,74 @@ olayları dinleyerek gönderilir. **CLAUDE.md §3 tablosuna ve bağımlılık sa
 
 - Ayrı düzen `/portal` (çalışan menüsü, bildirim zili ve arama yok); giriş sayfası ortak, girişten
   sonra hesap türüne göre yönlendirilir. Telefonda rahat kullanılır (PWA).
-- Sayfalar: Siparişlerim (durum süzgeci, termin, kalan), Sipariş detayı, Sevkiyatlar (irsaliye
-  indir), Cari hesabım (bakiye, ekstre, PDF), Yeni talep, Taleplerim, Güvenlik (şifre, iki aşamalı
-  doğrulama, e-posta tercihi).
+- Menü hesap türüne göre. Müşteri: Siparişlerim (durum süzgeci, termin, kalan), Sipariş detayı,
+  Sevkiyatlar (irsaliye indir), Cari hesabım (bakiye, ekstre, PDF), Yeni talep, Taleplerim.
+  Tedarikçi: Siparişlerim (durum, teslim tarihi, kalan), Sipariş detayı (PDF), Teslimatlarım, Cari
+  hesabım. İkisinde de Güvenlik (şifre, isteğe bağlı iki aşamalı doğrulama; müşteride e-posta
+  tercihi).
 
 ### 4.7 KVKK ve güvenlik
 
-- KVKK envanterine yeni satırlar: **müşteri yetkilisi (portal kullanıcısı)** — ad soyad, e-posta,
+- KVKK envanterine yeni satırlar: **müşteri ve tedarikçi yetkilisi (portal kullanıcısı)** — ad soyad, e-posta,
   telefon, kullanıcı adı, şifre özeti ve 2FA anahtarı, giriş kayıtları ve IP (1 yıl), e-posta
   gönderim günlüğü; amaç sözleşmenin ifası, meşru menfaat. Şoför satırına "portal irsaliyesinde
   maskeli". Müşteri yetkilisine aydınlatma metni (firmanın hazırlayacağı) portal girişinde bağlantı.
 - Portal internete açık ilk ekran olduğundan: giriş için IP başına sınır ve hesap kilidi; tüm portal
-  uç noktalarında müşteri süzgeci tek yerde (`portal.selectors` her sorguyu `customer=account.customer`
-  ile başlatır); başka müşterinin kayıt numarasıyla istek 404 döner (varlık sızdırılmaz); sızma testi
+  uç noktalarında firma süzgeci tek yerde (`portal.selectors` her sorguyu
+  `customer=account.customer` ya da `supplier=account.supplier` ile başlatır; müşteri hesabı tedarikçi
+  uç noktalarını, tedarikçi hesabı müşteri uç noktalarını açamaz); başka firmanın kayıt numarasıyla
+  istek 404 döner (varlık sızdırılmaz); sızma testi
   sondaları (`access_contract`) portal kullanıcısıyla genişletilir.
 - Bağlantı adresi: portal müşteriye `sslip.io` adresiyle verilmemeli; firmanın kendi alan adı altında
   bir adres (ör. `portal.<firma alan adı>`) ve sertifikası gerekir (adım B6 öncesi soru).
 
 ### 4.8 Paket B adımları
 
-1. **B1 Portal hesabı ve varsayılan ret**: `portal` modülü, `PortalAccount`, ara katman, zorunlu 2FA,
-   kullanıcı yönetiminde portal türü, sözleşme testi (her URL), WebSocket ve yönetim paneli reddi.
-2. **B2 Portal okuma API'si**: siparişler, sevkiyatlar, maskeli irsaliye PDF'i, cari özet ve ekstre;
-   müşteri süzgeci ve başka müşteri testleri.
-3. **B3 Sipariş talebi**: model, durum makinesi, belge numarası, portal ve iç uç noktalar, siparişe
-   çevirme, reddetme, workflow görevi; testler.
-4. **B4 E-posta**: SMTP ayarı, Celery işi, `OutboundEmail`, iki şablon, alıcı kuralları, tercih;
+1. **B1 Portal hesabı ve varsayılan ret**: `portal` modülü, `PortalAccount` (müşteri ya da tedarikçi),
+   ara katman, giriş kuralları (geçici ilk şifre, kilit, IP sınırı, 30 dk), kullanıcı yönetiminde iki
+   portal türü, sözleşme testi (her URL), WebSocket ve yönetim paneli reddi.
+2. **B2 Müşteri okuma API'si**: siparişler, sevkiyatlar, maskeli irsaliye PDF'i, cari özet ve ekstre;
+   firma süzgeci ve başka firma testleri.
+3. **B3 Tedarikçi okuma API'si**: gönderilmiş satın alma siparişleri ve PDF, teslimatlar (mal
+   kabuller), cari özet ve ekstre; firma süzgeci, hesap türü ve başka firma testleri.
+4. **B4 Sipariş talebi**: model, durum makinesi, belge numarası (`MT-`), portal ve iç uç noktalar,
+   siparişe çevirme, reddetme, workflow görevi; testler.
+5. **B5 E-posta**: SMTP ayarı, Celery işi, `OutboundEmail`, iki şablon, alıcı kuralları, tercih;
    testler (e-posta arka ucu bellekte).
-5. **B5 Portal ön yüzü**: `/portal` düzeni ve sayfaları, iç taraftaki "Portal talepleri" sekmesi,
-   Sistem > Kullanıcılar'da portal türü; Vitest.
-6. **B6 Güvenlik, belgeler ve canlı**: KVKK, DECISIONS, PROGRESS, CANLI-KONTROL (alan adı, SMTP,
-   ilk portal hesabı), yardım metni, duman testi.
+6. **B6 Portal ön yüzü**: `/portal` düzeni, müşteri ve tedarikçi sayfaları, iç taraftaki "Portal
+   talepleri" sekmesi, Sistem > Kullanıcılar'da portal türleri; Vitest.
+7. **B7 Güvenlik, belgeler ve canlı**: KVKK, DECISIONS, PROGRESS, CANLI-KONTROL (alan adı, SMTP,
+   ilk portal hesapları), yardım metni, duman testi.
+
+**Sıralama (CUMHUR, 2026-11-19, "Önce görüntüleme"):** önce B1, B2, B3 ve B6'nın okuma sayfaları
+(hesap, müşteri ve tedarikçi görünümü) yapılır ve B7'nin güvenlik, belge ve canlı kısmıyla canlıya
+alınır; ardından B4 (sipariş talebi), B5 (e-posta) ve B6'nın talep sayfaları ikinci sürümde gelir.
+Alan adı ve aydınlatma metni sorusu (§6) bu yüzden ilk canlıya almadan önce sorulur.
 
 ## 5. CLAUDE.md değişikliği (onay gerekir, §8 madde 6)
 
-- §3 modül tablosuna: `portal` | Müşteri portalı: portal hesabı, müşterinin sipariş, irsaliye ve cari
-  görünümü, sipariş talebi, müşteriye e-posta | canlı sonrası.
-- §3 bağımlılık: "`portal` yalnızca `core`, `masterdata`, `sales` ve `ledger`'a bağlıdır; kimse
-  `portal`'a bağımlı olmaz."
-- §5 Roller'e: "Portal kullanıcısı (müşteri yetkilisi) rol taşımaz; yalnızca giriş ve portal uç
+- §3 modül tablosuna: `portal` | Müşteri ve tedarikçi portalı: portal hesabı, müşterinin sipariş,
+  irsaliye ve cari görünümü, sipariş talebi, müşteriye e-posta; tedarikçinin satın alma siparişi,
+  teslimat ve cari görünümü | canlı sonrası.
+- §3 bağımlılık: "`portal` yalnızca `core`, `masterdata`, `inventory`, `sales`, `purchasing` ve
+  `ledger`'a bağlıdır (okur; yazmayı o modülün servisleriyle yapar); kimse `portal`'a bağımlı olmaz."
+- §5 Roller'e: "Portal kullanıcısı (müşteri ya da tedarikçi yetkilisi) rol taşımaz; yalnızca giriş ve portal uç
   noktalarını açar, başka her istek reddedilir."
-- Paket A CLAUDE.md değişikliği gerektirmez; bu değişiklik B1 ile yapılır.
+- Paket A CLAUDE.md değişikliği gerektirmez; bu değişiklik B1 ile yapılır. Tedarikçi genişlemesiyle
+  metin değişti; B1'den önce yeniden onaya sunulur.
 
 ## 6. Sonra sorulacaklar (ilgili adımdan önce)
 
-- **B4 öncesi:** e-posta hangi hesaptan gidecek (firmanın e-posta sağlayıcısı, gönderen adres ör.
+- **B5 öncesi:** e-posta hangi hesaptan gidecek (firmanın e-posta sağlayıcısı, gönderen adres ör.
   `siparis@…`) ve SMTP bilgileri (sunucuya `.env` ile girilir, depoya yazılmaz).
-- **B6 öncesi:** portal adresi (firmanın alan adı), aydınlatma metni (firma hukuku hazırlar).
-- **B6 öncesi:** ilk açılacak portal müşterileri ve kişileri (deneme müşterisi).
+- **B7 öncesi:** portal adresi (firmanın alan adı), aydınlatma metni (firma hukuku hazırlar).
+- **B7 öncesi:** ilk açılacak portal müşterileri, tedarikçileri ve kişileri (deneme firması).
 
 ## 7. Kapsam dışı
 
 Müşteriye özel fiyat listesi, portalda stok ya da teslim vaadi, portalda lot/SKT ve analiz
 sertifikası, portalda iade talebi, online ödeme, fatura ve e-Fatura (muhasebe programında), SMS ve
 WhatsApp bildirimi, müşteri kullanıcısının kendini kaydetmesi ya da şifresini e-postayla sıfırlaması
-(şifreyi admin sıfırlar; e-postayla sıfırlama B4 sonrası ayrı onayla eklenebilir).
+(şifreyi admin sıfırlar; e-postayla sıfırlama B5 sonrası ayrı onayla eklenebilir). Tedarikçi
+portalında sipariş teyidi, teslim tarihi önerisi, irsaliye/fatura yükleme ve tedarikçiye e-posta;
+tedarikçinin kendi stok ya da fiyat listesini girmesi.

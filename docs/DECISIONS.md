@@ -3126,3 +3126,29 @@ değiştirme zorunlu, yalnızca admin):
 - **Yetki sözleşmesi:** iş akışı sondasındaki yeni hücreler "yeni bildirim: geciken teslim
   (DECISIONS 2026-11-19)" kaydıyla bağlandı; gözlenen değer planla aynı (sevkiyat, yönetim,
   depo+sevkiyat alır; ötekiler almaz).
+
+## 2026-11-19 — Portal: müşteri ve tedarikçi (Paket B genişletmesi)
+
+- **İstek (CUMHUR):** müşteri ve tedarikçiler kullanıcı adı ve şifreyle girip yalnız kendi
+  hareketlerini görsün; tedarikçi bakiyesini ve kendi siparişlerini, müşteri sevkiyat ilerlemesini ve
+  bakiyesini görsün, sipariş versin. Plan: `docs/plan/musteri-siparis-takibi.md` §4 (onay
+  "Onaylıyorum").
+- **Tedarikçi ne görür:** gönderilmiş satın alma siparişleri (Gönderildi, Kısmen teslim alındı,
+  Teslim alındı, gönderildikten sonra iptal), fiyatlı; teslimatlar (mal kabuller, iç lot ve kalite
+  bilgisi olmadan); cari bakiye ve ekstre. **Yalnız görür** (teyit, tarih önerisi, belge yükleme
+  yok).
+- **Cari:** müşteri ve tedarikçide bakiye + ekstre (PDF dahil).
+- **Giriş:** kullanıcı adı ve şifre; iki aşamalı doğrulama portal için zorunlu değil, isteğe bağlı
+  (CUMHUR). Bu, 2026-11-19 sabahki plandaki "portalda 2FA zorunlu" kararının yerine geçer. Önlemler:
+  admin'in verdiği ilk şifre geçici (ilk girişte değişir), hesap kilidi, giriş için IP başına sınır,
+  30 dakika hareketsizlik, her istek varsayılan ret ara katmanından geçer.
+- **Hesap:** tek bir müşteriye ya da tek bir tedarikçiye bağlı (veritabanı kısıtı); hem müşteri hem
+  tedarikçi olan firmaya iki hesap. Yalnız admin açar.
+- **Belge ön eki:** sipariş talebi için önerilen `ST-` satın alma talebinde kullanılıyor; yerine
+  `MT-` (Müşteri talebi) önerildi, B4 öncesi kodlama listesinde doğrulanır.
+- **CLAUDE.md (B1'de):** `portal` modülü "Müşteri ve tedarikçi portalı"; bağımlılık `core`,
+  `masterdata`, `inventory`, `sales`, `purchasing`, `ledger` (yalnız okur); Roller'e portal
+  kullanıcısı satırı. Onay "Evet, B1'de eklensin".
+- **Sıralama:** önce görüntüleme sürümü (B1, B2, B3, okuma sayfaları) canlıya; sipariş talebi ve
+  e-posta ikinci sürümde.
+
