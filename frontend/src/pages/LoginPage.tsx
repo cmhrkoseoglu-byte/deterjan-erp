@@ -1,8 +1,9 @@
 import { IconEye, IconEyeOff } from "@tabler/icons-react";
 import { memo, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorCode, getErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { PRIVACY_PATH } from "../auth/paths";
 import { safeAppPath } from "../auth/safePath";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { InncosLogo } from "../components/brand/InncosLogo";
@@ -372,6 +373,9 @@ function LoginScreen({ next, expired }: { next: string; expired: boolean }) {
               </form>
 
               <p className={c.footnote}>{tr.auth.forgotHint}</p>
+              <p className={c.footnote}>
+                <Link to={PRIVACY_PATH}>Kişisel verilerin korunması aydınlatma metni</Link>
+              </p>
             </div>
           </div>
         </main>

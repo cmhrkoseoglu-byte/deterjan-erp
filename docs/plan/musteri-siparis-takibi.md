@@ -246,20 +246,20 @@ olayları dinleyerek gönderilir. **CLAUDE.md §3 tablosuna ve bağımlılık sa
 
 ### 4.8 Paket B adımları
 
-1. **B1 Portal hesabı ve varsayılan ret**: `portal` modülü, `PortalAccount` (müşteri ya da tedarikçi),
+1. **B1 Portal hesabı ve varsayılan ret** (tamam, 2026-11-19): `portal` modülü, `PortalAccount` (müşteri ya da tedarikçi),
    ara katman, giriş kuralları (geçici ilk şifre, kilit, IP sınırı, 30 dk), kullanıcı yönetiminde iki
    portal türü, sözleşme testi (her URL), WebSocket ve yönetim paneli reddi.
-2. **B2 Müşteri okuma API'si**: siparişler, sevkiyatlar, maskeli irsaliye PDF'i, cari özet ve ekstre;
+2. **B2 Müşteri okuma API'si** (tamam, 2026-11-19): siparişler, sevkiyatlar, maskeli irsaliye PDF'i, cari özet ve ekstre;
    firma süzgeci ve başka firma testleri.
-3. **B3 Tedarikçi okuma API'si**: gönderilmiş satın alma siparişleri ve PDF, teslimatlar (mal
+3. **B3 Tedarikçi okuma API'si** (tamam, 2026-11-19): gönderilmiş satın alma siparişleri ve PDF, teslimatlar (mal
    kabuller), cari özet ve ekstre; firma süzgeci, hesap türü ve başka firma testleri.
 4. **B4 Sipariş talebi**: model, durum makinesi, belge numarası (`MT-`), portal ve iç uç noktalar,
    siparişe çevirme, reddetme, workflow görevi; testler.
 5. **B5 E-posta**: SMTP ayarı, Celery işi, `OutboundEmail`, iki şablon, alıcı kuralları, tercih;
    testler (e-posta arka ucu bellekte).
-6. **B6 Portal ön yüzü**: `/portal` düzeni, müşteri ve tedarikçi sayfaları, iç taraftaki "Portal
+6. **B6 Portal ön yüzü** (görüntüleme sayfaları tamam, 2026-11-20; talep sayfaları ikinci sürümde): `/portal` düzeni, müşteri ve tedarikçi sayfaları, iç taraftaki "Portal
    talepleri" sekmesi, Sistem > Kullanıcılar'da portal türleri; Vitest.
-7. **B7 Güvenlik, belgeler ve canlı**: KVKK, DECISIONS, PROGRESS, CANLI-KONTROL (alan adı, SMTP,
+7. **B7 Güvenlik, belgeler ve canlı** (görüntüleme sürümü için belgeler tamam, 2026-11-20; canlı alan adı ve aydınlatma onayını bekliyor): KVKK, DECISIONS, PROGRESS, CANLI-KONTROL (alan adı, SMTP,
    ilk portal hesapları), yardım metni, duman testi.
 
 **Sıralama (CUMHUR, 2026-11-19, "Önce görüntüleme"):** önce B1, B2, B3 ve B6'nın okuma sayfaları

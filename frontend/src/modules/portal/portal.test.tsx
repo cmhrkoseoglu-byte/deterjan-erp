@@ -13,7 +13,7 @@ import type {
 } from "../../api/portal";
 import type { CurrentUser } from "../../api/types";
 import * as workflowApi from "../../api/workflow";
-import { page, userWith } from "../../test/fixtures";
+import { httpError, page, userWith } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
 
 vi.mock("../../api/auth");
@@ -381,5 +381,22 @@ describe("çalışan ve admin", () => {
       customer: 5,
       supplier: null,
     });
+  });
+});
+
+describe("aydınlatma metni", () => {
+  it("giriş yapmadan açılır, taslak uyarısıyla görünür; giriş ekranında bağlantısı var", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockRejectedValue(httpError(401));
+    const { router } = renderApp("/login");
+
+    await user.click(
+      await screen.findByRole("link", { name: "Kişisel verilerin korunması aydınlatma metni" }),
+    );
+    expect(router.state.location.pathname).toBe("/aydinlatma");
+    expect(
+      await screen.findByRole("heading", { name: "Kişisel verilerin korunması aydınlatma metni" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Taslak")).toBeInTheDocument();
   });
 });

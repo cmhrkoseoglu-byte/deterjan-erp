@@ -55,6 +55,16 @@ echo "- rol koruması: depo kullanıcısı /api/v1/users/ için 403 alıyor"
 code="$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" "$BASE_URL/api/v1/users/")"
 [ "$code" = "403" ] || fail "/api/v1/users/ beklenen 403, gelen $code"
 
+# Müşteri ve tedarikçi portalı (docs/plan/musteri-siparis-takibi.md §4): girişsiz istek 401,
+# çalışan hesabı portal uç noktalarını açamaz (403); hesapları yalnız admin yönetir.
+echo "- portal: girişsiz 401, çalışan (depo) 403"
+code="$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/api/v1/portal/me/")"
+[ "$code" = "401" ] || fail "girişsiz /api/v1/portal/me/ beklenen 401, gelen $code"
+for path in portal/me/ portal/customer/orders/ portal/supplier/orders/ portal/accounts/; do
+  code="$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" "$BASE_URL/api/v1/$path")"
+  [ "$code" = "403" ] || fail "depo /api/v1/$path beklenen 403, gelen $code"
+done
+
 # Kişiye özel yetki (plan §10, 9. adım): admin Yetkiler ekranının API'siyle depodan
 # "Malzeme hazırlama: Değiştirir"i kaldırır; depo'nun açık oturumu hemen etkilenir. Veritabanı
 # boş olduğundan yetki olmayan bir emirle denenir: izin denetimi nesneden önce çalışır (yetkisiz

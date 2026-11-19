@@ -247,6 +247,11 @@ export const ALLOWED: readonly Allowed[] = [
     { item: PORTAL_ITEM, section: "routes", step: 9, old: MISSING, new: "login" },
     { "/portal*": ["anonymous"] },
   ),
+  // KVKK aydınlatma metni: giriş gerektirmez, herkes açar.
+  ...cells(
+    { item: PORTAL_ITEM, section: "routes", step: 9, old: MISSING, new: "open" },
+    { "/aydinlatma": ["anonymous", ...STAFF_PERSONAS] },
+  ),
   ...cells(
     {
       item: PORTAL_ITEM,

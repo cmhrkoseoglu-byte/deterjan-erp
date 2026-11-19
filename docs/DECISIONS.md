@@ -3252,3 +3252,22 @@ değiştirme zorunlu, yalnızca admin):
 - **Ön yüz eşlik listesi:** `/portal*` rotaları "yeni sayfa: müşteri ve tedarikçi portalı (DECISIONS
   2026-11-19)" kaydıyla bağlandı (anonim giriş sayfasına, çalışan personalar portaldan yönlenir);
   rota sayısı 60 → 69.
+
+## 2026-11-20 — Portal B7: güvenlik, belgeler (görüntüleme sürümü)
+
+- **B7 planı** CUMHUR onayıyla (2026-11-20, "Onaylıyorum"). Adres: **firma alan adı, tek adres**
+  (çalışan ve portal aynı adresten girer, sistem hesap türüne göre yönlendirir); alan adının kendisi
+  canlıya almadan önce sorulacak. Aydınlatma metni: **taslağı Claude hazırlar**, firmanın hukuk
+  danışmanı onaylamadan canlıda yayımlanmaz.
+- **Aydınlatma metni:** giriş gerektirmeyen `/aydinlatma` sayfası, giriş ekranında bağlantısı.
+  Metin KVKK m.10'a göre veri sorumlusu, işlenen veriler, amaç ve hukuki sebep, aktarım, toplama
+  yöntemi ve saklama, m.11 hakları; köşeli parantezli yerler firmanın bilgileriyle doldurulur.
+  Onay gelene kadar "Taslak" uyarısı görünür (`PrivacyNoticePage.tsx`, `APPROVED`).
+- **Belgeler:** KVKK envanterine portal kullanıcısı (hesap, kimlik doğrulama, giriş kayıtları,
+  oturum) ve portalda şoför satırları, teknik tedbirlere portal maddesi; canlı kontrol listesine
+  portal bölümü (madde 33-39); kurulum belgesine "Alan adına geçiş"; admin yardımına "Portal
+  hesapları".
+- **Duman testi:** girişsiz `portal/me/` 401; çalışan (depo) `portal/me/`, `portal/customer/…`,
+  `portal/supplier/…` ve `portal/accounts/` için 403.
+- **Ön yüz eşlik listesi:** `/aydinlatma` herkese açık rota olarak portal kaydına bağlandı; rota
+  sayısı 70.

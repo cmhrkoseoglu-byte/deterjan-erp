@@ -2161,3 +2161,13 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
 - **Doğrulama:** ön yüz 778 test, tam turda 777 geçti; düşen tek test (birim standart kodları) yük
   altında zaman aşımıydı, tek başına yeşil. 9 yeni portal testi. tsc, ESLint, Prettier temiz; eşlik
   25/25. Backend değişmedi. Gerçek uygulamada elle bakılmadı.
+
+## 2026-11-20 — Portal B7: güvenlik ve belgeler (görüntüleme sürümü)
+
+- Aydınlatma metni sayfası (`/aydinlatma`, taslak; giriş ekranında bağlantı), KVKK envanteri, canlı
+  kontrol listesi (33-39), kurulumda alan adına geçiş, admin yardımında portal hesapları, duman
+  testinde portal denetimleri.
+- Görüntüleme sürümü (B1-B3, B6 okuma, B7 belgeler) bu dalda tamam. Canlıya almadan önce: alan adı
+  (DNS A kaydı) ve aydınlatma metninin hukuk onayı. İkinci sürüm: B4 sipariş talebi, B5 e-posta.
+- **Doğrulama:** ön yüz 779/779 (aydınlatma testi yeni), tsc, ESLint, Prettier temiz; eşlik
+  25/25. Duman testi betiği sözdizimi temiz; çalıştırılması CI'da (yerel yığın ana sürümde).

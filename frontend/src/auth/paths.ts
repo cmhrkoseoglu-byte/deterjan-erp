@@ -15,6 +15,8 @@ export const SEARCH_PATH = "/ara";
 export const PORTAL_PATH = "/portal";
 /** Portal kullanıcısının Güvenlik sayfası (şifre, isteğe bağlı iki aşamalı doğrulama). */
 export const PORTAL_SECURITY_PATH = "/portal/guvenlik";
+/** KVKK aydınlatma metni: giriş gerektirmez. */
+export const PRIVACY_PATH = "/aydinlatma";
 
 /** Portal kullanıcısı mı (müşteri ya da tedarikçi yetkilisi)? */
 export function isPortalUser(user: CurrentUser | null | undefined): boolean {

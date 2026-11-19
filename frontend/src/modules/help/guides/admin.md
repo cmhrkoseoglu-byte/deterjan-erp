@@ -26,6 +26,21 @@ Kullanıcılar **Sistem > Kullanıcılar** ekranında yönetilir. Bu ekranı yal
 - Bu ekrandaki her değişiklik denetim günlüğüne yazılır; şifreler günlüğe yazılmaz.
 - Yönetim paneli (/admin/) yalnızca sunucunun kendisinden ve VPN'den açılır; kullanıcı işleri için gerekmez. Panelde kullanıcının rolleri, süper kullanıcı ve panele giriş işaretleri salt okunurdur; roller uygulamadaki Yetkiler sayfasından değişir. Panelde GTIN'ler, ülke kodu, birimin UN/ECE kodu ve sembolü salt okunurdur; bunları uygulamadan girin. Biçimi kodlama sistematiğinden ayarlanan ana veri türlerinde (malzeme, malzeme kategorisi, depo, lokasyon, ekipman, tedarikçi, müşteri) kod salt okunurdur ve panelden yeni kayıt açılmaz. Kullanılan birimin türü ve katsayısı panelden de uygulamadan da değiştirilemez.
 
+## Portal hesapları
+
+Müşteri ve tedarikçi yetkilileri **portal** üzerinden yalnız kendi firmalarının kayıtlarını görür: müşteri siparişlerini (termin, kalan, tutar), sevkiyatlarını, irsaliyesini (lot ve SKT olmadan, şoför TC'si maskeli) ve cari hesabını; tedarikçi kendisine gönderilen satın alma siparişlerini, teslim aldığımız malları ve cari hesabını. Portalda değişiklik yapılamaz.
+
+1. **Sistem > Kullanıcılar**'da üstteki seçimden **Portal hesapları**'nı açın ve **Yeni portal hesabı**'na basın.
+2. **Müşteri** ya da **Tedarikçi**'yi seçin, firmayı listeden bulun. Pasif firmaya hesap açılmaz.
+3. **Kullanıcı adı**, **Ad soyad** ve varsa e-posta ile telefonu girin; **Hesabı aç**'a basın.
+4. Sistemin ürettiği **geçici şifre** yalnızca bir kez görünür. Kullanıcı adı ve şifreyi kişiye güvenli bir yoldan iletin. Kişi ilk girişte kendi şifresini belirler.
+
+- Her yetkiliye ayrı hesap açın; bir firmaya birden çok hesap açılabilir. Hem müşterimiz hem tedarikçimiz olan firmaya iki ayrı hesap gerekir.
+- Hesabın firması sonradan değiştirilemez; yanlış açılan hesabı pasife alıp yenisini açın.
+- **⋯ > Şifre sıfırla**, **Kilidi aç**, **Pasife al** ve **Etkinleştir** çalışan hesaplarındaki gibidir. Firmanın kartı Ana veriler'de pasife alınırsa o firmanın portal hesapları kendiliğinden kullanılamaz.
+- Portal kullanıcısına rol ya da yetki verilmez; çalışan ekranlarını, bildirimleri ve aramayı açamaz. İki aşamalı doğrulama portalda isteğe bağlıdır; kişi isterse portalın Güvenlik sayfasından kurar.
+- Listedeki **Son giriş** kişinin en son ne zaman girdiğini, **Geçici şifre** rozeti henüz kendi şifresini belirlemediğini gösterir.
+
 ## Kullanıcı yetkileri
 
 Her rolün varsayılan bir yetki paketi vardır. Bir kişiye paketin dışında yetki ekleyebilir ya da paketteki bir yetkiyi o kişi için kaldırabilirsiniz. Kişinin yetkileri, **Sistem > Kullanıcılar** listesinde satırdaki **Yetkiler** düğmesiyle ya da kişinin adına basınca açılan sayfadadır.

@@ -1,6 +1,12 @@
 import type { ReactNode } from "react";
 import type { RouteObject } from "react-router-dom";
-import { DASHBOARD_PATH, MY_ACCESS_PATH, SEARCH_PATH, TASKS_PATH } from "./auth/paths";
+import {
+  DASHBOARD_PATH,
+  MY_ACCESS_PATH,
+  PRIVACY_PATH,
+  SEARCH_PATH,
+  TASKS_PATH,
+} from "./auth/paths";
 import { RequireAuth } from "./auth/RequireAuth";
 import { RequireAccess, RequirePage } from "./auth/RequireAccess";
 import type { PageKey } from "./auth/pageAccess";
@@ -53,6 +59,7 @@ import { LedgerPage } from "./modules/ledger/LedgerPage";
 import { PartnerLedgerPage } from "./modules/ledger/PartnerLedgerPage";
 import { ShipmentPage } from "./modules/sales/ShipmentPage";
 import { SecurityPage } from "./modules/security/SecurityPage";
+import { PrivacyNoticePage } from "./pages/PrivacyNoticePage";
 import { CustomerShipmentPage, CustomerShipmentsPage } from "./modules/portal/CustomerPages";
 import { LedgerPage as PortalLedgerPage } from "./modules/portal/LedgerPage";
 import { OnlyFor, PortalOrderRoute, PortalOrdersRoute } from "./modules/portal/OrdersRoute";
@@ -214,6 +221,8 @@ const moduleRoutes: RouteObject[] = MENU.filter(
 
 export const routes: RouteObject[] = [
   { path: "/login", element: <LoginPage />, errorElement: <RouteErrorPage /> },
+  // KVKK aydınlatma metni: giriş gerektirmez (giriş ekranından bağlantı).
+  { path: PRIVACY_PATH, element: <PrivacyNoticePage />, errorElement: <RouteErrorPage /> },
   {
     element: <RequireAuth />,
     errorElement: <RouteErrorPage />,
