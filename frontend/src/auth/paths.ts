@@ -11,6 +11,15 @@ export const TASKS_PATH = "/gorevlerim";
 export const DASHBOARD_PATH = "/pano";
 /** Lot ve belge numarası araması (üst çubuktaki arama kutusu buraya götürür). */
 export const SEARCH_PATH = "/ara";
+/** Müşteri ve tedarikçi portalı (docs/plan/musteri-siparis-takibi.md §4.6). */
+export const PORTAL_PATH = "/portal";
+/** Portal kullanıcısının Güvenlik sayfası (şifre, isteğe bağlı iki aşamalı doğrulama). */
+export const PORTAL_SECURITY_PATH = "/portal/guvenlik";
+
+/** Portal kullanıcısı mı (müşteri ya da tedarikçi yetkilisi)? */
+export function isPortalUser(user: CurrentUser | null | undefined): boolean {
+  return Boolean(user && user.account_type && user.account_type !== "staff");
+}
 
 /** Sistem > Kullanıcılar > Yetkiler (yalnız admin; plan §6.1); `gecmis` Geçmiş sekmesini açar. */
 export function userAccessPath(id: number, tab?: "gecmis"): string {
@@ -28,6 +37,7 @@ export function searchPath(query: string): string {
  * Görevlerim'le açılır (plan §3.15, §5.9).
  */
 export function landingPath(user: CurrentUser | null): string {
+  if (isPortalUser(user)) return PORTAL_PATH;
   return user?.roles.includes("yonetim") && can(user, "reporting.management", "view")
     ? DASHBOARD_PATH
     : TASKS_PATH;

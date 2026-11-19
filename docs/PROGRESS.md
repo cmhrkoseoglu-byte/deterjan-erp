@@ -2152,3 +2152,12 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
 - **Doğrulama:** backend tam tur 3035 geçti, tek kırmızı B1'in "tedarikçi ucu henüz yok" testiydi
   (beklenen; 200'e güncellendi, portal + sözleşme 50/50). ruff, `ruff format --check`, mypy,
   OpenAPI uyarısız. Ön yüz değişmedi.
+
+## 2026-11-19 — Portal B6: ekranlar (görüntüleme sürümü)
+
+- `/portal` düzeni ve sayfaları: müşteri (Siparişlerim, Sevkiyatlar, Cari hesabım), tedarikçi
+  (Siparişlerim, Teslimatlarım, Cari hesabım), Güvenlik. Sistem > Kullanıcılar'da "Portal
+  hesapları" seçimi (aç, şifre sıfırla, kilit aç, pasife al / etkinleştir).
+- **Doğrulama:** ön yüz 778 test, tam turda 777 geçti; düşen tek test (birim standart kodları) yük
+  altında zaman aşımıydı, tek başına yeşil. 9 yeni portal testi. tsc, ESLint, Prettier temiz; eşlik
+  25/25. Backend değişmedi. Gerçek uygulamada elle bakılmadı.

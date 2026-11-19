@@ -31,6 +31,11 @@ export interface CurrentUser {
    * okur (`auth/access.ts`). Yetkisi olmayan bölüm yazılmaz.
    */
   access: Readonly<Record<string, string>>;
+  /**
+   * Hesap türü: çalışan ya da müşteri / tedarikçi portalı kullanıcısı (portal kullanıcısında
+   * `access` boştur; arayüz yalnız `/portal` düzenini açar).
+   */
+  account_type: "staff" | "customer_portal" | "supplier_portal";
   /** İki aşamalı doğrulama (doğrulayıcı uygulama) kurulu mu? */
   otp_enabled: boolean;
   /**

@@ -53,6 +53,11 @@ import { LedgerPage } from "./modules/ledger/LedgerPage";
 import { PartnerLedgerPage } from "./modules/ledger/PartnerLedgerPage";
 import { ShipmentPage } from "./modules/sales/ShipmentPage";
 import { SecurityPage } from "./modules/security/SecurityPage";
+import { CustomerShipmentPage, CustomerShipmentsPage } from "./modules/portal/CustomerPages";
+import { LedgerPage as PortalLedgerPage } from "./modules/portal/LedgerPage";
+import { OnlyFor, PortalOrderRoute, PortalOrdersRoute } from "./modules/portal/OrdersRoute";
+import { PortalHome, PortalLayout } from "./modules/portal/PortalLayout";
+import { ReceiptPage, ReceiptsPage } from "./modules/portal/SupplierPages";
 import { UserAccessPage } from "./modules/system/access/UserAccessPage";
 import { SystemPage } from "./modules/system/SystemPage";
 import { ComparisonPage } from "./modules/golive/ComparisonPage";
@@ -213,6 +218,52 @@ export const routes: RouteObject[] = [
     element: <RequireAuth />,
     errorElement: <RouteErrorPage />,
     children: [
+      // Müşteri ve tedarikçi portalı (docs/plan/musteri-siparis-takibi.md §4.6): ayrı düzen;
+      // portal kullanıcısı yalnız burayı, çalışan burası dışını açar (RequireAuth).
+      {
+        path: "portal",
+        element: <PortalLayout />,
+        errorElement: <RouteErrorPage />,
+        children: [
+          { index: true, element: <PortalHome /> },
+          { path: "siparisler", element: <PortalOrdersRoute /> },
+          { path: "siparisler/:orderId", element: <PortalOrderRoute /> },
+          {
+            path: "sevkiyatlar",
+            element: (
+              <OnlyFor kind="customer">
+                <CustomerShipmentsPage />
+              </OnlyFor>
+            ),
+          },
+          {
+            path: "sevkiyatlar/:shipmentId",
+            element: (
+              <OnlyFor kind="customer">
+                <CustomerShipmentPage />
+              </OnlyFor>
+            ),
+          },
+          {
+            path: "teslimatlar",
+            element: (
+              <OnlyFor kind="supplier">
+                <ReceiptsPage />
+              </OnlyFor>
+            ),
+          },
+          {
+            path: "teslimatlar/:receiptId",
+            element: (
+              <OnlyFor kind="supplier">
+                <ReceiptPage />
+              </OnlyFor>
+            ),
+          },
+          { path: "cari", element: <PortalLedgerPage /> },
+          { path: "guvenlik", element: <SecurityPage /> },
+        ],
+      },
       {
         element: <AppLayout />,
         // Sayfa hatası menü ve başlık yerinde kalarak içerik alanında gösterilir.

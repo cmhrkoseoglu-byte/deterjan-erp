@@ -3228,3 +3228,27 @@ değiştirme zorunlu, yalnızca admin):
   kalite durumu, numune, birim fiyat ve ek masraflar, mal kabul notu.
 - **Cari:** müşteri portalıyla aynı görünümler (görünüm sınıfları ortak, firma alt sınıfta).
 - **Yetki sözleşmesi:** "yeni uç nokta: tedarikçi portalı (DECISIONS 2026-11-19)" kaydıyla bağlandı.
+
+## 2026-11-19 — Portal B6: ekranlar (görüntüleme sürümü)
+
+- **B6 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"). Talep sayfaları ikinci sürümde.
+- **Düzen:** `/portal` ayrı düzen (`modules/portal/PortalLayout`): firma adı, hesap türüne göre
+  menü, Güvenlik ve çıkış; çalışan menüsü, bildirim zili, arama, sorun bildirimi ve canlı bildirim
+  bağlantısı yoktur. Portal kullanıcısı girişten sonra `/portal`'a gider; başka her adres portala
+  döner. Çalışan `/portal` adresini açamaz (`RequireAuth`). Portal Güvenlik sayfası
+  `/portal/guvenlik` (geçici şifrede zorunlu).
+- **Müşteri:** Siparişlerim (durum süzgeci, arama; sipariş sayfasında satırlar, kalan, tutar ve
+  siparişin sevkiyatları), Sevkiyatlar (planlananlar dahil; sevk edilende irsaliye PDF'i), Cari
+  hesabım. **Tedarikçi:** Siparişlerim (teslim alınan / kalan, notlar, sipariş PDF'i),
+  Teslimatlarım, Cari hesabım. Öteki türün sayfası Siparişlerim'e döner.
+- **Portal hesapları ekranı (plandan değişiklik):** ayrı "Portal hesapları" sekmesi yerine
+  **Sistem > Kullanıcılar** içinde "Çalışanlar / Portal hesapları" seçimi (`?tur=portal`). Sistem
+  sekme listesi, kişiye özel yetkiler planındaki onaylı "Rol yetkileri sekmesi" kaydının sabitlediği
+  değerdir; değiştirmek o kaydın genişletilmesi olurdu. Seçim §4.2'deki ilk plan metniyle
+  ("Sistem > Kullanıcılar'da portal türü, listede ayrı süzgeç") aynıdır. Ekranda liste (müşteri /
+  tedarikçi süzgeci, arama, son giriş, geçici şifre ve firma pasif işaretleri), yeni hesap (tür,
+  firma, kullanıcı adı, ad soyad, e-posta, telefon; geçici şifre bir kez), şifre sıfırlama, kilit
+  açma, pasife alma ve etkinleştirme.
+- **Ön yüz eşlik listesi:** `/portal*` rotaları "yeni sayfa: müşteri ve tedarikçi portalı (DECISIONS
+  2026-11-19)" kaydıyla bağlandı (anonim giriş sayfasına, çalışan personalar portaldan yönlenir);
+  rota sayısı 60 → 69.

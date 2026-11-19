@@ -24,6 +24,7 @@ export function userWith(...roles: Role[]): CurrentUser {
     is_superuser: false,
     is_admin: roles.includes("admin"),
     access: accessFor(roles),
+    account_type: "staff",
     otp_enabled: false,
     password_change_required: false,
     otp_setup_required: false,
