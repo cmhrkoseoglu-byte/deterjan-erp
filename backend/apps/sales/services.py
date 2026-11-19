@@ -50,6 +50,7 @@ from apps.inventory.picking import picked_total
 from apps.inventory.services import format_quantity, quantize
 from apps.masterdata import services as masterdata
 from apps.masterdata.models import Customer, Location, Material
+from apps.sales import selectors as sales_selectors
 from apps.sales.access import ORDERS, PICKING, SHIPMENTS
 from apps.sales.models import SalesOrder, SalesOrderLine, Shipment, ShipmentLine, ShipmentPick
 from apps.sales.state import sales_order_states, shipment_states
@@ -1315,3 +1316,49 @@ def record_waybill_access(actor: User, shipment: Shipment, *, output: str) -> No
         AuditLog.Action.CUSTOM,
         note=f"İrsaliye görüntülendi ({output}); şoför TC kimlik numarası içerir",
     )
+
+
+# --- geciken teslim bildirimi (docs/plan/musteri-siparis-takibi.md §3.4) -----------------------
+
+
+def publish_overdue_orders(today: date | None = None) -> list[SalesOrder]:
+    """Günlük kontrol: yeni geciken siparişleri (vadesi geçmiş, bu vade için bildirilmemiş açık
+    siparişler) tek `sales_order.overdue` olayında yayınlar ve bildirildi diye işaretler.
+
+    Sistem işidir (kullanıcı yok). İşaret yalnız bildirimin tekrarını önleyen bir defter alanıdır;
+    siparişin iş verisi değişmediğinden denetim günlüğüne yazılmaz. Liste boşsa olay yoktur.
+    Olay commit sonrası yayınlanır; işlem geri alınırsa işaret de geri alınır."""
+    today = today or timezone.localdate()
+    with transaction.atomic():
+        orders = list(sales_selectors.newly_overdue_orders(today))
+        if not orders:
+            return []
+        for order in orders:
+            SalesOrder.objects.filter(pk=order.pk).update(
+                overdue_notified_due_date=order.due_date  # type: ignore[attr-defined]
+            )
+        late_total = (
+            SalesOrder.objects.annotate(due_date=sales_selectors.due_date_expression())
+            .filter(sales_selectors.late_filter(today))
+            .count()
+        )
+        events.publish(
+            ev.SALES_ORDERS_OVERDUE,
+            {
+                "date": today.isoformat(),
+                "late_total": late_total,
+                "orders": [
+                    {
+                        "model": "sales.salesorder",
+                        "id": order.pk,
+                        "number": order.number,
+                        "customer_code": order.customer.code,
+                        "customer_name": order.customer.name,
+                        "due_date": order.due_date.strftime("%d.%m.%Y"),  # type: ignore[attr-defined]
+                        "days_late": sales_selectors.days_late(order, today),
+                    }
+                    for order in orders
+                ],
+            },
+        )
+    return orders

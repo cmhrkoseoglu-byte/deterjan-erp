@@ -177,6 +177,24 @@ _ORDER_OUTSIDERS = ("no_role", "uretim", "laboratuvar", "dolum", "satin_alma")
 # DECISIONS 2026-11-19). Salt okunur, Satış siparişleri: Görür ister.
 _TRACKING = "yeni uç nokta: müşteri sipariş takibi (DECISIONS 2026-11-19)"
 _TRACKING_PATH = "* /api/v1/sales/tracking/*"
+# Plan dışı yeni bildirim: geciken teslim (docs/plan/musteri-siparis-takibi.md §3.4; DECISIONS
+# 2026-11-19). Sevkiyat ve yönetim rolüne, Satış siparişleri: Görür olana; sistem olayı.
+_OVERDUE = "yeni bildirim: geciken teslim (DECISIONS 2026-11-19)"
+_OVERDUE_NOTIFIED = "notify sales_orders_overdue: notified"
+_OVERDUE_ACTOR = "notify sales_orders_overdue: notified as actor"
+_OVERDUE_RECIPIENTS = ("yonetim", "sevkiyat", "depo+sevkiyat")
+_OVERDUE_OTHERS = (
+    "inactive",
+    "no_role",
+    "planlama",
+    "depo",
+    "uretim",
+    "laboratuvar",
+    "dolum",
+    "satin_alma",
+    "admin",
+    "superuser",
+)
 
 ALLOWED: tuple[Allowed, ...] = (
     # 1. adım: planın eklediği uç nokta (plan §5.1, §5.5). Giriş yapan herkese açık (SignedIn).
@@ -423,6 +441,38 @@ ALLOWED: tuple[Allowed, ...] = (
     ),
     *_cells(
         _TRACKING, "endpoints", {_TRACKING_PATH: _ORDER_OUTSIDERS}, step=9, old=MISSING, new="403"
+    ),
+    *_cells(
+        _OVERDUE,
+        "probe_workflow",
+        {_OVERDUE_NOTIFIED: _OVERDUE_RECIPIENTS},
+        step=9,
+        old=MISSING,
+        new=True,
+    ),
+    *_cells(
+        _OVERDUE,
+        "probe_workflow",
+        {_OVERDUE_NOTIFIED: _OVERDUE_OTHERS},
+        step=9,
+        old=MISSING,
+        new=False,
+    ),
+    *_cells(
+        _OVERDUE,
+        "probe_workflow",
+        {_OVERDUE_NOTIFIED: ("anonymous",), _OVERDUE_ACTOR: ("anonymous", *_OVERDUE_OTHERS)},
+        step=9,
+        old=MISSING,
+        new=None,
+    ),
+    *_cells(
+        _OVERDUE,
+        "probe_workflow",
+        {_OVERDUE_ACTOR: _OVERDUE_RECIPIENTS},
+        step=9,
+        old=MISSING,
+        new=False,
     ),
     # 5. adım — Onaya gönderme ve onay kayıtlarında tutar, kur ve limit notta değil ayrı alan
     # satırlarında görünür; nottaki tutar aramada bulunmaz.

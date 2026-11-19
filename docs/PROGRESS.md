@@ -2108,3 +2108,12 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
 - **Doğrulama:** ön yüz 769/769 Vitest (6 yeni), tsc ve ESLint temiz, değişen dosyalar Prettier
   temiz; eşlik anlık görüntüsü izin listesiyle yeşil. Backend değişmedi. Gerçek uygulamada elle
   bakılmadı.
+
+## 2026-11-19 — Müşteri sipariş takibi: A4 (geciken teslim bildirimi)
+
+- Günlük kontrolde yeni geciken siparişler tek uyarı bildiriminde sevkiyat ve yönetime (Satış
+  siparişleri: Görür); her sipariş aynı vade için bir kez, termin değişince yeniden. Göç
+  `sales 0004` (bildirilen vade alanı).
+- **Doğrulama:** backend 2991 test (6 yeni; ilk tam turda 2984 geçti, kalan 7'si izin listesi
+  düzeltmesinden sonra ayrıca yeşil), ruff, mypy, `makemigrations --check` temiz. Ön yüz değişmedi.
+  Rol yönlendirme satırı rol denetimi izin listesine (ROUTING) eklendi.

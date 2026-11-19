@@ -523,6 +523,18 @@ def late_filter(today: date | None = None) -> Q:
     return Q(status__in=OPEN_ORDER_STATUSES, due_date__lt=today)
 
 
+def newly_overdue_orders(today: date | None = None) -> QuerySet[SalesOrder]:
+    """Geciken ve bu vade için henüz bildirilmemiş açık siparişler (§3.4). Sıra: vade, no."""
+    today = today or timezone.localdate()
+    return (
+        SalesOrder.objects.annotate(due_date=due_date_expression())
+        .filter(late_filter(today))
+        .exclude(overdue_notified_due_date=F("due_date"))
+        .select_related("customer")
+        .order_by("due_date", "number")
+    )
+
+
 def days_late(order: SalesOrder, today: date | None = None) -> int | None:
     """Açık siparişin gecikme günü (vade geçmişse > 0, değilse 0); vadesiz siparişte boş.
     Biten siparişte gecikme son sevk gününe göre (zamanında = 0); sevki olmayanda boş."""

@@ -135,6 +135,7 @@ ALLOWED: dict[str, str] = {
     "workflow/rules.py: roles=(PLANLAMA, URETIM),": ROUTING,
     "workflow/rules.py: roles=(PLANLAMA, YONETIM),": ROUTING,
     "workflow/rules.py: roles=(SEVKIYAT, PLANLAMA),": ROUTING,
+    "workflow/rules.py: roles=(SEVKIYAT, YONETIM),": ROUTING,
     "workflow/rules.py: roles=(PLANLAMA, DOLUM),": ROUTING,
     "workflow/rules.py: roles=(SEVKIYAT,),": ROUTING,
     "workflow/rules.py: roles=(DEPO, PLANLAMA),": ROUTING,

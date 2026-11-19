@@ -3087,3 +3087,24 @@ değiştirme zorunlu, yalnızca admin):
 - **Ön yüz eşlik listesi:** Sevkiyat sekme listesindeki değişiklik "yeni sekme: Sevkiyat > Sipariş
   takibi (DECISIONS 2026-11-19)" kaydıyla bağlandı; hücreler gözlenen değere sabitlendi. Yetki
   değişmedi.
+
+## 2026-11-19 — Müşteri sipariş takibi: A4 (geciken teslim bildirimi)
+
+- **A4 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"); hatırlama "Siparişe kayıt", biçim
+  "Tek özet bildirimi".
+- **Kural:** günlük kontrolde (07:00) vadesi bugünden önce olan açık siparişler (Onaylandı, Kısmen
+  sevk edildi) taranır. Her sipariş aynı vade için bir kez bildirilir; termin değişip yeni vade de
+  geçerse yeniden bildirilir. Vadesiz, biten ve iptal edilen siparişler bildirilmez.
+- **Hatırlama:** `SalesOrder.overdue_notified_due_date` (göç `sales 0004`), "hangi vade için
+  bildirildi". Kaçan sabah olursa ertesi sabah yine bildirilir. Bu alan yalnız bildirimin
+  tekrarını önleyen sistem defteridir; siparişin iş verisi değişmediği için denetim günlüğüne
+  yazılmaz (bildirimin kendisi kayıttır). Formda ve API'de görünmez.
+- **Olay:** `sales_order.overdue` (`ev.SALES_ORDERS_OVERDUE`); payload `date`, `late_total`
+  (bütün gecikenler), `orders` (no, müşteri, vade gg.aa.yyyy, gecikme günü). Liste boşsa
+  yayınlanmaz; işaret ve olay aynı işlemde, olay commit sonrası.
+- **Bildirim:** `sales_orders_overdue`, uyarı düzeyinde, sevkiyat ve yönetim rolüne, Satış
+  siparişleri: Görür olana; başlık "Teslimi geciken siparişler: N yeni", gövdede en çok 20
+  sipariş ve geciken toplamı.
+- **Yetki sözleşmesi:** iş akışı sondasındaki yeni hücreler "yeni bildirim: geciken teslim
+  (DECISIONS 2026-11-19)" kaydıyla bağlandı; gözlenen değer planla aynı (sevkiyat, yönetim,
+  depo+sevkiyat alır; ötekiler almaz).
