@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "apps.ops",
     "apps.golive",
     "apps.workflow",
+    "apps.portal",
 ]
 
 MIDDLEWARE = [
@@ -60,6 +61,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "apps.core.context.RequestContextMiddleware",
     "apps.core.middleware.SessionSecurityMiddleware",
+    # Portal kullanıcısı yalnız giriş ve portal uç noktalarını açar (varsayılan ret).
+    "apps.portal.middleware.PortalGateMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -235,6 +238,8 @@ SPECTACULAR_SETTINGS = {
 # Mutlak süre: girişten en çok 12 saat. Hareketsizlik süresi ayrıca uygulanır (core.middleware).
 SESSION_COOKIE_AGE = env.int("DJANGO_SESSION_COOKIE_AGE", default=60 * 60 * 12)
 SESSION_IDLE_TIMEOUT_MINUTES = env.int("SESSION_IDLE_TIMEOUT_MINUTES", default=60)
+# Müşteri ve tedarikçi portalı (docs/plan/musteri-siparis-takibi.md §4.2).
+PORTAL_IDLE_TIMEOUT_MINUTES = env.int("PORTAL_IDLE_TIMEOUT_MINUTES", default=30)
 # Admin'in "saha tableti" olarak işaretlediği cihazlarda (imzalı çerez) daha kısa.
 FIELD_DEVICE_IDLE_TIMEOUT_MINUTES = env.int("FIELD_DEVICE_IDLE_TIMEOUT_MINUTES", default=10)
 FIELD_DEVICE_COOKIE = "erp_field_device"

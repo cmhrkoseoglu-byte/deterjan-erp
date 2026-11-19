@@ -1,7 +1,12 @@
 import { Alert, Button, CopyButton, Group, Modal, Stack, Text } from "@mantine/core";
 import { IconAlertTriangle, IconCheck, IconCopy } from "@tabler/icons-react";
-import type { IssuedPassword } from "../../api/users";
 import { sy } from "./strings";
+
+/** Geçici şifreyi gösterilecek kişi: ad soyad ve kullanıcı adı yeterlidir. */
+export interface IssuedTemporaryPassword {
+  user: { full_name: string; username: string };
+  temporary_password: string;
+}
 
 /**
  * Yeni kullanıcının ya da şifresi sıfırlanan kullanıcının geçici şifresini yalnızca bir kez
@@ -11,7 +16,8 @@ export function TemporaryPasswordModal({
   issued,
   onClose,
 }: {
-  issued: IssuedPassword | null;
+  /** Çalışan (`IssuedPassword`) ya da portal hesabının geçici şifresi. */
+  issued: IssuedTemporaryPassword | null;
   onClose: () => void;
 }) {
   const user = issued?.user;

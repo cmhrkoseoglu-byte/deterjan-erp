@@ -179,6 +179,33 @@ _TRACKING = "yeni uç nokta: müşteri sipariş takibi (DECISIONS 2026-11-19)"
 _TRACKING_PATH = "* /api/v1/sales/tracking/*"
 # Plan dışı yeni bildirim: geciken teslim (docs/plan/musteri-siparis-takibi.md §3.4; DECISIONS
 # 2026-11-19). Sevkiyat ve yönetim rolüne, Satış siparişleri: Görür olana; sistem olayı.
+# Plan dışı yeni uç noktalar ve model: müşteri ve tedarikçi portalı, B1 (docs/plan/
+# musteri-siparis-takibi.md §4.2; DECISIONS 2026-11-19). Hesapları yalnız admin yönetir;
+# `portal/me/` yalnız portal kullanıcısına açıktır (personaların hepsi çalışan olduğundan hepsi
+# 403 alır).
+_PORTAL = "yeni uç nokta: portal hesapları (DECISIONS 2026-11-19)"
+_PORTAL_MODEL = "yeni model: portal hesabı (DECISIONS 2026-11-19)"
+_PORTAL_ACCOUNTS = "* /api/v1/portal/accounts/*"
+_PORTAL_ME = "* /api/v1/portal/me/"
+# Müşteri portalı okumaları (B2): yalnız müşteri portalı kullanıcısı açar; personaların hepsi
+# çalışan olduğundan giriş yapan herkes 403 alır.
+_PORTAL_CUSTOMER = "yeni uç nokta: müşteri portalı (DECISIONS 2026-11-19)"
+_PORTAL_CUSTOMER_PATH = "* /api/v1/portal/customer/*"
+# Tedarikçi portalı okumaları (B3): yalnız tedarikçi portalı kullanıcısı açar.
+_PORTAL_SUPPLIER = "yeni uç nokta: tedarikçi portalı (DECISIONS 2026-11-19)"
+_PORTAL_SUPPLIER_PATH = "* /api/v1/portal/supplier/*"
+_STAFF_NON_ADMIN = (
+    "no_role",
+    "yonetim",
+    "planlama",
+    "depo",
+    "uretim",
+    "laboratuvar",
+    "dolum",
+    "sevkiyat",
+    "satin_alma",
+    "depo+sevkiyat",
+)
 _OVERDUE = "yeni bildirim: geciken teslim (DECISIONS 2026-11-19)"
 _OVERDUE_NOTIFIED = "notify sales_orders_overdue: notified"
 _OVERDUE_ACTOR = "notify sales_orders_overdue: notified as actor"
@@ -441,6 +468,71 @@ ALLOWED: tuple[Allowed, ...] = (
     ),
     *_cells(
         _TRACKING, "endpoints", {_TRACKING_PATH: _ORDER_OUTSIDERS}, step=9, old=MISSING, new="403"
+    ),
+    *_cells(
+        _PORTAL,
+        "endpoints",
+        {_PORTAL_ACCOUNTS: _SIGNED_OUT, _PORTAL_ME: _SIGNED_OUT},
+        step=9,
+        old=MISSING,
+        new="401",
+    ),
+    *_cells(
+        _PORTAL,
+        "endpoints",
+        {_PORTAL_ACCOUNTS: ("admin", "superuser")},
+        step=9,
+        old=MISSING,
+        new="allow",
+    ),
+    *_cells(
+        _PORTAL,
+        "endpoints",
+        {_PORTAL_ACCOUNTS: _STAFF_NON_ADMIN, _PORTAL_ME: (*_STAFF_NON_ADMIN, "admin", "superuser")},
+        step=9,
+        old=MISSING,
+        new="403",
+    ),
+    *_cells(
+        _PORTAL_CUSTOMER,
+        "endpoints",
+        {_PORTAL_CUSTOMER_PATH: _SIGNED_OUT},
+        step=9,
+        old=MISSING,
+        new="401",
+    ),
+    *_cells(
+        _PORTAL_CUSTOMER,
+        "endpoints",
+        {_PORTAL_CUSTOMER_PATH: (*_STAFF_NON_ADMIN, "admin", "superuser")},
+        step=9,
+        old=MISSING,
+        new="403",
+    ),
+    *_cells(
+        _PORTAL_SUPPLIER,
+        "endpoints",
+        {_PORTAL_SUPPLIER_PATH: _SIGNED_OUT},
+        step=9,
+        old=MISSING,
+        new="401",
+    ),
+    *_cells(
+        _PORTAL_SUPPLIER,
+        "endpoints",
+        {_PORTAL_SUPPLIER_PATH: (*_STAFF_NON_ADMIN, "admin", "superuser")},
+        step=9,
+        old=MISSING,
+        new="403",
+    ),
+    # Denetim günlüğünü okuyanlar portal hesabını bütün alanlarıyla görür.
+    *_cells(
+        _PORTAL_MODEL,
+        "probe_audit",
+        {"model: portal.portalaccount": _AUDIT_READERS},
+        step=9,
+        old=MISSING,
+        new="full",
     ),
     *_cells(
         _OVERDUE,

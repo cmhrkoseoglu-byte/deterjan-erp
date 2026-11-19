@@ -13,6 +13,7 @@ export function menuUser(roles: Role[], letters: Letters, superuser = false): Cu
     is_superuser: superuser,
     is_admin: superuser || roles.includes("admin"),
     access: letters,
+    account_type: "staff",
     otp_enabled: true,
     password_change_required: false,
     otp_setup_required: false,

@@ -355,7 +355,10 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
             username=OuterRef("username"), locked_until__gt=timezone.now()
         )
         otp = TOTPDevice.objects.filter(user=OuterRef("pk"), confirmed_at__isnull=False)
-        return User.objects.prefetch_related("groups").annotate(
+        # Portal hesapları (müşteri ve tedarikçi yetkilileri) /api/v1/portal/accounts/ altında
+        # yönetilir; çalışan listesinde ve rol/yetki ekranlarında görünmez.
+        staff = User.objects.filter(account_type=User.AccountType.STAFF)
+        return staff.prefetch_related("groups").annotate(
             is_locked_now=Exists(locked),
             has_otp=Exists(otp),
             granted_count=_personal_count(AccessOverride.Effect.GRANT),

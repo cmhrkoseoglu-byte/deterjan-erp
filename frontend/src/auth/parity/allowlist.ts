@@ -57,6 +57,24 @@ function cells(
 }
 
 const TRACKING_ITEM = "yeni sekme: Sevkiyat > Sipariş takibi (DECISIONS 2026-11-19)";
+// Müşteri ve tedarikçi portalı (DECISIONS 2026-11-19): `/portal` altı yalnız portal kullanıcısına
+// açık; personaların hepsi çalışan olduğundan giriş yapan herkes portaldan yönlendirilir.
+const PORTAL_ITEM = "yeni sayfa: müşteri ve tedarikçi portalı (DECISIONS 2026-11-19)";
+const STAFF_PERSONAS = [
+  "inactive",
+  "no_role",
+  "yonetim",
+  "planlama",
+  "depo",
+  "uretim",
+  "laboratuvar",
+  "dolum",
+  "sevkiyat",
+  "satin_alma",
+  "admin",
+  "superuser",
+  "depo+sevkiyat",
+];
 
 // Cari hesaplar (DECISIONS 2026-11-18): personaların varsayılan paketlere göre grupları.
 const LEDGER_ITEM = "yeni sayfa: Cari hesaplar (DECISIONS 2026-11-18)";
@@ -223,6 +241,26 @@ export const ALLOWED: readonly Allowed[] = [
       ],
     },
     { "/sevkiyat": ["inactive", "depo", "admin", "superuser", "depo+sevkiyat"] },
+  ),
+
+  ...cells(
+    { item: PORTAL_ITEM, section: "routes", step: 9, old: MISSING, new: "login" },
+    { "/portal*": ["anonymous"] },
+  ),
+  // KVKK aydınlatma metni: giriş gerektirmez, herkes açar.
+  ...cells(
+    { item: PORTAL_ITEM, section: "routes", step: 9, old: MISSING, new: "open" },
+    { "/aydinlatma": ["anonymous", ...STAFF_PERSONAS] },
+  ),
+  ...cells(
+    {
+      item: PORTAL_ITEM,
+      section: "routes",
+      step: 9,
+      old: MISSING,
+      new: "redirect /eslik-sondasi",
+    },
+    { "/portal*": STAFF_PERSONAS },
   ),
 
   // 9. adım — Yeni ekran: Sistem > Kullanıcılar > Yetkiler (yalnız admin; plan §6.1).
@@ -437,6 +475,8 @@ export const PLANNED_ITEMS: Readonly<Record<string, readonly number[]>> = {
   "yeni sayfa: Cari hesaplar (DECISIONS 2026-11-18)": [8],
   // Plan dışı; sahibin onayladığı müşteri sipariş takibi planı (DECISIONS 2026-11-19).
   [TRACKING_ITEM]: [9],
+  // Plan dışı; sahibin onayladığı portal planı (DECISIONS 2026-11-19).
+  [PORTAL_ITEM]: [9],
 };
 
 type FrozenSections = Readonly<

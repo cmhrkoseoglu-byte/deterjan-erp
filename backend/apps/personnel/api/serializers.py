@@ -66,7 +66,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
     school = _blank(max_length=200)
     field_of_study = _blank(max_length=200)
     user = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), allow_null=True, required=False, default=None
+        queryset=User.objects.filter(account_type=User.AccountType.STAFF),
+        allow_null=True,
+        required=False,
+        default=None,
     )
     user_info = LinkedUserSerializer(source="user", read_only=True)
 

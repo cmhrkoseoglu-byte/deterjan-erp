@@ -507,6 +507,22 @@ bağlantıdan bulunur (Turhost gibi 22 dışında port veren sağlayıcılar iç
 Betik tekrar çalıştırılırsa sistemi son sürüme günceller (bölüm 8); veriye ve şifrelere dokunmaz. Bir
 kipte (canlı/eğitim) kurulan sunucu öbür kipe çevrilmez.
 
+### Alan adına geçiş (müşteri ve tedarikçi portalı için)
+
+Portal dış firmalara `sslip.io` adresiyle verilmez (kontrol listesi madde 33). Çalışanlar ve portal
+kullanıcıları aynı adresten girer; sistem hesap türüne göre yönlendirir.
+
+1. DNS'te `erp.<firma>.com.tr` için sunucunun IP'sini gösteren bir **A kaydı** açın; yayılmasını
+   bekleyin (`dig +short erp.<firma>.com.tr` sunucu IP'sini döndürmeli).
+2. Sunucuda elle yedek alın (`scripts/backup.sh`, bölüm 9). Betik yeniden çalışırken yedek almaz.
+3. Betiği yeni adresle yeniden çalıştırın: `export ADRES=erp.<firma>.com.tr`, `export EPOSTA=...`,
+   ardından yukarıdaki `curl ... | bash` komutu. Betik yeni ad için Let's Encrypt sertifikası alır,
+   `SERVER_NAME`, `DJANGO_ALLOWED_HOSTS` ve `DJANGO_CSRF_TRUSTED_ORIGINS`'i yeni adla yazar ve sistemi
+   son sürüme günceller (canlıya alma gibi: kısa kesinti olur, bilinçli bir zamanda yapın).
+4. Eski `sslip.io` adresi bundan sonra çalışmaz: çalışanlara yeni adresi önceden duyurun, yer
+   imlerini ve saha tabletlerini güncelleyin. Dış izleme aracının adresini değiştirin (madde 26).
+5. Kontrol: yeni adresle giriş, `/api/v1/health/` ok, tarayıcıda sertifika geçerli.
+
 Betiğin yapmadıkları, canlıya geçmeden önce tamamlanır (`docs/CANLI-KONTROL-LISTESI.md`):
 
 - **Dış yedek** (madde 18): yedekler sunucuda `/srv/deterjan-erp/backups` altında birikir; bir kopyası

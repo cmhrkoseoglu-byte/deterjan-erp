@@ -424,9 +424,11 @@ def set_field_device(actor: User, response: HttpResponseBase, enabled: bool) -> 
 
 
 def idle_timeout_seconds(request: HttpRequest) -> int:
-    minutes = (
-        settings.FIELD_DEVICE_IDLE_TIMEOUT_MINUTES
-        if is_field_device(request)
-        else settings.SESSION_IDLE_TIMEOUT_MINUTES
-    )
+    user = getattr(request, "user", None)
+    if getattr(user, "is_portal", False):
+        minutes = settings.PORTAL_IDLE_TIMEOUT_MINUTES
+    elif is_field_device(request):
+        minutes = settings.FIELD_DEVICE_IDLE_TIMEOUT_MINUTES
+    else:
+        minutes = settings.SESSION_IDLE_TIMEOUT_MINUTES
     return int(minutes) * 60

@@ -170,7 +170,9 @@ class SampleSerializer(serializers.ModelSerializer):
     status_display = serializers.SerializerMethodField()
     specification_label = serializers.SerializerMethodField()
     taken_by = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), required=False, allow_null=True
+        queryset=User.objects.filter(account_type=User.AccountType.STAFF),
+        required=False,
+        allow_null=True,
     )
     taken_by_name = UserNameField(source="taken_by")
     retain_location = serializers.PrimaryKeyRelatedField(

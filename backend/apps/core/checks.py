@@ -34,6 +34,7 @@ ENFORCED_APPS: frozenset[str] = frozenset(
         "masterdata",
         "ops",
         "personnel",
+        "portal",
         "production",
         "purchasing",
         "quality",

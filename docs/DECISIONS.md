@@ -3149,3 +3149,148 @@ değiştirme zorunlu, yalnızca admin):
     tarihli olarak yeni bakiyeye girer (eşitleme kuralı değişmedi).
 - **Canlıda:** 11 tedarikçide 14 bakiye (TRY ve USD), hepsi 5-11 Kasım mal kabullerinden; kayıtlar
   yedek alındıktan sonra sahibin onayıyla yazılır.
+
+## 2026-11-19 — Portal: müşteri ve tedarikçi (Paket B genişletmesi)
+
+- **İstek (CUMHUR):** müşteri ve tedarikçiler kullanıcı adı ve şifreyle girip yalnız kendi
+  hareketlerini görsün; tedarikçi bakiyesini ve kendi siparişlerini, müşteri sevkiyat ilerlemesini ve
+  bakiyesini görsün, sipariş versin. Plan: `docs/plan/musteri-siparis-takibi.md` §4 (onay
+  "Onaylıyorum").
+- **Tedarikçi ne görür:** gönderilmiş satın alma siparişleri (Gönderildi, Kısmen teslim alındı,
+  Teslim alındı, gönderildikten sonra iptal), fiyatlı; teslimatlar (mal kabuller, iç lot ve kalite
+  bilgisi olmadan); cari bakiye ve ekstre. **Yalnız görür** (teyit, tarih önerisi, belge yükleme
+  yok).
+- **Cari:** müşteri ve tedarikçide bakiye + ekstre (PDF dahil).
+- **Giriş:** kullanıcı adı ve şifre; iki aşamalı doğrulama portal için zorunlu değil, isteğe bağlı
+  (CUMHUR). Bu, 2026-11-19 sabahki plandaki "portalda 2FA zorunlu" kararının yerine geçer. Önlemler:
+  admin'in verdiği ilk şifre geçici (ilk girişte değişir), hesap kilidi, giriş için IP başına sınır,
+  30 dakika hareketsizlik, her istek varsayılan ret ara katmanından geçer.
+- **Hesap:** tek bir müşteriye ya da tek bir tedarikçiye bağlı (veritabanı kısıtı); hem müşteri hem
+  tedarikçi olan firmaya iki hesap. Yalnız admin açar.
+- **Belge ön eki:** sipariş talebi için önerilen `ST-` satın alma talebinde kullanılıyor; yerine
+  `MT-` (Müşteri talebi) önerildi, B4 öncesi kodlama listesinde doğrulanır.
+- **CLAUDE.md (B1'de):** `portal` modülü "Müşteri ve tedarikçi portalı"; bağımlılık `core`,
+  `masterdata`, `inventory`, `sales`, `purchasing`, `ledger` (yalnız okur); Roller'e portal
+  kullanıcısı satırı. Onay "Evet, B1'de eklensin".
+- **Sıralama:** önce görüntüleme sürümü (B1, B2, B3, okuma sayfaları) canlıya; sipariş talebi ve
+  e-posta ikinci sürümde.
+
+## 2026-11-19 — Portal B1: portal hesabı ve varsayılan ret
+
+- **B1 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"); hesapları kapatma ve şifre sıfırlama
+  "Yalnız admin".
+- **Hesap türü:** `core.User.account_type` (göç core 0010): boş = çalışan, `customer_portal`,
+  `supplier_portal`. Çalışanda değer boş tutuldu: denetim günlüğü boş alanları yazmadığından
+  çalışanın kullanıcı açma kaydı bu değişiklikten önceki gibi kalır, portal hesabında tür kayda
+  geçer. API'de çalışan `staff` döner. Tür yalnız hesap açılırken verilir.
+- **Portal hesabı:** `portal.PortalAccount` (göç portal 0001) kullanıcıyı tam olarak bir müşteriye
+  ya da bir tedarikçiye bağlar (veritabanı kısıtı); firma sonradan değişmez, hesap silinmez.
+  Açma, şifre sıfırlama, kilit açma, pasife alma ve etkinleştirme yalnız admin
+  (`/api/v1/portal/accounts/`); ilk şifre sistemin ürettiği geçici şifredir, ilk girişte değişir.
+  Pasif firmaya hesap açılmaz, pasif firmanın hesabı yeniden açılmaz.
+- **Varsayılan ret:** `portal.middleware.PortalGateMiddleware`. Portal kullanıcısı yalnız giriş,
+  çıkış, `auth/me`, güvenlik, şifre, iki aşamalı doğrulama (isteğe bağlı), sağlık, site bilgisi,
+  istemci hata kaydı, `portal/me/` ve kendi türünün öneki (`portal/customer/` ya da
+  `portal/supplier/`) yollarını açar; geri kalan her istek `403 portal_forbidden` (yönetim paneli,
+  API şeması, herkese açık okumalar dahil). Bildirim kanalı (WebSocket) portal kullanıcısını
+  reddeder. Bağlı firma ya da hesap pasifse yalnız çıkış açıktır (`portal_account_inactive`).
+  `portal/tests/test_gate.py` bütün DRF uç noktalarını gezer; ara katman kaldırılınca kırmızıdır.
+- **Rol ve yetki:** portal kullanıcısına rol ya da kişiye özel yetki verilemez
+  (`portal_user_roles`); `auth/me` yanıtında `access` boş, `account_type` dolu. Çalışan listeleri
+  (Sistem > Kullanıcılar, @bahsetme, yetki raporu, personel kartına bağlanacak kullanıcı, numune
+  alan) portal kullanıcılarını göstermez; çekirdek kullanıcı uçları portal hesabına 404 döner.
+- **Oturum:** portal kullanıcısında hareketsizlik süresi 30 dakika (`PORTAL_IDLE_TIMEOUT_MINUTES`);
+  giriş sınırı ve hesap kilidi çalışanlarla aynı.
+- **Yetki sözleşmesi:** yeni uç noktalar ve model "yeni uç nokta: portal hesapları" ve "yeni
+  model: portal hesabı" (DECISIONS 2026-11-19) kayıtlarıyla bağlandı; `portal` modülü bölüm
+  denetimi listesinde (`ENFORCED_APPS`).
+- **CLAUDE.md:** §3 modül tablosu ve bağımlılık satırı, §5 portal kullanıcısı paragrafı (onaylı
+  metin).
+
+## 2026-11-19 — Portal B2: müşteri portalı okumaları
+
+- **B2 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"); sevkiyatlarda "Evet, planlananlar da".
+- **Uç noktalar** (`/api/v1/portal/customer/`, yalnız müşteri portalı kullanıcısı; her sorgu bağlı
+  müşteriyle başlar, başka müşterinin kaydı 404): `orders/` (onaylanmış bütün siparişler; taslak ve
+  hiç onaylanmamış iptal yok; süzgeç `status`, arama), `shipments/` (iptaller dışında bütün
+  sevkiyatlar; süzgeç `status`, `sales_order`), `shipments/{id}/waybill-pdf/`, `ledger/`
+  (para birimi başına bakiye, vadesi geçen, yaşlandırma), `ledger/statement/` ve
+  `ledger/statement-pdf/` (tarih aralığı).
+- **Görünenler:** sipariş no, müşteri sipariş no, tarihler, termin ve vade, durum, teslim adresi;
+  satırda ürün, sipariş / sevk edilen / kalan (sipariş birimiyle ve temel birimde), birim fiyat,
+  tutar. **Görünmeyenler:** iç notlar, satır notu, rezervasyon, lot, SKT, eksik, kişi adları.
+- **Sevkiyat:** planlanan sevkiyat planlanan tarih, durum ve planlanan miktarla görünür; plaka,
+  taşıyıcı ve irsaliye yalnız sevk edildikten sonra. Sevk edilende satır miktarı sevk edilen
+  miktardır. Şoför adı ve TC'si listede yoktur, yalnız irsaliyededir.
+- **İrsaliye müşteri nüshası** (`sales.waybill.waybill_pdf(customer_copy=True)`): lot ve SKT sütunu
+  yok, satırlar sipariş satırı başına toplanır (koli sayısı lotlardan biri bilinmiyorsa boş),
+  şoför TC'si maskeli (`*******8901`). Sevk edilmemiş sevkiyatta `waybill_not_ready`. Her açılış
+  sevkiyatın geçmişine ve denetim günlüğüne "İrsaliye görüntülendi (portal)" diye yazılır;
+  yanıt `no-store`.
+- **Cari:** ekstre satırında belge no, tarih, tür, açıklama, borç, alacak, yürüyen bakiye, vade;
+  kaydı giren kişi ve kur yoktur. PDF mutabakat ekstresiyle aynı biçim (iletişim bilgisi
+  basılmaz).
+- **Yetki sözleşmesi:** "yeni uç nokta: müşteri portalı (DECISIONS 2026-11-19)" kaydıyla bağlandı
+  (personaların hepsi çalışan: giriş yapan herkes 403).
+
+## 2026-11-19 — Portal B3: tedarikçi portalı okumaları
+
+- **B3 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"); sipariş notu "Evet, PDF'teki gibi"
+  (not zaten tedarikçiye giden PDF'e basılıyor).
+- **Uç noktalar** (`/api/v1/portal/supplier/`, yalnız tedarikçi portalı kullanıcısı; her sorgu
+  bağlı tedarikçiyle başlar, başka tedarikçinin kaydı 404): `orders/` (gönderilmiş siparişler:
+  `sent_at` dolu olanlar — Gönderildi, Kısmen teslim alındı, Teslim alındı, gönderildikten sonra
+  iptal; süzgeç `status`), `orders/{id}/pdf/` (tedarikçiye giden PDF'in aynısı, `no-store`),
+  `receipts/` (kaydedilmiş mal kabuller), `ledger/`, `ledger/statement/`, `ledger/statement-pdf/`.
+- **Görünenler:** sipariş no, tarih, gönderim zamanı, para birimi, durum, notlar, tutar; satırda
+  malzeme, miktar ve birim, birim fiyat, satır tutarı, teslim tarihi, teslim alınan ve kalan (temel
+  birimde ve sipariş birimiyle). Mal kabulde no, tarih, tedarikçinin irsaliye no'su; satırda
+  malzeme, miktar, birim, tedarikçi lot no'su ve bağlı sipariş no.
+- **Görünmeyenler:** onay tutarı ve limiti, TL kuru, onaylayan, gönderen ve gönderilen e-posta,
+  kapanış notu, satır notu, satın alma talepleri; mal kabulde bizim lot numaramız, lokasyonlar,
+  kalite durumu, numune, birim fiyat ve ek masraflar, mal kabul notu.
+- **Cari:** müşteri portalıyla aynı görünümler (görünüm sınıfları ortak, firma alt sınıfta).
+- **Yetki sözleşmesi:** "yeni uç nokta: tedarikçi portalı (DECISIONS 2026-11-19)" kaydıyla bağlandı.
+
+## 2026-11-19 — Portal B6: ekranlar (görüntüleme sürümü)
+
+- **B6 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"). Talep sayfaları ikinci sürümde.
+- **Düzen:** `/portal` ayrı düzen (`modules/portal/PortalLayout`): firma adı, hesap türüne göre
+  menü, Güvenlik ve çıkış; çalışan menüsü, bildirim zili, arama, sorun bildirimi ve canlı bildirim
+  bağlantısı yoktur. Portal kullanıcısı girişten sonra `/portal`'a gider; başka her adres portala
+  döner. Çalışan `/portal` adresini açamaz (`RequireAuth`). Portal Güvenlik sayfası
+  `/portal/guvenlik` (geçici şifrede zorunlu).
+- **Müşteri:** Siparişlerim (durum süzgeci, arama; sipariş sayfasında satırlar, kalan, tutar ve
+  siparişin sevkiyatları), Sevkiyatlar (planlananlar dahil; sevk edilende irsaliye PDF'i), Cari
+  hesabım. **Tedarikçi:** Siparişlerim (teslim alınan / kalan, notlar, sipariş PDF'i),
+  Teslimatlarım, Cari hesabım. Öteki türün sayfası Siparişlerim'e döner.
+- **Portal hesapları ekranı (plandan değişiklik):** ayrı "Portal hesapları" sekmesi yerine
+  **Sistem > Kullanıcılar** içinde "Çalışanlar / Portal hesapları" seçimi (`?tur=portal`). Sistem
+  sekme listesi, kişiye özel yetkiler planındaki onaylı "Rol yetkileri sekmesi" kaydının sabitlediği
+  değerdir; değiştirmek o kaydın genişletilmesi olurdu. Seçim §4.2'deki ilk plan metniyle
+  ("Sistem > Kullanıcılar'da portal türü, listede ayrı süzgeç") aynıdır. Ekranda liste (müşteri /
+  tedarikçi süzgeci, arama, son giriş, geçici şifre ve firma pasif işaretleri), yeni hesap (tür,
+  firma, kullanıcı adı, ad soyad, e-posta, telefon; geçici şifre bir kez), şifre sıfırlama, kilit
+  açma, pasife alma ve etkinleştirme.
+- **Ön yüz eşlik listesi:** `/portal*` rotaları "yeni sayfa: müşteri ve tedarikçi portalı (DECISIONS
+  2026-11-19)" kaydıyla bağlandı (anonim giriş sayfasına, çalışan personalar portaldan yönlenir);
+  rota sayısı 60 → 69.
+
+## 2026-11-20 — Portal B7: güvenlik, belgeler (görüntüleme sürümü)
+
+- **B7 planı** CUMHUR onayıyla (2026-11-20, "Onaylıyorum"). Adres: **firma alan adı, tek adres**
+  (çalışan ve portal aynı adresten girer, sistem hesap türüne göre yönlendirir); alan adının kendisi
+  canlıya almadan önce sorulacak. Aydınlatma metni: **taslağı Claude hazırlar**, firmanın hukuk
+  danışmanı onaylamadan canlıda yayımlanmaz.
+- **Aydınlatma metni:** giriş gerektirmeyen `/aydinlatma` sayfası, giriş ekranında bağlantısı.
+  Metin KVKK m.10'a göre veri sorumlusu, işlenen veriler, amaç ve hukuki sebep, aktarım, toplama
+  yöntemi ve saklama, m.11 hakları; köşeli parantezli yerler firmanın bilgileriyle doldurulur.
+  Onay gelene kadar "Taslak" uyarısı görünür (`PrivacyNoticePage.tsx`, `APPROVED`).
+- **Belgeler:** KVKK envanterine portal kullanıcısı (hesap, kimlik doğrulama, giriş kayıtları,
+  oturum) ve portalda şoför satırları, teknik tedbirlere portal maddesi; canlı kontrol listesine
+  portal bölümü (madde 33-39); kurulum belgesine "Alan adına geçiş"; admin yardımına "Portal
+  hesapları".
+- **Duman testi:** girişsiz `portal/me/` 401; çalışan (depo) `portal/me/`, `portal/customer/…`,
+  `portal/supplier/…` ve `portal/accounts/` için 403.
+- **Ön yüz eşlik listesi:** `/aydinlatma` herkese açık rota olarak portal kaydına bağlandı; rota
+  sayısı 70.

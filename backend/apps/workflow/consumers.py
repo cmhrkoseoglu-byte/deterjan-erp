@@ -20,7 +20,13 @@ class NotificationConsumer(AsyncJsonWebsocketConsumer):
 
     async def connect(self) -> None:
         user = self.scope.get("user")
-        if user is None or not user.is_authenticated or not user.is_active:
+        # Portal kullanıcısının (müşteri, tedarikçi) bildirim kanalı yoktur.
+        if (
+            user is None
+            or not user.is_authenticated
+            or not user.is_active
+            or getattr(user, "is_portal", False)
+        ):
             await self.close(code=UNAUTHENTICATED_CLOSE_CODE)
             return
         self.group_name = user_group(user.pk)

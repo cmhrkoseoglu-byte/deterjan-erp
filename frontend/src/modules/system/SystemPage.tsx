@@ -6,7 +6,7 @@ import { RoleAccessPanel } from "./RoleAccessPanel";
 import { StatusPanel } from "./StatusPanel";
 import { SYSTEM_BASE, TABS, type TabKey } from "./config";
 import { sy } from "./strings";
-import { UsersPanel } from "./UsersPanel";
+import { UsersTab } from "./UsersTab";
 
 function tabFromPath(value: string | undefined): TabKey {
   return (Object.keys(TABS) as TabKey[]).find((key) => TABS[key] === value) ?? "status";
@@ -33,7 +33,7 @@ export function SystemPage() {
         </Tabs.List>
       </Tabs>
       {tab === "status" && <StatusPanel />}
-      {tab === "users" && <UsersPanel />}
+      {tab === "users" && <UsersTab />}
       {tab === "roles" && <RoleAccessPanel />}
       {tab === "coding" && <CodingPanel />}
       {tab === "device" && <DevicePanel />}

@@ -46,11 +46,16 @@ class MeSerializer(serializers.ModelSerializer):
 
     Yetki alanları (docs/plan/kisi-yetkileri.md §5.9): `is_admin` (admin rolü ya da süper
     kullanıcı) ve `access` (bölüm → "rvca" harfleri: r kayıtları okur, v görür, c değiştirir,
-    a onaylar; yetkisi olmayan bölüm yazılmaz)."""
+    a onaylar; yetkisi olmayan bölüm yazılmaz).
+
+    `account_type`: `staff` (çalışan), `customer_portal` ya da `supplier_portal`; portal
+    kullanıcısında `access` boştur ve SPA portal düzenini açar
+    (docs/plan/musteri-siparis-takibi.md §4.2)."""
 
     roles = serializers.ListField(child=serializers.CharField(), read_only=True)
     is_admin = serializers.BooleanField(read_only=True)
     access = serializers.SerializerMethodField()
+    account_type = serializers.SerializerMethodField()
     otp_enabled = serializers.SerializerMethodField()
     password_change_required = serializers.BooleanField(
         source="must_change_password", read_only=True
@@ -70,6 +75,7 @@ class MeSerializer(serializers.ModelSerializer):
             "is_superuser",
             "is_admin",
             "access",
+            "account_type",
             "otp_enabled",
             "password_change_required",
             "otp_setup_required",
@@ -81,7 +87,15 @@ class MeSerializer(serializers.ModelSerializer):
     @extend_schema_field(
         {"type": "object", "additionalProperties": {"type": "string", "pattern": "^r?v?c?a?$"}}
     )
+    @extend_schema_field(
+        serializers.ChoiceField(choices=["staff", "customer_portal", "supplier_portal"])
+    )
+    def get_account_type(self, obj: User) -> str:
+        return obj.account_type or "staff"
+
     def get_access(self, obj: User) -> dict[str, str]:
+        if obj.is_portal:
+            return {}
         return obj.access.letters()
 
     def _request(self) -> Any:

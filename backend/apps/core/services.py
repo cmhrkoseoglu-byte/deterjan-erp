@@ -361,6 +361,10 @@ def set_user_roles(user: User, roles: Iterable[str], actor: User | None, *, note
     (`seed_roles` çalışmamış) `BusinessRuleError("role_not_seeded")`.
     """
     wanted = sorted(set(roles))
+    if user.is_portal and wanted:
+        raise BusinessRuleError(
+            "portal_user_roles", "Portal kullanıcısına rol ya da yetki verilemez."
+        )
     _check_roles(wanted)
     with transaction.atomic():
         groups = _role_groups(wanted)
@@ -522,6 +526,10 @@ def set_user_access(
     kaydı yazılır (`roles` değiştiyse, `access` her zaman; satırlar numaralarıyla). Commit sonrası
     `access.changed` (açık oturumlar yenilenir) ve `access.updated` (kişiye bildirim) yayınlanır.
     """
+    if user.is_portal:
+        raise BusinessRuleError(
+            "portal_user_roles", "Portal kullanıcısına rol ya da yetki verilemez."
+        )
     require_admin(actor, ACCESS_ADMIN_MESSAGE)
     desired = list(overrides)
     wanted = None if roles is None else sorted(set(roles))
@@ -647,6 +655,7 @@ def create_user(
     email: str = "",
     phone: str = "",
     roles: Iterable[str] = (),
+    account_type: str = User.AccountType.STAFF,
 ) -> tuple[User, str]:
     """Yeni kullanıcı açar; sistemin ürettiği geçici şifreyi döner.
 
@@ -657,6 +666,8 @@ def create_user(
     - Kullanıcı adı: küçük harf, rakam, `.`, `_`, `-` (`invalid_username`); büyük/küçük harf
       farkıyla bile var olan bir adla aynı olamaz (`username_taken`). Sonradan değiştirilemez.
     - Ad soyad zorunlu (`full_name_required`); roller `set_user_roles` kurallarıyla atanır.
+    - `account_type`: portal hesabını yalnız `portal.services` açar (firmaya bağlar); portal
+      kullanıcısına rol verilmez (`portal_user_roles`).
     """
     username = _clean_username(username)
     full_name = _clean_full_name(full_name)
@@ -669,6 +680,7 @@ def create_user(
             email=(email or "").strip(),
             phone=(phone or "").strip(),
             must_change_password=True,
+            account_type=account_type,
         )
         password = generate_temporary_password(user)
         user.set_password(password)

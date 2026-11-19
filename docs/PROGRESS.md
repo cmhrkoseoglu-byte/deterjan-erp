@@ -2137,3 +2137,46 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
 - Dönem notu: Tedarikçiler listesi ve cari sayfasında bilgi kutusu; cari listesi ve ekstre
   Excel'inde "Not" satırı; ekstre PDF'inde cari kutusunun altında. Müşteri tarafında not yok.
 - Yardım: satın alma ve yönetim kılavuzlarına bir cümle. Göç yok.
+
+## 2026-11-19 — Portal B1: portal hesabı ve varsayılan ret
+
+- Yeni `portal` modülü: `PortalAccount` (müşteri ya da tedarikçi), admin uçları
+  (`/api/v1/portal/accounts/`: aç, şifre sıfırla, kilit aç, pasife al, etkinleştir),
+  `/api/v1/portal/me/`, varsayılan ret ara katmanı. `User.account_type` (göç core 0010, portal
+  0001). Portal kullanıcısı rol/yetki almaz, çalışan listelerinde yok, bildirim kanalı kapalı,
+  hareketsizlik 30 dk. CLAUDE.md güncellendi. Ekranlar B6'da.
+- **Doğrulama:** backend 3019 test yeşil (28 yeni portal testi; geçit testi ara katman kaldırılınca kırmızı), ruff, `ruff format --check`, mypy, `makemigrations --check`, OpenAPI uyarısız. Ön yüz değişmedi.
+
+## 2026-11-19 — Portal B2: müşteri portalı okumaları
+
+- `/api/v1/portal/customer/`: siparişler, sevkiyatlar (planlananlar dahil), irsaliyenin müşteri
+  nüshası (lotsuz, şoför TC'si maskeli, açılış denetimli), cari bakiye, ekstre ve PDF.
+- **Doğrulama:** backend 3029 test yeşil (10 yeni; müşteri nüshası testi iç nüshayla
+  kırmızı), ruff, `ruff format --check`, mypy, OpenAPI uyarısız. Ön yüz değişmedi.
+
+## 2026-11-19 — Portal B3: tedarikçi portalı okumaları
+
+- `/api/v1/portal/supplier/`: gönderilmiş satın alma siparişleri (teslim alınan/kalan, notlar,
+  PDF), teslimatlar (kaydedilmiş mal kabuller), cari bakiye, ekstre ve PDF.
+- **Doğrulama:** backend tam tur 3035 geçti, tek kırmızı B1'in "tedarikçi ucu henüz yok" testiydi
+  (beklenen; 200'e güncellendi, portal + sözleşme 50/50). ruff, `ruff format --check`, mypy,
+  OpenAPI uyarısız. Ön yüz değişmedi.
+
+## 2026-11-19 — Portal B6: ekranlar (görüntüleme sürümü)
+
+- `/portal` düzeni ve sayfaları: müşteri (Siparişlerim, Sevkiyatlar, Cari hesabım), tedarikçi
+  (Siparişlerim, Teslimatlarım, Cari hesabım), Güvenlik. Sistem > Kullanıcılar'da "Portal
+  hesapları" seçimi (aç, şifre sıfırla, kilit aç, pasife al / etkinleştir).
+- **Doğrulama:** ön yüz 778 test, tam turda 777 geçti; düşen tek test (birim standart kodları) yük
+  altında zaman aşımıydı, tek başına yeşil. 9 yeni portal testi. tsc, ESLint, Prettier temiz; eşlik
+  25/25. Backend değişmedi. Gerçek uygulamada elle bakılmadı.
+
+## 2026-11-20 — Portal B7: güvenlik ve belgeler (görüntüleme sürümü)
+
+- Aydınlatma metni sayfası (`/aydinlatma`, taslak; giriş ekranında bağlantı), KVKK envanteri, canlı
+  kontrol listesi (33-39), kurulumda alan adına geçiş, admin yardımında portal hesapları, duman
+  testinde portal denetimleri.
+- Görüntüleme sürümü (B1-B3, B6 okuma, B7 belgeler) bu dalda tamam. Canlıya almadan önce: alan adı
+  (DNS A kaydı) ve aydınlatma metninin hukuk onayı. İkinci sürüm: B4 sipariş talebi, B5 e-posta.
+- **Doğrulama:** ön yüz 779/779 (aydınlatma testi yeni), tsc, ESLint, Prettier temiz; eşlik
+  25/25. Duman testi betiği sözdizimi temiz; çalıştırılması CI'da (yerel yığın ana sürümde).

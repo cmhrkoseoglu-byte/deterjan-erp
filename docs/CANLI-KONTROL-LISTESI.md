@@ -61,3 +61,18 @@ sunucuda elle doğrulanır; **Elle** satırlar sunucuda kontrol edilir.
 | 28 | Admin rolünde en az bir kişi bildirimleri izliyor (yedek, disk, kilit uyarıları admin'e gider) | Elle |
 | 29 | `docs/KVKK.md` envanteri firma tarafından gözden geçirildi; aydınlatma metni ve VERBİS kaydı güncel | Elle |
 | 30 | Bağımlılık güvenlik taraması (pip-audit, npm audit) CI'da yeşil | CI |
+
+## Müşteri ve tedarikçi portalı
+
+Portal (docs/plan/musteri-siparis-takibi.md §4) dış firmalara açılmadan önce:
+
+| # | Kontrol | Tür |
+|---|---|---|
+| 33 | Sistem firmanın alan adıyla çalışıyor (ör. `erp.<firma>.com.tr`; KURULUM.md §14 "Alan adına geçiş"); sertifika geçerli, eski `sslip.io` adresi çalışanlara da duyuruldu | Elle |
+| 34 | Aydınlatma metni (`/aydinlatma`) firmanın bilgileriyle dolduruldu, hukuk danışmanı onayladı ve "taslak" uyarısı kaldırıldı (`PrivacyNoticePage.tsx`, `APPROVED`); KVKK envanteri (madde 29) portal satırlarıyla gözden geçirildi | Elle |
+| 35 | Bir deneme müşteri ve bir deneme tedarikçi hesabıyla girildi: ilk girişte şifre değiştirildi; yalnız kendi firmasının siparişleri, sevkiyat ya da teslimatları ve cari hesabı göründü; başka bir firmanın sipariş adresi elle yazılınca "bulunamadı" geldi; `/sevkiyat`, `/depo` gibi çalışan adresleri portala döndü | Elle |
+| 36 | Portal kullanıcısıyla `/api/v1/inventory/lots/` ve `/api/v1/masterdata/materials/` istekleri `403 portal_forbidden` döndü; `/admin/` açılmadı | Elle |
+| 37 | Müşteri nüshası irsaliyede lot, SKT ve açık şoför TC'si yok; açılışı sevkiyatın Geçmiş panelinde "İrsaliye görüntülendi (portal)" olarak göründü | Elle |
+| 38 | Portal hesapları yalnız gerçekten yetkili kişilere açıldı (her yetkiliye ayrı hesap, ortak hesap yok); hesap bilgisi ve geçici şifre kişiye güvenli yoldan iletildi | Elle |
+| 39 | Duman testi portal satırları (girişsiz 401, çalışan 403) yeşil (`scripts/smoke_test.sh`) | Otomatik |
+
