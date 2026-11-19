@@ -26,6 +26,7 @@ import { ExpiryText, Info } from "../inventory/shared";
 import { SALES_BASE, salesOrderPath, shipmentPath } from "./config";
 import { orderColumns } from "./columns";
 import { st } from "./strings";
+import { CustomerOrderTracking } from "./TrackingPanel";
 
 interface Customer extends Partner {
   min_remaining_shelf_life_days: number | null;
@@ -94,6 +95,8 @@ export function CustomerPage() {
       </Paper>
       {showOrders && (
         <>
+          <Title order={4}>{st.tracking.openOrdersPanel}</Title>
+          <CustomerOrderTracking customerId={customerId} />
           <Title order={4}>{st.orderHistory}</Title>
           <RowsTable
             testId="customer-orders"

@@ -1,6 +1,6 @@
 """Satış testleri için yardımcılar: adet, koli ve palet birimli mamul ve stoklu mamul lotu."""
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -56,8 +56,14 @@ def draft_order(
     customer: Any = None,
     **data: Any,
 ) -> SalesOrder:
-    """Taslak sipariş: `lines` = [(mamul, miktar, birim kodu), ...]."""
-    values = {"customer": customer or CustomerFactory.create(), "order_date": date.today(), **data}
+    """Taslak sipariş: `lines` = [(mamul, miktar, birim kodu), ...]. Termin verilmezse bir
+    hafta sonrası (onayda zorunlu)."""
+    values = {
+        "customer": customer or CustomerFactory.create(),
+        "order_date": date.today(),
+        "promised_date": date.today() + timedelta(days=7),
+        **data,
+    }
     return services.create_order(
         actor,
         values,

@@ -263,6 +263,21 @@ def _reserved_expiring_body(payload: Payload) -> str:
     return "\n".join(lines)
 
 
+def _overdue_orders_body(payload: Payload) -> str:
+    orders = payload.get("orders", [])
+    lines = [
+        f"{order.get('number', '')} — {order.get('customer_name', '')}, vade "
+        f"{order.get('due_date', '')}, {order.get('days_late', '')} gün gecikti"
+        for order in orders[:20]
+    ]
+    if len(orders) > 20:
+        lines.append(f"… ve {len(orders) - 20} sipariş daha")
+    total = payload.get("late_total")
+    if total:
+        lines.append(f"Geciken sipariş toplamı: {total} (Sevkiyat > Sipariş takibi)")
+    return "\n".join(lines)
+
+
 def _work_order_for(role: str) -> Callable[[Payload], list[Subject]]:
     """Bakım iş emri görevi yalnızca sorumlu rolüne ve görev isteyen kayıtlarda açılır."""
 
@@ -602,6 +617,18 @@ RULES: tuple[Rule, ...] = (
         title="Rezerve lotların SKT'si {days} gün içinde doluyor",
         body=_reserved_expiring_body,
         when=lambda payload: bool(payload.get("lots")),
+    ),
+    # Müşteri sipariş takibi (docs/plan/musteri-siparis-takibi.md §3.4): yeni geciken siparişler,
+    # her sipariş aynı vade için bir kez.
+    NotifyRule(
+        code="sales_orders_overdue",
+        requires=("sales.orders", VIEW),
+        event=ev.SALES_ORDERS_OVERDUE,
+        roles=(SEVKIYAT, YONETIM),
+        level="WARNING",
+        title=lambda payload: f"Teslimi geciken siparişler: {len(payload.get('orders', []))} yeni",
+        body=_overdue_orders_body,
+        when=lambda payload: bool(payload.get("orders")),
     ),
     # Faz 3, Adım 3.2: sevkiyat.
     TaskRule(

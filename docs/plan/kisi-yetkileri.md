@@ -176,13 +176,18 @@ Ambalaj hazırlama sayfası bugünkü gibi Dolum'un herhangi bir bölümünde G�
 
 | Bölüm | Kapsam | Görür | Değiştirir | Onaylar |
 |---|---|---|---|---|
-| Satış siparişleri | Siparişler ve fiyatları, Müşteriler sekmesi ve müşteri kartı (iletişim bilgileri dahil, §3.1). Değiştirir: taslak, rezervasyon, siparişi kapatma, taslağı iptal. Onaylar: onaylar ve rezerve eder, onaylı siparişi iptal eder | sevkiyat, yönetim, planlama, depo | sevkiyat, yönetim | sevkiyat, yönetim |
+| Satış siparişleri | Siparişler ve fiyatları, Müşteriler sekmesi ve müşteri kartı (iletişim bilgileri dahil, §3.1), Sipariş takibi sekmesi ve müşteri kartındaki Açık siparişler paneli. Değiştirir: taslak, rezervasyon, termini değiştirme, siparişi kapatma, taslağı iptal. Onaylar: onaylar (termin girerek) ve rezerve eder, onaylı siparişi iptal eder | sevkiyat, yönetim, planlama, depo | sevkiyat, yönetim | sevkiyat, yönetim |
 | Sevkiyatlar ve irsaliye | Sevkiyatlar, irsaliye PDF'i. Değiştirir: planlar, araç ve şoför, sevk öncesi iptal. Onaylar: sevki onaylar | sevkiyat, yönetim, planlama, depo | sevkiyat | sevkiyat |
 | Toplama ve yükleme | Toplama sekmesi. Değiştirir: lot okutma, okutmayı geri alma, yükleme tamam | depo | depo | — |
 | Müşteriye sevk edilen lotlar | Müşteri kartındaki panel | sevkiyat, yönetim | — | — |
 
 Toplama sayfası ve toplama önerisi bugünkü gibi Sevkiyatlar ve irsaliye: Görür ile de salt okunur
 açılır.
+
+Müşteri sipariş takibi (docs/plan/musteri-siparis-takibi.md, 2026-11-19) yeni bölüm açmaz:
+Sipariş takibi Satış siparişleri: Görür ister; seçili müşterinin cari bakiyesi ayrıca Müşteri
+carileri: Görür ve Fiyatları görür ister. Geciken teslim bildirimi sevkiyat ve yönetim rolündeki,
+Satış siparişleri: Görür olanlara gider.
 
 ### 3.8 İadeler
 

@@ -197,6 +197,7 @@ function order(): SalesOrderDetail {
     customer_name: "Zincir Market A.Ş.",
     order_date: "2026-10-16",
     requested_delivery_date: "2026-10-17",
+    promised_date: "2026-10-17",
     delivery_address: "Gebze",
     customer_po_no: "",
     notes: "",

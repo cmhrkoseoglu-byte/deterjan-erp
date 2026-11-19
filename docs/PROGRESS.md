@@ -2069,3 +2069,63 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   hücreler gözlenen değere sabitlendi.
 - **Doğrulama:** backend 2783, ön yüz 710 test yeşil; mypy, ruff, OpenAPI şeması (uyarısız),
   göç denetimi, `access.gen.ts`, ESLint, Prettier, tsc ve build temiz.
+
+## 2026-11-19 — Müşteri sipariş takibi: A1 (Termin)
+
+- Plan `docs/plan/musteri-siparis-takibi.md` (Paket A iç ekran, Paket B portal); sahibin
+  kararları ve A1 uygulama kararları DECISIONS'ta (2026-11-19). Dal
+  `claude/musteri-siparis-takibi` (main 47c4b15'ten).
+- **A1:** siparişe Termin (`promised_date`, göç sales 0003); onayda zorunlu ve bugünden önce
+  olamaz; onaylı / kısmen sevk edilmiş siparişte gerekçeli "Termini değiştir"
+  (`POST /api/v1/sales/orders/{id}/promised-date/`, Satış siparişleri: Değiştirir), denetim
+  günlüğü ve `sales_order.promised_date_changed` olayı; sipariş formu, onay penceresi, detay ve
+  listede Termin.
+- **Canlıya alırken:** göç yeterli; canlıdaki onaylı siparişlerde termin boş kalır (gecikme
+  hesabında istenen teslim tarihi kullanılır, A2). Taslak siparişler onaylanırken termin ister.
+- **Yetki sözleşmesi:** yeni uç nokta izin listesinde "yeni uç nokta: sipariş termini
+  (DECISIONS 2026-11-19)" kaydıyla; hücreler gözlenen değere sabitlendi.
+- **Doğrulama:** backend 2971 test (yetki sözleşmesi düzeltmesinden sonra sözleşme testleri
+  ayrıca 24/24), ön yüz 763 test yeşil; mypy, ruff, göç denetimi, OpenAPI şeması (uyarısız),
+  ESLint ve tsc temiz.
+
+## 2026-11-19 — Müşteri sipariş takibi: A2 (takip okuma ve API)
+
+- `GET /api/v1/sales/tracking/orders/` ve `/tracking/customers/`: açık siparişler (isteğe bağlı
+  son 90 günde bitenler), vade (termin ya da istenen teslim), gecikme günü, satır başına sevk
+  edilen / sevke planlanan / kalan (adet ve sipariş birimiyle), sevkiyatlar ve tutar; müşteri
+  başına açık, geciken ve yakında vadesi gelen sipariş sayısı. Satış siparişleri: Görür.
+- Plandan düzeltme: cari bakiye takip API'sinde değil, ekranda Cari hesaplar API'sinden (A3).
+- **Doğrulama:** backend 2983 test yeşil; mypy, ruff, göç denetimi ve OpenAPI şeması (uyarısız)
+  temiz. Ön yüz değişmedi (A3).
+
+## 2026-11-19 — Müşteri sipariş takibi: A3 (ekran)
+
+- Sevkiyat > "Sipariş takibi" sekmesi: açık siparişi olan müşteriler, seçilen müşterinin
+  siparişleri (vade, gecikme rozeti, sevk / sipariş, tutar; satırlarda sevk edilen / planlanan /
+  kalan ve sevkiyatlar), süzgeçler "Yalnız gecikenler", "Bu hafta vadesi gelenler", "Biten
+  siparişleri de göster". Müşteri kartında "Açık siparişler" paneli.
+- Cari bakiye seçili müşteride ve kartta, yalnız Müşteri carileri: Görür + Fiyatları görür olana.
+- **Doğrulama:** ön yüz 769/769 Vitest (6 yeni), tsc ve ESLint temiz, değişen dosyalar Prettier
+  temiz; eşlik anlık görüntüsü izin listesiyle yeşil. Backend değişmedi. Gerçek uygulamada elle
+  bakılmadı.
+
+## 2026-11-19 — Müşteri sipariş takibi: A4 (geciken teslim bildirimi)
+
+- Günlük kontrolde yeni geciken siparişler tek uyarı bildiriminde sevkiyat ve yönetime (Satış
+  siparişleri: Görür); her sipariş aynı vade için bir kez, termin değişince yeniden. Göç
+  `sales 0004` (bildirilen vade alanı).
+- **Doğrulama:** backend 2991 test (6 yeni; ilk tam turda 2984 geçti, kalan 7'si izin listesi
+  düzeltmesinden sonra ayrıca yeşil), ruff, mypy, `makemigrations --check` temiz. Ön yüz değişmedi.
+  Rol yönlendirme satırı rol denetimi izin listesine (ROUTING) eklendi.
+
+## 2026-11-19 — Müşteri sipariş takibi: A5 (belgeler) — Paket A tamam
+
+- Sevkiyat yardımı: onayda termin, "Termini değiştir", yeni "Sipariş takibi" bölümü, müşteri
+  kartında açık siparişler. Yönetim yardımı: "Geciken teslimler". Yetki kataloğu §3.7: Satış
+  siparişleri kapsamına sipariş takibi ve termin; yeni bölüm yok. Kılavuz resmi eklenmedi
+  (canlıya alındıktan sonra).
+- Paket A (A1-A5) bu dalda tamam; canlıya alma ayrı onayla ("canlıya al"). Göçler: sales 0003,
+  0004. Paket B (portal) ayrı onayla.
+- **Doğrulama:** ön yüz 769 test (tam turda bir personel testi yük altında zaman aşımına düştü,
+  tek başına 19/19 yeşil), değişen yardım dosyaları Prettier temiz. Backend değişmedi.
+

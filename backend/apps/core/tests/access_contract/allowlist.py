@@ -167,6 +167,34 @@ _CUSTOMER_PRICE_PATHS = ("{pk}/return-suggestion/", "{pk}/statement-pdf/")
 _CUSTOMERS = "/api/v1/ledger/customers/"
 # Plan dışı yeni uç nokta: dolum emrini geri alma (DECISIONS 2026-11-14).
 _FILLING_REVERT = "yeni uç nokta: dolum emrini geri alma (DECISIONS 2026-11-14)"
+# Plan dışı yeni uç nokta: siparişin termini (docs/plan/musteri-siparis-takibi.md §3.1;
+# DECISIONS 2026-11-19). Satış siparişleri: Değiştirir ister; OPTIONS okumayı izler.
+_PROMISED_DATE = "yeni uç nokta: sipariş termini (DECISIONS 2026-11-19)"
+_PROMISED_DATE_PATH = "/api/v1/sales/orders/{pk}/promised-date/"
+_ORDER_WRITERS = ("admin", "superuser", "yonetim", "sevkiyat", "depo+sevkiyat")
+_ORDER_OUTSIDERS = ("no_role", "uretim", "laboratuvar", "dolum", "satin_alma")
+# Plan dışı yeni uç noktalar: müşteri sipariş takibi (docs/plan/musteri-siparis-takibi.md §3.2;
+# DECISIONS 2026-11-19). Salt okunur, Satış siparişleri: Görür ister.
+_TRACKING = "yeni uç nokta: müşteri sipariş takibi (DECISIONS 2026-11-19)"
+_TRACKING_PATH = "* /api/v1/sales/tracking/*"
+# Plan dışı yeni bildirim: geciken teslim (docs/plan/musteri-siparis-takibi.md §3.4; DECISIONS
+# 2026-11-19). Sevkiyat ve yönetim rolüne, Satış siparişleri: Görür olana; sistem olayı.
+_OVERDUE = "yeni bildirim: geciken teslim (DECISIONS 2026-11-19)"
+_OVERDUE_NOTIFIED = "notify sales_orders_overdue: notified"
+_OVERDUE_ACTOR = "notify sales_orders_overdue: notified as actor"
+_OVERDUE_RECIPIENTS = ("yonetim", "sevkiyat", "depo+sevkiyat")
+_OVERDUE_OTHERS = (
+    "inactive",
+    "no_role",
+    "planlama",
+    "depo",
+    "uretim",
+    "laboratuvar",
+    "dolum",
+    "satin_alma",
+    "admin",
+    "superuser",
+)
 
 ALLOWED: tuple[Allowed, ...] = (
     # 1. adım: planın eklediği uç nokta (plan §5.1, §5.5). Giriş yapan herkese açık (SignedIn).
@@ -371,6 +399,80 @@ ALLOWED: tuple[Allowed, ...] = (
         step=4,
         old=MISSING,
         new="allow",
+    ),
+    *_cells(
+        _PROMISED_DATE,
+        "endpoints",
+        {f"* {_PROMISED_DATE_PATH}": _SIGNED_OUT},
+        step=9,
+        old=MISSING,
+        new="401",
+    ),
+    *_cells(
+        _PROMISED_DATE,
+        "endpoints",
+        {
+            f"POST {_PROMISED_DATE_PATH}": _ORDER_WRITERS,
+            f"OPTIONS {_PROMISED_DATE_PATH}": (*_ORDER_WRITERS, "planlama", "depo"),
+        },
+        step=9,
+        old=MISSING,
+        new="allow",
+    ),
+    *_cells(
+        _PROMISED_DATE,
+        "endpoints",
+        {
+            f"POST {_PROMISED_DATE_PATH}": (*_ORDER_OUTSIDERS, "planlama", "depo"),
+            f"OPTIONS {_PROMISED_DATE_PATH}": _ORDER_OUTSIDERS,
+        },
+        step=9,
+        old=MISSING,
+        new="403",
+    ),
+    *_cells(_TRACKING, "endpoints", {_TRACKING_PATH: _SIGNED_OUT}, step=9, old=MISSING, new="401"),
+    *_cells(
+        _TRACKING,
+        "endpoints",
+        {_TRACKING_PATH: (*_ORDER_WRITERS, "planlama", "depo")},
+        step=9,
+        old=MISSING,
+        new="allow",
+    ),
+    *_cells(
+        _TRACKING, "endpoints", {_TRACKING_PATH: _ORDER_OUTSIDERS}, step=9, old=MISSING, new="403"
+    ),
+    *_cells(
+        _OVERDUE,
+        "probe_workflow",
+        {_OVERDUE_NOTIFIED: _OVERDUE_RECIPIENTS},
+        step=9,
+        old=MISSING,
+        new=True,
+    ),
+    *_cells(
+        _OVERDUE,
+        "probe_workflow",
+        {_OVERDUE_NOTIFIED: _OVERDUE_OTHERS},
+        step=9,
+        old=MISSING,
+        new=False,
+    ),
+    *_cells(
+        _OVERDUE,
+        "probe_workflow",
+        {_OVERDUE_NOTIFIED: ("anonymous",), _OVERDUE_ACTOR: ("anonymous", *_OVERDUE_OTHERS)},
+        step=9,
+        old=MISSING,
+        new=None,
+    ),
+    *_cells(
+        _OVERDUE,
+        "probe_workflow",
+        {_OVERDUE_ACTOR: _OVERDUE_RECIPIENTS},
+        step=9,
+        old=MISSING,
+        new=False,
     ),
     # 5. adım — Onaya gönderme ve onay kayıtlarında tutar, kur ve limit notta değil ayrı alan
     # satırlarında görünür; nottaki tutar aramada bulunmaz.

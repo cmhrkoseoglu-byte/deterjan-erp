@@ -1,5 +1,7 @@
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -17,6 +19,8 @@ from apps.sales.models import (
     ShipmentPick,
 )
 from apps.sales.state import sales_order_states, shipment_states
+
+CENT = Decimal("0.01")
 
 
 def _quantity(**kwargs: Any) -> serializers.DecimalField:
@@ -100,6 +104,7 @@ class SalesOrderSerializer(serializers.ModelSerializer):
             "customer_name",
             "order_date",
             "requested_delivery_date",
+            "promised_date",
             "delivery_address",
             "customer_po_no",
             "notes",
@@ -298,6 +303,15 @@ class SalesOrderDetailSerializer(SalesOrderSerializer):
 
 class SalesNoteSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ConfirmOrderSerializer(SalesNoteSerializer):
+    promised_date = serializers.DateField(required=False, allow_null=True, default=None)
+
+
+class PromisedDateSerializer(serializers.Serializer):
+    promised_date = serializers.DateField()
+    reason = serializers.CharField(max_length=500)
 
 
 class ReserveSerializer(serializers.Serializer):
@@ -563,3 +577,164 @@ class ShippedLotSerializer(serializers.ModelSerializer):
             "quantity",
         ]
         read_only_fields = fields
+
+
+# --- müşteri sipariş takibi (docs/plan/musteri-siparis-takibi.md §3.2) ------------------------
+
+
+class TrackingLineSerializer(serializers.ModelSerializer):
+    """Takip satırı: miktarlar temel birimde (`*_quantity`) ve sipariş birimiyle (`*_in_unit`)."""
+
+    product_code = serializers.CharField(source="product.code", read_only=True)
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    unit_code = serializers.CharField(source="unit.code", read_only=True)
+    base_unit_code = serializers.CharField(source="product.base_unit.code", read_only=True)
+    shipped_quantity = _quantity(read_only=True)
+    planned_quantity = _quantity(read_only=True)
+    remaining_quantity = serializers.SerializerMethodField()
+    shipped_in_unit = serializers.SerializerMethodField()
+    remaining_in_unit = serializers.SerializerMethodField()
+    line_total = serializers.DecimalField(
+        max_digits=18, decimal_places=2, read_only=True, allow_null=True
+    )
+
+    class Meta:
+        model = SalesOrderLine
+        fields = [
+            "id",
+            "line_no",
+            "product",
+            "product_code",
+            "product_name",
+            "quantity",
+            "unit_code",
+            "base_quantity",
+            "base_unit_code",
+            "shipped_quantity",
+            "planned_quantity",
+            "remaining_quantity",
+            "shipped_in_unit",
+            "remaining_in_unit",
+            "unit_price",
+            "currency",
+            "line_total",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.DecimalField(max_digits=18, decimal_places=4))
+    def get_remaining_quantity(self, line: SalesOrderLine) -> str:
+        return f"{selectors.line_remaining(line):.4f}"
+
+    @extend_schema_field(serializers.DecimalField(max_digits=18, decimal_places=4))
+    def get_shipped_in_unit(self, line: SalesOrderLine) -> str:
+        shipped = getattr(line, "shipped_quantity", None) or Decimal(0)
+        return f"{selectors.in_order_unit(line, shipped):.4f}"
+
+    @extend_schema_field(serializers.DecimalField(max_digits=18, decimal_places=4))
+    def get_remaining_in_unit(self, line: SalesOrderLine) -> str:
+        return f"{selectors.in_order_unit(line, selectors.line_remaining(line)):.4f}"
+
+
+class TrackingShipmentSerializer(serializers.ModelSerializer):
+    status_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Shipment
+        fields = ["id", "number", "status", "status_display", "planned_date", "dispatched_at"]
+        read_only_fields = fields
+
+    def get_status_display(self, shipment: Shipment) -> str:
+        return shipment_states.label(shipment.status)
+
+
+class TrackedOrderSerializer(serializers.ModelSerializer):
+    """Takipteki sipariş: vade (termin, yoksa istenen teslim), gecikme günü, satırlar ve
+    sevkiyatlar (iptaller hariç). Biten siparişte gecikme son sevk gününe göredir."""
+
+    customer_code = serializers.CharField(source="customer.code", read_only=True)
+    customer_name = serializers.CharField(source="customer.name", read_only=True)
+    status_display = serializers.SerializerMethodField()
+    due_date = serializers.DateField(read_only=True, allow_null=True)
+    days_late = serializers.SerializerMethodField()
+    is_late = serializers.SerializerMethodField()
+    last_dispatched_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    lines = TrackingLineSerializer(many=True, read_only=True)
+    shipments = TrackingShipmentSerializer(many=True, read_only=True)
+    totals = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SalesOrder
+        fields = [
+            "id",
+            "number",
+            "status",
+            "status_display",
+            "customer",
+            "customer_code",
+            "customer_name",
+            "order_date",
+            "requested_delivery_date",
+            "promised_date",
+            "due_date",
+            "days_late",
+            "is_late",
+            "last_dispatched_at",
+            "customer_po_no",
+            "lines",
+            "shipments",
+            "totals",
+        ]
+        read_only_fields = fields
+
+    def get_status_display(self, order: SalesOrder) -> str:
+        return sales_order_states.label(order.status)
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_days_late(self, order: SalesOrder) -> int | None:
+        return selectors.days_late(order)
+
+    def get_is_late(self, order: SalesOrder) -> bool:
+        return bool(selectors.days_late(order))
+
+    @extend_schema_field(OrderTotalSerializer(many=True))
+    def get_totals(self, order: SalesOrder) -> list[dict[str, str]]:
+        totals: dict[str, Decimal] = {}
+        for line in order.lines.all():
+            if line.unit_price is not None:
+                amount = line.quantity * line.unit_price
+                totals[line.currency] = totals.get(line.currency, Decimal(0)) + amount
+        return [
+            {"currency": currency, "amount": f"{amount.quantize(CENT, ROUND_HALF_UP):.2f}"}
+            for currency, amount in sorted(totals.items())
+        ]
+
+
+class CustomerTrackingSerializer(serializers.ModelSerializer):
+    """Müşteri özeti: açık, geciken ve yakında vadesi gelen sipariş sayısı, en eski gecikme."""
+
+    open_orders = serializers.IntegerField(read_only=True)
+    late_orders = serializers.IntegerField(read_only=True)
+    due_soon = serializers.IntegerField(read_only=True)
+    oldest_due_date = serializers.DateField(read_only=True, allow_null=True)
+    max_days_late = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Customer
+        fields = [
+            "id",
+            "code",
+            "name",
+            "open_orders",
+            "late_orders",
+            "due_soon",
+            "oldest_due_date",
+            "max_days_late",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_max_days_late(self, customer: Customer) -> int | None:
+        oldest = getattr(customer, "oldest_due_date", None)
+        if oldest is None:
+            return None
+        return (timezone.localdate() - oldest).days

@@ -3001,3 +3001,128 @@ değiştirme zorunlu, yalnızca admin):
   yetkili kişiler yalnızca şifreyle de erişebilir.
 - **Geri dönüş:** `.env.prod` içinde `OTP_REQUIRED_ROLES=admin,yonetim` ve aynı yeniden başlatma;
   kontrol listesi madde 22 ve 25 o zaman yeniden işaretlenir.
+
+## 2026-11-19 — Müşteri sipariş takibi (iç ekran ve müşteri portalı)
+
+- **İstek (CUMHUR):** "Müşterilerin siparişlerini takip edeceği ekranı tasarlayalım." Plan:
+  `docs/plan/musteri-siparis-takibi.md` (CUMHUR onayı 2026-11-19, "Onaylıyorum"). Uygulamaya geçmek
+  ayrı onayla; her adımdan önce kısa planı onaya sunulur.
+- **Sahibin kararları (kartlarla):**
+  - **Sıra "Önce iç ekran, sonra portal":** Paket A çalışanlar için müşteri bazında sipariş takibi;
+    Paket B müşterinin kendi hesabıyla girdiği portal, Paket A canlıya alındıktan sonra ayrı onayla.
+  - **Müşterinin gördükleri:** sipariş durumu, sipariş / sevk edilen / kalan miktar, termin; ayrıca
+    irsaliye PDF'i, fiyat ve tutar, cari bakiye ve ekstre. Lot no ve SKT gösterilmez.
+  - **Giriş "Ayrı müşteri hesabı + iki aşamalı doğrulama zorunlu":** portal hesabı tek bir müşteri
+    kartına bağlıdır, rol taşımaz, yalnız giriş ve portal uç noktalarını açar.
+  - **Portal irsaliyesinde şoför TC kimlik no maskeli** (ad soyad ve plaka görünür); her açılış
+    denetim günlüğüne yazılır.
+  - **Termin:** siparişe "Termin" (sözü verilen teslim tarihi) eklenir; onayda zorunlu, onaydan sonra
+    gerekçeyle değişir. Gecikme termine göre; termin boşsa istenen teslim tarihine göre.
+  - **Portalda sipariş talebi:** müşteri fiyatsız talep girer (tüm aktif mamuller); sevkiyat
+    siparişe çevirir (fiyat ve termin taslakta girilir) ya da gerekçeyle reddeder.
+  - **Portal hesabını yalnız admin açar ve kapatır**; bir müşteriye birden çok kişi açılabilir;
+    portal kullanıcısı bağlı müşterinin tüm siparişlerini, irsaliyelerini ve carisini görür.
+  - **Bildirim:** iç geciken teslim uyarısı (sevkiyat ve yönetim, günlük); müşteriye e-posta
+    "sipariş onaylandı" ve "sevk edildi", alıcılar e-postayı kapatmamış portal kullanıcıları.
+- **Sahibin onayladığı ek kurallar ("Hepsi uygun"):** siparişin iç notları, satır notu,
+  rezervasyon, lot ve oluşturan/onaylayan kişi müşteriye görünmez; taslak siparişler portalda
+  görünmez; geciken sipariş yalnız ilk gün bildirilir, sonra listede kalır; e-postalarda fiyat ve
+  şoför bilgisi yazılmaz, irsaliye eklenmez; portal kullanıcısının şifresini admin sıfırlar;
+  hesabın bağlı olduğu müşteri sonradan değiştirilemez.
+- **CLAUDE.md değişikliği (onaylandı, B1 adımında yapılır):** §3 modül tablosuna `portal` (yalnız
+  `core`, `masterdata`, `sales` ve `ledger`'a bağlı; kimse `portal`'a bağımlı olmaz); §5'e "Portal
+  kullanıcısı rol taşımaz; yalnızca giriş ve portal uç noktalarını açar, başka her istek reddedilir."
+- **Sonra sorulacaklar:** e-posta gönderen hesabı ve SMTP (B4 öncesi), portal alan adı ve aydınlatma
+  metni, ilk portal müşterileri (B6 öncesi).
+- **Kapsam dışı:** müşteriye özel fiyat listesi, portalda stok ya da teslim vaadi, lot/SKT ve analiz
+  sertifikası, iade talebi, online ödeme, fatura, SMS/WhatsApp, kendi kendine kayıt ve e-postayla
+  şifre sıfırlama.
+
+## 2026-11-19 — Müşteri sipariş takibi: A1 (Termin) uygulama kararları
+
+- **A1 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"); tarih kuralı "Geçmiş tarih olamaz".
+- **Alan:** `SalesOrder.promised_date` "Termin" (boş olabilir; göç sales 0003 mevcut siparişlere
+  dokunmaz). Taslakta formdan girilir; termin hiçbir zaman sipariş tarihinden önce olamaz
+  (`invalid_promised_date`).
+- **Onay:** `POST .../confirm/` gövdesine isteğe bağlı `promised_date`; verilirse siparişin
+  termini onunla değişir ve değişiklik onayın denetim kaydına eklenir. Termin boşsa onay
+  `promised_date_required`, bugünden önceyse `promised_date_past` ile reddedilir. Satırsız
+  siparişte önce `document_empty` döner.
+- **Değişiklik:** `POST .../promised-date/` (`promised_date`, `reason`) yalnız Onaylandı ve
+  Kısmen sevk edildi durumunda (`document_locked`), Satış siparişleri: Değiştirir ister;
+  gerekçe zorunlu (`reason_required`), yeni termin bugünden önce olamaz, aynı tarih reddedilir
+  (`promised_date_unchanged`). Eski → yeni değer ve gerekçe denetim günlüğüne (güncelleme
+  kaydının notu) yazılır; commit sonrası `sales_order.promised_date_changed` yayınlanır (bugün
+  dinleyeni yok; portal e-postası ve gecikme listesi için).
+- **Ekran:** sipariş formunda ve detayda Termin; onay penceresinde zorunlu Termin alanı; onaylı
+  siparişte "Termini değiştir" (tarih + gerekçe); sipariş listesinde Termin sütunu ve sıralaması.
+- **Demo verisi:** `seed_sales_demo` siparişlerine termin (bugün + 3 / 5 / 7 gün).
+- **Yetki sözleşmesi:** yeni uç nokta izin listesine "yeni uç nokta: sipariş termini (DECISIONS
+  2026-11-19)" kaydıyla bağlandı (cari hesaplardaki gibi, sahibin onayladığı plana dayanır):
+  POST yalnız Satış siparişleri: Değiştirir'i olanlara (sevkiyat, yönetim, admin), OPTIONS
+  siparişi okuyanlara açık; hücreler gözlenen değere sabitlendi.
+
+## 2026-11-19 — Müşteri sipariş takibi: A2 (takip okuma ve API)
+
+- **A2 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"); kapsam "Açıklar + isteğe bağlı son 90
+  gün".
+- **Plandan düzeltme (onaylı):** takip API'si cari bakiye taşımaz; `sales` `ledger`'a bağımlı
+  olamaz. Ekran bakiyeyi Cari hesaplar API'sinden, Müşteri carileri: Görür + Fiyatları görür
+  olana gösterir (A3).
+- **Vade ve gecikme:** vade = termin, yoksa istenen teslim tarihi. Geciken = açık (Onaylandı,
+  Kısmen sevk edildi) ve vadesi bugünden önce; gecikme günü bugün − vade. Biten siparişte gecikme
+  son sevk günü − vade (zamanında = 0); sevki olmayan bitende boş. Vadesiz sipariş gecikmez.
+- **Kalan:** satır başına sipariş − sevk edilen (temel birimde, en az 0) ve sipariş birimiyle
+  (satırın kendi oranıyla). Sevke planlanan, açık sevkiyatlardaki miktardır; kalanı azaltmaz.
+- **Biten siparişler:** `include_finished=true` ile son 90 günde biten (Sevk edildi: son sevk;
+  Kapandı: kapanış; İptal: iptal zamanı) ve onaylanmış olanlar. Hiç onaylanmamış iptaller girmez.
+- **Uç noktalar:** `GET /api/v1/sales/tracking/orders/` (süzgeç: `customer`, `late`,
+  `due_before`, `include_finished`, `search`; sıra vade, boşlar sonda) ve
+  `GET /api/v1/sales/tracking/customers/` (açık siparişi olan müşteriler; açık, geciken, 7 gün
+  içinde vadesi gelen, en eski gecikme; süzgeç `late`, `search`). Salt okunur, Satış siparişleri:
+  Görür ister; fiyat ve tutar siparişi görene açık (karar 6). Müşteri kartının iletişim
+  alanları yanıtta yok.
+- **Yetki sözleşmesi:** iki uç nokta izin listesine "yeni uç nokta: müşteri sipariş takibi
+  (DECISIONS 2026-11-19)" kaydıyla bağlandı; hücreler gözlenen değere sabitlendi.
+
+## 2026-11-19 — Müşteri sipariş takibi: A3 (ekran)
+
+- **A3 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum").
+- **Sekme:** Sevkiyat > "Sipariş takibi" (`/sevkiyat/takip`), Toplama ile Müşteriler arasında;
+  Satış siparişleri: Görür olana açılır. Üstte açık siparişi olan müşteriler (açık, geciken, 7 günde
+  vadesi gelen, en uzun gecikme; arama, "Yalnız gecikenler"); müşteri seçilince altta siparişleri.
+- **Sipariş listesi:** no (sipariş sayfasına bağlantı), vade, durum, geciken siparişte kırmızı satır
+  ve "N gün gecikti" rozeti, sevk / sipariş miktarı (sipariş birimiyle), tutar; "Satırları göster"
+  ile ürün başına sipariş / sevk edilen / sevke planlanan / kalan ve sevkiyatlar. Süzgeçler: "Yalnız
+  gecikenler", "Bu hafta vadesi gelenler" (bugün + 7 güne kadar vadesi gelen, gecikenler dahil),
+  "Biten siparişleri de göster (son 90 gün)".
+- **Müşteri kartı:** sipariş geçmişinin üstünde aynı içerikte "Açık siparişler" paneli; sipariş
+  geçmişiyle aynı koşulla (Satış siparişleri kayıtlarını okuyan) görünür.
+- **Cari bakiye (CUMHUR, 2026-11-19, "Seçili müşteride"):** listede kolon yok; seçili müşteride ve
+  müşteri kartında, yalnız Müşteri carileri: Görür + Fiyatları görür olana, Cari hesaplar
+  API'sinden bakiye ve vadesi geçen tutar, cari ekstresine bağlantı. Yetkisi olmayan için istek
+  hiç gitmez.
+- **Ön yüz eşlik listesi:** Sevkiyat sekme listesindeki değişiklik "yeni sekme: Sevkiyat > Sipariş
+  takibi (DECISIONS 2026-11-19)" kaydıyla bağlandı; hücreler gözlenen değere sabitlendi. Yetki
+  değişmedi.
+
+## 2026-11-19 — Müşteri sipariş takibi: A4 (geciken teslim bildirimi)
+
+- **A4 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"); hatırlama "Siparişe kayıt", biçim
+  "Tek özet bildirimi".
+- **Kural:** günlük kontrolde (07:00) vadesi bugünden önce olan açık siparişler (Onaylandı, Kısmen
+  sevk edildi) taranır. Her sipariş aynı vade için bir kez bildirilir; termin değişip yeni vade de
+  geçerse yeniden bildirilir. Vadesiz, biten ve iptal edilen siparişler bildirilmez.
+- **Hatırlama:** `SalesOrder.overdue_notified_due_date` (göç `sales 0004`), "hangi vade için
+  bildirildi". Kaçan sabah olursa ertesi sabah yine bildirilir. Bu alan yalnız bildirimin
+  tekrarını önleyen sistem defteridir; siparişin iş verisi değişmediği için denetim günlüğüne
+  yazılmaz (bildirimin kendisi kayıttır). Formda ve API'de görünmez.
+- **Olay:** `sales_order.overdue` (`ev.SALES_ORDERS_OVERDUE`); payload `date`, `late_total`
+  (bütün gecikenler), `orders` (no, müşteri, vade gg.aa.yyyy, gecikme günü). Liste boşsa
+  yayınlanmaz; işaret ve olay aynı işlemde, olay commit sonrası.
+- **Bildirim:** `sales_orders_overdue`, uyarı düzeyinde, sevkiyat ve yönetim rolüne, Satış
+  siparişleri: Görür olana; başlık "Teslimi geciken siparişler: N yeni", gövdede en çok 20
+  sipariş ve geciken toplamı.
+- **Yetki sözleşmesi:** iş akışı sondasındaki yeni hücreler "yeni bildirim: geciken teslim
+  (DECISIONS 2026-11-19)" kaydıyla bağlandı; gözlenen değer planla aynı (sevkiyat, yönetim,
+  depo+sevkiyat alır; ötekiler almaz).

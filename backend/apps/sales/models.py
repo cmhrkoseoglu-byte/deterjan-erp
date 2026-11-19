@@ -33,6 +33,19 @@ class SalesOrder(DocumentModel):
     )
     order_date = models.DateField("sipariş tarihi")
     requested_delivery_date = models.DateField("istenen teslim tarihi", null=True, blank=True)
+    # Müşteriye sözü verilen teslim tarihi: onayda zorunlu, sonra gerekçeyle değişir
+    # (docs/plan/musteri-siparis-takibi.md §3.1). Gecikme bu tarihe göre hesaplanır.
+    promised_date = models.DateField(
+        "termin",
+        null=True,
+        blank=True,
+        help_text="Müşteriye sözü verilen teslim tarihi",
+    )
+    # Geciken teslim bildirimi hangi vade için gönderildi (§3.4): aynı vade için bir kez
+    # bildirilir; termin değişip yeni vade de geçerse yeniden bildirilir. Sistem doldurur.
+    overdue_notified_due_date = models.DateField(
+        "gecikme bildirilen vade", null=True, blank=True, editable=False
+    )
     delivery_address = models.TextField("teslim adresi", blank=True)
     customer_po_no = models.CharField("müşteri sipariş no", max_length=64, blank=True)
     notes = models.TextField("notlar", blank=True)

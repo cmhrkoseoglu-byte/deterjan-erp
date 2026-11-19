@@ -251,6 +251,10 @@ Emrin bütün stok hareketleri ters kayıtla geri alınır: tüketilen bulk kend
 - Yanlış girilen kaydı satırdaki **İptal et** ile gerekçe yazarak iptal edin. Kayıt silinmez; bugün tarihli ters kayıt yazılır. Sevkiyat ve mal kabul kayıtları iptal edilemez; fark dekontla düzeltilir.
 - Siparişinde fiyatı olmayan sevkiyat **Fiyatı eksik belgeler** listesinde görünür; **Fiyat gir** ile cari fiyatını girin (sipariş değişmez). Mal kabulde fiyat düzeltilirse cariye o gün tarihli düzeltme yazılır.
 
+## Geciken teslimler
+
+Her sabah, vadesi geçen ve kalanı olan satış siparişleri için **Teslimi geciken siparişler** bildirimi gelir (sevkiyat ve yönetim, **Satış siparişleri: Görür** olanlara). Bildirimde yeni geciken siparişler ve toplam geciken sayısı yazar. Her sipariş bir kez bildirilir; termin değiştirilip yeni tarih de geçerse yeniden bildirilir. Bütün açık ve geciken siparişleri **Sevkiyat > Sipariş takibi** sekmesinde müşteri müşteri görürsünüz.
+
 ## Diğer görevler
 
 - **İSG olayı**: Bildirilen kaza ve ramak kala olayları size görev olarak gelir. **İSG ve çevre** menüsünde olayı inceleyip kapatın.

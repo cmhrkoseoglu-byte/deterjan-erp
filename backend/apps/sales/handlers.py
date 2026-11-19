@@ -3,6 +3,7 @@
 - Rezerve lot serbest durumdan çıkınca (bloke, red, karantina) siparişlerdeki rezervasyonları
   bırakılır ve eksik yeniden yayınlanır.
 - Günlük kontrolde (07:00) SKT'si yaklaşan rezerve lotlar için `lot.expiring` yayınlanır.
+- Günlük kontrolde yeni geciken siparişler için `sales_order.overdue` yayınlanır.
 """
 
 from django.db import transaction
@@ -43,3 +44,9 @@ def publish_reserved_lots_expiring(event: events.Event) -> None:
         ev.RESERVED_LOTS_EXPIRING,
         {"days": selectors.EXPIRY_WARNING_DAYS, "lots": selectors.expiring_reserved_lots()},
     )
+
+
+@events.subscribe(ev.DAILY_CHECK)
+def publish_overdue_orders(event: events.Event) -> None:
+    """Vadesi geçen ve bu vade için bildirilmemiş açık siparişler (§3.4)."""
+    services.publish_overdue_orders()

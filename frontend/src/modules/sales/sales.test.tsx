@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../api/auth";
@@ -17,10 +17,12 @@ vi.mock("../../api/sales", async (importOriginal) => ({
   getSalesOrder: vi.fn(),
   saveSalesOrder: vi.fn(),
   confirmSalesOrder: vi.fn(),
+  changePromisedDate: vi.fn(),
   reserveShortages: vi.fn(),
   releaseReservation: vi.fn(),
   reserveLot: vi.fn(),
   listCandidates: vi.fn(),
+  listTrackedOrders: vi.fn(),
 }));
 vi.mock("../../api/masterdata", async (importOriginal) => ({
   ...(await importOriginal<typeof mdApi>()),
@@ -40,6 +42,7 @@ function summary(overrides: Partial<SalesOrder> = {}): SalesOrder {
     customer_name: "Zincir Market A.Ş.",
     order_date: "2026-10-16",
     requested_delivery_date: "2026-10-19",
+    promised_date: "2026-10-20",
     delivery_address: "Gebze",
     customer_po_no: "PO-1",
     notes: "",
@@ -123,6 +126,7 @@ beforeEach(() => {
   vi.mocked(salesApi.listSalesOrders).mockResolvedValue(page([summary()]));
   vi.mocked(salesApi.getSalesOrder).mockResolvedValue(detail());
   vi.mocked(salesApi.listCandidates).mockResolvedValue([]);
+  vi.mocked(salesApi.listTrackedOrders).mockResolvedValue(page([]));
 });
 
 describe("satış siparişleri", () => {
@@ -247,7 +251,9 @@ describe("satış siparişleri", () => {
     await userEvent.click(screen.getByRole("button", { name: "Onayla ve rezerve et" }));
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: "Onayla ve rezerve et" }));
-    await waitFor(() => expect(salesApi.confirmSalesOrder).toHaveBeenCalledWith(7));
+    await waitFor(() =>
+      expect(salesApi.confirmSalesOrder).toHaveBeenCalledWith(7, "", "2026-10-20"),
+    );
     const payload = vi.mocked(salesApi.saveSalesOrder).mock.calls[0][1];
     expect(payload.lines).toEqual([
       {
@@ -278,8 +284,68 @@ describe("satış siparişleri", () => {
     await userEvent.click(screen.getByRole("button", { name: "Onayla ve rezerve et" }));
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: "Onayla ve rezerve et" }));
-    await waitFor(() => expect(salesApi.confirmSalesOrder).toHaveBeenCalledWith(7));
+    await waitFor(() =>
+      expect(salesApi.confirmSalesOrder).toHaveBeenCalledWith(7, "", "2026-10-20"),
+    );
     expect(salesApi.saveSalesOrder).not.toHaveBeenCalled();
+  });
+
+  it("termini olmayan taslak onay penceresinde termin girilmeden onaylanamaz", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("yonetim"));
+    const draft = detail({
+      status: "DRAFT",
+      is_editable: true,
+      reservations: [],
+      promised_date: null,
+    });
+    vi.mocked(salesApi.getSalesOrder).mockResolvedValue(draft);
+    vi.mocked(salesApi.saveSalesOrder).mockResolvedValue(draft);
+    vi.mocked(salesApi.confirmSalesOrder).mockResolvedValue(detail());
+    renderApp("/sevkiyat/siparisler/7");
+
+    expect(await screen.findAllByTestId("order-line")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "Onayla ve rezerve et" }));
+    const dialog = await screen.findByRole("dialog");
+    const submit = within(dialog).getByRole("button", { name: "Onayla ve rezerve et" });
+    expect(submit).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText(/Termin/), {
+      target: { value: "2026-10-25" },
+    });
+    await userEvent.click(submit);
+    await waitFor(() =>
+      expect(salesApi.confirmSalesOrder).toHaveBeenCalledWith(7, "", "2026-10-25"),
+    );
+  });
+
+  it("onaylı siparişin termini gerekçeyle değiştirilir", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("sevkiyat"));
+    vi.mocked(salesApi.getSalesOrder).mockResolvedValue(detail());
+    vi.mocked(salesApi.changePromisedDate).mockResolvedValue(
+      detail({ promised_date: "2026-10-27" }),
+    );
+    renderApp("/sevkiyat/siparisler/7");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Termini değiştir" }));
+    const dialog = await screen.findByRole("dialog");
+    const submit = within(dialog).getByRole("button", { name: "Termini değiştir" });
+    fireEvent.change(within(dialog).getByLabelText(/Termin/), {
+      target: { value: "2026-10-27" },
+    });
+    expect(submit).toBeDisabled();
+    await userEvent.type(within(dialog).getByLabelText(/Gerekçe/), "Hammadde gecikti");
+    await userEvent.click(submit);
+    await waitFor(() =>
+      expect(salesApi.changePromisedDate).toHaveBeenCalledWith(7, "2026-10-27", "Hammadde gecikti"),
+    );
+  });
+
+  it("Değiştirir'i olmayan termini değiştiremez", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("planlama"));
+    vi.mocked(salesApi.getSalesOrder).mockResolvedValue(detail());
+    renderApp("/sevkiyat/siparisler/7");
+
+    expect(await screen.findByTestId("order-lines")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Termini değiştir" })).toBeNull();
   });
 
   it("Onaylar'ı olmayan taslağı onaylayamaz (backend onayda Onaylar ister)", async () => {

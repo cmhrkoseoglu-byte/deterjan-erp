@@ -88,6 +88,13 @@ SALES_ORDER_CANCELLED = "sales_order.cancelled"
 SALES_ORDER_CLOSED = "sales_order.closed"
 SALES_ORDER_SHORTAGE = "sales_order.shortage"
 SALES_ORDER_FULLY_RESERVED = "sales_order.fully_reserved"
+# Termin değişti (docs/plan/musteri-siparis-takibi.md §3.1); payload'da `old_promised_date`,
+# `promised_date`, `reason`. Bugün dinleyeni yok (portal e-postası ve gecikme listesi için).
+SALES_ORDER_PROMISED_DATE_CHANGED = "sales_order.promised_date_changed"
+# Günlük kontrolde yeni geciken siparişler (§3.4): payload'da `date`, `orders` (sipariş
+# sözlükleri: `number`, `customer_name`, `due_date`, `days_late`) ve `late_total` (bütün
+# gecikenler). Her sipariş aynı vade için bir kez; liste boşsa yayınlanmaz.
+SALES_ORDERS_OVERDUE = "sales_order.overdue"
 RESERVED_LOTS_EXPIRING = "lot.expiring"
 # returns (Faz 3, Adım 3.3). Belge olayları durum makinesinden (`customer_return.<durum>`);
 # payload'da `customer_code`, `customer_name`, `lots` (lot sözlükleri, `disposition` ile).
