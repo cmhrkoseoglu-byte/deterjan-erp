@@ -187,6 +187,10 @@ _PORTAL = "yeni uç nokta: portal hesapları (DECISIONS 2026-11-19)"
 _PORTAL_MODEL = "yeni model: portal hesabı (DECISIONS 2026-11-19)"
 _PORTAL_ACCOUNTS = "* /api/v1/portal/accounts/*"
 _PORTAL_ME = "* /api/v1/portal/me/"
+# Müşteri portalı okumaları (B2): yalnız müşteri portalı kullanıcısı açar; personaların hepsi
+# çalışan olduğundan giriş yapan herkes 403 alır.
+_PORTAL_CUSTOMER = "yeni uç nokta: müşteri portalı (DECISIONS 2026-11-19)"
+_PORTAL_CUSTOMER_PATH = "* /api/v1/portal/customer/*"
 _STAFF_NON_ADMIN = (
     "no_role",
     "yonetim",
@@ -482,6 +486,22 @@ ALLOWED: tuple[Allowed, ...] = (
         _PORTAL,
         "endpoints",
         {_PORTAL_ACCOUNTS: _STAFF_NON_ADMIN, _PORTAL_ME: (*_STAFF_NON_ADMIN, "admin", "superuser")},
+        step=9,
+        old=MISSING,
+        new="403",
+    ),
+    *_cells(
+        _PORTAL_CUSTOMER,
+        "endpoints",
+        {_PORTAL_CUSTOMER_PATH: _SIGNED_OUT},
+        step=9,
+        old=MISSING,
+        new="401",
+    ),
+    *_cells(
+        _PORTAL_CUSTOMER,
+        "endpoints",
+        {_PORTAL_CUSTOMER_PATH: (*_STAFF_NON_ADMIN, "admin", "superuser")},
         step=9,
         old=MISSING,
         new="403",

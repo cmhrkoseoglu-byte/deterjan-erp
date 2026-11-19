@@ -8,12 +8,14 @@ from django.db import transaction
 
 from apps.core import security
 from apps.core import services as core
+from apps.core.audit import log_change
 from apps.core.exceptions import BusinessRuleError
-from apps.core.models import User
+from apps.core.models import AuditLog, User
 from apps.core.permissions import require_admin
 from apps.core.services import save_with_audit
 from apps.masterdata.models import Customer, Supplier
 from apps.portal.models import PortalAccount
+from apps.sales.models import Shipment
 
 ADMIN_MESSAGE = "Portal hesaplarını yalnız sistem yöneticisi yönetir."
 
@@ -88,3 +90,9 @@ def set_active(actor: User, account: PortalAccount, active: bool) -> PortalAccou
     core.set_user_active(actor, account.user, active)
     account.user.refresh_from_db(fields=["is_active"])
     return account
+
+
+def record_waybill_view(actor: User, shipment: Shipment) -> None:
+    """Müşteri portalından irsaliye açılışı sevkiyatın geçmişine ve denetim günlüğüne yazılır
+    (docs/plan/musteri-siparis-takibi.md §4.3); müşteri nüshasında şoför TC'si maskelidir."""
+    log_change(actor, shipment, AuditLog.Action.CUSTOM, note="İrsaliye görüntülendi (portal)")

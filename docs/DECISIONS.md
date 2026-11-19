@@ -3183,3 +3183,29 @@ değiştirme zorunlu, yalnızca admin):
   denetimi listesinde (`ENFORCED_APPS`).
 - **CLAUDE.md:** §3 modül tablosu ve bağımlılık satırı, §5 portal kullanıcısı paragrafı (onaylı
   metin).
+
+## 2026-11-19 — Portal B2: müşteri portalı okumaları
+
+- **B2 planı** CUMHUR onayıyla (2026-11-19, "Onaylıyorum"); sevkiyatlarda "Evet, planlananlar da".
+- **Uç noktalar** (`/api/v1/portal/customer/`, yalnız müşteri portalı kullanıcısı; her sorgu bağlı
+  müşteriyle başlar, başka müşterinin kaydı 404): `orders/` (onaylanmış bütün siparişler; taslak ve
+  hiç onaylanmamış iptal yok; süzgeç `status`, arama), `shipments/` (iptaller dışında bütün
+  sevkiyatlar; süzgeç `status`, `sales_order`), `shipments/{id}/waybill-pdf/`, `ledger/`
+  (para birimi başına bakiye, vadesi geçen, yaşlandırma), `ledger/statement/` ve
+  `ledger/statement-pdf/` (tarih aralığı).
+- **Görünenler:** sipariş no, müşteri sipariş no, tarihler, termin ve vade, durum, teslim adresi;
+  satırda ürün, sipariş / sevk edilen / kalan (sipariş birimiyle ve temel birimde), birim fiyat,
+  tutar. **Görünmeyenler:** iç notlar, satır notu, rezervasyon, lot, SKT, eksik, kişi adları.
+- **Sevkiyat:** planlanan sevkiyat planlanan tarih, durum ve planlanan miktarla görünür; plaka,
+  taşıyıcı ve irsaliye yalnız sevk edildikten sonra. Sevk edilende satır miktarı sevk edilen
+  miktardır. Şoför adı ve TC'si listede yoktur, yalnız irsaliyededir.
+- **İrsaliye müşteri nüshası** (`sales.waybill.waybill_pdf(customer_copy=True)`): lot ve SKT sütunu
+  yok, satırlar sipariş satırı başına toplanır (koli sayısı lotlardan biri bilinmiyorsa boş),
+  şoför TC'si maskeli (`*******8901`). Sevk edilmemiş sevkiyatta `waybill_not_ready`. Her açılış
+  sevkiyatın geçmişine ve denetim günlüğüne "İrsaliye görüntülendi (portal)" diye yazılır;
+  yanıt `no-store`.
+- **Cari:** ekstre satırında belge no, tarih, tür, açıklama, borç, alacak, yürüyen bakiye, vade;
+  kaydı giren kişi ve kur yoktur. PDF mutabakat ekstresiyle aynı biçim (iletişim bilgisi
+  basılmaz).
+- **Yetki sözleşmesi:** "yeni uç nokta: müşteri portalı (DECISIONS 2026-11-19)" kaydıyla bağlandı
+  (personaların hepsi çalışan: giriş yapan herkes 403).

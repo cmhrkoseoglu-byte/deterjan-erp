@@ -2137,3 +2137,10 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   0001). Portal kullanıcısı rol/yetki almaz, çalışan listelerinde yok, bildirim kanalı kapalı,
   hareketsizlik 30 dk. CLAUDE.md güncellendi. Ekranlar B6'da.
 - **Doğrulama:** backend 3019 test yeşil (28 yeni portal testi; geçit testi ara katman kaldırılınca kırmızı), ruff, `ruff format --check`, mypy, `makemigrations --check`, OpenAPI uyarısız. Ön yüz değişmedi.
+
+## 2026-11-19 — Portal B2: müşteri portalı okumaları
+
+- `/api/v1/portal/customer/`: siparişler, sevkiyatlar (planlananlar dahil), irsaliyenin müşteri
+  nüshası (lotsuz, şoför TC'si maskeli, açılış denetimli), cari bakiye, ekstre ve PDF.
+- **Doğrulama:** backend 3029 test yeşil (10 yeni; müşteri nüshası testi iç nüshayla
+  kırmızı), ruff, `ruff format --check`, mypy, OpenAPI uyarısız. Ön yüz değişmedi.
