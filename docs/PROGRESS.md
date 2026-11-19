@@ -2117,3 +2117,15 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
 - **Doğrulama:** backend 2991 test (6 yeni; ilk tam turda 2984 geçti, kalan 7'si izin listesi
   düzeltmesinden sonra ayrıca yeşil), ruff, mypy, `makemigrations --check` temiz. Ön yüz değişmedi.
   Rol yönlendirme satırı rol denetimi izin listesine (ROUTING) eklendi.
+
+## 2026-11-19 — Müşteri sipariş takibi: A5 (belgeler) — Paket A tamam
+
+- Sevkiyat yardımı: onayda termin, "Termini değiştir", yeni "Sipariş takibi" bölümü, müşteri
+  kartında açık siparişler. Yönetim yardımı: "Geciken teslimler". Yetki kataloğu §3.7: Satış
+  siparişleri kapsamına sipariş takibi ve termin; yeni bölüm yok. Kılavuz resmi eklenmedi
+  (canlıya alındıktan sonra).
+- Paket A (A1-A5) bu dalda tamam; canlıya alma ayrı onayla ("canlıya al"). Göçler: sales 0003,
+  0004. Paket B (portal) ayrı onayla.
+- **Doğrulama:** ön yüz 769 test (tam turda bir personel testi yük altında zaman aşımına düştü,
+  tek başına 19/19 yeşil), değişen yardım dosyaları Prettier temiz. Backend değişmedi.
+

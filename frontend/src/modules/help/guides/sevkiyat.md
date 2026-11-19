@@ -8,11 +8,13 @@ Sevkiyat; müşteri siparişini girer ve onaylar, sevkiyatı (araç ve şoför) 
 2. **Müşteri**, **Sipariş tarihi**, **İstenen teslim** ve **Müşteri sipariş no**'yu girin. **Teslim adresi** boş kalırsa müşterinin adresi alınır.
 3. Her ürün için satır doldurun: **Mamul**, **Miktar**, **Birim** (adet, koli ya da palet). **Birim fiyat** isteğe bağlıdır; fatura muhasebe programında kesilir.
 4. Başka ürün için **Satır ekle**'ye basın. Bitince **Taslağı kaydet**.
-5. Siparişi kontrol edip **Onayla ve rezerve et**'e basın. Stok SKT'si en yakın lottan başlayarak siparişe ayrılır.
+5. Siparişi kontrol edip **Onayla ve rezerve et**'e basın. Açılan pencerede **Termin**'i (müşteriye sözü verilen teslim tarihi) girin; termin zorunludur ve geçmiş tarih olamaz. Stok SKT'si en yakın lottan başlayarak siparişe ayrılır.
 
 ![Yeni satış siparişi](/kilavuz/sevkiyat-siparis-yeni.jpg)
 
 > Onaylanan siparişin satırları değiştirilemez. Vazgeçilen sipariş **Siparişi iptal et** ile iptal edilir; rezervasyonlar bırakılır.
+
+> Termin kayarsa sipariş sayfasında **Termini değiştir**'e basın, yeni tarihi ve gerekçeyi yazın. Gerekçe sipariş geçmişine yazılır. Termin onaylı ve kısmen sevk edilmiş siparişte değişir; sevk edilen, kapanan ya da iptal edilen siparişte değişmez.
 
 ## Rezervasyon ve eksik
 
@@ -52,7 +54,20 @@ Depo lotları okutup **Yükleme tamam** deyince size "sevk onayı" görevi gelir
 
 ## Müşteriler
 
-**Müşteriler** sekmesinde müşteri kartı açılır: sipariş geçmişi ve müşteriye sevk edilen lotlar. Müşteri bilgileri, adres ve asgari kalan raf ömrü **Ana veriler** ekranından planlama ya da yönetim tarafından düzenlenir.
+**Müşteriler** sekmesinde müşteri kartı açılır: açık siparişler (Sipariş takibi'ndeki gibi), sipariş geçmişi ve müşteriye sevk edilen lotlar. Müşteri bilgileri, adres ve asgari kalan raf ömrü **Ana veriler** ekranından planlama ya da yönetim tarafından düzenlenir.
+
+## Sipariş takibi
+
+**Sevkiyat > Sipariş takibi** sekmesi açık siparişleri vadesine göre gösterir. Vade siparişin terminidir; termin yoksa istenen teslim tarihidir.
+
+1. Üstteki listede açık siparişi olan müşteriler, açık, geciken ve 7 gün içinde vadesi gelen sipariş sayısıyla görünür. Gecikeni çok olan müşteri üsttedir. **Yalnız gecikenler** ile süzün ya da müşteri arayın.
+2. Müşteriye tıklayınca siparişleri altta açılır: sipariş no, vade, durum, sevk edilen / sipariş miktarı ve tutar. Geciken sipariş kırmızı satırda, **N gün gecikti** rozetiyle görünür.
+3. **Satırları göster** ile ürün başına sipariş edilen, sevk edilen, sevke planlanan ve kalan miktarı, sevkiyat numaralarını görün.
+4. **Yalnız gecikenler**, **Bu hafta vadesi gelenler** (gecikenler dahil) ve **Biten siparişleri de göster** (son 90 günde sevk edilen, kapanan ya da onaydan sonra iptal edilen) süzgeçlerini kullanın. Biten siparişte gecikme son sevk gününe göredir.
+
+Seçilen müşterinin cari bakiyesi ve vadesi geçen tutarı yalnız **Müşteri carileri: Görür** ve **Fiyatları görür** yetkisi birlikte olana görünür; **Cari ekstresi** bağlantısı cariyi açar.
+
+> Her sabah, vadesi önceki gün ya da daha önce dolmuş açık siparişler için size **Teslimi geciken siparişler** bildirimi gelir (sevkiyat ve yönetim). Her sipariş bir kez bildirilir; termin değiştirilip yeni tarih de geçerse yeniden bildirilir.
 
 ## Müşteri carileri
 

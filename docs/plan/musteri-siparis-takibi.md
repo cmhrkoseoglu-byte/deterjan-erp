@@ -97,13 +97,13 @@ sonra). Her adımdan önce o adımın kısa planı yeniden onaya sunulur (CLAUDE
 
 ### 3.5 Paket A adımları
 
-1. **A1 Termin**: alan ve göç, onayda zorunluluk, `change_promised_date`, olay, denetim; servis,
+1. **A1 Termin** (tamam, 2026-11-19): alan ve göç, onayda zorunluluk, `change_promised_date`, olay, denetim; servis,
    durum ve API testleri; sipariş formu ve onay penceresi.
-2. **A2 Takip okuma ve API**: selectors, uç noktalar, cari özetin yetkiye göre gizlenmesi; servis,
+2. **A2 Takip okuma ve API** (tamam, 2026-11-19): selectors, uç noktalar, cari özetin yetkiye göre gizlenmesi; servis,
    API ve 403 testleri.
-3. **A3 Ekran**: "Sipariş takibi" sekmesi, müşteri kartı paneli; Vitest.
-4. **A4 Geciken teslim bildirimi**: olay, workflow kuralı, tekrar bildirmeme; testler.
-5. **A5 Belgeler**: DECISIONS, PROGRESS, yardım metni, yetki kataloğu (`kisi-yetkileri.md` §3.7 notu).
+3. **A3 Ekran** (tamam, 2026-11-19): "Sipariş takibi" sekmesi, müşteri kartı paneli; Vitest.
+4. **A4 Geciken teslim bildirimi** (tamam, 2026-11-19): olay, workflow kuralı, tekrar bildirmeme; testler.
+5. **A5 Belgeler** (tamam, 2026-11-19): DECISIONS, PROGRESS, yardım metni, yetki kataloğu (`kisi-yetkileri.md` §3.7 notu).
 
 Her adımda: `pytest`, `ruff check`, `ruff format --check`, `mypy`, ön yüzde lint/typecheck/Vitest
 yeşil; PROGRESS güncel; anlamlı commit.
