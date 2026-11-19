@@ -174,6 +174,8 @@ describe("cari listesi", () => {
     expect(within(line).getByText("300,00 TRY")).toBeInTheDocument();
     expect(within(line).getByText("1 belge")).toBeInTheDocument();
     expect(screen.getByText("Toplam alacağımız")).toBeInTheDocument();
+    // Dönem notu yalnız tedarikçilerde (DECISIONS 2026-11-20).
+    expect(screen.queryByText(/20 Kasım 2026 itibarıyla/)).not.toBeInTheDocument();
     expect(ledgerApi.listPartners).toHaveBeenCalledWith(
       "customers",
       expect.objectContaining({ page: 1 }),
@@ -200,6 +202,9 @@ describe("cari listesi", () => {
     await waitFor(() =>
       expect(ledgerApi.listPartners).toHaveBeenCalledWith("suppliers", expect.anything()),
     );
+    expect(
+      screen.getByText(/Cari bakiyeler 20 Kasım 2026 itibarıyla sıfırdan başlatılmıştır/),
+    ).toBeInTheDocument();
   });
 
   it("planlama cari hesapları göremez", async () => {
@@ -299,5 +304,13 @@ describe("cari ekstresi", () => {
     renderApp("/cari-hesaplar/tedarikciler/7");
 
     expect(await screen.findByText("Yetkiniz yok")).toBeInTheDocument();
+  });
+
+  it("tedarikçi ekstresinde dönem notu görünür", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("satin_alma"));
+    renderApp("/cari-hesaplar/tedarikciler/7");
+
+    expect(await screen.findByRole("heading", { name: /Ak Market/ })).toBeInTheDocument();
+    expect(screen.getByText(/önceki dönem kapatılmıştır/)).toBeInTheDocument();
   });
 });

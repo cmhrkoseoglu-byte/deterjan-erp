@@ -31,6 +31,7 @@ from apps.core.permissions import has_access, sees_fields
 from apps.core.xlsx import apply_document_control
 from apps.ledger import selectors
 from apps.ledger.models import Side
+from apps.ledger.notices import notice_for
 from apps.masterdata import services as masterdata
 from apps.quality.coa import FONT, FONT_BOLD, _register_fonts
 
@@ -114,12 +115,15 @@ def partners_workbook(side: str, rows: list[dict[str, Any]], *, amounts: bool) -
     _append(sheet, [SIDE_TITLES[side]], bold=True)
     sheet["A1"].font = Font(bold=True, size=14)
     _append(sheet, ["Rapor zamanı", f"{timezone.localtime():%d.%m.%Y %H:%M}"])
+    if notice := notice_for(side):
+        _append(sheet, ["Not", notice])
     _append(sheet, [])
     header = ["Kod", "Ünvan", "Vade (gün)", "Para birimi", "Son hareket"]
     if amounts:
         header += ["Borç", "Alacak", "Bakiye", "B/A", "Vadesi geçen", *AGING_LABELS]
     header.append("Tutarı eksik belge")
     _append(sheet, header, bold=True)
+    header_row = sheet.max_row
     for row in rows:
         partner = row["partner"]
         balances = row["balances"] or [None]
@@ -146,7 +150,7 @@ def partners_workbook(side: str, rows: list[dict[str, Any]], *, amounts: bool) -
             values.append(row["missing"] or "")
             _append(sheet, values)
     _widths(sheet, [14, 40, 10, 10, 12, *([14] * 10), 12])
-    sheet.freeze_panes = "A5"
+    sheet.freeze_panes = f"A{header_row + 1}"
     return _workbook_bytes(workbook, PARTNERS_OUTPUT)
 
 
@@ -184,6 +188,8 @@ def statement_workbook(
         sheet["A1"].font = Font(bold=True, size=13)
         _append(sheet, ["Dönem", _period(date_from, date_to)])
         _append(sheet, ["Para birimi", block["currency"] if block else ""])
+        if notice := notice_for(side):
+            _append(sheet, ["Not", notice])
         _append(sheet, [])
         header = ["Tarih", "Kayıt no", "Tür", "Belge", "Açıklama", "Vade"]
         if amounts:
@@ -291,6 +297,9 @@ def statement_document(
     title = ParagraphStyle("title", parent=base, fontName=FONT_BOLD, fontSize=15, leading=19)
     cell = ParagraphStyle("cell", parent=base, fontSize=7.5, leading=9)
     small = ParagraphStyle("small", parent=base, fontSize=7.5, leading=10, textColor=colors.grey)
+    note = ParagraphStyle(
+        "note", parent=base, fontName=FONT_BOLD, textColor=colors.HexColor("#1864ab")
+    )
 
     def para(text: str, style: ParagraphStyle = base) -> Paragraph:
         return Paragraph(escape(text or "").replace("\n", "<br/>"), style)
@@ -327,6 +336,8 @@ def statement_document(
     box = Table([[theirs]], colWidths=[186 * mm])
     box.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#adb5bd"))]))
     story: list[object] = [header, Spacer(1, 4 * mm), box]
+    if notice := notice_for(selectors.side_of(partner)):
+        story += [Spacer(1, 2.5 * mm), para(notice, note)]
     currencies = selectors.statement(partner, date_from, date_to)
     if not currencies:
         story += [Spacer(1, 6 * mm), para("Bu carinin hareketi yok.")]

@@ -22,6 +22,7 @@ from apps.core.services import next_document_number, save_with_audit
 from apps.inventory.models import GoodsReceipt
 from apps.ledger.amounts import ZERO, DocumentAmount, money, receipt_amount, shipment_amount
 from apps.ledger.models import LedgerEntry, ShipmentLinePrice, Side
+from apps.ledger.notices import SUPPLIER_CLOSING_DATE, SUPPLIER_CLOSING_DESCRIPTION
 from apps.masterdata.models import Customer, Supplier
 from apps.returns.models import CustomerReturn
 from apps.sales.models import Shipment, ShipmentLine
@@ -347,3 +348,67 @@ def reverse_entry(actor: User, entry: LedgerEntry, reason: str) -> LedgerEntry:
         reversal_of=entry,
     )
     return _new_entry(actor, reversal, f"{entry.number} iptal edildi: {reason}")
+
+
+# --- devir sıfırlama -------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SupplierClosing:
+    """Tedarikçinin bir para birimindeki kapatılacak bakiyesi (borç − alacak)."""
+
+    supplier: Supplier
+    currency: str
+    balance: Decimal
+
+    @property
+    def direction(self) -> str:
+        # Bakiyeyi sıfırlayan yön: verecek (alacak bakiyesi) borçla, avans alacakla kapanır.
+        return DEBIT if self.balance < 0 else CREDIT
+
+
+def supplier_closings(as_of: date) -> list[SupplierClosing]:
+    """`as_of` günü dahil, sıfır olmayan tedarikçi bakiyeleri (tedarikçi ve para birimi başına).
+    Bu tarihten sonraki kayıtlar hesaba girmez."""
+    rows = (
+        LedgerEntry.objects.filter(supplier__isnull=False, entry_date__lte=as_of)
+        .values("supplier", "currency")
+        .annotate(debit=Sum("debit"), credit=Sum("credit"))
+        .order_by("supplier", "currency")
+    )
+    suppliers = Supplier.objects.in_bulk({row["supplier"] for row in rows})
+    closings = []
+    for row in rows:
+        balance = (row["debit"] or ZERO) - (row["credit"] or ZERO)
+        if balance != 0:
+            closings.append(SupplierClosing(suppliers[row["supplier"]], row["currency"], balance))
+    closings.sort(key=lambda item: (item.supplier.code, item.currency))
+    return closings
+
+
+@transaction.atomic
+def close_supplier_balances(
+    actor: User,
+    *,
+    as_of: date = SUPPLIER_CLOSING_DATE,
+    description: str = SUPPLIER_CLOSING_DESCRIPTION,
+) -> list[LedgerEntry]:
+    """Tedarikçi carilerini `as_of` itibarıyla sıfırlar: sıfır olmayan her tedarikçi ve para
+    birimi bakiyesi için `as_of` tarihli, açıklamalı açılış (devir) kaydı yazar. Eski kayıtlar
+    silinmez ve değişmez; ekstrede görünür. Tekrar çağrılabilir (bakiye sıfırsa yazmaz).
+    Müşteri carilerine dokunmaz (DECISIONS 2026-11-20)."""
+    created = []
+    for closing in supplier_closings(as_of):
+        created.append(
+            post_manual_entry(
+                actor,
+                partner=closing.supplier,
+                kind=Kind.OPENING,
+                entry_date=as_of,
+                currency=closing.currency,
+                amount=abs(closing.balance),
+                direction=closing.direction,
+                description=description,
+            )
+        )
+    return created

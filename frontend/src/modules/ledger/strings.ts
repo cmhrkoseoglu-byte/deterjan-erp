@@ -21,6 +21,9 @@ export const lt = {
   missingCount: (count: number) => `${count} belge`,
   noEntries: "Hareket yok",
   noAmounts: "Tutarları görme yetkiniz yok (Fiyatları görür).",
+  // DECISIONS 2026-11-20; backend/apps/ledger/notices.py SUPPLIER_NOTICE ile aynı metin.
+  supplierNotice:
+    "Cari bakiyeler 20 Kasım 2026 itibarıyla sıfırdan başlatılmıştır. Gösterilen bakiye bu tarih ve sonrasındaki hareketlerden oluşur; önceki dönem kapatılmıştır.",
   vatExempt: "KDV muaf",
   inactive: "Pasif",
   totalOpenCustomers: "Toplam alacağımız",
