@@ -17,7 +17,7 @@ import {
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { IconFileSpreadsheet, IconSearch } from "@tabler/icons-react";
+import { IconFileSpreadsheet, IconInfoCircle, IconSearch } from "@tabler/icons-react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
@@ -38,6 +38,7 @@ import {
   SIDES,
   balanceText,
   partnerLedgerPath,
+  sideNotice,
   type SideConfig,
 } from "./config";
 import { lt } from "./strings";
@@ -175,6 +176,11 @@ function PartnerList({ side }: { side: SideConfig }) {
           {lt.excel}
         </Button>
       </Group>
+      {sideNotice(side.side) && (
+        <Alert color="blue" variant="light" icon={<IconInfoCircle size={18} />}>
+          {sideNotice(side.side)}
+        </Alert>
+      )}
       {!amounts && (
         <Alert color="gray" variant="light">
           {lt.noAmounts}

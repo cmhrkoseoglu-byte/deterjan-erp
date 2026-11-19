@@ -2129,6 +2129,15 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
 - **Doğrulama:** ön yüz 769 test (tam turda bir personel testi yük altında zaman aşımına düştü,
   tek başına 19/19 yeşil), değişen yardım dosyaları Prettier temiz. Backend değişmedi.
 
+
+## 2026-11-20 — Tedarikçi cari bakiyelerinin sıfırlanması (DECISIONS 2026-11-20)
+
+- `ledger.services.supplier_closings` / `close_supplier_balances` ve `manage.py
+  close_supplier_balances` (kuru çalıştırma varsayılan, `--apply` ile yazar, idempotent).
+- Dönem notu: Tedarikçiler listesi ve cari sayfasında bilgi kutusu; cari listesi ve ekstre
+  Excel'inde "Not" satırı; ekstre PDF'inde cari kutusunun altında. Müşteri tarafında not yok.
+- Yardım: satın alma ve yönetim kılavuzlarına bir cümle. Göç yok.
+
 ## 2026-11-19 — Portal B1: portal hesabı ve varsayılan ret
 
 - Yeni `portal` modülü: `PortalAccount` (müşteri ya da tedarikçi), admin uçları
