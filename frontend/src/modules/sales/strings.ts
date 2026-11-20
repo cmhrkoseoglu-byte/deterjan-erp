@@ -7,6 +7,7 @@ export const st = {
     picking: "Toplama",
     customers: "Müşteriler",
     tracking: "Sipariş takibi",
+    portalRequests: "Portal talepleri",
   },
   orderStatus: {
     DRAFT: "Taslak",

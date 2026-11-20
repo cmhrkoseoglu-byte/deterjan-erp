@@ -48,7 +48,7 @@ ALL_ROWS: dict[str, str | int] = {"page_size": 500}
 
 # Bugünkü kural tablosu. Kural eklenir ya da çıkarsa sayılar, PAYLOADS ve anlık görüntü birlikte
 # güncellenir (sahibin onayıyla).
-RULE_COUNTS = {"TaskRule": 25, "NotifyRule": 28, "CancelTasksRule": 5}
+RULE_COUNTS = {"TaskRule": 26, "NotifyRule": 28, "CancelTasksRule": 5}
 
 Payload = dict[str, Any]
 Value = bool | int | list[str] | None
@@ -289,6 +289,7 @@ PAYLOADS: dict[str, Callable[[int], Payload]] = {
             }
         ],
     },
+    "portal_order_request": lambda n: _doc("portal.orderrequest", "MT", n, **CUSTOMER),
     "sales_orders_overdue": lambda n: {
         "date": "2026-11-19",
         "late_total": 1,

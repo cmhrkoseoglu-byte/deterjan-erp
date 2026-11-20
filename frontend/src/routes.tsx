@@ -50,6 +50,7 @@ import { RecipeListPage } from "./modules/recipes/RecipeListPage";
 import { RecipePage } from "./modules/recipes/RecipePage";
 import { VersionPage } from "./modules/recipes/VersionPage";
 import { CustomerPage } from "./modules/sales/CustomerPage";
+import { PortalRequestPage } from "./modules/sales/PortalRequests";
 import { SalesOrderPage } from "./modules/sales/OrderPage";
 import { ShipmentPickPage } from "./modules/sales/PickPage";
 import { SalesPage } from "./modules/sales/SalesPage";
@@ -64,6 +65,7 @@ import { CustomerShipmentPage, CustomerShipmentsPage } from "./modules/portal/Cu
 import { LedgerPage as PortalLedgerPage } from "./modules/portal/LedgerPage";
 import { OnlyFor, PortalOrderRoute, PortalOrdersRoute } from "./modules/portal/OrdersRoute";
 import { PortalHome, PortalLayout } from "./modules/portal/PortalLayout";
+import { NewRequestPage, RequestPage, RequestsPage } from "./modules/portal/RequestPages";
 import { ReceiptPage, ReceiptsPage } from "./modules/portal/SupplierPages";
 import { UserAccessPage } from "./modules/system/access/UserAccessPage";
 import { SystemPage } from "./modules/system/SystemPage";
@@ -124,6 +126,10 @@ const pageRoutes: RouteObject[] = [
   { path: "dolum/:tab?", element: guarded("filling", <FillingPage />) },
   // Sevkiyat: sipariş, müşteri, sevkiyat ve toplama sayfaları modülün birleşimiyle.
   { path: "sevkiyat/siparisler/:orderId", element: guarded("sales", <SalesOrderPage />) },
+  {
+    path: "sevkiyat/portal-talepleri/:requestId",
+    element: guarded("sales", <PortalRequestPage />),
+  },
   { path: "sevkiyat/musteriler/:customerId", element: guarded("sales", <CustomerPage />) },
   { path: "sevkiyat/sevkiyatlar/:shipmentId", element: guarded("sales", <ShipmentPage />) },
   {
@@ -270,6 +276,30 @@ export const routes: RouteObject[] = [
             ),
           },
           { path: "cari", element: <PortalLedgerPage /> },
+          {
+            path: "talepler",
+            element: (
+              <OnlyFor kind="customer">
+                <RequestsPage />
+              </OnlyFor>
+            ),
+          },
+          {
+            path: "talepler/yeni",
+            element: (
+              <OnlyFor kind="customer">
+                <NewRequestPage />
+              </OnlyFor>
+            ),
+          },
+          {
+            path: "talepler/:requestId",
+            element: (
+              <OnlyFor kind="customer">
+                <RequestPage />
+              </OnlyFor>
+            ),
+          },
           { path: "guvenlik", element: <SecurityPage /> },
         ],
       },

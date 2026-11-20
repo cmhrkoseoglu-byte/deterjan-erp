@@ -253,7 +253,7 @@ olayları dinleyerek gönderilir. **CLAUDE.md §3 tablosuna ve bağımlılık sa
    firma süzgeci ve başka firma testleri.
 3. **B3 Tedarikçi okuma API'si** (tamam, 2026-11-19): gönderilmiş satın alma siparişleri ve PDF, teslimatlar (mal
    kabuller), cari özet ve ekstre; firma süzgeci, hesap türü ve başka firma testleri.
-4. **B4 Sipariş talebi**: model, durum makinesi, belge numarası (`MT-`), portal ve iç uç noktalar,
+4. **B4 Sipariş talebi** (tamam, ekranlarıyla birlikte, 2026-11-20): model, durum makinesi, belge numarası (`MT-`), portal ve iç uç noktalar,
    siparişe çevirme, reddetme, workflow görevi; testler.
 5. **B5 E-posta**: SMTP ayarı, Celery işi, `OutboundEmail`, iki şablon, alıcı kuralları, tercih;
    testler (e-posta arka ucu bellekte).

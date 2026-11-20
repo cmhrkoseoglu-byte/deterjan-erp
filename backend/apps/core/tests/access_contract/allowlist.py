@@ -16,9 +16,11 @@ sonraki adımların kayıtları dahil, bugünden denetler.
   değişiklik sonradan geri alınırsa (değer dondurulmuş eski değere dönerse) test bunu yakalar.
 """
 
+import json
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 MISSING = "<yok>"  # durum anlık görüntüde (ya da bugünkü kodda) yok
 ANY = "<her>"  # eski ya da yeni değer ne olursa olsun
@@ -95,6 +97,38 @@ def _cells(
         for case, personas in cells.items()
         for persona in personas
     )
+
+
+def _mirror(
+    item: str, snapshot: str, source: str, target: str, *, step: int
+) -> tuple[Allowed, ...]:
+    """Yeni bir kayıt türünün hücreleri, aynı okuma kuralını izleyen var olan türün dondurulmuş
+    hücreleriyle aynıdır: `source` geçen her durumun her personası için `target`'lı yeni hücre
+    (eski değer yok, yeni değer kaynağın dondurulmuş değeri). Farklı çıkan hücre farktır."""
+    data = json.loads((Path(__file__).parent / "data" / f"{snapshot}.json").read_text("utf-8"))
+    personas, legend = data["_personas"], data["_codes"]
+    entries: list[Allowed] = []
+    for case, value in data.items():
+        if case.startswith("_") or source not in case:
+            continue
+        values = (
+            dict(zip(personas, (legend[code] for code in value), strict=True))
+            if isinstance(value, str)
+            else dict(value)
+        )
+        for persona, frozen in values.items():
+            entries.append(
+                Allowed(
+                    item=item,
+                    snapshot=snapshot,
+                    case=case.replace(source, target),
+                    persona=persona,
+                    old=MISSING,
+                    new=frozen,
+                    step=step,
+                )
+            )
+    return tuple(entries)
 
 
 # Fiyatları görür'ü olan ve olmayan giriş yapmış personalar (rol paketleri, plan §3.18).
@@ -194,6 +228,15 @@ _PORTAL_CUSTOMER_PATH = "* /api/v1/portal/customer/*"
 # Tedarikçi portalı okumaları (B3): yalnız tedarikçi portalı kullanıcısı açar.
 _PORTAL_SUPPLIER = "yeni uç nokta: tedarikçi portalı (DECISIONS 2026-11-19)"
 _PORTAL_SUPPLIER_PATH = "* /api/v1/portal/supplier/*"
+# Portal sipariş talebi (B4, DECISIONS 2026-11-20): müşteri uçları yalnız müşteri portalına; iç
+# ekran (`portal/requests/`) Satış siparişleri: Görür ile okunur, siparişe çevirme ve reddetme
+# Değiştirir ister. Talep kaydının yorum, geçmiş ve ek kuralları satış siparişiyle aynıdır.
+_PORTAL_REQUEST = "yeni uç nokta: portal sipariş talebi (DECISIONS 2026-11-20)"
+_PORTAL_REQUEST_MODEL = "yeni model: portal sipariş talebi (DECISIONS 2026-11-20)"
+_STAFF_REQUESTS = "/api/v1/portal/requests/"
+_STAFF_REQUEST = "/api/v1/portal/requests/{pk}/"
+_STAFF_REQUEST_ACTIONS = "POST /api/v1/portal/requests/{pk}/*/"
+_ORDER_READERS = (*_ORDER_WRITERS, "planlama", "depo")
 _STAFF_NON_ADMIN = (
     "no_role",
     "yonetim",
@@ -524,6 +567,645 @@ ALLOWED: tuple[Allowed, ...] = (
         step=9,
         old=MISSING,
         new="403",
+    ),
+    *_cells(
+        _PORTAL_REQUEST,
+        "endpoints",
+        {
+            f"* {_STAFF_REQUESTS}": _SIGNED_OUT,
+            f"* {_STAFF_REQUEST}": _SIGNED_OUT,
+            _STAFF_REQUEST_ACTIONS: _SIGNED_OUT,
+        },
+        step=9,
+        old=MISSING,
+        new="401",
+    ),
+    *_cells(
+        _PORTAL_REQUEST,
+        "endpoints",
+        {f"* {_STAFF_REQUESTS}": _ORDER_READERS, f"* {_STAFF_REQUEST}": _ORDER_READERS},
+        step=9,
+        old=MISSING,
+        new="allow",
+    ),
+    *_cells(
+        _PORTAL_REQUEST,
+        "endpoints",
+        {
+            f"* {_STAFF_REQUESTS}": _ORDER_OUTSIDERS,
+            f"* {_STAFF_REQUEST}": _ORDER_OUTSIDERS,
+            _STAFF_REQUEST_ACTIONS: (*_ORDER_OUTSIDERS, "planlama", "depo"),
+        },
+        step=9,
+        old=MISSING,
+        new="403",
+    ),
+    *_cells(
+        _PORTAL_REQUEST,
+        "endpoints",
+        {_STAFF_REQUEST_ACTIONS: _ORDER_WRITERS},
+        step=9,
+        old=MISSING,
+        new="allow",
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_audit",
+        {
+            "model: portal.orderrequest": _AUDIT_READERS,
+            "model: portal.orderrequestline": _AUDIT_READERS,
+        },
+        step=9,
+        old=MISSING,
+        new="full",
+    ),
+    *_mirror(
+        _PORTAL_REQUEST_MODEL, "probe_records", "sales.salesorder", "portal.orderrequest", step=9
+    ),
+    # MT numara önerisi: öteki belge türleri gibi yalnız admin (satış siparişi SS ile aynı).
+    *_mirror(
+        _PORTAL_REQUEST_MODEL,
+        "probe_records",
+        "coding.suggest | document.SS",
+        "coding.suggest | document.MT",
+        step=9,
+    ),
+    # İşlem uçlarında OPTIONS okumayı izler (Görür'ü olan izinli).
+    *_cells(
+        _PORTAL_REQUEST,
+        "endpoints",
+        {"OPTIONS /api/v1/portal/requests/{pk}/*/": _SIGNED_OUT},
+        step=9,
+        old=MISSING,
+        new="401",
+    ),
+    *_cells(
+        _PORTAL_REQUEST,
+        "endpoints",
+        {"OPTIONS /api/v1/portal/requests/{pk}/*/": _ORDER_READERS},
+        step=9,
+        old=MISSING,
+        new="allow",
+    ),
+    *_cells(
+        _PORTAL_REQUEST,
+        "endpoints",
+        {"OPTIONS /api/v1/portal/requests/{pk}/*/": _ORDER_OUTSIDERS},
+        step=9,
+        old=MISSING,
+        new="403",
+    ),
+    # "Portal talebi incele" görevi (sondada gözlenen; sevkiyat rolündeki Satış siparişleri:
+    # Değiştirir'i olanlar alır ve tamamlar, yönetim listede görür).
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: can_act": ("admin", "depo+sevkiyat", "sevkiyat", "superuser")},
+        step=9,
+        old=MISSING,
+        new=True,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: can_act": ("anonymous", "inactive")},
+        step=9,
+        old=MISSING,
+        new=401,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: can_act": (
+                "depo",
+                "dolum",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "uretim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=None,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: can_act": ("yonetim",)},
+        step=9,
+        old=MISSING,
+        new=False,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: claim": ("admin", "depo+sevkiyat", "sevkiyat", "superuser")},
+        step=9,
+        old=MISSING,
+        new=200,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: claim": ("anonymous", "inactive")},
+        step=9,
+        old=MISSING,
+        new=401,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: claim": (
+                "depo",
+                "dolum",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "uretim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=404,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: claim": ("yonetim",)},
+        step=9,
+        old=MISSING,
+        new=403,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: claim pushed": ("admin",)},
+        step=9,
+        old=MISSING,
+        new=["sevkiyat", "admin", "depo+sevkiyat"],
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: claim pushed": (
+                "anonymous",
+                "depo",
+                "dolum",
+                "inactive",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "uretim",
+                "yonetim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=None,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: claim pushed": ("depo+sevkiyat", "sevkiyat")},
+        step=9,
+        old=MISSING,
+        new=["sevkiyat", "depo+sevkiyat"],
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: claim pushed": ("superuser",)},
+        step=9,
+        old=MISSING,
+        new=["sevkiyat", "superuser", "depo+sevkiyat"],
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: claimer complete": (
+                "admin",
+                "depo+sevkiyat",
+                "sevkiyat",
+                "superuser",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=200,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: claimer complete": ("anonymous",)},
+        step=9,
+        old=MISSING,
+        new=None,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: claimer complete": (
+                "depo",
+                "dolum",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "uretim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=404,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: claimer complete": ("inactive",)},
+        step=9,
+        old=MISSING,
+        new=401,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: claimer complete": ("yonetim",)},
+        step=9,
+        old=MISSING,
+        new=403,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: claimer listed": (
+                "admin",
+                "depo+sevkiyat",
+                "sevkiyat",
+                "superuser",
+                "yonetim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=True,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: claimer listed": ("anonymous",)},
+        step=9,
+        old=MISSING,
+        new=None,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: claimer listed": (
+                "depo",
+                "dolum",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "uretim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=False,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: claimer listed": ("inactive",)},
+        step=9,
+        old=MISSING,
+        new=401,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: complete": (
+                "admin",
+                "depo+sevkiyat",
+                "sevkiyat",
+                "superuser",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=200,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: complete": ("anonymous", "inactive")},
+        step=9,
+        old=MISSING,
+        new=401,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: complete": (
+                "depo",
+                "dolum",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "uretim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=404,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: complete": ("yonetim",)},
+        step=9,
+        old=MISSING,
+        new=403,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: description shown": (
+                "admin",
+                "depo+sevkiyat",
+                "sevkiyat",
+                "superuser",
+                "yonetim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=True,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: description shown": ("anonymous", "inactive")},
+        step=9,
+        old=MISSING,
+        new=401,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: description shown": (
+                "depo",
+                "dolum",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "uretim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=None,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: listed": (
+                "admin",
+                "depo+sevkiyat",
+                "sevkiyat",
+                "superuser",
+                "yonetim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=True,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: listed": ("anonymous", "inactive")},
+        step=9,
+        old=MISSING,
+        new=401,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: listed": (
+                "depo",
+                "dolum",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "uretim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=False,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: listed mine": (
+                "admin",
+                "depo",
+                "dolum",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "superuser",
+                "uretim",
+                "yonetim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=False,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: listed mine": ("anonymous", "inactive")},
+        step=9,
+        old=MISSING,
+        new=401,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: listed mine": ("depo+sevkiyat", "sevkiyat")},
+        step=9,
+        old=MISSING,
+        new=True,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: notification body shown": (
+                "admin",
+                "depo",
+                "dolum",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "superuser",
+                "uretim",
+                "yonetim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=None,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: notification body shown": ("anonymous", "inactive")},
+        step=9,
+        old=MISSING,
+        new=401,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: notification body shown": ("depo+sevkiyat", "sevkiyat")},
+        step=9,
+        old=MISSING,
+        new=True,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: notified": (
+                "admin",
+                "depo",
+                "dolum",
+                "inactive",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "superuser",
+                "uretim",
+                "yonetim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=False,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: notified": ("anonymous",)},
+        step=9,
+        old=MISSING,
+        new=None,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: notified": ("depo+sevkiyat", "sevkiyat")},
+        step=9,
+        old=MISSING,
+        new=True,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: notified as actor": (
+                "admin",
+                "anonymous",
+                "depo",
+                "dolum",
+                "inactive",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "superuser",
+                "uretim",
+                "yonetim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=None,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: notified as actor": ("depo+sevkiyat", "sevkiyat")},
+        step=9,
+        old=MISSING,
+        new=False,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {
+            "task portal_order_request: pushed": (
+                "admin",
+                "depo",
+                "dolum",
+                "inactive",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "superuser",
+                "uretim",
+                "yonetim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=False,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: pushed": ("anonymous",)},
+        step=9,
+        old=MISSING,
+        new=None,
+    ),
+    *_cells(
+        _PORTAL_REQUEST_MODEL,
+        "probe_workflow",
+        {"task portal_order_request: pushed": ("depo+sevkiyat", "sevkiyat")},
+        step=9,
+        old=MISSING,
+        new=True,
     ),
     # Denetim günlüğünü okuyanlar portal hesabını bütün alanlarıyla görür.
     *_cells(

@@ -1,15 +1,22 @@
 from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
-from apps.portal.api import customer, supplier, views
+from apps.portal.api import customer, requests, supplier, views
 
 router = SimpleRouter()
 router.register("accounts", views.PortalAccountViewSet, basename="portal-account")
+router.register("requests", requests.StaffRequestViewSet, basename="portal-request")
 
 customer_router = SimpleRouter()
 customer_router.register("orders", customer.CustomerOrderViewSet, basename="portal-customer-order")
 customer_router.register(
     "shipments", customer.CustomerShipmentViewSet, basename="portal-customer-shipment"
+)
+customer_router.register(
+    "requests", requests.CustomerRequestViewSet, basename="portal-customer-request"
+)
+customer_router.register(
+    "products", requests.OrderableProductViewSet, basename="portal-customer-product"
 )
 
 supplier_router = SimpleRouter()

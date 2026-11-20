@@ -60,6 +60,7 @@ from apps.masterdata.tests.factories import (
     WarehouseFactory,
     unit,
 )
+from apps.portal.models import OrderRequest
 from apps.production.models import ProductionBatch, ProductionOrder
 from apps.purchasing.models import PurchaseOrder
 from apps.quality.models import Sample, SampleStage
@@ -83,10 +84,11 @@ COMMENT = "workflow.comment"
 ACTIVE_FILE, REMOVED_FILE = "etkin.png", "kaldirilmis.png"
 
 # Bugünkü kayıt defterleri. Yeni tür eklenince sayı ve sonda kaydı (BUILDERS) birlikte güncellenir.
-RECORD_TYPE_COUNT = 19
+# Portal sipariş talebi (DECISIONS 2026-11-20): portal.orderrequest.
+RECORD_TYPE_COUNT = 20
 ATTACHMENT_TARGET_COUNT = 8
-# Cari hesaplar (DECISIONS 2026-11-18): belge türü CH (cari hareket).
-CODE_TYPE_COUNT = 33
+# Cari hesaplar (DECISIONS 2026-11-18): belge türü CH (cari hareket); portal talebi MT.
+CODE_TYPE_COUNT = 34
 # `visible` satır kuralı olan türler: bildiren kendi kaydını görür (`created_by`).
 ROW_RULE_TYPES = frozenset({"golive.problemreport", "hse.incident"})
 # Satır kurallarının (yorumu yazan düzenler, eki yükleyen ya da admin kaldırır, kaldırılmış
@@ -331,6 +333,11 @@ BUILDERS: dict[str, Callable[[Kit], models.Model]] = {
         return_date=kit.today,
         reason="Sonda",
         quarantine_location=quarantine_location(),
+    ),
+    "portal.orderrequest": lambda kit: OrderRequest.objects.create(
+        number=kit.number("MT"),
+        status="SUBMITTED",
+        customer=CustomerFactory.create(),
     ),
     "sales.salesorder": _sales_order,
     "sales.shipment": lambda kit: Shipment.objects.create(

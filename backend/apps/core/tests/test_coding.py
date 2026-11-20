@@ -700,7 +700,7 @@ def test_every_document_prefix_in_source_is_registered():
         for item in registry.code_types(registry.DOCUMENT)
         if not item.model.startswith("core_testapp") and item.default_prefix not in {"TK", "TZ"}
     }
-    assert len(found) == 18  # + CH (cari hareket, DECISIONS 2026-11-18)
+    assert len(found) == 19  # + CH (cari hareket), MT (portal sipariş talebi; DECISIONS 2026-11-20)
     assert set(found) == registered, {p: f for p, f in found.items() if p not in registered}
     assert registry.document_type("SV").locked
     assert all(registry.lot_type(prefix) for prefix in LOT_PREFIXES.values())

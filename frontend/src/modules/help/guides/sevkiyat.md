@@ -69,6 +69,17 @@ Seçilen müşterinin cari bakiyesi ve vadesi geçen tutarı yalnız **Müşteri
 
 > Her sabah, vadesi önceki gün ya da daha önce dolmuş açık siparişler için size **Teslimi geciken siparişler** bildirimi gelir (sevkiyat ve yönetim). Her sipariş bir kez bildirilir; termin değiştirilip yeni tarih de geçerse yeniden bildirilir.
 
+## Portal talepleri
+
+Portal hesabı olan müşteriler **sipariş talebi** gönderebilir. Talep sipariş değildir; size **Portal talebi incele** görevi gelir.
+
+1. **Sevkiyat > Portal talepleri** sekmesinde karar bekleyen talepleri görürsünüz; talebe tıklayın.
+2. Ürünleri, miktarları, istenen teslim tarihini ve müşterinin notunu kontrol edin.
+3. **Siparişe çevir**: taslak satış siparişi açılır ve sipariş sayfasına gidilir. Fiyatı ve termini girip siparişi bugünkü gibi onaylayın. Sipariş onaylanınca müşteri portalda görür.
+4. **Reddet**: gerekçeyi yazın (müşteri portalda görür).
+
+> Müşteri karar verilmemiş talebini geri çekebilir; görev kendiliğinden kapanır. Karar vermek **Satış siparişleri: Değiştirir** ister; yalnız Görür'ü olan talepleri okur.
+
 ## Müşteri carileri
 
 **Cari hesaplar > Müşteriler** sekmesinde müşterilerin hareketlerini ve ekstresini görürsünüz. Tutarlar, PDF ekstre ile birlikte, yalnız **Fiyatları görür** yetkisi olanlara görünür (varsayılan: yönetim ve satın alma; sevkiyatta yoktur). Tahsilat ve dekont girmek **Müşteri carileri: Değiştirir** ister (varsayılan: yönetim).

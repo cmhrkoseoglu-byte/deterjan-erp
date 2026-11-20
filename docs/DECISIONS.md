@@ -3294,3 +3294,38 @@ değiştirme zorunlu, yalnızca admin):
   `portal/supplier/…` ve `portal/accounts/` için 403.
 - **Ön yüz eşlik listesi:** `/aydinlatma` herkese açık rota olarak portal kaydına bağlandı; rota
   sayısı 70.
+
+## 2026-11-20 — Portal adresi: alan adı olana kadar bugünkü adres
+
+- **Karar (CUMHUR, "Alan adı henüz yok bu url üzerinden devam edelim"):** portal, firmanın alan adı
+  alınana kadar sistemin bugünkü adresiyle (`<ip>.sslip.io`, Let's Encrypt sertifikalı) müşteri ve
+  tedarikçilere verilir. 2026-11-19 planındaki "portal sslip.io adresiyle verilmemeli" önerisinin
+  yerine geçer; alan adı alınınca KURULUM.md §14 "Alan adına geçiş" uygulanır (eski adres o zaman
+  çalışmaz; portal kullanıcılarına da duyurulur). Kontrol listesi madde 33 buna göre güncellendi.
+
+## 2026-11-20 — Portal B4: müşterinin sipariş talebi
+
+- **B4 planı** CUMHUR onayıyla (2026-11-20, "Onaylıyorum"); ekranlar da bu adımda ("Evet, bu
+  adımda"), e-posta (B5) beklenmeden.
+- **Talep** (`portal.OrderRequest`, satırları `OrderRequestLine`; göç portal 0002; belge no
+  `MT-`, kodlama sistematiğine kayıtlı): müşteri aktif mamullerden ürün, miktar (> 0) ve ürünün
+  tanımlı birimi (temel birim ya da etkin dönüşüm), istenen teslim tarihi (geçmiş olamaz),
+  kendi sipariş no'su, teslim adresi (boşsa kart adresi) ve not girer. Fiyat ve stok gösterilmez.
+- **Durum makinesi:** Gönderildi → Siparişe çevrildi / Reddedildi; Gönderildi → Geri çekildi
+  (yalnız müşteri, yalnız kendi firmasının talebi). Her geçiş `order_request.<durum>` olayı ve
+  denetim kaydı yazar; karar veren ve zamanı saklanır.
+- **İç taraf:** Sevkiyat > "Portal talepleri" sekmesi ve talep sayfası (Satış siparişleri:
+  Görür). "Siparişe çevir" ve "Reddet" Değiştirir ister. Çevirmede taslak satış siparişi açılır
+  (satırlar, istenen tarih, müşteri sipariş no, adres; not siparişe "Portal talebi MT-…: …"
+  diye yazılır); fiyat ve termin taslakta girilir, onay bugünkü gibi. Ret gerekçesi zorunlu,
+  müşteri portalda görür. Talep kaydının yorum, geçmiş ve ek kuralları satış siparişiyle aynı.
+- **Görev:** `portal_order_request` — sevkiyat rolüne, Satış siparişleri: Değiştirir'i olanlara
+  "Portal talebi incele: MT-…"; siparişe çevrilince, reddedilince ya da geri çekilince kapanır.
+- **Müşteri:** Taleplerim (durum süzgeci), Yeni talep, talep sayfası (geri çekme, ret gerekçesi,
+  çevrildiği sipariş; sipariş onaylanana kadar bağlantı verilmez, "hazırlanıyor" yazar).
+- **Yetki sözleşmesi:** "yeni uç nokta: portal sipariş talebi" ve "yeni model: portal sipariş
+  talebi" (DECISIONS 2026-11-20) kayıtları. Kayıt paneli hücreleri satış siparişinin dondurulmuş
+  hücrelerinden üretildi (`_mirror`, aynı okuma kuralı); görev hücreleri sondada gözlenen değere
+  sabitlendi. Ön yüz eşlik listesinde "yeni sayfa: portal sipariş talebi" kaydı; Sevkiyat sekme
+  listesini sabitleyen Sipariş takibi kaydı (2026-11-19) "Portal talepleri" sekmesiyle
+  genişletildi (sahip sekmeyi B4 planında onayladı).

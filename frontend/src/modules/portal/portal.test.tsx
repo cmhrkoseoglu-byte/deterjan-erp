@@ -5,6 +5,9 @@ import * as authApi from "../../api/auth";
 import * as mdApi from "../../api/masterdata";
 import * as portalApi from "../../api/portal";
 import type {
+  OrderableProduct,
+  OrderRequest,
+  StaffOrderRequest,
   PortalAccount,
   PortalOrder,
   PortalShipment,
@@ -149,6 +152,53 @@ const ACCOUNT: PortalAccount = {
   created_at: "2026-11-19T10:00:00+03:00",
 };
 
+const REQUEST: OrderRequest = {
+  id: 11,
+  number: "MT-2026-00011",
+  status: "SUBMITTED",
+  status_display: "Gönderildi",
+  requested_delivery_date: "2026-12-01",
+  customer_po_no: "PO-9",
+  delivery_address: "Gebze",
+  note: "",
+  lines: [
+    {
+      line_no: 1,
+      product: 90,
+      product_code: "BULASIK-750",
+      product_name: "Bulaşık deterjanı",
+      quantity: "2.0000",
+      unit: 7,
+      unit_code: "KOLI",
+    },
+  ],
+  reject_reason: "",
+  order_id: null,
+  order_number: null,
+  created_at: "2026-11-20T10:00:00+03:00",
+  decided_at: null,
+};
+
+const STAFF_REQUEST: StaffOrderRequest = {
+  ...REQUEST,
+  customer: 5,
+  customer_code: "M-ZINCIR",
+  customer_name: "Zincir Market A.Ş.",
+  created_by_name: "Ali Müşteri",
+  decided_by_name: "",
+  sales_order: null,
+};
+
+const PRODUCT: OrderableProduct = {
+  id: 90,
+  code: "BULASIK-750",
+  name: "Bulaşık deterjanı",
+  units: [
+    { id: 1, code: "ADET", name: "Adet" },
+    { id: 7, code: "KOLI", name: "Koli" },
+  ],
+};
+
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(authApi.fetchCsrf).mockResolvedValue();
@@ -222,6 +272,11 @@ beforeEach(() => {
   vi.mocked(portalApi.downloadWaybill).mockResolvedValue();
   vi.mocked(portalApi.downloadSupplierOrder).mockResolvedValue();
   vi.mocked(portalApi.downloadStatementPdf).mockResolvedValue();
+  vi.mocked(portalApi.listRequests).mockResolvedValue(page([REQUEST]));
+  vi.mocked(portalApi.getRequest).mockResolvedValue(REQUEST);
+  vi.mocked(portalApi.listOrderableProducts).mockResolvedValue([PRODUCT]);
+  vi.mocked(portalApi.listStaffRequests).mockResolvedValue(page([STAFF_REQUEST]));
+  vi.mocked(portalApi.getStaffRequest).mockResolvedValue(STAFF_REQUEST);
 });
 
 describe("müşteri portalı", () => {
@@ -398,5 +453,126 @@ describe("aydınlatma metni", () => {
       await screen.findByRole("heading", { name: "Kişisel verilerin korunması aydınlatma metni" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Taslak")).toBeInTheDocument();
+  });
+});
+
+describe("sipariş talebi", () => {
+  it("müşteri talep gönderir; ürün seçilince birim gelir, fiyat görünmez", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(portalUser("customer"));
+    vi.mocked(portalApi.createRequest).mockResolvedValue(REQUEST);
+    const { router } = renderApp("/portal/talepler/yeni");
+
+    await user.click(await screen.findByRole("textbox", { name: "Ürün" }));
+    await user.click(
+      await screen.findByRole("option", { name: "BULASIK-750 — Bulaşık deterjanı" }),
+    );
+    await user.type(screen.getByRole("textbox", { name: "Miktar" }), "2");
+    expect(screen.getByRole("textbox", { name: "Birim" })).toHaveValue("Adet");
+    await user.click(screen.getByRole("textbox", { name: "Birim" }));
+    await user.click(await screen.findByRole("option", { name: "Koli" }));
+    await user.type(screen.getByLabelText("Sipariş no'nuz"), "PO-9");
+    expect(screen.queryByText(/Birim fiyat|Tutar/)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Talebi gönder" }));
+
+    await waitFor(() =>
+      expect(portalApi.createRequest).toHaveBeenCalledWith({
+        requested_delivery_date: null,
+        customer_po_no: "PO-9",
+        delivery_address: "",
+        note: "",
+        lines: [{ product: 90, quantity: "2", unit: 7 }],
+      }),
+    );
+    await waitFor(() => expect(router.state.location.pathname).toBe("/portal/talepler/11"));
+  });
+
+  it("Taleplerim listelenir; karar bekleyen talep geri çekilir", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(portalUser("customer"));
+    vi.mocked(portalApi.withdrawRequest).mockResolvedValue({
+      ...REQUEST,
+      status: "WITHDRAWN",
+      status_display: "Geri çekildi",
+    });
+    renderApp("/portal/talepler");
+    expect(await screen.findByTestId("portal-requests")).toHaveTextContent("MT-2026-00011");
+    expect(screen.getByRole("link", { name: "Taleplerim" })).toBeInTheDocument();
+
+    await user.click(screen.getByText("MT-2026-00011"));
+    await user.click(await screen.findByRole("button", { name: "Talebi geri çek" }));
+    await waitFor(() => expect(portalApi.withdrawRequest).toHaveBeenCalledWith(11));
+    expect(await screen.findByText("Geri çekildi")).toBeInTheDocument();
+  });
+
+  it("reddedilen talepte gerekçe görünür", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(portalUser("customer"));
+    vi.mocked(portalApi.getRequest).mockResolvedValue({
+      ...REQUEST,
+      status: "REJECTED",
+      status_display: "Reddedildi",
+      reject_reason: "Bu ürünü artık üretmiyoruz",
+    });
+    renderApp("/portal/talepler/11");
+    expect(await screen.findByText("Bu ürünü artık üretmiyoruz")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Talebi geri çek" })).toBeNull();
+  });
+
+  it("tedarikçi talep sayfasını açamaz", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(portalUser("supplier"));
+    const { router } = renderApp("/portal/talepler");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/portal/siparisler"));
+    expect(portalApi.listRequests).not.toHaveBeenCalled();
+  });
+
+  it("sevkiyat talebi siparişe çevirir ve taslak siparişe gider", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("sevkiyat"));
+    vi.mocked(portalApi.convertRequest).mockResolvedValue({
+      ...STAFF_REQUEST,
+      status: "CONVERTED",
+      status_display: "Siparişe çevrildi",
+      sales_order: 33,
+      order_number: "SS-2026-00033",
+    });
+    const { router } = renderApp("/sevkiyat/portal-talepleri");
+    const table = await screen.findByTestId("portal-requests-staff");
+    expect(table).toHaveTextContent("Zincir Market A.Ş.");
+    expect(portalApi.listStaffRequests).toHaveBeenCalledWith({
+      page_size: 100,
+      status: "SUBMITTED",
+    });
+
+    await user.click(within(table).getByText("MT-2026-00011"));
+    await user.click(await screen.findByRole("button", { name: "Siparişe çevir" }));
+    await waitFor(() => expect(portalApi.convertRequest).toHaveBeenCalledWith(11));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/sevkiyat/siparisler/33"));
+  });
+
+  it("gerekçeyle reddeder; Değiştirir'i olmayan karar düğmelerini görmez", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("sevkiyat"));
+    vi.mocked(portalApi.rejectRequest).mockResolvedValue({
+      ...STAFF_REQUEST,
+      status: "REJECTED",
+      status_display: "Reddedildi",
+      reject_reason: "Mükerrer",
+    });
+    renderApp("/sevkiyat/portal-talepleri/11");
+    await user.click(await screen.findByRole("button", { name: "Reddet" }));
+    const dialog = await screen.findByRole("dialog");
+    const confirm = within(dialog).getByRole("button", { name: "Reddet" });
+    expect(confirm).toBeDisabled();
+    await user.type(within(dialog).getByLabelText(/Gerekçe/), "Mükerrer");
+    await user.click(confirm);
+    await waitFor(() => expect(portalApi.rejectRequest).toHaveBeenCalledWith(11, "Mükerrer"));
+  });
+
+  it("planlama talepleri görür ama karar veremez", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(userWith("planlama"));
+    renderApp("/sevkiyat/portal-talepleri/11");
+    expect(await screen.findByTestId("portal-request-staff-lines")).toHaveTextContent("KOLI");
+    expect(screen.queryByRole("button", { name: "Siparişe çevir" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reddet" })).toBeNull();
   });
 });

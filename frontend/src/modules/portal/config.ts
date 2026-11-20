@@ -7,11 +7,14 @@ export const PORTAL_PATHS = {
   shipments: `${PORTAL_PATH}/sevkiyatlar`,
   receipts: `${PORTAL_PATH}/teslimatlar`,
   ledger: `${PORTAL_PATH}/cari`,
+  requests: `${PORTAL_PATH}/talepler`,
+  newRequest: `${PORTAL_PATH}/talepler/yeni`,
 } as const;
 
 export const orderPath = (id: number) => `${PORTAL_PATHS.orders}/${id}`;
 export const shipmentPath = (id: number) => `${PORTAL_PATHS.shipments}/${id}`;
 export const receiptPath = (id: number) => `${PORTAL_PATHS.receipts}/${id}`;
+export const requestPath = (id: number) => `${PORTAL_PATHS.requests}/${id}`;
 
 /** Portal kullanıcısının türü; çalışanda boş. */
 export function portalKind(user: CurrentUser | null | undefined): PortalKind | null {

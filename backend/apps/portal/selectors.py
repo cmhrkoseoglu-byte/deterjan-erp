@@ -8,8 +8,8 @@ from django.db.models import Prefetch, QuerySet
 
 from apps.core.models import User
 from apps.inventory.models import GoodsReceipt, GoodsReceiptLine
-from apps.masterdata.models import Customer, Supplier
-from apps.portal.models import PortalAccount
+from apps.masterdata.models import Customer, Material, MaterialUnitConversion, Supplier
+from apps.portal.models import OrderRequest, OrderRequestLine, PortalAccount
 from apps.purchasing import selectors as purchasing_selectors
 from apps.purchasing.models import PurchaseOrder
 from apps.sales import selectors as sales_selectors
@@ -120,4 +120,45 @@ def supplier_receipts(supplier: Supplier) -> QuerySet[GoodsReceipt]:
             )
         )
         .order_by("-receipt_date", "-number")
+    )
+
+
+# --- sipariş talebi (docs/plan/musteri-siparis-takibi.md §4.4) ------------------------------
+
+
+def order_requests() -> QuerySet[OrderRequest]:
+    """Talepler (iç ekran): müşteri, satırlar ve çevrildiği siparişle; yeniden eskiye."""
+    return (
+        OrderRequest.objects.select_related("customer", "sales_order", "created_by", "decided_by")
+        .prefetch_related(
+            Prefetch(
+                "lines",
+                queryset=OrderRequestLine.objects.select_related("product", "unit").order_by(
+                    "line_no"
+                ),
+            )
+        )
+        .order_by("-created_at", "-number")
+    )
+
+
+def customer_requests(customer: Customer) -> QuerySet[OrderRequest]:
+    """Müşterinin kendi talepleri."""
+    return order_requests().filter(customer=customer)
+
+
+def orderable_products() -> QuerySet[Material]:
+    """Talepte seçilebilen ürünler: aktif mamuller, temel birim ve etkin dönüşümleriyle."""
+    return (
+        Material.objects.filter(is_active=True, material_type=Material.Type.FINISHED)
+        .select_related("base_unit")
+        .prefetch_related(
+            Prefetch(
+                "conversions",
+                queryset=MaterialUnitConversion.objects.filter(is_active=True).select_related(
+                    "unit"
+                ),
+            )
+        )
+        .order_by("code")
     )
