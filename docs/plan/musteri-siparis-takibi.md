@@ -255,7 +255,7 @@ olayları dinleyerek gönderilir. **CLAUDE.md §3 tablosuna ve bağımlılık sa
    kabuller), cari özet ve ekstre; firma süzgeci, hesap türü ve başka firma testleri.
 4. **B4 Sipariş talebi** (tamam, ekranlarıyla birlikte, 2026-11-20): model, durum makinesi, belge numarası (`MT-`), portal ve iç uç noktalar,
    siparişe çevirme, reddetme, workflow görevi; testler.
-5. **B5 E-posta**: SMTP ayarı, Celery işi, `OutboundEmail`, iki şablon, alıcı kuralları, tercih;
+5. **B5 E-posta** (tamam, 2026-11-20; SMTP hesabı canlıda sonra tanımlanacak): SMTP ayarı, Celery işi, `OutboundEmail`, iki şablon, alıcı kuralları, tercih;
    testler (e-posta arka ucu bellekte).
 6. **B6 Portal ön yüzü** (görüntüleme sayfaları tamam, 2026-11-20; talep sayfaları ikinci sürümde): `/portal` düzeni, müşteri ve tedarikçi sayfaları, iç taraftaki "Portal
    talepleri" sekmesi, Sistem > Kullanıcılar'da portal türleri; Vitest.

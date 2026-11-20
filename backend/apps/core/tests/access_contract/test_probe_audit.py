@@ -168,7 +168,7 @@ UNTRACKED = frozenset(
 # Cari hesaplar (docs/plan/cari-hesaplar.md): ledger.ledgerentry ve ledger.shipmentlineprice.
 # Portal (docs/plan/musteri-siparis-takibi.md §4.2): portal.portalaccount; §4.4 sipariş talebi
 # (portal.orderrequest, portal.orderrequestline).
-EXPECTED_MODELS = 129
+EXPECTED_MODELS = 130
 
 
 # --- kayıt izi ---------------------------------------------------------------------------------

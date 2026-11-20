@@ -2187,3 +2187,10 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   çevir: taslak sipariş; reddet: gerekçeli); "Portal talebi incele" görevi. Göç portal 0002.
   Portal adresi alan adı olana kadar bugünkü adres (DECISIONS 2026-11-20).
 - **Doğrulama:** backend 3056 test yeşil (14 yeni talep testi; ardından içe aktarma sırası ve bir test tip uyarısı düzeltildi, ilgili testler yeniden yeşil), ruff, `ruff format --check`, mypy, `makemigrations --check`, OpenAPI uyarısız; ön yüz 787/787 (7 yeni talep testi), tsc, ESLint, Prettier temiz, eşlik yeşil. Gerçek uygulamada elle bakılmadı.
+
+## 2026-11-20 — Portal B5: müşteriye e-posta
+
+- Sipariş onaylandı ve sevk edildi e-postaları (fiyatsız, portal bağlantılı), Celery ile gönderim
+  ve 3 deneme, `portal.OutboundEmail` günlüğü, başarısızlıkta admin bildirimi, Güvenlik sayfasında
+  e-posta tercihi. Göç portal 0003. Canlıda SMTP tanımlanana kadar e-posta gönderilmez.
+- **Doğrulama:** backend pytest 3066 geçti (1 atlandı); ruff, format, mypy, göç ve OpenAPI şeması temiz; ön yüz Vitest 790/790, ESLint, Prettier ve tsc temiz. Gerçek SMTP ile denenmedi (canlıda SMTP yok).

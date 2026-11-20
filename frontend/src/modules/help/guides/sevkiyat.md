@@ -78,6 +78,8 @@ Portal hesabı olan müşteriler **sipariş talebi** gönderebilir. Talep sipari
 3. **Siparişe çevir**: taslak satış siparişi açılır ve sipariş sayfasına gidilir. Fiyatı ve termini girip siparişi bugünkü gibi onaylayın. Sipariş onaylanınca müşteri portalda görür.
 4. **Reddet**: gerekçeyi yazın (müşteri portalda görür).
 
+> Portal hesabı olan müşteriye sipariş onaylanınca ve sevk edilince e-posta gider (fiyat ve şoför bilgisi olmadan). Müşteri e-postaları portalın Güvenlik sayfasından kapatabilir.
+
 > Müşteri karar verilmemiş talebini geri çekebilir; görev kendiliğinden kapanır. Karar vermek **Satış siparişleri: Değiştirir** ister; yalnız Görür'ü olan talepleri okur.
 
 ## Müşteri carileri

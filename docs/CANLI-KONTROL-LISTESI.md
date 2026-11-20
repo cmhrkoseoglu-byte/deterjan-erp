@@ -75,5 +75,6 @@ Portal (docs/plan/musteri-siparis-takibi.md §4) dış firmalara açılmadan ön
 | 37 | Müşteri nüshası irsaliyede lot, SKT ve açık şoför TC'si yok; açılışı sevkiyatın Geçmiş panelinde "İrsaliye görüntülendi (portal)" olarak göründü | Elle |
 | 38 | Portal hesapları yalnız gerçekten yetkili kişilere açıldı (her yetkiliye ayrı hesap, ortak hesap yok); hesap bilgisi ve geçici şifre kişiye güvenli yoldan iletildi | Elle |
 | 40 | Deneme müşteri hesabıyla bir sipariş talebi gönderildi; sevkiyata "Portal talebi incele" görevi düştü; talep siparişe çevrildi (taslak sipariş açıldı) ve bir başkası gerekçeyle reddedildi; müşteri ikisini de portalda gördü | Elle |
+| 41 | SMTP tanımlandı (`.env.prod`: `EMAIL_URL`, `DEFAULT_FROM_EMAIL`; gerekirse `PORTAL_BASE_URL`); deneme müşteri hesabına sipariş onayı ve sevk e-postası geldi, fiyat ve şoför bilgisi yok, bağlantı portalda açıldı; yönetim panelinde portal e-postaları "Gönderildi" | Elle |
 | 39 | Duman testi portal satırları (girişsiz 401, çalışan 403) yeşil (`scripts/smoke_test.sh`) | Otomatik |
 

@@ -86,6 +86,7 @@ def test_admin_rules_require_an_admin_only_view():
         "user_locked",
         "ops_alert",
         "ops_recovered",
+        "portal_email_failed",
         "problem_reported",
     }
     for rule in admin_rules:

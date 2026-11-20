@@ -576,3 +576,54 @@ describe("sipariş talebi", () => {
     expect(screen.queryByRole("button", { name: "Reddet" })).toBeNull();
   });
 });
+
+describe("e-posta tercihi", () => {
+  const SECURITY = {
+    otp_enabled: false,
+    otp_required: false,
+    recovery_codes_remaining: 0,
+    field_device: false,
+    idle_timeout_seconds: 1800,
+    password_help: [],
+  };
+
+  it("müşteri Güvenlik sayfasında e-postaları kapatır", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.fetchMe).mockResolvedValue(portalUser("customer"));
+    vi.mocked(authApi.fetchSecurity).mockResolvedValue(SECURITY);
+    vi.mocked(portalApi.fetchEmailPreference).mockResolvedValue({
+      email: "yetkili@musteri.ornek",
+      enabled: true,
+    });
+    vi.mocked(portalApi.setEmailPreference).mockResolvedValue({
+      email: "yetkili@musteri.ornek",
+      enabled: false,
+    });
+    renderApp("/portal/guvenlik");
+    expect(await screen.findByText("yetkili@musteri.ornek")).toBeInTheDocument();
+    const toggle = screen.getByRole("switch", { name: "Sipariş ve sevk e-postalarını al" });
+    expect(toggle).toBeChecked();
+    await user.click(toggle);
+    await waitFor(() => expect(portalApi.setEmailPreference).toHaveBeenCalled());
+    expect(vi.mocked(portalApi.setEmailPreference).mock.calls[0]?.[0]).toBe(false);
+    await waitFor(() => expect(toggle).not.toBeChecked());
+  });
+
+  it("e-postası olmayan hesapta uyarı görünür, düğme kapalı", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(portalUser("customer"));
+    vi.mocked(authApi.fetchSecurity).mockResolvedValue(SECURITY);
+    vi.mocked(portalApi.fetchEmailPreference).mockResolvedValue({ email: "", enabled: true });
+    renderApp("/portal/guvenlik");
+    expect(await screen.findByText(/e-posta adresi tanımlı değil/)).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Sipariş ve sevk e-postalarını al" })).toBeDisabled();
+  });
+
+  it("tedarikçide e-posta tercihi yok", async () => {
+    vi.mocked(authApi.fetchMe).mockResolvedValue(portalUser("supplier"));
+    vi.mocked(authApi.fetchSecurity).mockResolvedValue(SECURITY);
+    renderApp("/portal/guvenlik");
+    expect(await screen.findByRole("heading", { name: "Güvenlik" })).toBeInTheDocument();
+    expect(screen.queryByText("E-posta bildirimleri")).toBeNull();
+    expect(portalApi.fetchEmailPreference).not.toHaveBeenCalled();
+  });
+});

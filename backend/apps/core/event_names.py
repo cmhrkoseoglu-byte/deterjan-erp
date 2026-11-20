@@ -102,6 +102,9 @@ ORDER_REQUEST_CREATED = "order_request.created"
 ORDER_REQUEST_CONVERTED = "order_request.converted"
 ORDER_REQUEST_REJECTED = "order_request.rejected"
 ORDER_REQUEST_WITHDRAWN = "order_request.withdrawn"
+# Müşteriye portal e-postası denemelerin sonunda gönderilemedi (§4.5): payload'da ilgili
+# kayıt (`model`, `id`, `number`), `customer_name`, `kind_label`, `error`.
+PORTAL_EMAIL_FAILED = "portal_email.failed"
 RESERVED_LOTS_EXPIRING = "lot.expiring"
 # returns (Faz 3, Adım 3.3). Belge olayları durum makinesinden (`customer_return.<durum>`);
 # payload'da `customer_code`, `customer_name`, `lots` (lot sözlükleri, `disposition` ile).

@@ -9,7 +9,7 @@ from django.db.models import QuerySet
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -178,3 +178,33 @@ class CustomerStatementPdfView(APIView):
             firm, dates["date_from"], dates["date_to"], contact=False
         )
         return pdf_response(content, f"ekstre-{timezone.localdate():%Y%m%d}.pdf")
+
+
+class EmailPreferenceSerializer(serializers.Serializer):
+    """Sipariş ve sevk e-postaları: alıcı adres (admin girer) ve açık/kapalı."""
+
+    email = serializers.EmailField(read_only=True)
+    enabled = serializers.BooleanField()
+
+
+class CustomerEmailPreferenceView(APIView):
+    """Müşteri yetkilisinin e-posta tercihi (Güvenlik sayfası)."""
+
+    permission_classes = [PortalCustomerOnly]
+
+    def _data(self, request: Request) -> dict[str, Any]:
+        customer_of(request)
+        account = selectors.account_of(request.user)  # type: ignore[arg-type]
+        assert account is not None
+        return {"email": account.user.email, "enabled": not account.email_opt_out}
+
+    @extend_schema(responses=EmailPreferenceSerializer)
+    def get(self, request: Request) -> Response:
+        return Response(EmailPreferenceSerializer(self._data(request)).data)
+
+    @extend_schema(request=EmailPreferenceSerializer, responses=EmailPreferenceSerializer)
+    def put(self, request: Request) -> Response:
+        data = EmailPreferenceSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        services.set_email_preference(request.user, data.validated_data["enabled"])  # type: ignore[arg-type]
+        return Response(EmailPreferenceSerializer(self._data(request)).data)

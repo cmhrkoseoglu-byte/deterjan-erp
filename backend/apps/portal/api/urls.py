@@ -42,6 +42,11 @@ urlpatterns = [
         customer.CustomerStatementPdfView.as_view(),
         name="portal-customer-statement-pdf",
     ),
+    path(
+        "customer/email-preference/",
+        customer.CustomerEmailPreferenceView.as_view(),
+        name="portal-customer-email-preference",
+    ),
     path("customer/", include(customer_router.urls)),
     path(
         "supplier/ledger/",

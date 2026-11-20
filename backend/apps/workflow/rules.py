@@ -846,6 +846,16 @@ RULES: tuple[Rule, ...] = (
         title="Sistem uyarısı: {title}",
         body="{detail}",
     ),
+    # Müşteriye portal e-postası denemelerin sonunda gönderilemedi (B5, §4.5).
+    NotifyRule(
+        code="portal_email_failed",
+        requires=ADMIN_ONLY,
+        event=ev.PORTAL_EMAIL_FAILED,
+        roles=(ADMIN,),
+        level="WARNING",
+        title="Müşteri e-postası gönderilemedi: {number}",
+        body="{customer_name} — {kind_label} ({error}). E-posta (SMTP) ayarını kontrol edin.",
+    ),
     NotifyRule(
         code="ops_recovered",
         requires=ADMIN_ONLY,
