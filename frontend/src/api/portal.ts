@@ -496,3 +496,23 @@ export async function rejectRequest(id: number, reason: string): Promise<StaffOr
   });
   return data;
 }
+
+// --- e-posta tercihi (müşteri; §4.5) ---
+
+export interface EmailPreference {
+  /** Alıcı adres (admin girer); boşsa e-posta gitmez. */
+  email: string;
+  enabled: boolean;
+}
+
+const EMAIL_PREFERENCE = `${BASE}/customer/email-preference/`;
+
+export async function fetchEmailPreference(): Promise<EmailPreference> {
+  const { data } = await api.get<EmailPreference>(EMAIL_PREFERENCE);
+  return data;
+}
+
+export async function setEmailPreference(enabled: boolean): Promise<EmailPreference> {
+  const { data } = await api.put<EmailPreference>(EMAIL_PREFERENCE, { enabled });
+  return data;
+}

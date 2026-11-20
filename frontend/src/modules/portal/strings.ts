@@ -102,4 +102,13 @@ export const pt = {
   convertedTitle: "Talep siparişe çevrildi",
   orderPending: (number: string) =>
     `Sipariş ${number} hazırlanıyor; onaylanınca Siparişlerim'de görünür.`,
+  emailTitle: "E-posta bildirimleri",
+  emailIntro:
+    "Siparişiniz onaylanınca ve sevk edilince e-posta gönderilir. E-postada fiyat yer almaz; ayrıntılar portalda.",
+  emailAddress: "Alıcı adres",
+  emailMissing:
+    "Hesabınızda e-posta adresi tanımlı değil; adres eklenmesi için bizimle iletişime geçin.",
+  emailSwitch: "Sipariş ve sevk e-postalarını al",
+  emailOn: "E-posta bildirimleri açıldı.",
+  emailOff: "E-posta bildirimleri kapatıldı.",
 };

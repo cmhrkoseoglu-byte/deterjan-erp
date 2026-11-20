@@ -38,6 +38,8 @@ class PortalAccount(BaseModel):
         related_name="portal_accounts",
         editable=False,
     )
+    # Müşteri yetkilisi sipariş ve sevk e-postalarını Güvenlik sayfasından kapatabilir.
+    email_opt_out = models.BooleanField("e-postaları kapattı", default=False)
 
     class Meta:
         verbose_name = "portal hesabı"
@@ -147,3 +149,61 @@ class OrderRequestLine(BaseModel):
             models.UniqueConstraint(fields=["request", "line_no"], name="portal_request_line_no"),
             models.CheckConstraint(condition=Q(quantity__gt=0), name="portal_request_line_qty"),
         ]
+
+
+class OutboundEmail(models.Model):
+    """Müşteriye giden portal e-postasının günlüğü (§4.5): alıcı, konu, ilgili kayıt, durum ve
+    gönderim zamanı. İçerik saklanmaz; gönderimde kayıttan yeniden üretilir. Aynı kayıt için aynı
+    kullanıcıya aynı tür e-posta bir kez yazılır."""
+
+    class Kind(models.TextChoices):
+        ORDER_CONFIRMED = "ORDER_CONFIRMED", "Sipariş onaylandı"
+        SHIPMENT_DISPATCHED = "SHIPMENT_DISPATCHED", "Sevk edildi"
+
+    class Status(models.TextChoices):
+        QUEUED = "QUEUED", "Sırada"
+        SENT = "SENT", "Gönderildi"
+        FAILED = "FAILED", "Gönderilemedi"
+        SKIPPED = "SKIPPED", "Gönderilmedi (SMTP tanımlı değil)"
+
+    kind = models.CharField("tür", max_length=32, choices=Kind.choices, editable=False)
+    customer = models.ForeignKey(
+        Customer,
+        verbose_name="müşteri",
+        on_delete=models.PROTECT,
+        related_name="portal_emails",
+        editable=False,
+    )
+    user = models.ForeignKey(
+        User,
+        verbose_name="alıcı kullanıcı",
+        on_delete=models.PROTECT,
+        related_name="portal_emails",
+        editable=False,
+    )
+    to_address = models.EmailField("alıcı e-posta", editable=False)
+    subject = models.CharField("konu", max_length=200, editable=False)
+    related_model = models.CharField("ilgili kayıt türü", max_length=64, editable=False)
+    related_id = models.PositiveBigIntegerField("ilgili kayıt", editable=False)
+    related_number = models.CharField("ilgili belge no", max_length=40, editable=False)
+    status = models.CharField(
+        "durum", max_length=16, choices=Status.choices, default=Status.QUEUED, editable=False
+    )
+    attempts = models.PositiveSmallIntegerField("deneme", default=0, editable=False)
+    last_error = models.CharField("son hata", max_length=200, blank=True, editable=False)
+    created_at = models.DateTimeField("oluşturma zamanı", auto_now_add=True)
+    sent_at = models.DateTimeField("gönderim zamanı", null=True, blank=True, editable=False)
+
+    class Meta:
+        verbose_name = "portal e-postası"
+        verbose_name_plural = "portal e-postaları"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["kind", "related_model", "related_id", "user"],
+                name="portal_email_once",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.related_number} → {self.to_address}"

@@ -1,9 +1,11 @@
 from collections.abc import Callable
+from contextlib import AbstractContextManager
+from typing import Any
 
 import pytest
 
 from apps.core.models import User
-from apps.core.roles import ADMIN
+from apps.core.roles import ADMIN, DEPO, SEVKIYAT
 from apps.masterdata.models import Customer, Supplier
 from apps.masterdata.tests.factories import CustomerFactory, SupplierFactory
 from apps.portal import services
@@ -45,3 +47,24 @@ def supplier_account(sysadmin: User, supplier: Supplier) -> PortalAccount:
         supplier=supplier,
     )
     return account
+
+
+Commit = Callable[[], AbstractContextManager[Any]]
+
+
+@pytest.fixture
+def commit(
+    django_capture_on_commit_callbacks: Callable[..., AbstractContextManager[Any]],
+) -> Commit:
+    """Blok bitince commit sonrası işleri (olaylar, e-posta) çalıştırır."""
+    return lambda: django_capture_on_commit_callbacks(execute=True)
+
+
+@pytest.fixture
+def seller(make_user: Callable[..., User]) -> User:
+    return make_user(SEVKIYAT, username="sevkiyat")
+
+
+@pytest.fixture
+def picker(make_user: Callable[..., User]) -> User:
+    return make_user(DEPO, username="depo")

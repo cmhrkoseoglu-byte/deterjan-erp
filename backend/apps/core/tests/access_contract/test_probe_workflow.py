@@ -48,7 +48,7 @@ ALL_ROWS: dict[str, str | int] = {"page_size": 500}
 
 # Bugünkü kural tablosu. Kural eklenir ya da çıkarsa sayılar, PAYLOADS ve anlık görüntü birlikte
 # güncellenir (sahibin onayıyla).
-RULE_COUNTS = {"TaskRule": 26, "NotifyRule": 28, "CancelTasksRule": 5}
+RULE_COUNTS = {"TaskRule": 26, "NotifyRule": 29, "CancelTasksRule": 5}
 
 Payload = dict[str, Any]
 Value = bool | int | list[str] | None
@@ -367,6 +367,14 @@ PAYLOADS: dict[str, Callable[[int], Payload]] = {
     },
     "ops_alert": lambda n: {"check": "disk", "title": "Disk", "detail": "Disk %95 dolu."},
     "ops_recovered": lambda n: {"check": "disk", "title": "Disk", "detail": "Disk %60 dolu."},
+    "portal_email_failed": lambda n: _doc(
+        "sales.salesorder",
+        "SS",
+        n,
+        customer_name="Sonda Müşterisi",
+        kind_label="Sipariş onaylandı",
+        error="SMTPException",
+    ),
     # İptal kuralları
     "production_order_cancelled": lambda n: _doc("production.productionorder", "UE", n),
     "filling_order_cancelled": lambda n: _doc("filling.fillingorder", "DE", n),

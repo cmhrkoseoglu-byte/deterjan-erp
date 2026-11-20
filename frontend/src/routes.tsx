@@ -62,6 +62,7 @@ import { ShipmentPage } from "./modules/sales/ShipmentPage";
 import { SecurityPage } from "./modules/security/SecurityPage";
 import { PrivacyNoticePage } from "./pages/PrivacyNoticePage";
 import { CustomerShipmentPage, CustomerShipmentsPage } from "./modules/portal/CustomerPages";
+import { PortalSecurityPage } from "./modules/portal/EmailPreference";
 import { LedgerPage as PortalLedgerPage } from "./modules/portal/LedgerPage";
 import { OnlyFor, PortalOrderRoute, PortalOrdersRoute } from "./modules/portal/OrdersRoute";
 import { PortalHome, PortalLayout } from "./modules/portal/PortalLayout";
@@ -300,7 +301,7 @@ export const routes: RouteObject[] = [
               </OnlyFor>
             ),
           },
-          { path: "guvenlik", element: <SecurityPage /> },
+          { path: "guvenlik", element: <PortalSecurityPage /> },
         ],
       },
       {

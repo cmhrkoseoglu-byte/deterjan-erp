@@ -3,7 +3,7 @@
 from django.contrib import admin
 
 from apps.core.admin import ReadOnlyAdmin
-from apps.portal.models import OrderRequest, PortalAccount
+from apps.portal.models import OrderRequest, OutboundEmail, PortalAccount
 
 
 @admin.register(PortalAccount)
@@ -19,3 +19,10 @@ class OrderRequestAdmin(ReadOnlyAdmin):
     list_filter = ("status",)
     search_fields = ("number", "customer__code", "customer__name", "customer_po_no")
     list_select_related = ("customer",)
+
+
+@admin.register(OutboundEmail)
+class OutboundEmailAdmin(ReadOnlyAdmin):
+    list_display = ("created_at", "kind", "related_number", "to_address", "status", "attempts")
+    list_filter = ("status", "kind")
+    search_fields = ("related_number", "to_address")

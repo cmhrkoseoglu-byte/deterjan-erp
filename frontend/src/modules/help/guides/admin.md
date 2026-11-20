@@ -39,6 +39,7 @@ Müşteri ve tedarikçi yetkilileri **portal** üzerinden yalnız kendi firmalar
 - Hesabın firması sonradan değiştirilemez; yanlış açılan hesabı pasife alıp yenisini açın.
 - **⋯ > Şifre sıfırla**, **Kilidi aç**, **Pasife al** ve **Etkinleştir** çalışan hesaplarındaki gibidir. Firmanın kartı Ana veriler'de pasife alınırsa o firmanın portal hesapları kendiliğinden kullanılamaz.
 - Portal kullanıcısına rol ya da yetki verilmez; çalışan ekranlarını, bildirimleri ve aramayı açamaz. İki aşamalı doğrulama portalda isteğe bağlıdır; kişi isterse portalın Güvenlik sayfasından kurar.
+- E-postası girilen müşteri yetkilisine sipariş onaylanınca ve sevk edilince e-posta gider (fiyat ve şoför bilgisi olmadan; sunucuda e-posta hesabı tanımlıysa). Kişi bunu portalın Güvenlik sayfasından kapatabilir. Gönderilen e-postalar yönetim panelinde **Portal e-postaları** altındadır; üç denemede gönderilemeyen e-posta için size bildirim gelir.
 - Listedeki **Son giriş** kişinin en son ne zaman girdiğini, **Geçici şifre** rozeti henüz kendi şifresini belirlemediğini gösterir.
 
 ## Kullanıcı yetkileri

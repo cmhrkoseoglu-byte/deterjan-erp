@@ -665,6 +665,7 @@ def test_every_rule_row_is_covered():
         "report_failed",
         "user_locked",
         "ops_alert",
+        "portal_email_failed",
         "ops_recovered",
         "problem_reported",
     ]

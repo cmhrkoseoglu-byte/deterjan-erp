@@ -233,6 +233,7 @@ _PORTAL_SUPPLIER_PATH = "* /api/v1/portal/supplier/*"
 # Değiştirir ister. Talep kaydının yorum, geçmiş ve ek kuralları satış siparişiyle aynıdır.
 _PORTAL_REQUEST = "yeni uç nokta: portal sipariş talebi (DECISIONS 2026-11-20)"
 _PORTAL_REQUEST_MODEL = "yeni model: portal sipariş talebi (DECISIONS 2026-11-20)"
+_PORTAL_EMAIL = "yeni model ve bildirim: portal e-postası (DECISIONS 2026-11-20)"
 _STAFF_REQUESTS = "/api/v1/portal/requests/"
 _STAFF_REQUEST = "/api/v1/portal/requests/{pk}/"
 _STAFF_REQUEST_ACTIONS = "POST /api/v1/portal/requests/{pk}/*/"
@@ -607,6 +608,87 @@ ALLOWED: tuple[Allowed, ...] = (
         step=9,
         old=MISSING,
         new="allow",
+    ),
+    # Portal e-postası günlüğü: denetim günlüğünü okuyanlar görür; gönderilemeyince yalnız
+    # admin'e bildirim (B5).
+    *_cells(
+        _PORTAL_EMAIL,
+        "probe_audit",
+        {"model: portal.outboundemail": _AUDIT_READERS},
+        step=9,
+        old=MISSING,
+        new="full",
+    ),
+    *_cells(
+        _PORTAL_EMAIL,
+        "probe_workflow",
+        {"notify portal_email_failed: notified": ("admin",)},
+        step=9,
+        old=MISSING,
+        new=True,
+    ),
+    *_cells(
+        _PORTAL_EMAIL,
+        "probe_workflow",
+        {"notify portal_email_failed: notified": ("anonymous",)},
+        step=9,
+        old=MISSING,
+        new=None,
+    ),
+    *_cells(
+        _PORTAL_EMAIL,
+        "probe_workflow",
+        {
+            "notify portal_email_failed: notified": (
+                "depo",
+                "depo+sevkiyat",
+                "dolum",
+                "inactive",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "sevkiyat",
+                "superuser",
+                "uretim",
+                "yonetim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=False,
+    ),
+    *_cells(
+        _PORTAL_EMAIL,
+        "probe_workflow",
+        {"notify portal_email_failed: notified as actor": ("admin",)},
+        step=9,
+        old=MISSING,
+        new=False,
+    ),
+    *_cells(
+        _PORTAL_EMAIL,
+        "probe_workflow",
+        {
+            "notify portal_email_failed: notified as actor": (
+                "anonymous",
+                "depo",
+                "depo+sevkiyat",
+                "dolum",
+                "inactive",
+                "laboratuvar",
+                "no_role",
+                "planlama",
+                "satin_alma",
+                "sevkiyat",
+                "superuser",
+                "uretim",
+                "yonetim",
+            )
+        },
+        step=9,
+        old=MISSING,
+        new=None,
     ),
     *_cells(
         _PORTAL_REQUEST_MODEL,

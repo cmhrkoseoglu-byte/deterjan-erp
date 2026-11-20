@@ -3329,3 +3329,27 @@ değiştirme zorunlu, yalnızca admin):
   sabitlendi. Ön yüz eşlik listesinde "yeni sayfa: portal sipariş talebi" kaydı; Sevkiyat sekme
   listesini sabitleyen Sipariş takibi kaydı (2026-11-19) "Portal talepleri" sekmesiyle
   genişletildi (sahip sekmeyi B4 planında onayladı).
+
+## 2026-11-20 — Portal B5: müşteriye e-posta
+
+- **B5 planı** CUMHUR onayıyla (2026-11-20, "Onaylıyorum"). **SMTP:** "Önce kod, SMTP sonra" —
+  canlıda SMTP tanımlı değil; hesap bilgisi sonra sunucunun `.env.prod` dosyasına girilir (depoya
+  yazılmaz). O zamana kadar e-postalar günlüğe "Gönderilmedi (SMTP tanımlı değil)" diye yazılır.
+- **Ne zaman:** sipariş onaylanınca (`sales_order.confirmed`) ve sevk edilince
+  (`shipment.dispatched`); olay commit sonrası, gönderim Celery işiyle (`portal.send_email`).
+  E-posta hatası siparişi ve sevki bozmaz.
+- **Kime:** müşterinin etkin, e-postası dolu ve e-postayı kapatmamış portal kullanıcılarına (firma
+  kartı etkin olmalı). Portal hesabı olmayan müşteriye ve tedarikçiye e-posta gitmez. Aynı kayıt
+  için aynı kişiye aynı tür e-posta bir kez gider.
+- **İçerik:** fiyat yok; sevk e-postasında şoför adı ve TC yok, irsaliye eklenmez; portal bağlantısı
+  (`PORTAL_BASE_URL`, verilmezse ilk güvenilir köken). Düz metin + HTML.
+- **Günlük:** `portal.OutboundEmail` (alıcı, konu, ilgili kayıt, durum, deneme, son hatanın türü,
+  gönderim zamanı; içerik saklanmaz). Plandaki `core.OutboundEmail` yerine portal modülünde: yalnız
+  portal kullanır, çekirdeğe yeni bağımlılık eklenmez. Yönetim panelinde salt okunur.
+- **Yeniden deneme:** en çok 3 deneme (arada 5 ve 10 dk); sonunda "Gönderilemedi" olur ve
+  `portal_email.failed` olayıyla admin'e "Müşteri e-postası gönderilemedi" bildirimi gider.
+- **SMTP ayarı:** plandaki ayrı alanlar yerine bugünkü `EMAIL_URL` (satın alma e-postasıyla aynı
+  hesap) ve `DEFAULT_FROM_EMAIL`. `EMAIL_URL` boşsa gönderim yapılmaz.
+- **Tercih:** müşteri yetkilisi portalın Güvenlik sayfasında "Sipariş ve sevk e-postalarını al"
+  düğmesiyle açar/kapatır (`PortalAccount.email_opt_out`, denetim kaydıyla); adresi admin girer.
+  Uç nokta `/api/v1/portal/customer/email-preference/` (yalnız müşteri portalı). Göç portal 0003.

@@ -322,3 +322,11 @@ LOGGING = {
 # Tanımsızsa e-postalar konsola yazılır (gönderilmez).
 vars().update(env.email_url("EMAIL_URL", default="consolemail://"))
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="erp@localhost")
+# Müşteriye giden portal e-postaları yalnız SMTP tanımlıysa gönderilir; değilse günlüğe
+# "gönderilmedi" yazılır (docs/plan/musteri-siparis-takibi.md §4.5).
+EMAIL_CONFIGURED = bool(env("EMAIL_URL", default=""))
+# E-postadaki portal bağlantısının adresi; verilmezse ilk güvenilir köken (https://...).
+PORTAL_BASE_URL = env(
+    "PORTAL_BASE_URL",
+    default=CSRF_TRUSTED_ORIGINS[0] if CSRF_TRUSTED_ORIGINS else "http://localhost",
+).rstrip("/")

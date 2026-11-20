@@ -11,7 +11,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.core.models import AuditLog, User
-from apps.core.roles import DEPO, SEVKIYAT
+from apps.core.roles import SEVKIYAT
 from apps.inventory.testing import assert_stock_invariants
 from apps.masterdata.models import Customer, Location
 from apps.masterdata.tests.factories import CustomerFactory
@@ -37,23 +37,6 @@ Commit = Callable[[], AbstractContextManager[Any]]
 def invariants() -> Iterator[None]:
     yield
     assert_stock_invariants()
-
-
-@pytest.fixture
-def commit(
-    django_capture_on_commit_callbacks: Callable[..., AbstractContextManager[Any]],
-) -> Commit:
-    return lambda: django_capture_on_commit_callbacks(execute=True)
-
-
-@pytest.fixture
-def seller(make_user: Callable[..., User]) -> User:
-    return make_user(SEVKIYAT, username="sevkiyat")
-
-
-@pytest.fixture
-def picker(make_user: Callable[..., User]) -> User:
-    return make_user(DEPO, username="depo")
 
 
 @pytest.fixture

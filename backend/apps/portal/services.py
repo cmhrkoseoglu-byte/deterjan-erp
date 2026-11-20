@@ -4,15 +4,19 @@ Hesabı yalnız sistem yöneticisi açar, şifresini sıfırlar, kilidini açar 
 (CUMHUR, 2026-11-19). Kullanıcının kendisi `core.services` ile açılır; burada firmaya bağlanır.
 """
 
+import logging
 from collections.abc import Iterable, Mapping
 from decimal import Decimal
 from typing import Any
 
+from django.conf import settings
 from django.core.exceptions import PermissionDenied
+from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.utils import timezone
 
-from apps.core import security
+from apps.core import event_names as ev
+from apps.core import events, security
 from apps.core import services as core
 from apps.core.access import CHANGE
 from apps.core.audit import log_change
@@ -21,14 +25,16 @@ from apps.core.models import AuditLog, User
 from apps.core.permissions import require_access, require_admin
 from apps.core.services import create_document, save_with_audit, transition_status
 from apps.masterdata.models import Customer, Material, Supplier, UnitOfMeasure
+from apps.portal import email as portal_email
 from apps.portal import selectors
-from apps.portal.models import OrderRequest, OrderRequestLine, PortalAccount
+from apps.portal.models import OrderRequest, OrderRequestLine, OutboundEmail, PortalAccount
 from apps.portal.state import order_request_states
 from apps.sales import services as sales
 from apps.sales.access import ORDERS
 from apps.sales.models import SalesOrder, Shipment
 
 ADMIN_MESSAGE = "Portal hesaplarını yalnız sistem yöneticisi yönetir."
+logger = logging.getLogger(__name__)
 
 
 def _check_firm(customer: Customer | None, supplier: Supplier | None) -> Customer | Supplier:
@@ -297,3 +303,148 @@ def reject_request(actor: User, request: OrderRequest, reason: str) -> OrderRequ
             event_payload={**_request_payload(request), "reason": reason},
             changes=changes,
         )
+
+
+# --- müşteriye e-posta (docs/plan/musteri-siparis-takibi.md §4.5) ------------------------------
+
+# Gönderim en çok bu kadar denenir (arada bekleme: deneme × EMAIL_RETRY_SECONDS).
+EMAIL_MAX_ATTEMPTS = 3
+EMAIL_RETRY_SECONDS = 300
+
+
+def set_email_preference(actor: User, enabled: bool) -> PortalAccount:
+    """Müşteri yetkilisi sipariş ve sevk e-postalarını açar ya da kapatır (denetim kaydıyla)."""
+    customer = _customer_of(actor)
+    account = PortalAccount.objects.select_for_update().get(user=actor, customer=customer)
+    account.email_opt_out = not enabled
+    return save_with_audit(account, actor)
+
+
+def email_recipients(customer: Customer) -> list[User]:
+    """E-posta alacak portal kullanıcıları: müşterinin etkin, e-postası dolu ve e-postayı
+    kapatmamış hesapları."""
+    accounts = (
+        PortalAccount.objects.filter(customer=customer, email_opt_out=False, user__is_active=True)
+        .exclude(user__email="")
+        .select_related("user")
+        .order_by("user__username")
+    )
+    return [account.user for account in accounts]
+
+
+def _queue(
+    kind: str, customer: Customer, model: str, record_id: int, number: str, subject: str
+) -> list[OutboundEmail]:
+    if not customer.is_active:
+        return []
+    queued = []
+    for user in email_recipients(customer):
+        email, created = OutboundEmail.objects.get_or_create(
+            kind=kind,
+            related_model=model,
+            related_id=record_id,
+            user=user,
+            defaults={
+                "customer": customer,
+                "to_address": user.email,
+                "subject": subject,
+                "related_number": number,
+            },
+        )
+        if created:
+            queued.append(email)
+    if queued:
+        from apps.portal.tasks import send_portal_email
+
+        ids = [email.pk for email in queued]
+        transaction.on_commit(lambda: [send_portal_email.delay(pk) for pk in ids])
+    return queued
+
+
+@transaction.atomic
+def queue_order_confirmed(order: SalesOrder) -> list[OutboundEmail]:
+    """Onaylanan sipariş için müşterinin portal kullanıcılarına e-posta sıraya alınır."""
+    content = portal_email.order_confirmed(order)
+    return _queue(
+        OutboundEmail.Kind.ORDER_CONFIRMED,
+        order.customer,
+        "sales.salesorder",
+        order.pk,
+        order.number,
+        content.subject,
+    )
+
+
+@transaction.atomic
+def queue_shipment_dispatched(shipment: Shipment) -> list[OutboundEmail]:
+    """Sevk edilen sevkiyat için müşterinin portal kullanıcılarına e-posta sıraya alınır."""
+    order = shipment.sales_order
+    return _queue(
+        OutboundEmail.Kind.SHIPMENT_DISPATCHED,
+        order.customer,
+        "sales.shipment",
+        shipment.pk,
+        shipment.number,
+        f"Siparişiniz sevk edildi: {shipment.number}",
+    )
+
+
+def _content(email: OutboundEmail) -> portal_email.Content | None:
+    if email.related_model == "sales.salesorder":
+        order = SalesOrder.objects.filter(pk=email.related_id).select_related("customer").first()
+        return portal_email.order_confirmed(order) if order else None
+    shipment = (
+        Shipment.objects.filter(pk=email.related_id).select_related("sales_order__customer").first()
+    )
+    return portal_email.shipment_dispatched(shipment) if shipment else None
+
+
+def deliver_email(email_id: int) -> bool:
+    """Sıradaki e-postayı gönderir. SMTP tanımlı değilse "gönderilmedi" olur. Hata olursa deneme
+    sayısı artar; son denemede "gönderilemedi" olur ve `portal_email.failed` yayınlanır (admin'e
+    bildirim). Yeniden denenmesi gerekiyorsa True döner."""
+    with transaction.atomic():
+        email = OutboundEmail.objects.select_for_update().filter(pk=email_id).first()
+        if email is None or email.status != OutboundEmail.Status.QUEUED:
+            return False
+        if not settings.EMAIL_CONFIGURED:
+            email.status = OutboundEmail.Status.SKIPPED
+            email.save(update_fields=["status"])
+            return False
+        content = _content(email)
+        if content is None:
+            email.status = OutboundEmail.Status.FAILED
+            email.last_error = "İlgili kayıt bulunamadı."
+            email.save(update_fields=["status", "last_error"])
+            return False
+        email.attempts += 1
+        message = EmailMultiAlternatives(
+            subject=content.subject, body=content.text, to=[email.to_address]
+        )
+        message.attach_alternative(content.html, "text/html")
+        try:
+            message.send(fail_silently=False)
+        except Exception as exc:
+            logger.exception("Portal e-postası gönderilemedi: %s", email.pk)
+            email.last_error = exc.__class__.__name__
+            if email.attempts < EMAIL_MAX_ATTEMPTS:
+                email.save(update_fields=["attempts", "last_error"])
+                return True
+            email.status = OutboundEmail.Status.FAILED
+            email.save(update_fields=["attempts", "last_error", "status"])
+            events.publish(
+                ev.PORTAL_EMAIL_FAILED,
+                {
+                    "model": email.related_model,
+                    "id": email.related_id,
+                    "number": email.related_number,
+                    "customer_name": email.customer.name,
+                    "kind_label": email.get_kind_display(),
+                    "error": email.last_error,
+                },
+            )
+            return False
+        email.status = OutboundEmail.Status.SENT
+        email.sent_at = timezone.now()
+        email.save(update_fields=["attempts", "status", "sent_at", "last_error"])
+        return False
