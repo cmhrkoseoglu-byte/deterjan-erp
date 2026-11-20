@@ -68,11 +68,12 @@ Portal (docs/plan/musteri-siparis-takibi.md §4) dış firmalara açılmadan ön
 
 | # | Kontrol | Tür |
 |---|---|---|
-| 33 | Sistem firmanın alan adıyla çalışıyor (ör. `erp.<firma>.com.tr`; KURULUM.md §14 "Alan adına geçiş"); sertifika geçerli, eski `sslip.io` adresi çalışanlara da duyuruldu | Elle |
+| 33 | Portal adresi: alan adı olana kadar bugünkü adres (`https://<ip>.sslip.io`) kullanılır (CUMHUR, 2026-11-20); sertifika geçerli. Alan adı alınınca KURULUM.md §14 "Alan adına geçiş" uygulanır, yeni adres çalışanlara ve portal kullanıcılarına duyurulur | Elle |
 | 34 | Aydınlatma metni (`/aydinlatma`) firmanın bilgileriyle dolduruldu, hukuk danışmanı onayladı ve "taslak" uyarısı kaldırıldı (`PrivacyNoticePage.tsx`, `APPROVED`); KVKK envanteri (madde 29) portal satırlarıyla gözden geçirildi | Elle |
 | 35 | Bir deneme müşteri ve bir deneme tedarikçi hesabıyla girildi: ilk girişte şifre değiştirildi; yalnız kendi firmasının siparişleri, sevkiyat ya da teslimatları ve cari hesabı göründü; başka bir firmanın sipariş adresi elle yazılınca "bulunamadı" geldi; `/sevkiyat`, `/depo` gibi çalışan adresleri portala döndü | Elle |
 | 36 | Portal kullanıcısıyla `/api/v1/inventory/lots/` ve `/api/v1/masterdata/materials/` istekleri `403 portal_forbidden` döndü; `/admin/` açılmadı | Elle |
 | 37 | Müşteri nüshası irsaliyede lot, SKT ve açık şoför TC'si yok; açılışı sevkiyatın Geçmiş panelinde "İrsaliye görüntülendi (portal)" olarak göründü | Elle |
 | 38 | Portal hesapları yalnız gerçekten yetkili kişilere açıldı (her yetkiliye ayrı hesap, ortak hesap yok); hesap bilgisi ve geçici şifre kişiye güvenli yoldan iletildi | Elle |
+| 40 | Deneme müşteri hesabıyla bir sipariş talebi gönderildi; sevkiyata "Portal talebi incele" görevi düştü; talep siparişe çevrildi (taslak sipariş açıldı) ve bir başkası gerekçeyle reddedildi; müşteri ikisini de portalda gördü | Elle |
 | 39 | Duman testi portal satırları (girişsiz 401, çalışan 403) yeşil (`scripts/smoke_test.sh`) | Otomatik |
 

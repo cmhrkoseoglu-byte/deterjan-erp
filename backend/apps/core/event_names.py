@@ -95,6 +95,13 @@ SALES_ORDER_PROMISED_DATE_CHANGED = "sales_order.promised_date_changed"
 # sözlükleri: `number`, `customer_name`, `due_date`, `days_late`) ve `late_total` (bütün
 # gecikenler). Her sipariş aynı vade için bir kez; liste boşsa yayınlanmaz.
 SALES_ORDERS_OVERDUE = "sales_order.overdue"
+# Portal sipariş talebi (docs/plan/musteri-siparis-takibi.md §4.4): durum makinesinden
+# (`order_request.<durum>`); payload'da `customer_code`, `customer_name`; siparişe çevrilince
+# `order` (sipariş sözlüğü), reddedilince `reason`.
+ORDER_REQUEST_CREATED = "order_request.created"
+ORDER_REQUEST_CONVERTED = "order_request.converted"
+ORDER_REQUEST_REJECTED = "order_request.rejected"
+ORDER_REQUEST_WITHDRAWN = "order_request.withdrawn"
 RESERVED_LOTS_EXPIRING = "lot.expiring"
 # returns (Faz 3, Adım 3.3). Belge olayları durum makinesinden (`customer_return.<durum>`);
 # payload'da `customer_code`, `customer_name`, `lots` (lot sözlükleri, `disposition` ile).

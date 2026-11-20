@@ -381,3 +381,118 @@ export async function unlockPortalAccount(id: number): Promise<PortalAccount> {
   const { data } = await api.post<PortalAccount>(`${ACCOUNTS}/${id}/unlock/`);
   return data;
 }
+
+// --- sipariş talebi (docs/plan/musteri-siparis-takibi.md §4.4) ---------------------------
+
+export type RequestStatus = "SUBMITTED" | "CONVERTED" | "REJECTED" | "WITHDRAWN";
+
+export interface RequestLine {
+  line_no: number;
+  product: number;
+  product_code: string;
+  product_name: string;
+  quantity: string;
+  unit: number;
+  unit_code: string;
+}
+
+export interface OrderRequest {
+  id: number;
+  number: string;
+  status: RequestStatus;
+  status_display: string;
+  requested_delivery_date: string | null;
+  customer_po_no: string;
+  delivery_address: string;
+  note: string;
+  lines: RequestLine[];
+  reject_reason: string;
+  /** Sipariş onaylanınca dolu (Siparişlerim'de açılır). */
+  order_id: number | null;
+  order_number: string | null;
+  created_at: string;
+  decided_at: string | null;
+}
+
+export interface StaffOrderRequest extends OrderRequest {
+  customer: number;
+  customer_code: string;
+  customer_name: string;
+  created_by_name: string;
+  decided_by_name: string;
+  /** Çevrildiği satış siparişi (taslak olsa da). */
+  sales_order: number | null;
+}
+
+export interface OrderableProduct {
+  id: number;
+  code: string;
+  name: string;
+  units: { id: number; code: string; name: string }[];
+}
+
+export interface RequestPayload {
+  requested_delivery_date: string | null;
+  customer_po_no: string;
+  delivery_address: string;
+  note: string;
+  lines: { product: number; quantity: string; unit: number }[];
+}
+
+const CUSTOMER_REQUESTS = `${BASE}/customer/requests`;
+const STAFF_REQUESTS = `${BASE}/requests`;
+
+export async function listOrderableProducts(): Promise<OrderableProduct[]> {
+  const { data } = await api.get<Paginated<OrderableProduct>>(`${BASE}/customer/products/`, {
+    params: { page_size: 500 },
+  });
+  return data.results;
+}
+
+export async function listRequests(params: ListParams = {}): Promise<Paginated<OrderRequest>> {
+  const { data } = await api.get<Paginated<OrderRequest>>(`${CUSTOMER_REQUESTS}/`, {
+    params: clean(params),
+  });
+  return data;
+}
+
+export async function getRequest(id: number): Promise<OrderRequest> {
+  const { data } = await api.get<OrderRequest>(`${CUSTOMER_REQUESTS}/${id}/`);
+  return data;
+}
+
+export async function createRequest(payload: RequestPayload): Promise<OrderRequest> {
+  const { data } = await api.post<OrderRequest>(`${CUSTOMER_REQUESTS}/`, payload);
+  return data;
+}
+
+export async function withdrawRequest(id: number): Promise<OrderRequest> {
+  const { data } = await api.post<OrderRequest>(`${CUSTOMER_REQUESTS}/${id}/withdraw/`);
+  return data;
+}
+
+export async function listStaffRequests(
+  params: ListParams = {},
+): Promise<Paginated<StaffOrderRequest>> {
+  const { data } = await api.get<Paginated<StaffOrderRequest>>(`${STAFF_REQUESTS}/`, {
+    params: clean(params),
+  });
+  return data;
+}
+
+export async function getStaffRequest(id: number): Promise<StaffOrderRequest> {
+  const { data } = await api.get<StaffOrderRequest>(`${STAFF_REQUESTS}/${id}/`);
+  return data;
+}
+
+export async function convertRequest(id: number): Promise<StaffOrderRequest> {
+  const { data } = await api.post<StaffOrderRequest>(`${STAFF_REQUESTS}/${id}/convert/`);
+  return data;
+}
+
+export async function rejectRequest(id: number, reason: string): Promise<StaffOrderRequest> {
+  const { data } = await api.post<StaffOrderRequest>(`${STAFF_REQUESTS}/${id}/reject/`, {
+    reason,
+  });
+  return data;
+}

@@ -8,6 +8,7 @@ export const pt = {
     shipments: "Sevkiyatlar",
     receipts: "Teslimatlarım",
     ledger: "Cari hesabım",
+    requests: "Taleplerim",
     security: "Güvenlik",
   },
   logout: "Çıkış",
@@ -82,4 +83,23 @@ export const pt = {
   supplierOrdersIntro: "Size gönderdiğimiz satın alma siparişleri ve teslim aldığımız miktarlar.",
   receiptsIntro: "Sizden teslim aldığımız mallar (kaydedilmiş mal kabuller).",
   ledgerIntro: "Para birimi başına güncel bakiye ve hareketleriniz.",
+  requestsIntro:
+    "Sipariş talepleriniz. Talep sipariş değildir: ekibimiz inceler, siparişe çevirir ya da gerekçesiyle yanıtlar.",
+  newRequest: "Yeni talep",
+  newRequestIntro:
+    "Ürünleri, miktarları ve birimleri seçin. Fiyat ve teslim tarihi sipariş onaylanınca bildirilir.",
+  request: "Talep",
+  unit: "Birim",
+  note: "Not",
+  addLine: "Satır ekle",
+  removeLine: "Satırı kaldır",
+  addressHint: "Boş bırakırsanız kayıtlı adresiniz kullanılır.",
+  sendRequest: "Talebi gönder",
+  requestSent: (number: string) => `Talebiniz gönderildi: ${number}`,
+  withdraw: "Talebi geri çek",
+  requestWithdrawn: "Talep geri çekildi.",
+  rejectedTitle: "Talep reddedildi",
+  convertedTitle: "Talep siparişe çevrildi",
+  orderPending: (number: string) =>
+    `Sipariş ${number} hazırlanıyor; onaylanınca Siparişlerim'de görünür.`,
 };

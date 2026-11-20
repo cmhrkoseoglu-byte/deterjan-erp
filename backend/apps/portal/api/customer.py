@@ -43,7 +43,7 @@ class PortalCustomerOnly(AccessPermission):
         )
 
 
-def _customer(request: Request) -> Customer:
+def customer_of(request: Request) -> Customer:
     account = selectors.account_of(request.user)  # type: ignore[arg-type]
     if account is None or account.customer is None:
         raise BusinessRuleError("portal_account_missing", "Portal hesabı bulunamadı.")
@@ -77,7 +77,7 @@ class CustomerOrderViewSet(
     def get_queryset(self) -> QuerySet[SalesOrder]:
         if getattr(self, "swagger_fake_view", False):  # şema üretimi
             return SalesOrder.objects.none()
-        return selectors.customer_orders(_customer(self.request))
+        return selectors.customer_orders(customer_of(self.request))
 
 
 class CustomerShipmentFilter(django_filters.FilterSet):
@@ -99,7 +99,7 @@ class CustomerShipmentViewSet(
     def get_queryset(self) -> QuerySet[Shipment]:
         if getattr(self, "swagger_fake_view", False):  # şema üretimi
             return Shipment.objects.none()
-        return selectors.customer_shipments(_customer(self.request))
+        return selectors.customer_shipments(customer_of(self.request))
 
     def get_serializer_class(self) -> Any:
         if self.action == "retrieve":
@@ -129,7 +129,7 @@ class CustomerBalanceView(APIView):
 
     def firm(self, request: Request) -> Customer | Supplier:
         """Cari hesabı gösterilen firma (tedarikçi portalı bu yöntemi değiştirir)."""
-        return _customer(request)
+        return customer_of(request)
 
     @extend_schema(responses=s.PortalBalanceSerializer(many=True))
     def get(self, request: Request) -> Response:
@@ -144,7 +144,7 @@ class CustomerStatementView(APIView):
 
     def firm(self, request: Request) -> Customer | Supplier:
         """Cari hesabı gösterilen firma (tedarikçi portalı bu yöntemi değiştirir)."""
-        return _customer(request)
+        return customer_of(request)
 
     @extend_schema(parameters=DATE_PARAMS, responses=s.PortalStatementSerializer)
     def get(self, request: Request) -> Response:
@@ -166,7 +166,7 @@ class CustomerStatementPdfView(APIView):
 
     def firm(self, request: Request) -> Customer | Supplier:
         """Cari hesabı gösterilen firma (tedarikçi portalı bu yöntemi değiştirir)."""
-        return _customer(request)
+        return customer_of(request)
 
     @extend_schema(parameters=DATE_PARAMS, responses={(200, "application/pdf"): bytes})
     def get(self, request: Request) -> HttpResponse:

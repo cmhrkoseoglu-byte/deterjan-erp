@@ -2180,3 +2180,10 @@ Plan `docs/plan/kodlama-sistematigi.md` §6; kararlar DECISIONS "2026-11-04 — 
   (DNS A kaydı) ve aydınlatma metninin hukuk onayı. İkinci sürüm: B4 sipariş talebi, B5 e-posta.
 - **Doğrulama:** ön yüz 779/779 (aydınlatma testi yeni), tsc, ESLint, Prettier temiz; eşlik
   25/25. Duman testi betiği sözdizimi temiz; çalıştırılması CI'da (yerel yığın ana sürümde).
+
+## 2026-11-20 — Portal B4: müşterinin sipariş talebi
+
+- Müşteri portalında Yeni talep / Taleplerim (geri çekme); Sevkiyat > Portal talepleri (siparişe
+  çevir: taslak sipariş; reddet: gerekçeli); "Portal talebi incele" görevi. Göç portal 0002.
+  Portal adresi alan adı olana kadar bugünkü adres (DECISIONS 2026-11-20).
+- **Doğrulama:** backend 3056 test yeşil (14 yeni talep testi; ardından içe aktarma sırası ve bir test tip uyarısı düzeltildi, ilgili testler yeniden yeşil), ruff, `ruff format --check`, mypy, `makemigrations --check`, OpenAPI uyarısız; ön yüz 787/787 (7 yeni talep testi), tsc, ESLint, Prettier temiz, eşlik yeşil. Gerçek uygulamada elle bakılmadı.

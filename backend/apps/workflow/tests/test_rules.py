@@ -638,6 +638,7 @@ def test_every_rule_row_is_covered():
         "sales_shortage",
         "sales_order_cancelled",
         "reserved_lots_expiring",
+        "portal_order_request",
         "sales_orders_overdue",
         "pick_shipment",
         "dispatch_shipment",

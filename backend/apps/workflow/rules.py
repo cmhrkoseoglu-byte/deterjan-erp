@@ -618,6 +618,21 @@ RULES: tuple[Rule, ...] = (
         body=_reserved_expiring_body,
         when=lambda payload: bool(payload.get("lots")),
     ),
+    # Portal sipariş talebi (docs/plan/musteri-siparis-takibi.md §4.4): sevkiyat inceler; siparişe
+    # çevrilince, reddedilince ya da müşteri geri çekince görev kapanır.
+    TaskRule(
+        code="portal_order_request",
+        requires=("sales.orders", CHANGE),
+        event=ev.ORDER_REQUEST_CREATED,
+        role=SEVKIYAT,
+        title="Portal talebi incele: {number}",
+        description="{customer_name} portaldan sipariş talebi gönderdi.",
+        close_on=(
+            CloseOn(ev.ORDER_REQUEST_CONVERTED),
+            CloseOn(ev.ORDER_REQUEST_REJECTED),
+            CloseOn(ev.ORDER_REQUEST_WITHDRAWN),
+        ),
+    ),
     # Müşteri sipariş takibi (docs/plan/musteri-siparis-takibi.md §3.4): yeni geciken siparişler,
     # her sipariş aynı vade için bir kez.
     NotifyRule(

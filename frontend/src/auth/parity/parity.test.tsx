@@ -245,9 +245,9 @@ describe("ön yüz eşlik anlık görüntüsü", () => {
     "rota korumaları: her rota personayı içeri alıyor mu",
     async () => {
       const cases = routeCases(routes);
-      // +9 müşteri ve tedarikçi portalı rotaları, +1 aydınlatma metni
-      // (docs/plan/musteri-siparis-takibi.md §4.6, §4.7).
-      expect(cases).toHaveLength(70);
+      // +9 müşteri ve tedarikçi portalı rotaları, +1 aydınlatma metni, +4 sipariş talebi (portalda 3,
+      // Sevkiyat'ta 1) (docs/plan/musteri-siparis-takibi.md §4.4, §4.6, §4.7).
+      expect(cases).toHaveLength(74);
       expect(new Set(cases.map((item) => item.name)).size).toBe(cases.length);
       const result: Cases = {};
       for (const { name, chain } of cases) {
@@ -313,7 +313,8 @@ describe("ön yüz eşlik anlık görüntüsü", () => {
     "kayıt bağlantıları: hedef sayfa personaya açılıyor mu",
     async () => {
       const models = Object.keys(RECORD_ROUTES).sort();
-      expect(models).toHaveLength(21);
+      // +1 portal.orderrequest (Sevkiyat > Portal talepleri; DECISIONS 2026-11-20).
+      expect(models).toHaveLength(22);
       const result: Cases = {};
       for (const model of models) {
         const path = RECORD_ROUTES[model](1);

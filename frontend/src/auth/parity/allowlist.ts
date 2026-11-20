@@ -60,6 +60,21 @@ const TRACKING_ITEM = "yeni sekme: Sevkiyat > Sipariş takibi (DECISIONS 2026-11
 // Müşteri ve tedarikçi portalı (DECISIONS 2026-11-19): `/portal` altı yalnız portal kullanıcısına
 // açık; personaların hepsi çalışan olduğundan giriş yapan herkes portaldan yönlendirilir.
 const PORTAL_ITEM = "yeni sayfa: müşteri ve tedarikçi portalı (DECISIONS 2026-11-19)";
+// Portal sipariş talebi (DECISIONS 2026-11-20): Sevkiyat > Portal talepleri sekmesi (Sipariş takibi
+// kaydının yeni sekme listesi buna göre genişletildi) ve talep sayfası; Satış siparişleri'ni
+// görenler açar (satış siparişi sayfasıyla aynı).
+const PORTAL_REQUEST_ITEM = "yeni sayfa: portal sipariş talebi (DECISIONS 2026-11-20)";
+const ORDER_OPEN = [
+  "inactive",
+  "yonetim",
+  "planlama",
+  "depo",
+  "sevkiyat",
+  "admin",
+  "superuser",
+  "depo+sevkiyat",
+];
+const ORDER_FORBIDDEN = ["no_role", "uretim", "laboratuvar", "dolum", "satin_alma"];
 const STAFF_PERSONAS = [
   "inactive",
   "no_role",
@@ -216,6 +231,7 @@ export const ALLOWED: readonly Allowed[] = [
         "/sevkiyat/siparisler",
         "/sevkiyat/sevkiyatlar",
         "/sevkiyat/takip",
+        "/sevkiyat/portal-talepleri",
         "/sevkiyat/musteriler",
       ],
     },
@@ -237,6 +253,7 @@ export const ALLOWED: readonly Allowed[] = [
         "/sevkiyat/sevkiyatlar",
         "/sevkiyat/toplama",
         "/sevkiyat/takip",
+        "/sevkiyat/portal-talepleri",
         "/sevkiyat/musteriler",
       ],
     },
@@ -246,6 +263,30 @@ export const ALLOWED: readonly Allowed[] = [
   ...cells(
     { item: PORTAL_ITEM, section: "routes", step: 9, old: MISSING, new: "login" },
     { "/portal*": ["anonymous"] },
+  ),
+  ...cells(
+    { item: PORTAL_REQUEST_ITEM, section: "routes", step: 9, old: MISSING, new: "login" },
+    { "/sevkiyat/portal-talepleri/:requestId": ["anonymous"] },
+  ),
+  ...cells(
+    { item: PORTAL_REQUEST_ITEM, section: "routes", step: 9, old: MISSING, new: "open" },
+    { "/sevkiyat/portal-talepleri/:requestId": ORDER_OPEN },
+  ),
+  ...cells(
+    { item: PORTAL_REQUEST_ITEM, section: "routes", step: 9, old: MISSING, new: "forbidden" },
+    { "/sevkiyat/portal-talepleri/:requestId": ORDER_FORBIDDEN },
+  ),
+  ...cells(
+    { item: PORTAL_REQUEST_ITEM, section: "recordLinks", step: 9, old: MISSING, new: "login" },
+    { "portal.orderrequest": ["anonymous"] },
+  ),
+  ...cells(
+    { item: PORTAL_REQUEST_ITEM, section: "recordLinks", step: 9, old: MISSING, new: "open" },
+    { "portal.orderrequest": ORDER_OPEN },
+  ),
+  ...cells(
+    { item: PORTAL_REQUEST_ITEM, section: "recordLinks", step: 9, old: MISSING, new: "forbidden" },
+    { "portal.orderrequest": ORDER_FORBIDDEN },
   ),
   // KVKK aydınlatma metni: giriş gerektirmez, herkes açar.
   ...cells(
@@ -477,6 +518,7 @@ export const PLANNED_ITEMS: Readonly<Record<string, readonly number[]>> = {
   [TRACKING_ITEM]: [9],
   // Plan dışı; sahibin onayladığı portal planı (DECISIONS 2026-11-19).
   [PORTAL_ITEM]: [9],
+  [PORTAL_REQUEST_ITEM]: [9],
 };
 
 type FrozenSections = Readonly<

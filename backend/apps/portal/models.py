@@ -4,8 +4,9 @@
 from django.db import models
 from django.db.models import Q
 
-from apps.core.models import BaseModel, User
-from apps.masterdata.models import Customer, Supplier
+from apps.core.models import BaseModel, DocumentModel, User
+from apps.masterdata.models import Customer, Material, Supplier, UnitOfMeasure
+from apps.sales.models import SalesOrder
 
 
 class PortalAccount(BaseModel):
@@ -69,3 +70,80 @@ class PortalAccount(BaseModel):
     def kind(self) -> str:
         """`customer` ya da `supplier`."""
         return "customer" if self.customer_id else "supplier"
+
+
+class OrderRequest(DocumentModel):
+    """Müşterinin portaldan gönderdiği sipariş talebi (`MT-`; docs/plan/musteri-siparis-takibi.md
+    §4.4). Talep sipariş değildir: sevkiyat siparişe çevirir ya da gerekçeyle reddeder. Fiyat
+    yoktur. Durum makinesi `portal.state.order_request_states`."""
+
+    class Status(models.TextChoices):
+        SUBMITTED = "SUBMITTED", "Gönderildi"
+        CONVERTED = "CONVERTED", "Siparişe çevrildi"
+        REJECTED = "REJECTED", "Reddedildi"
+        WITHDRAWN = "WITHDRAWN", "Geri çekildi"
+
+    customer = models.ForeignKey(
+        Customer,
+        verbose_name="müşteri",
+        on_delete=models.PROTECT,
+        related_name="order_requests",
+        editable=False,
+    )
+    requested_delivery_date = models.DateField("istenen teslim tarihi", null=True, blank=True)
+    customer_po_no = models.CharField("müşteri sipariş no", max_length=64, blank=True)
+    delivery_address = models.TextField("teslim adresi", blank=True)
+    note = models.TextField("not", blank=True)
+    sales_order = models.OneToOneField(
+        SalesOrder,
+        verbose_name="satış siparişi",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="portal_request",
+        editable=False,
+    )
+    reject_reason = models.TextField("ret gerekçesi", blank=True, editable=False)
+    decided_at = models.DateTimeField("karar zamanı", null=True, blank=True, editable=False)
+    decided_by = models.ForeignKey(
+        User,
+        verbose_name="karar veren",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        editable=False,
+    )
+
+    class Meta:
+        verbose_name = "sipariş talebi"
+        verbose_name_plural = "sipariş talepleri"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return self.number
+
+
+class OrderRequestLine(BaseModel):
+    """Talep satırı: aktif mamul, miktar ve birim (mamulün temel birimi ya da tanımlı birimi)."""
+
+    request = models.ForeignKey(
+        OrderRequest, verbose_name="talep", on_delete=models.PROTECT, related_name="lines"
+    )
+    line_no = models.PositiveIntegerField("satır no")
+    product = models.ForeignKey(
+        Material, verbose_name="mamul", on_delete=models.PROTECT, related_name="+"
+    )
+    quantity = models.DecimalField("miktar", max_digits=18, decimal_places=4)
+    unit = models.ForeignKey(
+        UnitOfMeasure, verbose_name="birim", on_delete=models.PROTECT, related_name="+"
+    )
+
+    class Meta:
+        verbose_name = "talep satırı"
+        verbose_name_plural = "talep satırları"
+        ordering = ["request", "line_no"]
+        constraints = [
+            models.UniqueConstraint(fields=["request", "line_no"], name="portal_request_line_no"),
+            models.CheckConstraint(condition=Q(quantity__gt=0), name="portal_request_line_qty"),
+        ]

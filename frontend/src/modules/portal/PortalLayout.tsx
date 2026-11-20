@@ -5,6 +5,7 @@ import {
   IconLogout,
   IconPackageImport,
   IconReceipt,
+  IconSend,
   IconShieldLock,
   IconTruckDelivery,
 } from "@tabler/icons-react";
@@ -33,6 +34,7 @@ const CUSTOMER_MENU: MenuItem[] = [
     icon: <IconTruckDelivery size={18} />,
   },
   { path: PORTAL_PATHS.ledger, label: pt.menu.ledger, icon: <IconFileInvoice size={18} /> },
+  { path: PORTAL_PATHS.requests, label: pt.menu.requests, icon: <IconSend size={18} /> },
 ];
 
 const SUPPLIER_MENU: MenuItem[] = [

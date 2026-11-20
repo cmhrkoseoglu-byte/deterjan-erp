@@ -44,6 +44,7 @@ import {
   shipmentPath,
 } from "./config";
 import { ShipmentStatusBadge } from "./shared";
+import { PortalRequestsTab } from "./PortalRequests";
 import { TrackingTab } from "./TrackingPanel";
 import { st } from "./strings";
 
@@ -313,6 +314,12 @@ const TABS: TabDef[] = [
     label: st.tabs.tracking,
     section: PERM.SALES_ORDERS,
     render: () => <TrackingTab />,
+  },
+  {
+    slug: "portal-talepleri",
+    label: st.tabs.portalRequests,
+    section: PERM.SALES_ORDERS,
+    render: () => <PortalRequestsTab />,
   },
   {
     slug: "musteriler",
